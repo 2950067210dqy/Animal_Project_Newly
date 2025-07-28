@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/Animal_Project_newly.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Service/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config/gui_config.ini" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config_class/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config_class/global_setting.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config_class/ini_parser.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/dao/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/entiity/BaseWidget.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/entiity/BaseWindow.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/entiity/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/index/MainWindow_index.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/index/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/my_abc/BaseInterfaceWidget.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/my_abc/BaseModule.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/my_abc/BaseService.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/my_abc/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/other/1.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/other/2.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/other/DB_Structure" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/other/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/other/main.spec" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/other/main2.spec" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/other/requirements.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/alarm.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/default.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/export.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/generate.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/help.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/import.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/marketAnalysis.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/materialThree.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/me.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/mode.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/monitor.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/ok.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/save.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/settingConfig.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/dark/settingSystem.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/alarm.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/default.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/export.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/generate.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/help.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/import.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/marketAnalysis.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/materialThree.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/me.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/mode.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/monitor.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/ok.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/save.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/settingConfig.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/light/settingSystem.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/logo.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/mainPage.qrc" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource/mainPage_rc.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource_py/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resource_py/mainPage_rc.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/theme/ThemeManager.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/theme/ThemeQt6.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/theme/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/util/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/util/class_util.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/util/folder_util.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/util/json_util.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/util/number_util.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/util/time_util.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 7
+}]]></component>
+  <component name="ProjectId" id="30UVvInit4tNs3YSKMktUHPuaYl" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.MainWindow_index.executor": "Run",
+    "Python.ThemeQt6.executor": "Run",
+    "Python.main.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "master",
+    "last_opened_file_path": "D:/WorkSpace/PythonProject/Animal_Project_newly/entiity",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\entiity" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\config_class" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\ui" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\other" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\config" />
+    </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="main" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
+      <module name="Animal_Project_newly" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="Python 3.11 (Animal_Project_newly)" />
+      <option name="WORKING_DIRECTORY" value="" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-PY-251.26927.90" />
+        <option value="bundled-python-sdk-41e8cd69c857-64d779b69b7a-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.26927.90" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="" />
+      <created>1753682368086</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1753682368086</updated>
+      <workItem from="1753682369119" duration="12515000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/main.py</url>
+          <line>62</line>
+          <option name="timeStamp" value="1" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$MainWindow_index.coverage" NAME="MainWindow_index 覆盖结果" MODIFIED="1753702069150" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/index" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$ThemeQt6.coverage" NAME="ThemeQt6 覆盖结果" MODIFIED="1753687576845" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/theme" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753706390399" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+  </component>
+</project>
