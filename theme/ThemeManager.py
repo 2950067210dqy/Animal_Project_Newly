@@ -3,7 +3,7 @@ from enum import Enum
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty
 from loguru import logger
 
-from config_class.global_setting import global_setting
+from public.config_class.global_setting import global_setting
 
 
 # 图表样式名称枚举类

@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 import sys
 import time
@@ -7,9 +8,10 @@ from PyQt6.QtCore import QThreadPool
 from PyQt6.QtWidgets import QApplication
 from loguru import logger
 
-from config_class.global_setting import global_setting
-from config_class.ini_parser import ini_parser
+
 from index.MainWindow_index import MainWindow_Index
+from public.config_class.global_setting import global_setting
+from public.config_class.ini_parser import ini_parser
 from theme.ThemeManager import ThemeManager
 
 
@@ -55,7 +57,7 @@ def start_qt_application():
     pass
 def load_global_setting():
     config_path = "/config"
-    # 加载相机配置
+    # 加载配置
     config_file_path = os.getcwd() +config_path+ "/gui_config.ini"
 
     # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
@@ -65,7 +67,7 @@ def load_global_setting():
     else:
         logger.error("gui配置文件读取失败。")
         quit_qt_application()
-    global_setting.set_setting("gui_config", config)
+    global_setting.set_setting("configer", config)
 
     # 风格默认是dark  light
     global_setting.set_setting("style", config['theme']['default'])
@@ -77,7 +79,10 @@ def load_global_setting():
     # qt线程池
     thread_pool = QThreadPool()
     global_setting.set_setting("thread_pool", thread_pool)
-
+    q = multiprocessing.Queue()  # 创建 Queue 消息传递
+    send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
+    global_setting.set_setting("queue",  q)
+    global_setting.set_setting("send_message_queue",  send_message_q)
     pass
 if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
     freeze_support()

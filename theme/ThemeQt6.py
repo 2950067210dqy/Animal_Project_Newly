@@ -1,9 +1,9 @@
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QPushButton
 
-from config_class.global_setting import global_setting
-from entiity.BaseWidget import BaseWidget
-from entiity.BaseWindow import BaseWindow
+from public.config_class.global_setting import global_setting
+from public.entity.BaseWidget import BaseWidget
+from public.entity.BaseWindow import BaseWindow
 
 
 class ThemedWidget(BaseWidget):

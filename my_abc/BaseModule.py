@@ -7,13 +7,20 @@ from my_abc.BaseService import BaseService
 
 class BaseModule(ABC):
     @abstractmethod
-    def get_name(self):
-        """返回插件名称"""
+    def get_menu_name(self):
+        """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""
         pass
-
+    @abstractmethod
+    def get_name(self):
+        """返回组件名称"""
+        pass
+    @abstractmethod
+    def get_title(self):
+        """获取组件title"""
+        pass
     @abstractmethod
     def create_service(self) -> BaseService:
-        """创建并返回插件的相关服务"""
+        """创建并返回组件的相关服务"""
         pass
 
     @abstractmethod

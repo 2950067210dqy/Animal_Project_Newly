@@ -7,14 +7,7 @@ from loguru import logger
 class BaseWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        # 实例化ui
-        self._init_ui()
-        # 实例化自定义ui
-        self._init_customize_ui()
-        # 实例化功能
-        self._init_function()
-        # 加载qss样式表
-        self._init_custom_style_sheet()
+
     def _init_ui(self):
         # 实例化ui
         pass
@@ -26,9 +19,14 @@ class BaseWindow(QMainWindow):
     def _init_function(self):
         # 实例化功能
         pass
-    def _init_custom_style_sheet(self):
+
+    def _init_style_sheet(self):
         # 加载qss样式表
         pass
+    def _init_custom_style_sheet(self):
+        # 加载自定义qss样式表
+        pass
+
     # 将ui文件转成py文件后 直接实例化该py文件里的类对象  uic工具转换之后就是这一段代码 应该是可以统一将文字改为其他语言
     def _retranslateUi(self, **kwargs):
         _translate = QtCore.QCoreApplication.translate
