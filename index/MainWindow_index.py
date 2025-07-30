@@ -82,7 +82,7 @@ class MainWindow_Index(ThemedWindow):
                 module_title = module.title
                 if module_menu_name is not None and module_menu_name != "" and "id" in module_menu_name and "id" in menu_dict and menu_dict["id"] == module_menu_name["id"]:
                     module.interface_widget.frame_obj.setWindowTitle(module_title)
-                    module.interface_widget.frame_obj.resize(self.size())
+                    module.interface_widget.frame_obj.resize(int(self.width()*0.7), int(self.height()*0.7))
                     # module.interface_widget.frame_obj. setParent(self)
 
                     # 创建menu action

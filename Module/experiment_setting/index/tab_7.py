@@ -15,7 +15,7 @@ from public.function.Modbus import Modbus_Type
 
 from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
 from public.function.Modbus.Modbus import ModbusRTUMaster
-from theme.ThemeQt6 import ThemedWidget
+from theme.ThemeQt6 import ThemedWidget, ThemedWindow
 from PyQt6 import QtCore, QtGui
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QScrollArea, QGroupBox, QLabel, QSlider, QRadioButton, \
@@ -124,7 +124,7 @@ class Send_thread(MyQThread):
     pass
 
 
-class Tab_7(BaseWindow):
+class Tab_7(ThemedWindow):
     update_status_main_signal_gui_update = pyqtSignal(str)
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
@@ -358,6 +358,10 @@ class Tab_7(BaseWindow):
                 self.read_queue_data_thread_sub.stop()
         except Exception as e:
             logger.error(e)
+
+
+
+
 
 
         self.start_btn.setEnabled(True)

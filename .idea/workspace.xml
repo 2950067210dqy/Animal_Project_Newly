@@ -4,46 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.0 创建基本项目 模块化筹备">
-      <change afterPath="$PROJECT_DIR$/Module/experiment_setting/config/experiment_default_config.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/experiment_setting/index/tab_7.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/experiment_setting/main.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/experiment_setting/service/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/experiment_setting/service/main_monitor_data.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/experiment_setting/ui/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/config/monitor_datas_config.ini" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/config_class/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/dao/SQLite/Monitor_Datas_Handle.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/dao/SQLite/SQliteManager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/dao/SQLite/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/dao/SQLite/example.db" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/dao/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/entity/MyQThread.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/entity/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/entity/send_message.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/function/Modbus/COM_Scan.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/function/Modbus/Modbus.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/function/Modbus/Modbus_Response_Parser.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/function/Modbus/Modbus_Type.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/function/Modbus/Modbus_test.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/function/Modbus/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/function/__init__.py" afterDir="false" />
+    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.1.1 修改bug">
+      <change beforePath="$PROJECT_DIR$/.idea/Animal_Project_newly.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Animal_Project_newly.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config_class/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config_class/global_setting.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/config_class/global_setting.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config_class/ini_parser.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/config_class/ini_parser.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dao/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/config/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/entiity/BaseWidget.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/entity/BaseWidget.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/entiity/BaseWindow.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/entity/BaseWindow.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/entiity/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/index/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/experiment_setting/index/tab_7.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/index/tab_7.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7_window.ui" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7_window.ui" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/index/MainWindow_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/index/MainWindow_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/my_abc/BaseInterfaceWidget.py" beforeDir="false" afterPath="$PROJECT_DIR$/my_abc/BaseInterfaceWidget.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/my_abc/BaseModule.py" beforeDir="false" afterPath="$PROJECT_DIR$/my_abc/BaseModule.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/entity/BaseWidget.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/entity/BaseWidget.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/entity/BaseWindow.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/entity/BaseWindow.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/theme/ThemeManager.py" beforeDir="false" afterPath="$PROJECT_DIR$/theme/ThemeManager.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/theme/ThemeQt6.py" beforeDir="false" afterPath="$PROJECT_DIR$/theme/ThemeQt6.py" afterDir="false" />
     </list>
@@ -79,7 +48,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "master",
-    "last_opened_file_path": "D:/WorkSpace/PythonProject/Animal_Project_newly/config",
+    "last_opened_file_path": "D:/WorkSpace/PythonProject/Animal_Project_newly",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -91,13 +60,14 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Service" />
       <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\config" />
       <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\public\entity" />
       <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Module\experiment_setting\dao" />
       <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Module\experiment_setting\service" />
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Module\experiment_setting" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Service" />
       <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\public" />
       <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\public\entity" />
     </key>
@@ -144,7 +114,9 @@
       <option name="presentableId" value="Default" />
       <updated>1753682368086</updated>
       <workItem from="1753682369119" duration="12765000" />
-      <workItem from="1753768637361" duration="10976000" />
+      <workItem from="1753768637361" duration="11889000" />
+      <workItem from="1753834837471" duration="5658000" />
+      <workItem from="1753873276104" duration="6156000" />
     </task>
     <task id="LOCAL-00001" summary="1.0 创建基本项目 模块化筹备">
       <option name="closed" value="true" />
@@ -154,7 +126,23 @@
       <option name="project" value="LOCAL" />
       <updated>1753706594930</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="1.1 实验配置模块加载成功">
+      <option name="closed" value="true" />
+      <created>1753787774136</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1753787774136</updated>
+    </task>
+    <task id="LOCAL-00003" summary="1.1.1 修改bug">
+      <option name="closed" value="true" />
+      <created>1753843183050</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1753843183050</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -173,14 +161,16 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="1.0 创建基本项目 模块化筹备" />
-    <option name="LAST_COMMIT_MESSAGE" value="1.0 创建基本项目 模块化筹备" />
+    <MESSAGE value="1.1 实验配置模块加载成功" />
+    <MESSAGE value="1.1.1 修改bug" />
+    <option name="LAST_COMMIT_MESSAGE" value="1.1.1 修改bug" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/Module/experiment_setting/index/tab_7.py</url>
-          <line>332</line>
+          <line>339</line>
           <option name="timeStamp" value="35" />
         </line-breakpoint>
       </breakpoints>
@@ -196,6 +186,6 @@
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Animal_Project_newly$MainWindow_index.coverage" NAME="MainWindow_index 覆盖结果" MODIFIED="1753702069150" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/index" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$ThemeQt6.coverage" NAME="ThemeQt6 覆盖结果" MODIFIED="1753687576845" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/theme" />
-    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753787419017" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753879403432" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
   </component>
 </project>

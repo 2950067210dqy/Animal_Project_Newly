@@ -24,6 +24,7 @@ class ThemedWidget(BaseWidget):
         self._init_style_sheet()
         self.setStyleSheet(global_setting.get_setting("theme_manager").get_style_sheet())
 
+
 class ThemedWindow(BaseWindow):
     """混入类实现主题响应"""
 

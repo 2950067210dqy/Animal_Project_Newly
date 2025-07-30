@@ -7,14 +7,7 @@ from loguru import logger
 class BaseWidget(QWidget):
     def __init__(self):
         super().__init__()
-        # 实例化ui
-        self._init_ui()
-        # 实例化自定义ui
-        self._init_customize_ui()
-        # 实例化功能
-        self._init_function()
-        # 加载qss样式表
-        self._init_custom_style_sheet()
+
     def _init_ui(self):
         # 实例化ui
         pass

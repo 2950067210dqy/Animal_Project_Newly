@@ -220,6 +220,7 @@ class ThemeManager(QObject):
                 color: {theme['--text']};
                 border:none;
             }}
+            
             QTabBar::tab {{
                 background: {theme['--primary']};         /* 标签按钮的背景颜色 */
                 padding: 10px;               /* 标签按钮的内边距 */

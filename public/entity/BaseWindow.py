@@ -1,14 +1,49 @@
 import typing
 
 from PyQt6 import QtCore, QtGui
-from PyQt6.QtCore import QRect, Qt
-from PyQt6.QtWidgets import QWidget, QMainWindow
+from PyQt6.QtCore import QRect, Qt, QSize
+from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QLayout, \
+    QScrollArea, QSizePolicy
 from loguru import logger
 
 
 class BaseWindow(QMainWindow):
     def resizeEvent(self, a0 :typing.Optional[QtGui.QResizeEvent]):
-        logger.error("resizeEvent")
+        # 获取新的大小
+        new_size:QSize = a0.size()
+
+        old_size:QSize = a0.oldSize()
+        # logger.error(f"resizeEvent:{new_size}|{old_size}")
+
+
+        self.centralWidget().resize(new_size.width(),new_size.height())
+        self.centralWidget().updateGeometry()
+        # 直接下一级的子控件
+        children = self.centralWidget().findChildren(QWidget)  # 获取所有子 QWidget
+        direct_children = [child for child in children if child.parent() == self.centralWidget()]
+        for child in direct_children:
+            child.resize(new_size.width(), new_size.height())
+            child.updateGeometry()
+        # 更新scroll_area
+        scroll_areas = self.findChildren(QScrollArea)
+        for scroll_area in scroll_areas:
+            scroll_area.updateGeometry()
+        # 设置最小size 以免变形
+        self.setMinimumSize(self.calculate_minimum_suggested_size())
+
+        super().resizeEvent(a0)
+
+    def calculate_minimum_suggested_size(self):
+        max_width = 0
+        max_height = 0
+        # 使用 findChildren 查找所有的布局
+        layouts = self.findChildren(QVBoxLayout) + self.findChildren(QHBoxLayout)+self.findChildren(QGridLayout)+self.findChildren(QFormLayout)
+        for layout in layouts:
+            if layout.parent() !=self.centralWidget():
+                size = layout.sizeHint()
+                max_width = max(max_width, size.width())
+                max_height = max(max_height, size.height())
+        return QSize(max_width, max_height)
     def __init__(self):
         super().__init__(flags=Qt.WindowType.Window)
 
