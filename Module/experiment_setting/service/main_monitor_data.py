@@ -35,6 +35,10 @@ class read_queue_data_Thread(MyQThread):
         self.send_thread: Send_thread = None
         pass
 
+    def stop(self):
+        if self.send_thread is not None and self.send_thread.isRunning():
+            self.send_thread.stop()
+        super().stop()
     def dosomething(self):
         if not self.queue.empty():
             message = self.queue.get()

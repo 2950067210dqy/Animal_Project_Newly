@@ -70,8 +70,8 @@ class Monitor_Datas_Handle():
             pass
         # 实例化每个笼子里的传感器的数据表
         for data_type in Modbus_Slave_Type.Each_Mouse_Cage.value:
-            for carge_number in range(1, global_setting.get_setting("configer")['mouse_cage']['nums'] + 1 if
-            global_setting.get_setting("configer")['mouse_cage']['nums'] is not None else 2):
+            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
+            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2):
                 for table_name_short in data_type.value['table']:
                     # 列
                     columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}

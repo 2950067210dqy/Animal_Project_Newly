@@ -332,16 +332,27 @@ class Tab_7(BaseWindow):
     def stop_experiment(self):
         global_setting.set_setting("experiment", False)
         try:
-            if self.add_message_thread_sub is not None and self.add_message_thread_sub.isRunning():
-                self.add_message_thread_sub.stop()
-            if self.send_thread_sub is not None and self.send_thread_sub.isRunning():
-                self.send_thread_sub.stop()
-            if self.read_queue_data_thread_sub is not None and self.read_queue_data_thread_sub.isRunning():
-                self.read_queue_data_thread_sub.stop()
             if self.store_thread_sub is not None and self.store_thread_sub.isRunning():
                 self.store_thread_sub.stop()
         except Exception as e:
             logger.error(e)
+        try:
+            if self.add_message_thread_sub is not None and self.add_message_thread_sub.isRunning():
+                self.add_message_thread_sub.stop()
+        except Exception as e:
+            logger.error(e)
+        try:
+            if self.send_thread_sub is not None and self.send_thread_sub.isRunning():
+                self.send_thread_sub.stop()
+        except Exception as e:
+            logger.error(e)
+        try:
+            if self.read_queue_data_thread_sub is not None and self.read_queue_data_thread_sub.isRunning():
+                self.read_queue_data_thread_sub.stop()
+        except Exception as e:
+            logger.error(e)
+
+
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         # 停止实验

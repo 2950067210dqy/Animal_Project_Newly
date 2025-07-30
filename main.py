@@ -1,90 +1,45 @@
 import multiprocessing
+import traceback
+from multiprocessing import Process, freeze_support
 import os
+import subprocess
 import sys
 import time
-from multiprocessing import freeze_support
 
-from PyQt6.QtCore import QThreadPool
-from PyQt6.QtWidgets import QApplication
+import psutil
 from loguru import logger
 
+from Service import main_response_Modbus, main_gui
 
-from index.MainWindow_index import MainWindow_Index
-from public.config_class.global_setting import global_setting
-from public.config_class.ini_parser import ini_parser
-from theme.ThemeManager import ThemeManager
+"""
+确认子进程没有启动其他子进程，如果有，必须递归管理或用系统命令杀死整个进程树。
+用 psutil 库递归杀死进程树
+multiprocessing.Process.terminate() 只会终止对应的单个进程，如果该进程启动了其他进程，这些“子进程”不会被自动终止，因而可能会在任务管理器中残留。
+"""
 
 
-def quit_qt_application():
-    """
-    退出QT程序
-    :return:
-    """
-    logger.error(f"{'-' * 40}quit Qt application{'-' * 40}")
-    #
-    # 等待5秒系统退出
-    step = 5
-    while step >= 0:
-        step -= 1
-        time.sleep(1)
-    sys.exit(0)
-def start_qt_application():
-    """
-    qt程序开始
-    :return: 无
-    """
-    # 启动qt
-    logger.info("start Qt")
-    app = QApplication(sys.argv)
-    # 屏幕大小
-    # 获取屏幕大小
-    screen = app.primaryScreen()
-    screen_rect = screen.availableGeometry()
-    global_setting.set_setting("screen", screen_rect)
-    # 绑定突出事件
-    app.aboutToQuit.connect(quit_qt_application)
-    # 主窗口实例化
+def kill_process_tree(pid, including_parent=True):
     try:
-        main_window=MainWindow_Index()
-    except Exception as e:
-        logger.error(f"gui程序实例化失败，原因:{e} ")
+        parent = psutil.Process(pid)
+    except psutil.NoSuchProcess:
         return
-    # 主窗口显示
-    logger.info("Appliacation start")
-    main_window.show_frame()
-    # 系统退出
-    sys.exit(app.exec())
-    pass
-def load_global_setting():
-    config_path = "/config"
-    # 加载配置
-    config_file_path = os.getcwd() +config_path+ "/gui_config.ini"
+    children = parent.children(recursive=True)
+    for child in children:
+        child.terminate()
+    gone, alive = psutil.wait_procs(children, timeout=5)
+    for p in alive:
+        p.kill()
+    if including_parent:
+        if psutil.pid_exists(pid):
+            parent.terminate()
+            parent.wait(5)
 
-    # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
-    config = ini_parser(config_file_path).read()
-    if (len(config) != 0):
-        logger.info("gui配置文件读取成功。")
-    else:
-        logger.error("gui配置文件读取失败。")
-        quit_qt_application()
-    global_setting.set_setting("configer", config)
 
-    # 风格默认是dark  light
-    global_setting.set_setting("style", config['theme']['default'])
-    # 图标风格 white black
-    global_setting.set_setting("icon_style", "white")
-    # 主题管理
-    theme_manager = ThemeManager()
-    global_setting.set_setting("theme_manager", theme_manager)
-    # qt线程池
-    thread_pool = QThreadPool()
-    global_setting.set_setting("thread_pool", thread_pool)
-    q = multiprocessing.Queue()  # 创建 Queue 消息传递
-    send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
-    global_setting.set_setting("queue",  q)
-    global_setting.set_setting("send_message_queue",  send_message_q)
-    pass
+
+
 if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
+
+
     freeze_support()
     # 加载日志配置
     logger.add(
@@ -97,6 +52,53 @@ if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
     logger.info(f"{'-' * 40}main_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
 
-    load_global_setting()
-    # qt程序开始
-    start_qt_application()
+    q = multiprocessing.Queue()  # 创建 Queue 消息传递
+    send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
+
+    p_response_comm = Process(target=main_response_Modbus.main, name="p_response_comm")
+
+
+    p_gui = Process(target=main_gui.main, name="p_gui", args=(q, send_message_q))
+
+
+
+
+    try:
+        logger.info(f"p_response_comm子进程开始运行")
+        p_response_comm.start()
+    except Exception as e:
+        logger.error(f"p_response_comm子进程发生异常：{e} |  异常堆栈跟踪：{traceback.print_exc()}，准备终止该子进程")
+        if p_response_comm.is_alive():
+            kill_process_tree(p_response_comm.pid)
+            p_response_comm.join(timeout=5)
+    try:
+        logger.info(f"p_gui子进程开始运行")
+        p_gui.start()
+    except Exception as e:
+        logger.error(f"p_gui子进程发生异常：{e} |  异常堆栈跟踪：{traceback.print_exc()}，准备终止该子进程")
+        if p_gui.is_alive():
+            kill_process_tree(p_gui.pid)
+            p_gui.join(timeout=5)
+    # 如果gui进程死亡 则将其他的进程全部终止
+    is_loop = True
+    while is_loop:
+
+        # 检测 gui 进程是否存活
+        if not p_gui.is_alive():
+            logger.error(f"p_gui子进程已停止，同步终止p_comm子进程")
+
+            if p_response_comm.is_alive():
+                kill_process_tree(p_response_comm.pid)
+                logger.error(f"终止p_response_comm子进程")
+                p_response_comm.join(timeout=5)
+                pass
+            is_loop = False
+            break
+        time.sleep(0.5)
+
+    # 等待所有子进程退出
+    p_response_comm.join()
+    p_gui.join()
+
+else:
+    pass
