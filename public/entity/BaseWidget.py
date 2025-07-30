@@ -1,24 +1,34 @@
+import abc
+
 from PyQt6 import QtCore
 from PyQt6.QtCore import QRect
 from PyQt6.QtWidgets import QWidget
 from loguru import logger
 
+from public.entity.BaseWindow import BaseWindow
+
 
 class BaseWidget(QWidget):
     def __init__(self):
         super().__init__()
+        self.main_gui: BaseWindow = None
 
+    @abc.abstractmethod
     def _init_ui(self):
         # 实例化ui
         pass
 
+    @abc.abstractmethod
     def _init_customize_ui(self):
         # 实例化自定义ui
         pass
 
+    @abc.abstractmethod
     def _init_function(self):
         # 实例化功能
         pass
+
+    @abc.abstractmethod
     def _init_custom_style_sheet(self):
         # 加载qss样式表
         pass
@@ -53,3 +63,7 @@ class BaseWidget(QWidget):
     def show_frame(self):
         self.show()
         pass
+
+    # 设置主窗口变量
+    def set_main_gui(self, main_gui):
+        self.main_gui = main_gui

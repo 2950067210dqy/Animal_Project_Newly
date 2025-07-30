@@ -1,13 +1,25 @@
+import abc
 import typing
 
 from PyQt6 import QtCore, QtGui
 from PyQt6.QtCore import QRect, Qt, QSize
 from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QLayout, \
-    QScrollArea, QSizePolicy
+    QScrollArea, QSizePolicy, QMessageBox, QTabWidget
 from loguru import logger
 
 
 class BaseWindow(QMainWindow):
+
+    def closeEvent(self, event):
+        # 关闭事件
+        if self.main_gui is not None:
+
+            for index in range(len(self.main_gui.open_windows)):
+                if self.main_gui.open_windows[index] is self:
+                    del self.main_gui.open_windows[index]
+                    break
+                index += 1
+
     def resizeEvent(self, a0 :typing.Optional[QtGui.QResizeEvent]):
         # 获取新的大小
         new_size:QSize = a0.size()
@@ -27,13 +39,32 @@ class BaseWindow(QMainWindow):
         # 更新scroll_area
         scroll_areas = self.findChildren(QScrollArea)
         for scroll_area in scroll_areas:
+            scroll_area:QScrollArea
+            if scroll_area.widget() is not None:
+                scroll_area.widget().resize(new_size.width(), new_size.height())
+                scroll_area.widget().updateGeometry()
             scroll_area.updateGeometry()
+        # 更新tab——widget
+        tab_widget = self.findChildren(QTabWidget)
+        if tab_widget is not None and len(tab_widget) > 0:
+            for tab in tab_widget:
+                tab:QTabWidget
+                tab.resize(new_size.width(), new_size.height())
+                tab.updateGeometry()
+                # 找到每一个tab里的widget
+                for index in range(tab.count()):
+                    widget = tab.widget(index)  # 获取选项卡中的 QWidget
+                    widget.resize(new_size.width(), new_size.height())
+                    widget.updateGeometry()
+                pass
+            pass
         # 设置最小size 以免变形
         self.setMinimumSize(self.calculate_minimum_suggested_size())
 
         super().resizeEvent(a0)
 
     def calculate_minimum_suggested_size(self):
+        # 限制最小尺寸
         max_width = 0
         max_height = 0
         # 使用 findChildren 查找所有的布局
@@ -46,22 +77,29 @@ class BaseWindow(QMainWindow):
         return QSize(max_width, max_height)
     def __init__(self):
         super().__init__(flags=Qt.WindowType.Window)
+        self.main_gui:BaseWindow=None
 
+    @abc.abstractmethod
     def _init_ui(self):
         # 实例化ui
         pass
 
+    @abc.abstractmethod
     def _init_customize_ui(self):
         # 实例化自定义ui
         pass
 
+    @abc.abstractmethod
     def _init_function(self):
         # 实例化功能
         pass
 
+    @abc.abstractmethod
     def _init_style_sheet(self):
         # 加载qss样式表
         pass
+
+    @abc.abstractmethod
     def _init_custom_style_sheet(self):
         # 加载自定义qss样式表
         pass
@@ -97,3 +135,6 @@ class BaseWindow(QMainWindow):
     def show_frame(self):
         self.show()
         pass
+    # 设置主窗口变量
+    def set_main_gui(self,main_gui):
+        self.main_gui = main_gui

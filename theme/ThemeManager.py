@@ -243,6 +243,39 @@ class ThemeManager(QObject):
                 border: 2px solid {theme['--border']};
             
             }}
+            QMenu {{
+                background-color:{theme['--secondary']};
+                color:{theme['--text']};
+                 border: 2px solid {theme['--border']};
+            }}
+            QMenuBar {{
+                background-color: {theme['--secondary']};
+                color: {theme['--text']};
+                border-bottom: 2px solid {theme['--border']};
+            }}
+            QMenuBar::item {{
+                background-color:{theme['--secondary']};
+                padding: 5px;
+                
+            }}
+            QMenuBar::item:selected {{
+                background-color: {theme['--secondary']};
+                color: {theme['--text_hover']};
+            }}
+            QToolBar {{
+                padding: 10px;
+                background-color: {theme['--primary']};
+                color: {theme['--text']};
+                border: 2px solid {theme['--border']};
+            }}
+            QToolBar:action {{
+                padding: 5px;
+                background-color:{theme['--primary']};
+            }}
+            QToolBar:action:hover {{
+                background-color: {theme['--highlight']};
+                 color: {theme['--text_hover']};
+            }}
         """ + self.get_button_style(isSelected=False)
         # logger_diy.log.info("ThemeManager的get_style_sheet：" + style_sheet)
         return style_sheet

@@ -7,6 +7,7 @@ from Module.experiment_setting.config.experiment_default_config import get_defau
 from Module.experiment_setting.service import main_monitor_data
 from Module.experiment_setting.ui.tab7 import Ui_tab7_frame
 from Module.experiment_setting.ui.tab7_window import Ui_tab7_window
+from my_abc.BaseInterfaceWidget import BaseInterfaceType
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWindow import BaseWindow
 
@@ -126,6 +127,17 @@ class Send_thread(MyQThread):
 
 class Tab_7(ThemedWindow):
     update_status_main_signal_gui_update = pyqtSignal(str)
+
+    def closeEvent(self, event):
+        # 关闭事件
+        if self.main_gui is not None:
+
+            for index in range(len(self.main_gui.open_windows)):
+                if self.main_gui.open_windows[index] is self:
+                    del self.main_gui.open_windows[index]
+                    break
+                index+=1
+        pass
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
         logger.warning("tab7——show")
@@ -134,12 +146,12 @@ class Tab_7(ThemedWindow):
 
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
         logger.warning("tab7--hide")
+        # 主界面的当前页面为None
+        self.main_gui.activate_widget = None
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.pause()
-    def __init__(self, parent=None, geometry: QRect = None, title="",type = 0):
+    def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
-        # type 0 为window   1 为frame
-        self.type = type
         # 点击开始实验 接受数据和存储数据的线程
         self.store_thread_sub=None
         self.send_thread_sub=None
@@ -183,11 +195,9 @@ class Tab_7(ThemedWindow):
             self.setGeometry(geometry)
         else:
             pass
-        if self.type == 0:
-            logger.error("window")
-            self.ui = Ui_tab7_window()
-        else:
-            self.ui = Ui_tab7_frame()
+
+        self.ui = Ui_tab7_window()
+
         self.ui.setupUi(self)
 
         self._retranslateUi()
