@@ -4,7 +4,9 @@ import os
 from json import JSONDecodeError
 
 from PyQt6 import QtWidgets, QtCore
+from PyQt6.QtCore import QRect
 from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QMainWindow
 from loguru import logger
 
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
@@ -80,6 +82,9 @@ class MainWindow_Index(ThemedWindow):
                 module_title = module.title
                 if module_menu_name is not None and module_menu_name != "" and "id" in module_menu_name and "id" in menu_dict and menu_dict["id"] == module_menu_name["id"]:
                     module.interface_widget.frame_obj.setWindowTitle(module_title)
+                    module.interface_widget.frame_obj.resize(self.size())
+                    # module.interface_widget.frame_obj. setParent(self)
+
                     # 创建menu action
                     action = QAction(module_title, self)
                     # 创建点击事件

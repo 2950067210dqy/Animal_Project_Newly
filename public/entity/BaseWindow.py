@@ -1,12 +1,16 @@
-from PyQt6 import QtCore
-from PyQt6.QtCore import QRect
+import typing
+
+from PyQt6 import QtCore, QtGui
+from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtWidgets import QWidget, QMainWindow
 from loguru import logger
 
 
 class BaseWindow(QMainWindow):
+    def resizeEvent(self, a0 :typing.Optional[QtGui.QResizeEvent]):
+        logger.error("resizeEvent")
     def __init__(self):
-        super().__init__()
+        super().__init__(flags=Qt.WindowType.Window)
 
     def _init_ui(self):
         # 实例化ui
@@ -32,7 +36,7 @@ class BaseWindow(QMainWindow):
         _translate = QtCore.QCoreApplication.translate
 
     # 添加子UI组件
-    def set_child(self, child: QWidget, geometry: QRect, visible: bool = True):
+    def set_child(self, child: QMainWindow, geometry: QRect, visible: bool = True):
         # 添加子组件
         child.setParent(self)
         # 添加子组件位置

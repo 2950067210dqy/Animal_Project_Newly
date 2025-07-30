@@ -6,6 +6,7 @@ from loguru import logger
 from Module.experiment_setting.config.experiment_default_config import get_default_config
 from Module.experiment_setting.service import main_monitor_data
 from Module.experiment_setting.ui.tab7 import Ui_tab7_frame
+from Module.experiment_setting.ui.tab7_window import Ui_tab7_window
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWindow import BaseWindow
 
@@ -135,8 +136,10 @@ class Tab_7(BaseWindow):
         logger.warning("tab7--hide")
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.pause()
-    def __init__(self, parent=None, geometry: QRect = None, title=""):
+    def __init__(self, parent=None, geometry: QRect = None, title="",type = 0):
         super().__init__()
+        # type 0 为window   1 为frame
+        self.type = type
         # 点击开始实验 接受数据和存储数据的线程
         self.store_thread_sub=None
         self.send_thread_sub=None
@@ -180,7 +183,11 @@ class Tab_7(BaseWindow):
             self.setGeometry(geometry)
         else:
             pass
-        self.ui = Ui_tab7_frame()
+        if self.type == 0:
+            logger.error("window")
+            self.ui = Ui_tab7_window()
+        else:
+            self.ui = Ui_tab7_frame()
         self.ui.setupUi(self)
 
         self._retranslateUi()
