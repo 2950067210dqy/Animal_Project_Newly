@@ -1,12 +1,14 @@
 import time
 import typing
 
+from PyQt6.QtGui import QAction
 from loguru import logger
 
 from Module.experiment_setting.config.experiment_default_config import get_default_config
-from Module.experiment_setting.service import main_monitor_data
+
 from Module.experiment_setting.ui.tab7 import Ui_tab7_frame
 from Module.experiment_setting.ui.tab7_window import Ui_tab7_window
+from Service import main_monitor_data
 from my_abc.BaseInterfaceWidget import BaseInterfaceType
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWindow import BaseWindow
@@ -152,11 +154,7 @@ class Tab_7(ThemedWindow):
             self.send_thread.pause()
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
-        # 点击开始实验 接受数据和存储数据的线程
-        self.store_thread_sub=None
-        self.send_thread_sub=None
-        self.read_queue_data_thread_sub=None
-        self.add_message_thread_sub=None
+
         # 发送报文线程
         self.send_thread:Send_thread = None
         # 发送的数据结构
@@ -226,6 +224,7 @@ class Tab_7(ThemedWindow):
         if len(self.ports) != 0:
             # 默认下拉项
             self.send_message['port'] = self.ports[0]['device']
+            global_setting.set_setting("port", self.send_message['port'])
             self.send_response_text(
                 f"{time_util.get_format_from_time(time.time())}- 设备: {self.ports[0]['device']}" + f" #{self.ports[0]['description']}" + "  默认已被选中!")
         port_combox.disconnect()
@@ -234,7 +233,7 @@ class Tab_7(ThemedWindow):
     def selectionchange(self, index):
         try:
             self.send_message['port'] = self.ports[index]['device']
-
+            global_setting.set_setting("port", self.send_message['port'])
 
             self.send_response_text(
                 f"{time_util.get_format_from_time(time.time())}- 设备: {self.ports[index]['device']}" + f" #{self.ports[index]['description']}" + "  已被选中!")
@@ -248,6 +247,8 @@ class Tab_7(ThemedWindow):
             logger.error("response_text状态栏未找到！")
             return
         response_text.addItem(text)
+        if self.main_gui is not None:
+            self.main_gui.status_bar.update_tip(text)
         # 滑动滚动条到最底下
         scroll_bar = response_text.verticalScrollBar()
         if scroll_bar != None:
@@ -338,46 +339,15 @@ class Tab_7(ThemedWindow):
         self.stop_btn.clicked.connect(self.stop_experiment)
         self.stop_btn.setEnabled(False)
         pass
+
     def start_experiment(self):
-        # 开始实验
-        global_setting.set_setting("experiment",True)
-        self.store_thread_sub,self.send_thread_sub,self.read_queue_data_thread_sub,self.add_message_thread_sub=main_monitor_data.main(port=self.send_message['port'],q=global_setting.get_setting("queue"),send_message_q=global_setting.get_setting("send_message_queue"))
-        self.start_btn.setEnabled(False)
-        self.stop_btn.setEnabled(True)
-        pass
+        if self.main_gui is not None:
+            self.main_gui.start_experiment()
+            pass
 
     def stop_experiment(self):
-        global_setting.set_setting("experiment", False)
-        try:
-            if self.store_thread_sub is not None and self.store_thread_sub.isRunning():
-                self.store_thread_sub.stop()
-        except Exception as e:
-            logger.error(e)
-        try:
-            if self.add_message_thread_sub is not None and self.add_message_thread_sub.isRunning():
-                self.add_message_thread_sub.stop()
-        except Exception as e:
-            logger.error(e)
-        try:
-            if self.send_thread_sub is not None and self.send_thread_sub.isRunning():
-                self.send_thread_sub.stop()
-        except Exception as e:
-            logger.error(e)
-        try:
-            if self.read_queue_data_thread_sub is not None and self.read_queue_data_thread_sub.isRunning():
-                self.read_queue_data_thread_sub.stop()
-        except Exception as e:
-            logger.error(e)
-
-
-
-
-
-
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
-        # 停止实验
-        pass
+        if self.main_gui is not None:
+            self.main_gui.stop_experiment()
     # 重新获取端口
     def refresh_port(self):
         self.ports = []

@@ -36,36 +36,36 @@ class BaseWindow(QMainWindow):
         for child in direct_children:
             child.resize(new_size.width(), new_size.height())
             child.updateGeometry()
-        # 更新scroll_area
-        scroll_areas = self.findChildren(QScrollArea)
-        for scroll_area in scroll_areas:
-            scroll_area:QScrollArea
-            if scroll_area.widget() is not None:
-
-                # scroll_area.widget().setFixedSize(int(new_size.width()*0.95), int(new_size.height()*0.95))
-                scroll_area.widget().updateGeometry()
-            scroll_area.updateGeometry()
+        # # 更新scroll_area
+        # scroll_areas = self.findChildren(QScrollArea)
+        # for scroll_area in scroll_areas:
+        #     scroll_area:QScrollArea
+        #     if scroll_area.widget() is not None:
+        #
+        #         # scroll_area.widget().setFixedSize(int(new_size.width()*0.95), int(new_size.height()*0.95))
+        #         scroll_area.widget().updateGeometry()
+        #     scroll_area.updateGeometry()
         # 更新tab——widget
-        tab_widget = self.findChildren(QTabWidget)
-        if tab_widget is not None and len(tab_widget) > 0:
-            for tab in tab_widget:
-                tab:QTabWidget
-                tab.resize(new_size.width(), new_size.height())
-                tab.updateGeometry()
-                # 找到每一个tab里的widget
-                for index in range(tab.count()):
-                    widget = tab.widget(index)  # 获取选项卡中的 QWidget
-                    widget.resize(new_size.width(), new_size.height())
-                    widget.updateGeometry()
-                pass
-            pass
+        # tab_widget = self.findChildren(QTabWidget)
+        # if tab_widget is not None and len(tab_widget) > 0:
+        #     for tab in tab_widget:
+        #         tab:QTabWidget
+        #         tab.resize(new_size.width(), new_size.height())
+        #         tab.updateGeometry()
+        #         # 找到每一个tab里的widget
+        #         for index in range(tab.count()):
+        #             widget = tab.widget(index)  # 获取选项卡中的 QWidget
+        #             widget.resize(new_size.width(), new_size.height())
+        #             widget.updateGeometry()
+        #         pass
+        #     pass
         #更新groupbox
-        groupboxes = self.findChildren(QGroupBox)
-        if groupboxes is not None and len(groupboxes) > 0:
-            for groupbox in groupboxes:
-                groupbox:QGroupBox
-                groupbox.resize(new_size.width(), new_size.height())
-                groupbox.updateGeometry()
+        # groupboxes = self.findChildren(QGroupBox)
+        # if groupboxes is not None and len(groupboxes) > 0:
+        #     for groupbox in groupboxes:
+        #         groupbox:QGroupBox
+        #         groupbox.resize(new_size.width(), new_size.height())
+        #         groupbox.updateGeometry()
         # 更新tableWidget
         # tableWidgets = self.findChildren(QTableWidget)
         # if tableWidgets is not None and len(tableWidgets) > 0:
@@ -85,10 +85,11 @@ class BaseWindow(QMainWindow):
         # 使用 findChildren 查找所有的布局
         layouts = self.findChildren(QVBoxLayout) + self.findChildren(QHBoxLayout)+self.findChildren(QGridLayout)+self.findChildren(QFormLayout)
         for layout in layouts:
-            if layout.parent() !=self.centralWidget():
-                size = layout.sizeHint()
-                max_width = max(max_width, size.width())
-                max_height = max(max_height, size.height())
+            if layout is not None:
+                if layout.parent() !=self.centralWidget():
+                    size = layout.sizeHint()
+                    max_width = max(max_width, size.width())
+                    max_height = max(max_height, size.height())
         return QSize(max_width+10, max_height+10)
     def __init__(self):
         super().__init__(flags=Qt.WindowType.Window)

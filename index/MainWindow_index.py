@@ -7,11 +7,13 @@ from queue import Queue
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import QRect
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMainWindow, QMessageBox, QLabel, QVBoxLayout, QToolBar
+from PyQt6.QtWidgets import QMainWindow, QMessageBox, QLabel, QVBoxLayout, QToolBar, QPushButton
 from loguru import logger
 
+from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget, BaseInterfaceType
 from my_abc.BaseModule import BaseModule
+from public.component.custom_status_bar import CustomStatusBar
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWidget import BaseWidget
 from public.entity.BaseWindow import BaseWindow
@@ -47,6 +49,29 @@ class MainWindow_Index(ThemedWindow):
         pass
     def __init__(self):
         super().__init__()
+        # 点击开始实验 接受数据和存储数据的线程
+        self.store_thread_sub=None
+        self.send_thread_sub=None
+        self.read_queue_data_thread_sub=None
+        self.add_message_thread_sub=None
+        # 深度相机线程
+        # self.deep_camera_thread_sub_list = [camera_struct:dict,]
+        #  camera_struct['id'] = num + 1
+        #  camera_struct['camera'] = camera
+        #  camera_struct['img_process'] = img_process
+        self.deep_camera_thread_sub_list=[]
+        self.deep_camera_read_queue_data_thread_sub=None
+        self.deep_camera_delete_file_thread_sub=None
+        # 红外相机线程
+        # self.infrared_camera_thread_sub_list = [camera_struct:dict,]
+        #  camera_struct['id'] = num + 1
+        #  camera_struct['camera'] = camera
+        self.infrared_camera_thread_sub_list = []
+        self.infrared_camera_read_queue_data_thread_sub = None
+        self.infrared_camera_delete_file_thread_sub = None
+        # tool——bar-action 工具栏的action [{'obj_name':'','name';",'action':QAction}]
+        self.tool_bar_actions = []
+        # 模块
         self.modules =[]
         # 正在显示的Widget
         self.active_widget:BaseWidget = None
@@ -104,8 +129,11 @@ class MainWindow_Index(ThemedWindow):
                 # 创建菜单栏
                 self.create_menu_bar()
             pass
+        # 创建工具栏
         self.create_tool_bar()
-
+        # 初始化自定义状态栏
+        self.status_bar = CustomStatusBar()
+        self.setStatusBar(self.status_bar)
         pass
     # 创建工具栏
     def create_tool_bar(self):
@@ -113,14 +141,50 @@ class MainWindow_Index(ThemedWindow):
         toolbar = QToolBar("Toolbar")
         self.addToolBar(toolbar)
         # 创建动作（Action）
-        action_one = QAction("窗口变换", self)
+        name ="窗口变换"
+        obj_name ="window_exchange"
+        action_one = QAction(name, self)
+        action_one.setObjectName(obj_name)
+        action_one.setToolTip(name)
         action_one.triggered.connect(self.exchange_widget_and_window)
-        action_two= QAction("更改主题颜色", self)
+        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_one})
+
+
+        name = "更改主题颜色"
+        obj_name = "toggle_mode"
+        action_two= QAction(name, self)
+        action_two.setObjectName(obj_name)
+        action_two.setToolTip(name)
         action_two.triggered.connect(self.toggle_theme)
+        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_two})
+
+        name = "开始实验"
+        obj_name = "start_experiment"
+        action_three = QAction(name, self)
+        action_three.setObjectName(obj_name)
+        action_three.setToolTip(name)
+        action_three.triggered.connect(self.start_experiment)
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_three})
+
+
+
+        name = "停止实验"
+        obj_name = "stop_experiment"
+        action_four = QAction(name, self)
+        action_four.setObjectName(obj_name)
+        action_four.setToolTip(name)
+        action_four.triggered.connect(self.stop_experiment)
+        action_four.setDisabled(True)
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four})
+
         # 将动作添加到工具栏
         toolbar.addAction(action_one)
         toolbar.addSeparator()
         toolbar.addAction(action_two)
+        toolbar.addSeparator()
+
+        toolbar.addAction(action_three)
+        toolbar.addAction(action_four)
         toolbar.addSeparator()
         pass
     def create_menu_bar(self):
@@ -234,4 +298,143 @@ class MainWindow_Index(ThemedWindow):
 
         pass
 
+    def start_experiment(self):
+        port = global_setting.get_setting("port")
+        if port is None or port == "":
+            reply = QMessageBox.question(self, '注意',
+                                         "未设置串口，请去实验配置配置串口!",
+                                         QMessageBox.StandardButton.Cancel,
+                                         QMessageBox.StandardButton.No)
+            return
+        # 开始实验
+        try:
+            self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub = main_monitor_data.main(
+                port=port, q=global_setting.get_setting("queue"),
+                send_message_q=global_setting.get_setting("send_message_queue"))
 
+            self.deep_camera_thread_sub_list,self.deep_camera_read_queue_data_thread_sub,self.deep_camera_delete_file_thread_sub = main_deep_camera.main(q=global_setting.get_setting("queue"))
+            self.infrared_camera_thread_sub_list,self.infrared_camera_read_queue_data_thread_sub,self.infrared_camera_delete_file_thread_sub = main_infrared_camera.main(q=global_setting.get_setting("queue"))
+
+
+
+        except Exception as e:
+            logger.error(f"开启实验监测错误，原因：{e}")
+            self.status_bar.update_tip(f"开启实验监测错误，原因：{e}")
+
+        global_setting.set_setting("experiment", True)
+        self.status_bar.update_status()
+        self.status_bar.update_tip(f"开启实验监测成功！")
+        for action_dict in self.tool_bar_actions:
+            if action_dict["obj_name"] == "start_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(True)
+            if action_dict["obj_name"] == "stop_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(False)
+        for module in self.modules:
+            if module.name == "Main_experiment_setting":
+                module.interface_widget.frame_obj.start_btn.setEnabled(False)
+                module.interface_widget.frame_obj.stop_btn.setEnabled(True)
+                break
+        pass
+
+    def stop_experiment(self):
+
+        try:
+            if self.store_thread_sub is not None and self.store_thread_sub.isRunning():
+                self.store_thread_sub.stop()
+        except Exception as e:
+            logger.error(f"关闭实验监测错误，原因：{e}")
+            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+        try:
+            if self.add_message_thread_sub is not None and self.add_message_thread_sub.isRunning():
+                self.add_message_thread_sub.stop()
+        except Exception as e:
+            logger.error(f"关闭实验监测错误，原因：{e}")
+            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+        try:
+            if self.send_thread_sub is not None and self.send_thread_sub.isRunning():
+                self.send_thread_sub.stop()
+        except Exception as e:
+            logger.error(f"关闭实验监测错误，原因：{e}")
+            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+        try:
+            if self.read_queue_data_thread_sub is not None and self.read_queue_data_thread_sub.isRunning():
+                self.read_queue_data_thread_sub.stop()
+        except Exception as e:
+            logger.error(f"关闭实验监测错误，原因：{e}")
+            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+
+        # 所有红外相机线程停止
+        for camera_struct_l in self.infrared_camera_thread_sub_list:
+            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                try:
+                    if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                        camera_struct_l['camera'].stop()
+                        camera_struct_l['camera'].terminal()
+                except Exception as e:
+                    logger.error(f"关闭实验监测错误，原因：{e}")
+                    self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+        try:
+            if self.infrared_camera_delete_file_thread_sub is not None and self.infrared_camera_delete_file_thread_sub.isRunning():
+                self.infrared_camera_delete_file_thread_sub.stop()
+        except Exception as e:
+            logger.error(f"关闭实验监测错误，原因：{e}")
+            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+        try:
+            if self.infrared_camera_read_queue_data_thread_sub is not None and self.infrared_camera_read_queue_data_thread_sub.isRunning():
+                self.infrared_camera_read_queue_data_thread_sub.stop()
+        except Exception as e:
+            logger.error(f"关闭实验监测错误，原因：{e}")
+            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+
+        # 所有深度相机线程停止
+        for camera_struct_l in self.deep_camera_thread_sub_list:
+            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                try:
+                    if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                        camera_struct_l['camera'].stop()
+                        camera_struct_l['camera'].terminal()
+                except Exception as e:
+                    logger.error(f"关闭实验监测错误，原因：{e}")
+                    self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
+                try:
+                    if camera_struct_l['img_process'] is not None and camera_struct_l['img_process'].isRunning():
+                        camera_struct_l['img_process'].stop()
+                        camera_struct_l['img_process'].terminal()
+                except Exception as e:
+                    logger.error(f"关闭实验监测错误，原因：{e}")
+                    self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+        try:
+            if self.deep_camera_delete_file_thread_sub is not None and self.deep_camera_delete_file_thread_sub.isRunning():
+                self.deep_camera_delete_file_thread_sub.stop()
+        except Exception as e:
+            logger.error(f"关闭实验监测错误，原因：{e}")
+            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+        try:
+            if self.deep_camera_read_queue_data_thread_sub is not None and self.deep_camera_read_queue_data_thread_sub.isRunning():
+                self.deep_camera_read_queue_data_thread_sub.stop()
+        except Exception as e:
+            logger.error(f"关闭实验监测错误，原因：{e}")
+            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+
+
+
+        global_setting.set_setting("experiment", False)
+        self.status_bar.update_status()
+        self.status_bar.update_tip(f"关闭实验监测成功！")
+        for action_dict in self.tool_bar_actions:
+            if action_dict["obj_name"] == "start_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(False)
+            if action_dict["obj_name"] == "stop_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(True)
+        for module in self.modules:
+            if module.name == "Main_experiment_setting":
+                module.interface_widget.frame_obj.start_btn.setEnabled(True)
+                module.interface_widget.frame_obj.stop_btn.setEnabled(False)
+                break
+        # 停止实验
+        pass

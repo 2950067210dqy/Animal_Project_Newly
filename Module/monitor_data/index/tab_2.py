@@ -26,22 +26,18 @@ class Tab_2(ThemedWindow):
         new_size: QSize = a0.size()
 
         old_size: QSize = a0.oldSize()
-        # 使用 findChildren 查找所有 QWidget 的子组件
-        all_widgets =self.tabWidget.findChildren(QWidget)
+
 
         # 模糊查找包含 'scroll_tab_content_widget_' 的对象名
-        filtered_widgets_SCROLL = [widget for widget in all_widgets if 'scroll_tab_content_widget_' in widget.objectName()]
+        # # 使用 findChildren 查找所有 QWidget 的子组件
+        # all_widgets =self.tabWidget.findChildren(QWidget)
+        # filtered_widgets_SCROLL = [widget for widget in all_widgets if 'scroll_tab_content_widget_' in widget.objectName()]
+        filtered_widgets_SCROLL = [self.tabWidget.findChild(QWidget,f"scroll_tab_content_widget_{i}") for i in range(10)]
         for widget in filtered_widgets_SCROLL:
             widget:QWidget
-            widget.setFixedSize(new_size.width()-50, new_size.height()+600)
-            widget.updateGeometry()
-        for tab in self.tab_frames:
-
-            if tab.tab.detaildata_table is not None:
-
-                tab.tab.detaildata_table.scroll_area.resize(int(new_size.width()*0.7), int(new_size.height()*0.7))
-                tab.tab.detaildata_table.scroll_area.updateGeometry()
-
+            if widget is not None:
+                widget.setFixedSize(int(new_size.width()*0.95), int(new_size.height()))
+                widget.updateGeometry()
 
         super().resizeEvent(a0)
     def closeEvent(self, event):
@@ -248,20 +244,20 @@ class Tab_2(ThemedWindow):
                 scroll_area = QScrollArea(tab_content)
                 scroll_area.setObjectName(f"scroll_tab_{i}")
                 scroll_area.setWidgetResizable(True)  # 使内容小部件可以调整大小
-                if i ==0:
-                    # 创建一个内容小部件并填充内容
 
-                    tab_frame = Tab2_tab(id=monitor_data['id'])
-                    self.tab_frames.append(tab_frame)
-                    content_widget = QWidget()
-                    content_widget.setObjectName(f"scroll_tab_content_widget_{i}")
+                # 创建一个内容小部件并填充内容
 
-                    content_layout = QVBoxLayout(content_widget)
-                    content_layout.setObjectName(f"scroll_tab_{i}_content_widget_layout")
-                    content_layout.addWidget(tab_frame.tab)
+                tab_frame = Tab2_tab(id=monitor_data['id'])
+                self.tab_frames.append(tab_frame)
+                content_widget = QWidget()
+                content_widget.setObjectName(f"scroll_tab_content_widget_{i}")
 
-                    # 将内容小部件添加到 QScrollArea
-                    scroll_area.setWidget(content_widget)
+                content_layout = QVBoxLayout(content_widget)
+                content_layout.setObjectName(f"scroll_tab_{i}_content_widget_layout")
+                content_layout.addWidget(tab_frame.tab)
+
+                # 将内容小部件添加到 QScrollArea
+                scroll_area.setWidget(content_widget)
                 # 将 scroll_area 添加进去
                 tab_layout.addWidget(scroll_area)
                 tab_content.setLayout(tab_layout)

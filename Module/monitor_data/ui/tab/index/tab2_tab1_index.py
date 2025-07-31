@@ -1,27 +1,22 @@
 import math
-import time
 import typing
 
 from loguru import logger
 
-from Module.monitor_data.ui.component.paging_exportcsv_table_widget import TableWidgetPaging
-from Module.monitor_data.ui.component.selection_line_charts import LineChartWidget
+from public.component.paging_exportcsv_table_widget import TableWidgetPaging
+from public.component.selection_line_charts import LineChartWidget
 from Module.monitor_data.ui.tab.index.tab2_tab0_index import Store_thread_for_tab_frame
-from Module.monitor_data.ui.tab.tab2_tab1 import Ui_tab_1_frame
-from public.config_class.global_setting import global_setting
-from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
-from public.entity.MyQThread import MyQThread
+from Module.monitor_data.ui.tab.tab2_tab1_window import Ui_tab_1_window
+
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
-from theme.ThemeQt6 import ThemedWidget
-from PyQt6 import QtCore, QtGui
+from theme.ThemeQt6 import ThemedWindow
+from PyQt6 import QtGui
 from PyQt6.QtCore import QRect, pyqtSignal
-from PyQt6.QtWidgets import QWidget, QMainWindow, QPushButton, QFrame, QGroupBox, QGridLayout, QHBoxLayout, QLabel, \
+from PyQt6.QtWidgets import QWidget, QPushButton, QGroupBox, QGridLayout, QHBoxLayout, QLabel, \
     QVBoxLayout, QScrollArea
 
-from theme.ThemeQt6 import ThemedWidget
 
-
-class Tab2_tab1(ThemedWidget):
+class Tab2_tab1(ThemedWindow):
     # 更新端口选择和鼠笼选择
     update_port_and_mouse_cage = pyqtSignal()
     # 显示数据
@@ -92,7 +87,7 @@ class Tab2_tab1(ThemedWidget):
             self.setGeometry(geometry)
         else:
             pass
-        self.ui = Ui_tab_1_frame()
+        self.ui = Ui_tab_1_window()
         self.ui.setupUi(self)
 
         self._retranslateUi()

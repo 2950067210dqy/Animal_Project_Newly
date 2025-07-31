@@ -5,22 +5,18 @@ import typing
 
 from loguru import logger
 
-from Module.monitor_data.ui.component.paging_exportcsv_table_widget import TableWidgetPaging
-from Module.monitor_data.ui.component.selection_line_charts import LineChartWidget
+from public.component.paging_exportcsv_table_widget import TableWidgetPaging
+from public.component.selection_line_charts import LineChartWidget
 from Module.monitor_data.ui.tab.tab2_tab0_window import Ui_tab_0_window
 from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
-from theme.ThemeQt6 import ThemedWidget, ThemedWindow
-from PyQt6 import QtCore, QtGui
+from theme.ThemeQt6 import ThemedWindow
+from PyQt6 import QtGui
 from PyQt6.QtCore import QRect, pyqtSignal
-from PyQt6.QtWidgets import QWidget, QMainWindow, QPushButton, QFrame, QGroupBox, QGridLayout, QHBoxLayout, QLabel, \
+from PyQt6.QtWidgets import QWidget, QPushButton, QGroupBox, QGridLayout, QHBoxLayout, QLabel, \
     QVBoxLayout, QScrollArea
-
-from theme.ThemeQt6 import ThemedWidget
-
-
 
 
 class Store_thread_for_tab_frame(MyQThread):

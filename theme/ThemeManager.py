@@ -246,16 +246,21 @@ class ThemeManager(QObject):
             QMenu {{
                 background-color:{theme['--secondary']};
                 color:{theme['--text']};
-                 border: 2px solid {theme['--border']};
+                 border: 1px solid {theme['--border']};
             }}
             QMenuBar {{
                 background-color: {theme['--secondary']};
                 color: {theme['--text']};
-                border-bottom: 2px solid {theme['--border']};
+                border-bottom: 1px solid {theme['--border']};
             }}
-            QMenuBar::item {{
+             QMenuBar::item {{
                 background-color:{theme['--secondary']};
                 padding: 5px;
+                
+            }}
+            QMenuBar::item:hover {{
+               background-color: {theme['--highlight']};
+                 color: {theme['--text_hover']};
                 
             }}
             QMenuBar::item:selected {{
@@ -268,13 +273,16 @@ class ThemeManager(QObject):
                 color: {theme['--text']};
                 border: 2px solid {theme['--border']};
             }}
-            QToolBar:action {{
+            QToolButton {{
                 padding: 5px;
                 background-color:{theme['--primary']};
             }}
-            QToolBar:action:hover {{
+            QToolButton:hover {{
                 background-color: {theme['--highlight']};
                  color: {theme['--text_hover']};
+            }}
+            QToolButton:disabled {{
+                 color: {theme['--text_disabled']};
             }}
         """ + self.get_button_style(isSelected=False)
         # logger_diy.log.info("ThemeManager的get_style_sheet：" + style_sheet)

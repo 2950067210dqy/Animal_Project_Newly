@@ -4,17 +4,84 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.1.1 修改bug">
-      <change beforePath="$PROJECT_DIR$/.idea/Animal_Project_newly.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Animal_Project_newly.iml" afterDir="false" />
+    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.1.4.1 修改bug tab2的bug 调试没问题，运行报错,添加未添加文件">
+      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/config/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/index/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/index/tab_4.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/main.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/service/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/ui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/ui/tab4.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/ui/tab4_Backup.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab1_window.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab2_window.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab3_window.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab4_window.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab5_window.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab6_window.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Service/main_deep_camera.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Service/main_infrared_camera.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config/camera_config.ini" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config/deep_camera_intrinsics.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/equipment/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/equipment/deep_camera/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/distance_correction.dat" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/interfaces.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/mi48.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/plots.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/utils.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/custom_status_bar.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/deep_camera_config_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/deep_camera_config_dialog.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/index/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/index/deep_camera_config_dialog_index.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/index/infrared_camera_config_dialog_index.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/index/infrared_camera_read_SN_dialog_index.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/infrared_camera_config_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/infrared_camera_config_dialog.ui" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/infrared_camera_read_SN_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/component/dialog/infrared_camera_read_SN_dialog.ui" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Module/experiment_setting/index/tab_7.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/index/tab_7.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7_window.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7_window.ui" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/ui/tab7_window.ui" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/experiment_setting/service/main_monitor_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_monitor_data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/index/tab_2.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/index/tab_2.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/component/data.db" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/component/paging_exportcsv_table_widget.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/component/paging_exportcsv_table_widget.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/component/selection_line_charts.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/component/selection_line_charts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab0_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab0_index.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab1_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab1_index.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab2_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab2_index.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab3_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab3_index.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab4_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab4_index.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab5_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab5_index.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab6_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab6_index.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0_window.ui" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0_window.ui" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab1.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab1.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab2.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab2.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab3.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab3.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab4.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab4.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab5.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab5.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab6.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab6.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab_backup.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Service/main_gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_gui.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/gui_config.ini" beforeDir="false" afterPath="$PROJECT_DIR$/config/gui_config.ini" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/index/MainWindow_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/index/MainWindow_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/entity/BaseWidget.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/entity/BaseWidget.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/public/entity/BaseWindow.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/entity/BaseWindow.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/entity/MyQThread.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/entity/MyQThread.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/theme/ThemeManager.py" beforeDir="false" afterPath="$PROJECT_DIR$/theme/ThemeManager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/theme/ThemeQt6.py" beforeDir="false" afterPath="$PROJECT_DIR$/theme/ThemeQt6.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -48,7 +115,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "master",
-    "last_opened_file_path": "D:/WorkSpace/PythonProject/Animal_Project_newly",
+    "last_opened_file_path": "D:/WorkSpace/Animal_Project_Newly/Service",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -60,16 +127,18 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Service" />
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\config" />
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\public\entity" />
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Module\experiment_setting\dao" />
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Module\experiment_setting\service" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\Service" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera\ui" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\config" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\public\component" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Service" />
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\public" />
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\public\entity" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\public\component" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\Service" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera\ui" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera" />
     </key>
   </component>
   <component name="RunManager">
@@ -82,7 +151,7 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="SDK_NAME" value="Python 3.11 (Animal_Project_newly)" />
+      <option name="SDK_NAME" value="Python 3.11 (Animal_Project_Newly)" />
       <option name="WORKING_DIRECTORY" value="" />
       <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
@@ -101,8 +170,8 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-PY-251.26927.90" />
-        <option value="bundled-python-sdk-41e8cd69c857-64d779b69b7a-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.26927.90" />
+        <option value="bundled-js-predefined-d6986cc7102b-6a121458b545-JavaScript-PY-251.25410.159" />
+        <option value="bundled-python-sdk-e0ed3721d81e-36ea0e71a18c-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.25410.159" />
       </set>
     </attachedChunks>
   </component>
@@ -114,9 +183,11 @@
       <option name="presentableId" value="Default" />
       <updated>1753682368086</updated>
       <workItem from="1753682369119" duration="12765000" />
-      <workItem from="1753768637361" duration="11889000" />
-      <workItem from="1753834837471" duration="5658000" />
-      <workItem from="1753873276104" duration="6156000" />
+      <workItem from="1753768637361" duration="10976000" />
+      <workItem from="1753855353378" duration="161000" />
+      <workItem from="1753855530909" duration="1027000" />
+      <workItem from="1753858237442" duration="25721000" />
+      <workItem from="1753980723199" duration="16117000" />
     </task>
     <task id="LOCAL-00001" summary="1.0 创建基本项目 模块化筹备">
       <option name="closed" value="true" />
@@ -126,23 +197,31 @@
       <option name="project" value="LOCAL" />
       <updated>1753706594930</updated>
     </task>
-    <task id="LOCAL-00002" summary="1.1 实验配置模块加载成功">
+    <task id="LOCAL-00002" summary="1.1.2 修改bug2">
       <option name="closed" value="true" />
-      <created>1753787774136</created>
+      <created>1753870485237</created>
       <option name="number" value="00002" />
       <option name="presentableId" value="LOCAL-00002" />
       <option name="project" value="LOCAL" />
-      <updated>1753787774136</updated>
+      <updated>1753870485237</updated>
     </task>
-    <task id="LOCAL-00003" summary="1.1.1 修改bug">
+    <task id="LOCAL-00003" summary="1.1.4 修改bug tab2的bug 调试没问题，运行报错">
       <option name="closed" value="true" />
-      <created>1753843183050</created>
+      <created>1753912884120</created>
       <option name="number" value="00003" />
       <option name="presentableId" value="LOCAL-00003" />
       <option name="project" value="LOCAL" />
-      <updated>1753843183050</updated>
+      <updated>1753912884120</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="1.1.4.1 修改bug tab2的bug 调试没问题，运行报错,添加未添加文件">
+      <option name="closed" value="true" />
+      <created>1753912918099</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1753912918099</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -161,17 +240,23 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="1.0 创建基本项目 模块化筹备" />
-    <MESSAGE value="1.1 实验配置模块加载成功" />
-    <MESSAGE value="1.1.1 修改bug" />
-    <option name="LAST_COMMIT_MESSAGE" value="1.1.1 修改bug" />
+    <MESSAGE value="1.1.2 修改bug2" />
+    <MESSAGE value="1.1.4 修改bug tab2的bug 调试没问题，运行报错" />
+    <MESSAGE value="1.1.4.1 修改bug tab2的bug 调试没问题，运行报错,添加未添加文件" />
+    <option name="LAST_COMMIT_MESSAGE" value="1.1.4.1 修改bug tab2的bug 调试没问题，运行报错,添加未添加文件" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/Module/experiment_setting/index/tab_7.py</url>
-          <line>339</line>
-          <option name="timeStamp" value="35" />
+          <url>file://$PROJECT_DIR$/index/MainWindow_index.py</url>
+          <line>368</line>
+          <option name="timeStamp" value="49" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/index/MainWindow_index.py</url>
+          <line>314</line>
+          <option name="timeStamp" value="50" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>
@@ -186,6 +271,7 @@
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Animal_Project_newly$MainWindow_index.coverage" NAME="MainWindow_index 覆盖结果" MODIFIED="1753702069150" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/index" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$ThemeQt6.coverage" NAME="ThemeQt6 覆盖结果" MODIFIED="1753687576845" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/theme" />
-    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753879403432" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753996820615" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753787419017" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
   </component>
 </project>
