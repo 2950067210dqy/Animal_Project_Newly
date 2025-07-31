@@ -4,7 +4,7 @@ import typing
 from PyQt6 import QtCore, QtGui
 from PyQt6.QtCore import QRect, Qt, QSize
 from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QLayout, \
-    QScrollArea, QSizePolicy, QMessageBox, QTabWidget
+    QScrollArea, QSizePolicy, QMessageBox, QTabWidget, QGroupBox, QTableWidget
 from loguru import logger
 
 
@@ -41,7 +41,8 @@ class BaseWindow(QMainWindow):
         for scroll_area in scroll_areas:
             scroll_area:QScrollArea
             if scroll_area.widget() is not None:
-                scroll_area.widget().resize(new_size.width(), new_size.height())
+
+                # scroll_area.widget().setFixedSize(int(new_size.width()*0.95), int(new_size.height()*0.95))
                 scroll_area.widget().updateGeometry()
             scroll_area.updateGeometry()
         # 更新tab——widget
@@ -58,6 +59,20 @@ class BaseWindow(QMainWindow):
                     widget.updateGeometry()
                 pass
             pass
+        #更新groupbox
+        groupboxes = self.findChildren(QGroupBox)
+        if groupboxes is not None and len(groupboxes) > 0:
+            for groupbox in groupboxes:
+                groupbox:QGroupBox
+                groupbox.resize(new_size.width(), new_size.height())
+                groupbox.updateGeometry()
+        # 更新tableWidget
+        # tableWidgets = self.findChildren(QTableWidget)
+        # if tableWidgets is not None and len(tableWidgets) > 0:
+        #     for tableWidget in tableWidgets:
+        #         tableWidget:QTableWidget
+        #         tableWidget.resize(new_size.width(), new_size.height())
+        #         tableWidget.updateGeometry()
         # 设置最小size 以免变形
         self.setMinimumSize(self.calculate_minimum_suggested_size())
 
@@ -74,7 +89,7 @@ class BaseWindow(QMainWindow):
                 size = layout.sizeHint()
                 max_width = max(max_width, size.width())
                 max_height = max(max_height, size.height())
-        return QSize(max_width, max_height)
+        return QSize(max_width+10, max_height+10)
     def __init__(self):
         super().__init__(flags=Qt.WindowType.Window)
         self.main_gui:BaseWindow=None

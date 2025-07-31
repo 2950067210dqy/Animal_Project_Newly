@@ -6,7 +6,7 @@ import time
 
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QTableWidgetItem, QVBoxLayout, QScrollArea
+from PyQt6.QtWidgets import QTableWidgetItem, QVBoxLayout, QScrollArea, QSizePolicy, QWidget
 from loguru import logger
 
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
@@ -68,6 +68,8 @@ class TableWidgetPaging(QtWidgets.QWidget):
         :param data_type: 数据类型 比如monitor_data senior_state等
         """
         super().__init__()
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+
         self.parent_layout = parent
         self.mouse_cage_number = mouse_cage_number
         self.type = type
@@ -94,11 +96,12 @@ class TableWidgetPaging(QtWidgets.QWidget):
         # 设置表格数量
         self.set_table_setting()
         # 设置布局
-        layout = QVBoxLayout(self)
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
         # 添加滚动区域
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)  # 使滚动区域填充空间
-        self.scroll_area.setWidget(self.table_widget)  # 将表格放入滚动区域
+
 
         # 控制按钮
         self.first_button = QtWidgets.QPushButton("第一页")
@@ -129,10 +132,14 @@ class TableWidgetPaging(QtWidgets.QWidget):
         self.pagination_layout.addWidget(self.last_button)
         self.pagination_layout.addWidget(self.export_button)
 
-        layout.addLayout(self.pagination_layout)
-        layout.addWidget(self.scroll_area)  # 将滚动区域添加到布局
-        self.parent_layout.addWidget(self)
 
+        layout.addLayout(self.pagination_layout)
+        layout.addWidget(self.table_widget)  # 将滚动区域添加到布局
+        self.scroll_area.setWidget(widget)  # 将表格放入滚动区域
+
+        self.parent_layout.addWidget( self.scroll_area)
+        # self.parent().setStyleSheet("background-color: rgb(255, 255, 255);")
+        # self.table_widget.setStyleSheet("background-color: rgb(225, 225, 225);")
         # 获取数据并填充表格
         if self.data_fetcher_thread is not None and self.data_fetcher_thread.isRunning():
             self.data_fetcher_thread.stop()

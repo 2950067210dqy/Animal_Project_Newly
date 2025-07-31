@@ -1,3 +1,4 @@
+import json
 import math
 import time
 import typing
@@ -6,12 +7,12 @@ from loguru import logger
 
 from Module.monitor_data.ui.component.paging_exportcsv_table_widget import TableWidgetPaging
 from Module.monitor_data.ui.component.selection_line_charts import LineChartWidget
-from Module.monitor_data.ui.tab.tab2_tab0 import Ui_tab_0_frame
+from Module.monitor_data.ui.tab.tab2_tab0_window import Ui_tab_0_window
 from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
-from theme.ThemeQt6 import ThemedWidget
+from theme.ThemeQt6 import ThemedWidget, ThemedWindow
 from PyQt6 import QtCore, QtGui
 from PyQt6.QtCore import QRect, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QMainWindow, QPushButton, QFrame, QGroupBox, QGridLayout, QHBoxLayout, QLabel, \
@@ -49,7 +50,14 @@ class Store_thread_for_tab_frame(MyQThread):
             self.handle.stop()
         self.handle = Monitor_Datas_Handle()  # # 创建数据库
         self.query_data()
-        time.sleep(float(global_setting.get_setting("configer")['monitoring_data'][self.tab_int]['delay']))
+        monitor_data_tab_page_config = global_setting.get_setting("configer")['monitoring_data']
+        try:
+            monitor_data_tab_page_config_data = json.loads(monitor_data_tab_page_config['value'])
+            time.sleep(float(monitor_data_tab_page_config_data[self.tab_int]['delay']))
+        except Exception as e:
+            logger.error(f"{self.name}json解析global_setting.get_setting(‘configer‘)['monitoring_data']错误,{e}")
+            time.sleep(1)
+
 
     pass
 
@@ -64,12 +72,12 @@ class Store_thread_for_tab_frame(MyQThread):
                 table_name_full = f"{self.type.value['name']}_{table_name}_cage_{self.mouse_cage_number}"
             data = self.handle.query_data(table_name_full)
             emit_data = {'function_code': self.type.value['table'][table_name]['function_code'], 'data': data}
-            logger.info(f"{table_name_full}数据查询成功！")
+            # logger.info(f"{table_name_full}数据查询成功！")
             self.show_data_signal.emit(emit_data)
         pass
 
 
-class Tab2_tab0(ThemedWidget):
+class Tab2_tab0(ThemedWindow):
     # 更新端口选择和鼠笼选择
     update_port_and_mouse_cage = pyqtSignal()
     # 显示数据
@@ -139,7 +147,7 @@ class Tab2_tab0(ThemedWidget):
             self.setGeometry(geometry)
         else:
             pass
-        self.ui = Ui_tab_0_frame()
+        self.ui = Ui_tab_0_window()
         self.ui.setupUi(self)
 
         self._retranslateUi()
@@ -276,7 +284,7 @@ class Tab2_tab0(ThemedWidget):
 
     def show_data(self, data: dict):
         # 显示数据
-        logger.info(f"{self.objectName()}显示数据：{data}")
+        #logger.info(f"{self.objectName()}显示数据：{data}")
         if data is not None and len(data) != 0 and 'data' in data and  len(data['data']) != 0:
             match data['function_code']:
                 case 1:

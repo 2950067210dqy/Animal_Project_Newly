@@ -58,7 +58,7 @@ class BaseModule(ABC):
                 self.main_gui.content_layout.removeWidget(self.main_gui.active_widget)
                 self.main_gui.active_widget.setParent(None)
                 self.main_gui.active_widget = None
-            self.interface_widget.frame_obj.resize(int(self.main_gui.width() ), int(self.main_gui.height() ))
+            self.interface_widget.frame_obj.resize(int(self.main_gui.width() ), int(self.main_gui.height()))
             self.main_gui.content_layout.addWidget(self.interface_widget.frame_obj)
             self.main_gui.title_label.setText(self.title)
             self.interface_widget.frame_obj.setVisible(False)

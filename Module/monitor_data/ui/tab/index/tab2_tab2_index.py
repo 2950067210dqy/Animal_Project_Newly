@@ -231,7 +231,7 @@ class Tab2_tab2(ThemedWidget):
 
     def show_data(self, data: dict):
         # 显示数据
-        logger.info(f"{self.objectName()}显示数据：{data}")
+        #logger.info(f"{self.objectName()}显示数据：{data}")
         if data is not None and len(data) != 0 and 'data' in data and  len(data['data']) != 0:
             match data['function_code']:
                 case 1:

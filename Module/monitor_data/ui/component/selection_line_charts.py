@@ -165,11 +165,12 @@ class LineChartWidget(QWidget):
         self.combo_box.currentTextChanged.connect(self.change_data_type)
 
         # 添加下拉框到布局
-        sub_layout = QHBoxLayout(self)
+        sub_layout = QHBoxLayout()
         sub_layout.addWidget(QLabel("选择数据："))
         sub_layout.addWidget(self.combo_box)
         sub_layout.addItem(QSpacerItem(20,40, QSizePolicy.Policy.Expanding,  QSizePolicy.Policy.Expanding))
         layout.addLayout(sub_layout)
+
         # 创建 QScrollArea
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -192,9 +193,16 @@ class LineChartWidget(QWidget):
         # 将图表视图添加到 layout，并添加到滚动区域
         self.chart_layout.addWidget(self.chart_view)
         scroll_area.setWidget(self.chart_widget)
-
+        sub_layout_2 = QVBoxLayout()
         # 将滚动区域添加到布局
-        layout.addWidget(scroll_area)
+        sub_layout_2.addWidget(scroll_area)
+        layout.addLayout(sub_layout_2)
+
+        # layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        #
+        # layout.setStretch(6,2)
+
+        self.setLayout(layout)
         self.parent_layout.addWidget(self)
 
     def _init_chart(self):
