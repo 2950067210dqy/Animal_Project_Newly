@@ -130,28 +130,18 @@ class Send_thread(MyQThread):
 class Tab_7(ThemedWindow):
     update_status_main_signal_gui_update = pyqtSignal(str)
 
-    def closeEvent(self, event):
-        # 关闭事件
-        if self.main_gui is not None:
 
-            for index in range(len(self.main_gui.open_windows)):
-                if self.main_gui.open_windows[index] is self:
-                    del self.main_gui.open_windows[index]
-                    break
-                index+=1
-        pass
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
         logger.warning("tab7——show")
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.resume()
-
+        super().showEvent(a0)
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
         logger.warning("tab7--hide")
-        # 主界面的当前页面为None
-        self.main_gui.activate_widget = None
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.pause()
+        super().hideEvent(a0)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
 

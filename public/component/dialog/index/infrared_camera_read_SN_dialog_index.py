@@ -103,7 +103,7 @@ class infrared_camera_read_SN_dialog(QDialog):
 
     def show_frame(self):
 
-        self.show()
+        self.exec()
 
 
 

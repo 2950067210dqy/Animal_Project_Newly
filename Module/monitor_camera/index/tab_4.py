@@ -10,6 +10,7 @@ from loguru import logger
 
 
 from Module.monitor_camera.ui.tab4_window import Ui_tab4_window
+from Service import main_deep_camera, main_infrared_camera
 
 from public.component.dialog.index.deep_camera_config_dialog_index import deep_camera_config_dialog
 from public.component.dialog.index.infrared_camera_config_dialog_index import infrared_camera_config_dialog
@@ -104,7 +105,7 @@ class ImageLoaderThread(MyQThread):
                 if not os.path.exists(path):
                     os.makedirs(path)
                 file_name_path = self.filter_files_earlier_than(folder=path, delta_seconds=float(
-                    global_setting.get_setting("configer")['tab4_pic']['data_delay']))
+                    global_setting.get_setting("configer")['monitor_camera_pic']['data_delay']))
                 if file_name_path is None:
                     deep_camera_list.append("")
                 else:
@@ -133,17 +134,23 @@ class ImageLoaderThread(MyQThread):
 
 
 class Tab_4(ThemedWindow):
+
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
         logger.warning("tab4——show")
         if self.loader_thread is not None and self.loader_thread.isRunning():
             self.loader_thread.resume()
-
+        super().showEvent(a0)
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
         logger.warning("tab4--hide")
         if self.loader_thread is not None and self.loader_thread.isRunning():
             self.loader_thread.pause()
-
+        super().hideEvent(a0)
+    def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
+        logger.warning("tab4--close")
+        if self.loader_thread is not None and self.loader_thread.isRunning():
+            self.loader_thread.stop()
+        super().closeEvent(a0)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
         # 图像列表
@@ -371,7 +378,7 @@ class Tab_4(ThemedWindow):
         :return:
         """
         self.deep_camera_config_dialog_frame = deep_camera_config_dialog(title="深度相机配置",tip="\n设置好后要重新启动程序！！！！！！")
-        # self.deep_camera_config_dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
+        self.deep_camera_config_dialog_frame.camera_config_finished_signal.connect(main_deep_camera.init_camera_and_image_handle_thread)
         self.deep_camera_config_dialog_frame.show_frame()
 
         pass
@@ -382,7 +389,7 @@ class Tab_4(ThemedWindow):
         :return:
         """
         self.infrared_camera_config_dialog_frame = infrared_camera_config_dialog(title="红外相机配置",tip="\n设置好后要重新启动程序！！！！！！")
-        # self.infrared_camera_config_dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
+        self.infrared_camera_config_dialog_frame.camera_config_finished_signal.connect(main_infrared_camera.init_camera_and_image_handle_thread)
         self.infrared_camera_config_dialog_frame.show_frame()
 
         pass

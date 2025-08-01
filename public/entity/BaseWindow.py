@@ -9,7 +9,12 @@ from loguru import logger
 
 
 class BaseWindow(QMainWindow):
-
+    def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
+        pass
+    def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
+        # 主界面的当前页面为None
+        if self.main_gui is not None:
+            self.main_gui.activate_widget = None
     def closeEvent(self, event):
         # 关闭事件
         if self.main_gui is not None:

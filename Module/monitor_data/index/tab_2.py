@@ -40,16 +40,6 @@ class Tab_2(ThemedWindow):
                 widget.updateGeometry()
 
         super().resizeEvent(a0)
-    def closeEvent(self, event):
-        # 关闭事件
-        if self.main_gui is not None:
-
-            for index in range(len(self.main_gui.open_windows)):
-                if self.main_gui.open_windows[index] is self:
-                    del self.main_gui.open_windows[index]
-                    break
-                index += 1
-        pass
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 线程重新响应
         logger.warning("tab2——show")
@@ -77,11 +67,11 @@ class Tab_2(ThemedWindow):
                     pass
         except Exception as e:
             logger.error(f"<UNK>{e} |  <UNK>{traceback.print_exc()}<UNK>")
+        super().showEvent(a0)
 
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
         # 线程暂停
-        # 主界面的当前页面为None
-        self.main_gui.activate_widget = None
+
         logger.warning("tab2--hide")
         for tab_frame in  self.tab_frames:
             tab_current = tab_frame.tab
@@ -92,6 +82,7 @@ class Tab_2(ThemedWindow):
                     tab_current.now_data_chart_widget.data_fetcher_thread.pause()
                 if tab_current.detaildata_table is not None and tab_current.detaildata_table.data_fetcher_thread is not None and tab_current.detaildata_table.data_fetcher_thread.isRunning():
                     tab_current.detaildata_table.data_fetcher_thread.pause()
+        super().hideEvent(a0)
 
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()

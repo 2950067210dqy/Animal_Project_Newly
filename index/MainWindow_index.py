@@ -312,7 +312,7 @@ class MainWindow_Index(ThemedWindow):
                 port=port, q=global_setting.get_setting("queue"),
                 send_message_q=global_setting.get_setting("send_message_queue"))
 
-            # self.deep_camera_thread_sub_list,self.deep_camera_read_queue_data_thread_sub,self.deep_camera_delete_file_thread_sub = main_deep_camera.main(q=global_setting.get_setting("queue"))
+            self.deep_camera_thread_sub_list,self.deep_camera_read_queue_data_thread_sub,self.deep_camera_delete_file_thread_sub = main_deep_camera.main(q=global_setting.get_setting("queue"))
             self.infrared_camera_thread_sub_list,self.infrared_camera_read_queue_data_thread_sub,self.infrared_camera_delete_file_thread_sub = main_infrared_camera.main(q=global_setting.get_setting("queue"))
 
 
@@ -371,7 +371,6 @@ class MainWindow_Index(ThemedWindow):
                 try:
                     if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
                         camera_struct_l['camera'].stop()
-                        camera_struct_l['camera'].terminal()
                 except Exception as e:
                     logger.error(f"关闭实验监测错误，原因：{e}")
                     self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
@@ -394,7 +393,6 @@ class MainWindow_Index(ThemedWindow):
                 try:
                     if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
                         camera_struct_l['camera'].stop()
-                        camera_struct_l['camera'].terminal()
                 except Exception as e:
                     logger.error(f"关闭实验监测错误，原因：{e}")
                     self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
@@ -402,7 +400,6 @@ class MainWindow_Index(ThemedWindow):
                 try:
                     if camera_struct_l['img_process'] is not None and camera_struct_l['img_process'].isRunning():
                         camera_struct_l['img_process'].stop()
-                        camera_struct_l['img_process'].terminal()
                 except Exception as e:
                     logger.error(f"关闭实验监测错误，原因：{e}")
                     self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")

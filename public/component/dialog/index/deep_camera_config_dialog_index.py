@@ -206,7 +206,7 @@ class deep_camera_config_dialog(QDialog):
 
     def show_frame(self):
 
-        self.show()
+        self.exec()
 
     def init_label(self):
         # 实例化label
