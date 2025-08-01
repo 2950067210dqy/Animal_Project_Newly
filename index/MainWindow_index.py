@@ -312,7 +312,7 @@ class MainWindow_Index(ThemedWindow):
                 port=port, q=global_setting.get_setting("queue"),
                 send_message_q=global_setting.get_setting("send_message_queue"))
 
-            self.deep_camera_thread_sub_list,self.deep_camera_read_queue_data_thread_sub,self.deep_camera_delete_file_thread_sub = main_deep_camera.main(q=global_setting.get_setting("queue"))
+            # self.deep_camera_thread_sub_list,self.deep_camera_read_queue_data_thread_sub,self.deep_camera_delete_file_thread_sub = main_deep_camera.main(q=global_setting.get_setting("queue"))
             self.infrared_camera_thread_sub_list,self.infrared_camera_read_queue_data_thread_sub,self.infrared_camera_delete_file_thread_sub = main_infrared_camera.main(q=global_setting.get_setting("queue"))
 
 

@@ -7,10 +7,13 @@ from datetime import datetime, timedelta
 from PyQt6.QtGui import QPixmap
 from loguru import logger
 
-from public.component.dialog import deep_camera_config_dialog
-from public.component.dialog import infrared_camera_config_dialog
-from public.component.dialog import infrared_camera_read_SN_dialog
+
+
 from Module.monitor_camera.ui.tab4_window import Ui_tab4_window
+
+from public.component.dialog.index.deep_camera_config_dialog_index import deep_camera_config_dialog
+from public.component.dialog.index.infrared_camera_config_dialog_index import infrared_camera_config_dialog
+from public.component.dialog.index.infrared_camera_read_SN_dialog_index import infrared_camera_read_SN_dialog
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
 from theme.ThemeQt6 import ThemedWindow

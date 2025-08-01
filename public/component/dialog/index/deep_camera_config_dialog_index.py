@@ -112,6 +112,7 @@ class deep_camera_config_dialog(QDialog):
             pass
         self.ui = Ui_deep_camera_config_dialog()
         self.ui.setupUi(self)
+        self.setParent(None)
         # 窗口总是在最顶层
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         # 隐藏右上角的关闭按钮

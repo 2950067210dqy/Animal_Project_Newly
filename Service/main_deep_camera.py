@@ -634,11 +634,12 @@ def check_setting_cameras_each_number():
     else:
         # 不存在配置文件
 
-
-        dialog_frame = deep_camera_config_dialog(title="深度相机配置")
-        dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
-        dialog_frame.show_frame()
-
+        try:
+            dialog_frame = deep_camera_config_dialog(title="深度相机配置")
+            dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
+            dialog_frame.show_frame()
+        except Exception as e:
+            logger.error(e)
 
         pass
 
