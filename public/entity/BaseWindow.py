@@ -79,7 +79,7 @@ class BaseWindow(QMainWindow):
         #         tableWidget.resize(new_size.width(), new_size.height())
         #         tableWidget.updateGeometry()
         # 设置最小size 以免变形
-        self.setMinimumSize(self.calculate_minimum_suggested_size())
+        # self.setMinimumSize(self.calculate_minimum_suggested_size())
 
         super().resizeEvent(a0)
 

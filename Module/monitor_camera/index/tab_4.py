@@ -128,9 +128,6 @@ class ImageLoaderThread(MyQThread):
         except Exception as e:
             logger.error(f"tab4线程异常，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
 
-    def stop(self):
-        self.running = False
-        self.wait()
 
 
 class Tab_4(ThemedWindow):
@@ -291,9 +288,6 @@ class Tab_4(ThemedWindow):
                 pass
         pass
 
-    def closeEvent(self, event):
-        self.loader_thread.stop()
-        super().closeEvent(event)
 
     def init_graphy(self):
         """

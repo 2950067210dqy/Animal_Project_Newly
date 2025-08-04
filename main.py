@@ -16,7 +16,8 @@ from Service import main_response_Modbus, main_gui
 用 psutil 库递归杀死进程树
 multiprocessing.Process.terminate() 只会终止对应的单个进程，如果该进程启动了其他进程，这些“子进程”不会被自动终止，因而可能会在任务管理器中残留。
 """
-
+# 过滤日志
+logger = logger.bind(category="main_logger")
 
 def kill_process_tree(pid, including_parent=True):
     try:
@@ -47,7 +48,8 @@ if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
         rotation="00:00",  # 日志文件转存
         retention="30 days",  # 多长时间之后清理
         enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}"
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+        filter = lambda record: record["extra"].get("category") == "main_logger"
     )
     logger.info(f"{'-' * 40}main_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")

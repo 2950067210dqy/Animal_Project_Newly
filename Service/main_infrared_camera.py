@@ -61,7 +61,8 @@ TIP_SEGM_PARAM = {
 frame_nums = 0
 lock = threading.Lock()
 
-
+# 过滤日志
+logger = logger.bind(category="infrared_camera_logger")
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
         super().__init__(name)
@@ -586,7 +587,8 @@ def main(q):
         rotation="00:00",
         retention="30 days",
         enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}"
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+        filter = lambda record: record["extra"].get("category") == "infrared_camera_logger"
     )
     logger.info(f"{'-' * 30}infrared_camera_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")

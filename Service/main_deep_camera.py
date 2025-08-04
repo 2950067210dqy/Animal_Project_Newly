@@ -25,7 +25,8 @@ import numpy as np
 """
 修改：连接相机时间优化
 """
-
+# 过滤日志
+logger = logger.bind(category="deep_camera_logger")
 # 删除文件线程
 delete_file_thread = None
 camera_list = []
@@ -722,12 +723,14 @@ def init_camera_and_image_handle_thread(serials):
 def main(q):
     # 加载日志配置
     # logger.remove(0)
+    # 過濾日志
     logger.add(
         "./log/deep_camera/d_camera_{time:YYYY-MM-DD}.log",
         rotation="00:00",
         retention="30 days",
         enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}"
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+        filter = lambda record: record["extra"].get("category") == "deep_camera_logger"
     )
     logger.info(f"{'-' * 30}deep_camera_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")

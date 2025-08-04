@@ -12,20 +12,20 @@ from util.number_util import number_util
 
 def load_global_setting():
     # 加载监控数据配置
-    config_file_path = os.getcwd() + "./config/monitor_datas_config.ini"
-    # 配置数据{"section":{"key1":value1,"key2":value2,....}，...}
-    config = ini_parser(config_file_path).read()
-    if (len(config) != 0):
-        logger.info("监控配置文件读取成功。")
-    else:
-        logger.error("监控配置文件读取失败。")
-    global_setting.set_setting("monitor_data", config)
+    # config_file_path = os.getcwd() + "./config/monitor_datas_config.ini"
+    # # 配置数据{"section":{"key1":value1,"key2":value2,....}，...}
+    # config = ini_parser(config_file_path).read()
+    # if (len(config) != 0):
+    #     logger.info("监控配置文件读取成功。")
+    # else:
+    #     logger.error("监控配置文件读取失败。")
+    # global_setting.set_setting("monitor_data", config)
     # 加载gui配置存储到全局类中
     configer =ini_parser(os.getcwd() +"./config/gui_config.ini").read()
     if configer is None:
         logger.error(f"./gui_config.ini配置文件读取失败")
     global_setting.set_setting("configer", configer)
-    return config
+    return configer
 
 
 class Modbus_Slave_Ids(Enum):

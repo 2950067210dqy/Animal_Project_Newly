@@ -26,7 +26,8 @@ batch_complete_event = threading.Event()
 # 存储数据锁
 store_Q_lock = threading.Lock()
 store_Q = queue.Queue()
-
+# 过滤日志
+logger = logger.bind(category="monitor_data_logger")
 
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
@@ -297,7 +298,8 @@ def main(port,q,send_message_q):
         rotation="00:00",
         retention="30 days",
         enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}"
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+        filter = lambda record: record["extra"].get("category") == "monitor_data_logger"
     )
     logger.info(f"{'-' * 30}monitor_data_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")

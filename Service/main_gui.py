@@ -14,7 +14,8 @@ from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from theme.ThemeManager import ThemeManager
 
-
+# 过滤日志
+logger = logger.bind(category="gui_logger")
 def quit_qt_application():
     """
     退出QT程序
@@ -138,11 +139,12 @@ def main(q, send_message_q):
     freeze_support()
     # 加载日志配置
     logger.add(
-        "./log/main/main_{time:YYYY-MM-DD}.log",
+        "./log/gui/gui_{time:YYYY-MM-DD}.log",
         rotation="00:00",  # 日志文件转存
         retention="30 days",  # 多长时间之后清理
         enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}"
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+        filter = lambda record: record["extra"].get("category") == "gui_logger"
     )
     logger.info(f"{'-' * 40}main_gui_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
@@ -152,6 +154,9 @@ def main(q, send_message_q):
 
     global_setting.set_setting("queue", q)
     global_setting.set_setting("send_message_queue", send_message_q)
-    # qt程序开始
-    start_qt_application()
+    try:
+        # qt程序开始
+        start_qt_application()
+    except Exception as e:
+        logger.error(e)
 

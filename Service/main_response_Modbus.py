@@ -13,7 +13,8 @@ from serial.tools import list_ports
 
 from util.time_util import time_util
 
-
+# 过滤日志
+logger = logger.bind(category="response_modbus_logger")
 class communication(threading.Thread):
     """
     串口类 子线程
@@ -1328,7 +1329,8 @@ def main():
         rotation="00:00",
         retention="30 days",
         enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}"
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+    filter = lambda record: record["extra"].get("category") == "response_modbus_logger"
     )
     logger.info(f"{'-' * 30}response_start{'-' * 30}")
     try:

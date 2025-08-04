@@ -69,7 +69,9 @@ class BaseModule(ABC):
         else:
             self.interface_widget.frame_obj.setWindowTitle(self.title)
             self.interface_widget.frame_obj.set_main_gui(self.main_gui)
-            self.interface_widget.frame_obj.resize(int(self.main_gui.width() * 0.7), int(self.main_gui.height() * 0.7))
+            flag  =10
+            self.interface_widget.frame_obj.resize(int(self.main_gui.middle_layout.geometry().width() ), int(self.main_gui.middle_layout.geometry().height()))
+            self.interface_widget.frame_obj.setGeometry(self.main_gui.middle_layout.geometry().left(),self.main_gui.centralWidget().geometry().top()+self.main_gui.toolbar.geometry().height()+flag, self.main_gui.middle_layout.geometry().width(),self.main_gui.middle_layout.geometry().height()-self.main_gui.toolbar.geometry().height()-flag,)
             # 添加窗口
             if self.interface_widget.frame_obj not in self.main_gui.open_windows:
                 self.main_gui.open_windows.append(self.interface_widget.frame_obj)

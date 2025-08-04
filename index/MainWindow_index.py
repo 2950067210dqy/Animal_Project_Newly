@@ -77,10 +77,18 @@ class MainWindow_Index(ThemedWindow):
         self.active_widget:BaseWidget = None
         # 打开的窗口
         self.open_windows:[BaseWindow]=[]
+        # 工具栏
+        self.toolbar = None
         # 标题label
         self.title_label :QLabel = None
         # 内容layout
         self.content_layout :QVBoxLayout =None
+        #左侧layout
+        self.left_layout:QVBoxLayout =None
+        # 右侧layout
+        self.right_layout:QVBoxLayout =None
+        # 底部layout
+        self.bottom_layout:QVBoxLayout =None
         # 实例化ui
         self._init_ui()
         # 实例化自定义ui
@@ -110,6 +118,10 @@ class MainWindow_Index(ThemedWindow):
     def _init_customize_ui(self):
         self.title_label = self.findChild(QLabel,"title_label")
         self.content_layout = self.findChild(QVBoxLayout,"content_layout")
+        self.middle_layout = self.findChild(QVBoxLayout,"middle_layout")
+        self.left_layout = self.findChild(QVBoxLayout,"left_layout")
+        self.right_layout = self.findChild(QVBoxLayout,"right_layout")
+        self.bottom_layout = self.findChild(QVBoxLayout,"bottom_layout")
         # 加载模块
         self.modules = self.load_modules()
         # 实例化菜单
@@ -138,8 +150,8 @@ class MainWindow_Index(ThemedWindow):
     # 创建工具栏
     def create_tool_bar(self):
         # 创建 QToolBar
-        toolbar = QToolBar("Toolbar")
-        self.addToolBar(toolbar)
+        self.toolbar = QToolBar("Toolbar")
+        self.addToolBar(self.toolbar)
         # 创建动作（Action）
         name ="窗口变换"
         obj_name ="window_exchange"
@@ -178,14 +190,14 @@ class MainWindow_Index(ThemedWindow):
         self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four})
 
         # 将动作添加到工具栏
-        toolbar.addAction(action_one)
-        toolbar.addSeparator()
-        toolbar.addAction(action_two)
-        toolbar.addSeparator()
+        self.toolbar.addAction(action_one)
+        self.toolbar.addSeparator()
+        self.toolbar.addAction(action_two)
+        self.toolbar.addSeparator()
 
-        toolbar.addAction(action_three)
-        toolbar.addAction(action_four)
-        toolbar.addSeparator()
+        self.toolbar.addAction(action_three)
+        self.toolbar.addAction(action_four)
+        self.toolbar.addSeparator()
         pass
     def create_menu_bar(self):
     # 创建菜单
@@ -200,14 +212,7 @@ class MainWindow_Index(ThemedWindow):
                 module_menu_name = module.menu_name
                 module_title = module.title
                 if module_menu_name is not None and module_menu_name != "" and "id" in module_menu_name and "id" in menu_dict and menu_dict["id"] == module_menu_name["id"]:
-                    # module.interface_widget.frame_obj.setWindowTitle(module_title)
-                    # # 如果是frame或widget就放入到centerwidget中，
-                    # if module.interface_widget.type==BaseInterfaceType.FRAME or module.interface_widget.type==BaseInterfaceType.WIDGET:
-                    #     module.interface_widget.frame_obj.resize(int(self.width() * 0.9), int(self.height() * 0.9))
-                    #     module.interface_widget.frame_obj. setParent(self.centralWidget())
-                    #     module.interface_widget.frame_obj.setVisible(False)
-                    # else:
-                    #     module.interface_widget.frame_obj.resize(int(self.width() * 0.7), int(self.height() * 0.7))
+
                     # 创建menu action
                     module.set_main_gui(main_gui=self)
                     action = QAction(module_title, self)
@@ -266,7 +271,10 @@ class MainWindow_Index(ThemedWindow):
                 # 将正在显示的方式进行改变
                 for index in range(len(self.open_windows)):
                     if self.open_windows[index] is not None and module.interface_widget.frame_obj is self.open_windows[index]:
-                        self.open_windows[index].close()
+                        try:
+                            self.open_windows[index].close()
+                        except Exception as e:
+                            logger.error(e)
 
                         module.adjustGUIPolicy()
                         module.interface_widget.frame_obj.show_frame()

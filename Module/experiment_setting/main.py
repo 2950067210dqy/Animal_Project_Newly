@@ -22,15 +22,34 @@ class Main_experiment_setting_widget(BaseInterfaceWidget):
     def __init__(self):
         super().__init__()
         self.type = self.get_type()
-        self.frame_obj = self.create_window()
-
+        self.frame_obj = self.create_middle_window()
+        #  左侧窗口
+        self.left_frame_obj=self.create_left_window()
+        #  右侧窗口
+        self.right_frame_obj=self.create_right_window()
+        #  bottom窗口
+        self.bottom_frame_obj=self.create_bottom_window()
 
     def get_type(self):
         """获得类型 """
-        return BaseInterfaceType.WIDGET
-    def create_window(self) -> BaseWindow:
+        return BaseInterfaceType.WINDOW
+    def create_middle_window(self) -> BaseWindow:
         tab_window = Tab_7()
         return tab_window
+
+    def create_left_window(self) -> BaseWindow:
+        """创建并返回自定义的界面部件left WINDOW"""
+        return None
+
+
+    def create_right_window(self) -> BaseWindow:
+        """创建并返回自定义的界面部件right WINDOW"""
+        return None
+
+    def create_bottom_window(self) -> BaseWindow:
+        """创建并返回自定义的界面部件bottom WINDOW"""
+        return None
+
 
 
 
