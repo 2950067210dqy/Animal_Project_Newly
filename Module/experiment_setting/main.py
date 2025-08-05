@@ -34,21 +34,20 @@ class Main_experiment_setting_widget(BaseInterfaceWidget):
         """获得类型 """
         return BaseInterfaceType.WINDOW
     def create_middle_window(self) -> BaseWindow:
-        tab_window = Tab_7()
-        return tab_window
+        return Tab_7()
 
     def create_left_window(self) -> BaseWindow:
         """创建并返回自定义的界面部件left WINDOW"""
-        return None
+        return Tab_7()
 
 
     def create_right_window(self) -> BaseWindow:
         """创建并返回自定义的界面部件right WINDOW"""
-        return None
+        return Tab_7()
 
     def create_bottom_window(self) -> BaseWindow:
         """创建并返回自定义的界面部件bottom WINDOW"""
-        return None
+        return Tab_7()
 
 
 

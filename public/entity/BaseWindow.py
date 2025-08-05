@@ -18,12 +18,13 @@ class BaseWindow(QMainWindow):
     def closeEvent(self, event):
         # 关闭事件
         if self.main_gui is not None:
-
-            for index in range(len(self.main_gui.open_windows)):
-                if self.main_gui.open_windows[index] is self:
-                    del self.main_gui.open_windows[index]
-                    break
+            #反向遍历列表，这样删除元素时，不会影响到尚未遍历的元素，因为始终从列表的末尾开始删除。
+            new_open_windows = []
+            for index in range(len(self.main_gui.open_windows)-1,-1,-1):
+                if self.main_gui.open_windows[index] is not self:
+                    new_open_windows.append(self.main_gui.open_windows[index])
                 index += 1
+            self.main_gui.open_windows=new_open_windows
 
     def resizeEvent(self, a0 :typing.Optional[QtGui.QResizeEvent]):
         # 获取新的大小
