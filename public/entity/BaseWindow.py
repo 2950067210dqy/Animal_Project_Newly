@@ -3,7 +3,7 @@ import sys
 import typing
 
 from PyQt6 import QtCore, QtGui
-from PyQt6.QtCore import QRect, Qt, QSize, QPoint
+from PyQt6.QtCore import QRect, Qt, QSize, QPoint, QEvent
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QLayout, \
     QScrollArea, QSizePolicy, QMessageBox, QTabWidget, QGroupBox, QTableWidget, QToolBar, QApplication
@@ -14,6 +14,22 @@ from public.entity.enum.Public_Enum import Frame_state
 
 
 class BaseWindow(QMainWindow):
+    def changeEvent(self, event):
+        # 监听状态变化事件
+        if event.type() == QEvent.Type.WindowStateChange:
+            if event.oldState() & Qt.WindowState.WindowMinimized:
+                #窗口被最小化
+                print("最小化")
+                event.ignore()
+            elif event.oldState() & Qt.WindowState.WindowNoState:
+                #窗口恢复到正常状态
+                pass
+            elif event.oldState() & Qt.WindowState.WindowMaximized:
+                # 窗口被最大化
+                pass
+
+        # 一定要调用父类的 changeEvent 方法
+        super().changeEvent(event)
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         pass
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
@@ -153,10 +169,15 @@ class BaseWindow(QMainWindow):
                 self.is_pressed = False
 
     def __init__(self):
-        super().__init__(flags=Qt.WindowType.Window)  # 隐藏系统标题栏
+        super().__init__()  # 隐藏系统标题栏
 
         self.main_gui:BaseWindow=None
+
+        # 设置窗口标志，
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
+        # 创建文件菜单
+
+
         # 用于记录鼠标状态
         self.is_pressed = False
         self.start_pos = QPoint()

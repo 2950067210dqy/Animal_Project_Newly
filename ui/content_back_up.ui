@@ -36,13 +36,36 @@
         <layout class="QVBoxLayout" name="left_layout"/>
        </item>
        <item>
-        <layout class="QVBoxLayout" name="middle_layout" stretch="5">
+        <layout class="QVBoxLayout" name="middle_layout" stretch="0,5">
          <property name="topMargin">
           <number>0</number>
          </property>
          <property name="bottomMargin">
           <number>0</number>
          </property>
+         <item>
+          <layout class="QVBoxLayout" name="title_layout">
+           <property name="leftMargin">
+            <number>5</number>
+           </property>
+           <property name="topMargin">
+            <number>5</number>
+           </property>
+           <property name="rightMargin">
+            <number>5</number>
+           </property>
+           <property name="bottomMargin">
+            <number>5</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="title_label">
+             <property name="text">
+              <string/>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
          <item>
           <layout class="QVBoxLayout" name="content_layout"/>
          </item>

@@ -4,7 +4,7 @@ import traceback
 import typing
 from datetime import datetime, timedelta
 
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QAction
 from loguru import logger
 
 
@@ -150,6 +150,7 @@ class Tab_4(ThemedWindow):
         super().closeEvent(a0)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
+
         # 图像列表
         self.charts_list = []
         # 对话框

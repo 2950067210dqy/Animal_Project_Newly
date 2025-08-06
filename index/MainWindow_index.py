@@ -5,7 +5,7 @@ from json import JSONDecodeError
 from queue import Queue
 
 from PyQt6 import QtWidgets, QtCore
-from PyQt6.QtCore import QRect
+from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMainWindow, QMessageBox, QLabel, QVBoxLayout, QToolBar, QPushButton, QTabWidget
 from loguru import logger
@@ -108,7 +108,7 @@ class MainWindow_Index(ThemedWindow):
         # 设置窗口大小为屏幕大小
         self.setGeometry(global_setting.get_setting("screen"))
         self.setObjectName("mainWindow_Index")
-
+        self.setWindowFlags(Qt.WindowType.Window|Qt.WindowType.WindowStaysOnBottomHint)
         pass
 
     def _init_customize_ui(self):
@@ -224,6 +224,8 @@ class MainWindow_Index(ThemedWindow):
                     menu.addAction(action)
                     menu.addSeparator()  # 添加分隔线
         pass
+
+
     def _retranslateUi(self, **kwargs):
         _translate = QtCore.QCoreApplication.translate
         self.setWindowTitle(_translate(self.objectName(),global_setting.get_setting("configer")["window"]["title"]))

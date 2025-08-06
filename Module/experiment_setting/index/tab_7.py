@@ -189,6 +189,7 @@ class Tab_7(ThemedWindow):
         self.ui.setupUi(self)
 
         self._retranslateUi()
+
         pass
 
     # 实例化自定义ui
