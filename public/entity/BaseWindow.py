@@ -7,6 +7,8 @@ from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QGri
     QScrollArea, QSizePolicy, QMessageBox, QTabWidget, QGroupBox, QTableWidget
 from loguru import logger
 
+from my_abc.BaseInterfaceWidget import Frame_state
+
 
 class BaseWindow(QMainWindow):
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
@@ -18,6 +20,15 @@ class BaseWindow(QMainWindow):
     def closeEvent(self, event):
         # 关闭事件
         if self.main_gui is not None:
+            for index in range(len(self.main_gui.open_windows)):
+                # 更改每个module的每个窗口状态，当一个module的所有窗口的状态都为closed时就从openwindos移除掉这个module
+                if self.main_gui.open_windows[index].interface_widget.frame_obj is self:
+                    self.main_gui.open_windows[index].interface_widget.frame_obj_state = Frame_state.Closed
+                if self.main_gui.open_windows[index].interface_widget.left_frame_obj is self:
+                    self.main_gui.open_windows[index].interface_widget.left_frame_obj_state = Frame_state.Closed
+                if self.main_gui.open_windows[index].interface_widget.right_frame_obj is self:
+                    self.main_gui.open_windows[index].interface_widget.right_frame_obj_state = Frame_state.__class__
+
             #反向遍历列表，这样删除元素时，不会影响到尚未遍历的元素，因为始终从列表的末尾开始删除。
             new_open_windows = []
             for index in range(len(self.main_gui.open_windows)-1,-1,-1):

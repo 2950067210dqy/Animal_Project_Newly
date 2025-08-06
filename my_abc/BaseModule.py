@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea
 
 from index.Content_index import content_index
 from my_abc import BaseInterfaceWidget
-from my_abc.BaseInterfaceWidget import BaseInterfaceType
+from my_abc.BaseInterfaceWidget import BaseInterfaceType, Frame_state
 from my_abc.BaseService import BaseService
 from public.entity.BaseWindow import BaseWindow
 
@@ -69,12 +69,16 @@ class BaseModule(ABC):
         # 设置父界面给所有子界面
         if self.interface_widget.frame_obj is not None:
             self.interface_widget.frame_obj.set_main_gui(self.main_gui)
+            self.interface_widget.frame_obj_state=Frame_state.Opening
         if self.interface_widget.left_frame_obj is not None:
             self.interface_widget.left_frame_obj.set_main_gui(self.main_gui)
+            self.interface_widget.left_frame_obj_state=Frame_state.Opening
         if self.interface_widget.right_frame_obj is not None:
             self.interface_widget.right_frame_obj.set_main_gui(self.main_gui)
+            self.interface_widget.right_frame_obj_state=Frame_state.Opening
         if self.interface_widget.bottom_frame_obj is not None:
             self.interface_widget.bottom_frame_obj.set_main_gui(self.main_gui)
+            self.interface_widget.bottom_frame_obj_state=Frame_state.Opening
 
         # 根据type来确定相关策略
         if self.interface_widget.type == BaseInterfaceType.WIDGET or self.interface_widget.type == BaseInterfaceType.FRAME:

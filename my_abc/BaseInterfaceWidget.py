@@ -8,18 +8,28 @@ class BaseInterfaceType(Enum):
     WINDOW=0
     FRAME=1
     WIDGET = 1
+class Frame_state(Enum):
+    Default = 0
+    Opening = 1
+    Closed = 2
+
 class BaseInterfaceWidget(ABC):
 
     def __init__(self):
         self.type =None
         # 中间窗口
         self.frame_obj:BaseWindow =None
+        # 窗口状态
+        self.frame_obj_state=Frame_state.Default
         #  左侧窗口
         self.left_frame_obj:  BaseWindow = None
+        self.left_frame_obj_state=Frame_state.Default
         #  右侧窗口
         self.right_frame_obj: BaseWindow = None
+        self.right_frame_obj_state=Frame_state.Default
         #  bottom窗口
         self.bottom_frame_obj: BaseWindow = None
+        self.bottom_frame_obj_state=Frame_state.Default
     @abstractmethod
     def get_type(self)->int:
         """获得类型BaseInterfaceType"""
