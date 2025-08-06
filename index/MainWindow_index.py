@@ -11,12 +11,14 @@ from PyQt6.QtWidgets import QMainWindow, QMessageBox, QLabel, QVBoxLayout, QTool
 from loguru import logger
 
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
-from my_abc.BaseInterfaceWidget import BaseInterfaceWidget, BaseInterfaceType
+
 from my_abc.BaseModule import BaseModule
+
 from public.component.custom_status_bar import CustomStatusBar
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWidget import BaseWidget
 from public.entity.BaseWindow import BaseWindow
+from public.entity.enum.Public_Enum import BaseInterfaceType
 from theme.ThemeQt6 import ThemedWidget, ThemedWindow
 from ui.MainWindow import Ui_MainWindow
 from util.json_util import json_util
@@ -112,7 +114,13 @@ class MainWindow_Index(ThemedWindow):
     def _init_customize_ui(self):
 
         self.content_layout = self.findChild(QVBoxLayout,"content_layout")
-        self.tab_widget = self.findChild(QTabWidget,"tab_widget")
+        self.tab_widget:QTabWidget = self.findChild(QTabWidget,"tab_widget")
+        # 启用标签关闭按钮
+        self.tab_widget.setTabsClosable(True)
+        # 允许标签拖动重新排序
+        self.tab_widget.setMovable(True)
+        # 连接标签关闭信号
+        self.tab_widget.tabCloseRequested.connect(self.close_tab)
         # 加载模块
         self.modules = self.load_modules()
         # 实例化菜单
@@ -207,6 +215,7 @@ class MainWindow_Index(ThemedWindow):
                     # 创建menu action
                     module.set_main_gui(main_gui=self)
                     action = QAction(module_title, self)
+                    action.setToolTip(module_title)
                     # 创建点击事件
                     action.triggered.connect( module.adjustGUIPolicy)
                     action.triggered.connect( module.interface_widget.show)
@@ -257,46 +266,55 @@ class MainWindow_Index(ThemedWindow):
 
             else:
                 module.interface_widget.type=BaseInterfaceType.WIDGET
-
+        new_open_windows = []
+        new_active_module_widgets=[]
         # 将正在显示的方式进行改变
-        if (self.active_module_widgets is None or len(self.active_module_widgets)==0) and len(self.open_windows)!=0:
+        if self.open_windows is not None and len(self.open_windows)!=0:
             #窗口-》frame
             # 将正在显示的方式进行改变
             index = 0
-            while index != len(self.open_windows)-1:
-                if len(self.open_windows) ==0:
-                    break
-                if index > len(self.open_windows)-1:
+            last_module=None
+            while index<len(self.open_windows) or len(self.open_windows)==1:
+                if index>=len(self.open_windows):
                     index=0
-                if self.open_windows[index] is not None :
-                    try:
-                        if self.open_windows[index] not in self.active_module_widgets:
-                            self.active_module_widgets.append(self.open_windows[index])
-                        self.open_windows[index].close()
-                    except Exception as e:
-                        logger.error(e)
-                index += 1
-            for module in self.active_module_widgets:
-                module.adjustGUIPolicy()
-                module.interface_widget.show()
+                module = self.open_windows[index]
+                if last_module is module:
+                    break
+                last_module = module
+                module.close()
+                if module not in self.active_module_widgets:
+                    new_active_module_widgets.append(module)
+                index+=1
 
-        elif self.active_module_widgets is not None and len(self.active_module_widgets)!=0 and len(self.open_windows)==0:
+
+        if self.active_module_widgets is not None and len(self.active_module_widgets)!=0:
             # 从初始布局中移除 label
             # frame-》窗口
-            for module in self.active_module_widgets:
+            index = 0
+            last_module = None
+            while index<len(self.active_module_widgets) or len(self.active_module_widgets)==1:
+                if index>=len(self.active_module_widgets):
+                    index=0
+                module = self.active_module_widgets[index]
+                if last_module is module:
+                    break
+                last_module = module
                 module.setParent(None)
                 module.hide()
                 if module not in self.open_windows:
-                    self.open_windows.append(module)
-
-                # 删除所有标签页和widgets
-                while self.tab_widget.count() > 0:  # 直到没有标签页
-                    self.tab_widget.removeTab(0)  # 删除第一个标签页
-
-            for module in self.open_windows:
-                module.adjustGUIPolicy()
-                module.interface_widget.show()
-
+                    new_open_windows.append(module)
+                index+=1
+        # 删除所有标签页和widgets
+        while self.tab_widget.count() > 0:  # 直到没有标签页
+            self.tab_widget.removeTab(0)  # 删除第一个标签页
+        self.open_windows.extend(new_open_windows)
+        self.active_module_widgets.extend(new_active_module_widgets)
+        for module in self.open_windows:
+            module.adjustGUIPolicy()
+            module.interface_widget.show()
+        for module in self.active_module_widgets:
+            module.adjustGUIPolicy()
+            module.interface_widget.show()
 
 
     # 切换白天黑夜主题功能
@@ -451,3 +469,8 @@ class MainWindow_Index(ThemedWindow):
                 break
         # 停止实验
         pass
+
+    def close_tab(self, index):
+        """关闭标签页"""
+        self.tab_widget.widget(index).hide()
+        self.tab_widget.removeTab(index)

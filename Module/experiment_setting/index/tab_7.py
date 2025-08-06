@@ -9,7 +9,7 @@ from Module.experiment_setting.config.experiment_default_config import get_defau
 from Module.experiment_setting.ui.tab7 import Ui_tab7_frame
 from Module.experiment_setting.ui.tab7_window import Ui_tab7_window
 from Service import main_monitor_data
-from my_abc.BaseInterfaceWidget import BaseInterfaceType
+
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWindow import BaseWindow
 

@@ -1,17 +1,10 @@
 from abc import ABC, abstractmethod
-from enum import Enum
 
-from public.entity.BaseWidget import BaseWidget
+
+
 from public.entity.BaseWindow import BaseWindow
+from public.entity.enum.Public_Enum import Frame_state
 
-class BaseInterfaceType(Enum):
-    WINDOW=0
-    FRAME=1
-    WIDGET = 1
-class Frame_state(Enum):
-    Default = 0
-    Opening = 1
-    Closed = 2
 
 class BaseInterfaceWidget(ABC):
 
@@ -53,7 +46,13 @@ class BaseInterfaceWidget(ABC):
     def create_bottom_window(self) -> BaseWindow:
         """创建并返回自定义的界面部件bottom WINDOW"""
         pass
-
+    def is_all_closed(self):
+        """所有窗口是否关闭"""
+        closed_state = [Frame_state.Closed, Frame_state.Default]
+        if self.frame_obj_state in closed_state and self.left_frame_obj_state in closed_state and self.right_frame_obj_state in closed_state and self.bottom_frame_obj_state in closed_state:
+            return True
+        else:
+            return False
     def close(self):
         """关闭所有窗口 若有"""
         if self.frame_obj is not None:

@@ -1,11 +1,12 @@
 from PyQt6.QtWidgets import QMainWindow
 
 from Module.experiment_setting.index.tab_7 import Tab_7
-from my_abc.BaseInterfaceWidget import BaseInterfaceWidget, BaseInterfaceType
+from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
 from public.entity.BaseWidget import BaseWidget
 from public.entity.BaseWindow import BaseWindow
+from public.entity.enum.Public_Enum import BaseInterfaceType
 
 
 class Main_experiment_setting_service(BaseService):
@@ -32,7 +33,7 @@ class Main_experiment_setting_widget(BaseInterfaceWidget):
 
     def get_type(self):
         """获得类型 """
-        return BaseInterfaceType.WINDOW
+        return BaseInterfaceType.WIDGET
     def create_middle_window(self) -> BaseWindow:
         return Tab_7()
 

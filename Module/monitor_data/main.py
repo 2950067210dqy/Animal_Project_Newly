@@ -2,10 +2,11 @@ from PyQt6.QtWidgets import QMainWindow
 
 
 from Module.monitor_data.index.tab_2 import Tab_2
-from my_abc.BaseInterfaceWidget import BaseInterfaceWidget, BaseInterfaceType
+from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
 from public.entity.BaseWindow import BaseWindow
+from public.entity.enum.Public_Enum import BaseInterfaceType
 
 
 class Main_Monitor_data_service(BaseService):

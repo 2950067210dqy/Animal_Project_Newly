@@ -2,10 +2,11 @@ from PyQt6.QtWidgets import QMainWindow
 
 from Module.monitor_camera.index.tab_4 import Tab_4
 
-from my_abc.BaseInterfaceWidget import BaseInterfaceWidget, BaseInterfaceType
+from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
 from public.entity.BaseWindow import BaseWindow
+from public.entity.enum.Public_Enum import BaseInterfaceType
 
 
 class Main_Monitor_camera_service(BaseService):

@@ -31,11 +31,7 @@
     </property>
     <layout class="QVBoxLayout" name="content_layout">
      <item>
-      <widget class="QTabWidget" name="tab_widget">
-       <property name="currentIndex">
-        <number>-1</number>
-       </property>
-      </widget>
+      <widget class="QTabWidget" name="tab_widget"/>
      </item>
     </layout>
    </widget>

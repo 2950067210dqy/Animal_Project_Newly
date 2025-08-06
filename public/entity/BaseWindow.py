@@ -1,13 +1,16 @@
 import abc
+import sys
 import typing
 
 from PyQt6 import QtCore, QtGui
-from PyQt6.QtCore import QRect, Qt, QSize
+from PyQt6.QtCore import QRect, Qt, QSize, QPoint
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QLayout, \
-    QScrollArea, QSizePolicy, QMessageBox, QTabWidget, QGroupBox, QTableWidget
+    QScrollArea, QSizePolicy, QMessageBox, QTabWidget, QGroupBox, QTableWidget, QToolBar, QApplication
 from loguru import logger
 
-from my_abc.BaseInterfaceWidget import Frame_state
+from public.component.Window_Title_Bar import TitleBar
+from public.entity.enum.Public_Enum import Frame_state
 
 
 class BaseWindow(QMainWindow):
@@ -15,27 +18,49 @@ class BaseWindow(QMainWindow):
         pass
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
         # 主界面的当前页面为None
+
         if self.main_gui is not None:
-            self.main_gui.activate_widget = None
+            index = 0
+            while index < len(self.main_gui.active_module_widgets) :
+                if index>=len(self.main_gui.active_module_widgets):
+                    index=0
+                # 更改每个module的每个窗口状态，当一个module的所有窗口的状态都为closed时就从openwindos移除掉这个module
+                if self.main_gui.active_module_widgets[index].interface_widget.frame_obj is self:
+                    self.main_gui.active_module_widgets[index].interface_widget.frame_obj_state = Frame_state.Closed
+                if self.main_gui.active_module_widgets[index].interface_widget.left_frame_obj is self:
+                    self.main_gui.active_module_widgets[index].interface_widget.left_frame_obj_state = Frame_state.Closed
+                if self.main_gui.active_module_widgets[index].interface_widget.right_frame_obj is self:
+                    self.main_gui.active_module_widgets[index].interface_widget.right_frame_obj_state = Frame_state.Closed
+                if self.main_gui.active_module_widgets[index].interface_widget.bottom_frame_obj is self:
+                    self.main_gui.active_module_widgets[index].interface_widget.bottom_frame_obj_state = Frame_state.Closed
+                # 如果全部关闭则移除该module
+                if self.main_gui.active_module_widgets[index].interface_widget.is_all_closed():
+                    del self.main_gui.active_module_widgets[index]
+                index += 1
     def closeEvent(self, event):
         # 关闭事件
         if self.main_gui is not None:
-            for index in range(len(self.main_gui.open_windows)):
+
+
+            index = 0
+            while index<len(self.main_gui.open_windows) :
+                if index>=len(self.main_gui.open_windows):
+                    index=0
                 # 更改每个module的每个窗口状态，当一个module的所有窗口的状态都为closed时就从openwindos移除掉这个module
                 if self.main_gui.open_windows[index].interface_widget.frame_obj is self:
                     self.main_gui.open_windows[index].interface_widget.frame_obj_state = Frame_state.Closed
                 if self.main_gui.open_windows[index].interface_widget.left_frame_obj is self:
                     self.main_gui.open_windows[index].interface_widget.left_frame_obj_state = Frame_state.Closed
                 if self.main_gui.open_windows[index].interface_widget.right_frame_obj is self:
-                    self.main_gui.open_windows[index].interface_widget.right_frame_obj_state = Frame_state.__class__
+                    self.main_gui.open_windows[index].interface_widget.right_frame_obj_state = Frame_state.Closed
+                if self.main_gui.open_windows[index].interface_widget.bottom_frame_obj is self:
+                    self.main_gui.open_windows[index].interface_widget.bottom_frame_obj_state = Frame_state.Closed
+                # 如果全部关闭则移除该module
+                if self.main_gui.open_windows[index].interface_widget.is_all_closed():
+                    del self.main_gui.open_windows[index]
+                index+=1
 
-            #反向遍历列表，这样删除元素时，不会影响到尚未遍历的元素，因为始终从列表的末尾开始删除。
-            new_open_windows = []
-            for index in range(len(self.main_gui.open_windows)-1,-1,-1):
-                if self.main_gui.open_windows[index] is not self:
-                    new_open_windows.append(self.main_gui.open_windows[index])
-                index += 1
-            self.main_gui.open_windows=new_open_windows
+
 
     def resizeEvent(self, a0 :typing.Optional[QtGui.QResizeEvent]):
         # 获取新的大小
@@ -108,9 +133,33 @@ class BaseWindow(QMainWindow):
                     max_width = max(max_width, size.width())
                     max_height = max(max_height, size.height())
         return QSize(max_width+10, max_height+10)
+
+    def mousePressEvent(self, event):
+        """处理鼠标按下事件"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.is_pressed = True
+            self.start_pos = event.pos()
+
+    def mouseMoveEvent(self, event):
+        """处理鼠标移动事件"""
+        if self.is_pressed:
+            # 移动窗口
+            self.move(self.pos() + event.pos() - self.start_pos)
+
+    def mouseReleaseEvent(self, event):
+        """处理鼠标释放事件"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.is_pressed:
+                self.is_pressed = False
+
     def __init__(self):
-        super().__init__(flags=Qt.WindowType.Window)
+        super().__init__(flags=Qt.WindowType.Window)  # 隐藏系统标题栏
+
         self.main_gui:BaseWindow=None
+        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
+        # 用于记录鼠标状态
+        self.is_pressed = False
+        self.start_pos = QPoint()
 
     @abc.abstractmethod
     def _init_ui(self):

@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 
-from my_abc.BaseInterfaceWidget import BaseInterfaceType
 
 
 class BaseService(ABC):
