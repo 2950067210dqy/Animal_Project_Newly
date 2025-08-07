@@ -177,6 +177,7 @@ class LineChartWidget(QWidget):
 
         # 创建一个新的 QWidget 用于图表
         self.chart_widget = QWidget()
+
         self.chart_layout = QVBoxLayout(self.chart_widget)
         # 创建布局和图表视图
         self.chart_view = QChartView()
@@ -201,7 +202,7 @@ class LineChartWidget(QWidget):
         # layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         #
         # layout.setStretch(6,2)
-
+        scroll_area.ensureWidgetVisible(self.chart_view)
         self.setLayout(layout)
         self.parent_layout.addWidget(self)
 

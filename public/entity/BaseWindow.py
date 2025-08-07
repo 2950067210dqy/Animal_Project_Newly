@@ -19,7 +19,7 @@ class BaseWindow(QMainWindow):
         if event.type() == QEvent.Type.WindowStateChange:
             if event.oldState() & Qt.WindowState.WindowMinimized:
                 #窗口被最小化
-                print("最小化")
+                # print("最小化")
                 event.ignore()
             elif event.oldState() & Qt.WindowState.WindowNoState:
                 #窗口恢复到正常状态

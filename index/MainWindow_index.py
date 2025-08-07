@@ -108,7 +108,7 @@ class MainWindow_Index(ThemedWindow):
         # 设置窗口大小为屏幕大小
         self.setGeometry(global_setting.get_setting("screen"))
         self.setObjectName("mainWindow_Index")
-        self.setWindowFlags(Qt.WindowType.Window|Qt.WindowType.WindowStaysOnBottomHint)
+        # self.setWindowFlags(Qt.WindowType.Window|Qt.WindowType.WindowStaysOnBottomHint)
         pass
 
     def _init_customize_ui(self):

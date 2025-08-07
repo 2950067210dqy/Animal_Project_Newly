@@ -131,7 +131,7 @@
       </layout>
      </item>
      <item>
-      <layout class="QVBoxLayout" name="left_layout" stretch="1,2,2">
+      <layout class="QVBoxLayout" name="left_layout" stretch="1,3,2">
        <property name="bottomMargin">
         <number>50</number>
        </property>

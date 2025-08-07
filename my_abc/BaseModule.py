@@ -4,12 +4,14 @@ from abc import abstractmethod, ABC
 
 from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea
 
+from index import Content_index
 from index.Content_index import content_index
 from my_abc import BaseInterfaceWidget
 
 from my_abc.BaseService import BaseService
 from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import Frame_state, BaseInterfaceType
+from theme.ThemeQt6 import ThemedWindow
 
 
 class BaseModule(ABC):
@@ -102,6 +104,7 @@ class BaseModule(ABC):
             right_layout = tab_frame.findChild(QVBoxLayout,"right_layout")
             bottom_layout = tab_frame.findChild(QVBoxLayout,"bottom_layout")
             middle_layout = tab_frame.findChild(QVBoxLayout,"middle_layout")
+
             content_layout.addWidget(self.interface_widget.frame_obj)
             left_layout.addWidget(self.interface_widget.left_frame_obj)
             right_layout.addWidget(self.interface_widget.right_frame_obj)
@@ -147,6 +150,8 @@ class BaseModule(ABC):
             v_all = v_stretch['top']+v_stretch['bottom']
             h_each = self.main_gui.centralWidget().geometry().width()//h_all
             v_each = self.main_gui.centralWidget().geometry().height()//v_all
+
+
             if self.interface_widget.left_frame_obj is not None:
                 self.interface_widget.left_frame_obj.setWindowTitle(self.title + 'left')
                 self.interface_widget.left_frame_obj.setGeometry(
