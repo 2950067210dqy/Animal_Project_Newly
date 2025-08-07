@@ -4,84 +4,25 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.1.4.1 修改bug tab2的bug 调试没问题，运行报错,添加未添加文件">
-      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/config/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/index/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/index/tab_4.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/main.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/service/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/ui/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/ui/tab4.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_camera/ui/tab4_Backup.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab1_window.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab2_window.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab3_window.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab4_window.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab5_window.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab6_window.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Service/main_deep_camera.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Service/main_infrared_camera.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/config/camera_config.ini" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/config/deep_camera_intrinsics.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/equipment/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/equipment/deep_camera/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/distance_correction.dat" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/interfaces.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/mi48.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/plots.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/equipment/infrared_camera/senxor/utils.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/custom_status_bar.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/deep_camera_config_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/deep_camera_config_dialog.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/index/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/index/deep_camera_config_dialog_index.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/index/infrared_camera_config_dialog_index.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/index/infrared_camera_read_SN_dialog_index.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/infrared_camera_config_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/infrared_camera_config_dialog.ui" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/infrared_camera_read_SN_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/component/dialog/infrared_camera_read_SN_dialog.ui" afterDir="false" />
+    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.1.5.7  准备忽略窗口最小化事件">
+      <change afterPath="$PROJECT_DIR$/Module/new_experiment/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/new_experiment/index/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/new_experiment/index/new_experiment_index.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/new_experiment/main.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/new_experiment/service/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/new_experiment/ui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/new_experiment/ui/animal_window.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/new_experiment/ui/content_window.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Module/new_experiment/ui/group_window.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/config/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/config/experiment_setting_config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/experiment_setting/index/tab_7.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/experiment_setting/index/tab_7.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/experiment_setting/service/main_monitor_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_monitor_data.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/index/tab_2.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/index/tab_2.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/component/data.db" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/component/paging_exportcsv_table_widget.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/component/paging_exportcsv_table_widget.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/component/selection_line_charts.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/component/selection_line_charts.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab0_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab0_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab1_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab1_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab2_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab2_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab3_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab3_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab4_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab4_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab5_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab5_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab6_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/index/tab2_tab6_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0.ui" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0_window.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0_window.ui" beforeDir="false" afterPath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab0_window.ui" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab1.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab1.ui" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab2.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab2.ui" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab3.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab3.ui" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab4.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab4.ui" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab5.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab5.ui" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab6.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab6.ui" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/monitor_data/ui/tab/tab2_tab_backup.ui" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Service/main_gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_gui.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/config/gui_config.ini" beforeDir="false" afterPath="$PROJECT_DIR$/config/gui_config.ini" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/index/MainWindow_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/index/MainWindow_index.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/entity/BaseWindow.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/entity/BaseWindow.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/entity/MyQThread.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/entity/MyQThread.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/theme/ThemeManager.py" beforeDir="false" afterPath="$PROJECT_DIR$/theme/ThemeManager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/my_abc/BaseModule.py" beforeDir="false" afterPath="$PROJECT_DIR$/my_abc/BaseModule.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/component/custom_status_bar.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/component/custom_status_bar.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui/content.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/content.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui/content.ui" beforeDir="false" afterPath="$PROJECT_DIR$/ui/content.ui" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -98,6 +39,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;2950067210dqy&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:2950067210dqy/Animal_Project_Newly.git&quot;,
+    &quot;accountId&quot;: &quot;e254beac-5d97-4626-8080-61c824286e30&quot;
+  }
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 7
 }</component>
@@ -111,11 +64,14 @@
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "Python.MainWindow_index.executor": "Run",
     "Python.ThemeQt6.executor": "Run",
+    "Python.animal_window.executor": "Run",
+    "Python.content_window.executor": "Run",
+    "Python.group_window.executor": "Run",
     "Python.main.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "master",
-    "last_opened_file_path": "D:/WorkSpace/Animal_Project_Newly/Service",
+    "last_opened_file_path": "D:/WorkSpace/Animal_Project_Newly",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -127,11 +83,11 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\WorkSpace\Animal_Project_Newly\ui" />
       <recent name="D:\WorkSpace\Animal_Project_Newly\Service" />
       <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera" />
       <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera\ui" />
       <recent name="D:\WorkSpace\Animal_Project_Newly\config" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\public\component" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="D:\WorkSpace\Animal_Project_Newly\public\component" />
@@ -141,7 +97,76 @@
       <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera" />
     </key>
   </component>
-  <component name="RunManager">
+  <component name="RunManager" selected="Python.main">
+    <configuration name="animal_window" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Animal_Project_newly" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/Module/new_experiment/ui" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Module/new_experiment/ui/animal_window.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="content_window" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Animal_Project_newly" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/Module/new_experiment/ui" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Module/new_experiment/ui/content_window.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="group_window" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Animal_Project_newly" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/Module/new_experiment/ui" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Module/new_experiment/ui/group_window.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
       <module name="Animal_Project_newly" />
       <option name="ENV_FILES" value="" />
@@ -166,6 +191,13 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.content_window" />
+        <item itemvalue="Python.animal_window" />
+        <item itemvalue="Python.group_window" />
+      </list>
+    </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
@@ -187,7 +219,9 @@
       <workItem from="1753855353378" duration="161000" />
       <workItem from="1753855530909" duration="1027000" />
       <workItem from="1753858237442" duration="25721000" />
-      <workItem from="1753980723199" duration="16117000" />
+      <workItem from="1753980723199" duration="16351000" />
+      <workItem from="1754480206005" duration="26154000" />
+      <workItem from="1754596366270" duration="10198000" />
     </task>
     <task id="LOCAL-00001" summary="1.0 创建基本项目 模块化筹备">
       <option name="closed" value="true" />
@@ -221,7 +255,31 @@
       <option name="project" value="LOCAL" />
       <updated>1753912918099</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="1.1.5 添加自定义状态栏 添加相机监控页面，相机服务还有bug未解决">
+      <option name="closed" value="true" />
+      <created>1753997131110</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1753997131110</updated>
+    </task>
+    <task id="LOCAL-00006" summary="1.1.5.6 窗口自己选择的完成，发现更优窗口QDockWidget">
+      <option name="closed" value="true" />
+      <created>1754516979085</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1754516979085</updated>
+    </task>
+    <task id="LOCAL-00007" summary="1.1.5.7  准备忽略窗口最小化事件">
+      <option name="closed" value="true" />
+      <created>1754522082373</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1754522082373</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -232,7 +290,19 @@
       <map>
         <entry key="MAIN">
           <value>
-            <State />
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="origin/master" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
           </value>
         </entry>
       </map>
@@ -243,20 +313,38 @@
     <MESSAGE value="1.1.2 修改bug2" />
     <MESSAGE value="1.1.4 修改bug tab2的bug 调试没问题，运行报错" />
     <MESSAGE value="1.1.4.1 修改bug tab2的bug 调试没问题，运行报错,添加未添加文件" />
-    <option name="LAST_COMMIT_MESSAGE" value="1.1.4.1 修改bug tab2的bug 调试没问题，运行报错,添加未添加文件" />
+    <MESSAGE value="1.1.5 添加自定义状态栏 添加相机监控页面，相机服务还有bug未解决" />
+    <MESSAGE value="1.1.5.6 窗口自己选择的完成，发现更优窗口QDockWidget" />
+    <MESSAGE value="1.1.5.7  准备忽略窗口最小化事件" />
+    <option name="LAST_COMMIT_MESSAGE" value="1.1.5.7  准备忽略窗口最小化事件" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/index/MainWindow_index.py</url>
-          <line>368</line>
+          <line>403</line>
           <option name="timeStamp" value="49" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/index/MainWindow_index.py</url>
-          <line>314</line>
-          <option name="timeStamp" value="50" />
+          <line>290</line>
+          <option name="timeStamp" value="63" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/index/MainWindow_index.py</url>
+          <line>272</line>
+          <option name="timeStamp" value="64" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/index/MainWindow_index.py</url>
+          <line>312</line>
+          <option name="timeStamp" value="70" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/index/MainWindow_index.py</url>
+          <line>336</line>
+          <option name="timeStamp" value="73" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>
@@ -267,11 +355,22 @@
         </breakpoint>
       </default-breakpoints>
     </breakpoint-manager>
+    <watches-manager>
+      <configuration name="PythonConfigurationType">
+        <watch expression="self.active_module_widgets" />
+        <watch expression="self.open_windows" />
+        <watch expression="self.main_gui.active_module_widgets" />
+        <watch expression="self.main_gui.open_windows" />
+      </configuration>
+    </watches-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Animal_Project_newly$MainWindow_index.coverage" NAME="MainWindow_index 覆盖结果" MODIFIED="1753702069150" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/index" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$content_window.coverage" NAME="content_window 覆盖结果" MODIFIED="1754602882436" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$group_window.coverage" NAME="group_window 覆盖结果" MODIFIED="1754600767409" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$animal_window.coverage" NAME="animal_window 覆盖结果" MODIFIED="1754602169200" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$ThemeQt6.coverage" NAME="ThemeQt6 覆盖结果" MODIFIED="1753687576845" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/theme" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753996820615" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1754606526241" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753787419017" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
   </component>
 </project>

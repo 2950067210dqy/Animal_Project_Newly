@@ -215,7 +215,6 @@ class MainWindow_Index(ThemedWindow):
                     # 创建menu action
                     module.set_main_gui(main_gui=self)
                     action = QAction(module_title, self)
-                    action.setToolTip(module_title)
                     # 创建点击事件
                     action.triggered.connect( module.adjustGUIPolicy)
                     action.triggered.connect( module.interface_widget.show)

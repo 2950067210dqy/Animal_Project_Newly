@@ -2,7 +2,7 @@
 import queue
 from abc import abstractmethod, ABC
 
-from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea, QHBoxLayout
 
 from index import Content_index
 from index.Content_index import content_index
@@ -105,10 +105,38 @@ class BaseModule(ABC):
             bottom_layout = tab_frame.findChild(QVBoxLayout,"bottom_layout")
             middle_layout = tab_frame.findChild(QVBoxLayout,"middle_layout")
 
+
             content_layout.addWidget(self.interface_widget.frame_obj)
             left_layout.addWidget(self.interface_widget.left_frame_obj)
             right_layout.addWidget(self.interface_widget.right_frame_obj)
             bottom_layout.addWidget(self.interface_widget.bottom_frame_obj)
+
+            # 拉伸系数的layout
+            main_layout:QVBoxLayout = tab_frame.findChild(QVBoxLayout,"main_layout")
+            top_layout:QHBoxLayout = tab_frame.findChild(QHBoxLayout,"top_layout")
+            if self.interface_widget.bottom_frame_obj is None:
+                "没有bottomlayout"
+                main_layout.setStretchFactor(bottom_layout,0)
+                main_layout.setStretchFactor(top_layout,6)
+            else:
+                main_layout.setStretchFactor(bottom_layout,1)
+                main_layout.setStretchFactor(top_layout, 5)
+            if self.interface_widget.left_frame_obj is None and self.interface_widget.right_frame_obj is None:
+                top_layout.setStretchFactor(left_layout,0)
+                top_layout.setStretchFactor(middle_layout,6)
+                top_layout.setStretchFactor(right_layout,0)
+            elif self.interface_widget.left_frame_obj is None:
+                top_layout.setStretchFactor(left_layout, 0)
+                top_layout.setStretchFactor(middle_layout, 5)
+                top_layout.setStretchFactor(right_layout, 1)
+            elif self.interface_widget.right_frame_obj is None:
+                top_layout.setStretchFactor(left_layout, 1)
+                top_layout.setStretchFactor(middle_layout, 5)
+                top_layout.setStretchFactor(right_layout, 0)
+            else:
+                top_layout.setStretchFactor(left_layout, 1)
+                top_layout.setStretchFactor(right_layout, 1)
+                top_layout.setStretchFactor(middle_layout, 4)
             if self.interface_widget.frame_obj is not None:
                 self.interface_widget.frame_obj.resize(int(middle_layout.geometry().width()),
                                                        int(middle_layout.geometry().height()))
@@ -144,8 +172,20 @@ class BaseModule(ABC):
 
             flag = 10
             # ，每部分layout占多少
-            h_stretch = {'left':1,'middle':3,'right':1}
-            v_stretch = {'top':4,'bottom':1}
+            if self.interface_widget.bottom_frame_obj is None:
+                "没有bottomlayout"
+                v_stretch = {'top': 5, 'bottom': 0}
+            else:
+                v_stretch = {'top': 4, 'bottom': 1}
+            if self.interface_widget.left_frame_obj is None and self.interface_widget.right_frame_obj is None:
+                h_stretch = {'left': 0, 'middle': 5, 'right': 0}
+            elif self.interface_widget.left_frame_obj is None:
+                h_stretch = {'left': 0, 'middle': 4, 'right': 1}
+            elif self.interface_widget.right_frame_obj is None:
+                h_stretch = {'left': 1, 'middle': 4, 'right':0}
+            else:
+                h_stretch = {'left': 1, 'middle': 3, 'right': 1}
+
             h_all = h_stretch['left']+h_stretch['middle']+h_stretch['right']
             v_all = v_stretch['top']+v_stretch['bottom']
             h_each = self.main_gui.centralWidget().geometry().width()//h_all

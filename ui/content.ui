@@ -16,12 +16,12 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_2">
     <item>
-     <layout class="QVBoxLayout" name="verticalLayout" stretch="6,1">
+     <layout class="QVBoxLayout" name="main_layout" stretch="6,0">
       <property name="bottomMargin">
        <number>0</number>
       </property>
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout" stretch="1,3,1">
+       <layout class="QHBoxLayout" name="top_layout" stretch="0,3,0">
         <property name="rightMargin">
          <number>0</number>
         </property>
@@ -37,7 +37,7 @@
            <number>0</number>
           </property>
           <item>
-           <layout class="QVBoxLayout" name="content_layout" stretch=""/>
+           <layout class="QVBoxLayout" name="content_layout"/>
           </item>
          </layout>
         </item>
@@ -49,7 +49,7 @@
       <item>
        <layout class="QVBoxLayout" name="bottom_layout">
         <property name="sizeConstraint">
-         <enum>QLayout::SetFixedSize</enum>
+         <enum>QLayout::SetDefaultConstraint</enum>
         </property>
        </layout>
       </item>
