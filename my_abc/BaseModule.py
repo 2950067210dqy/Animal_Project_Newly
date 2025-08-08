@@ -108,13 +108,11 @@ class BaseModule(ABC):
             scroll_bottom_layout =  BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"bottom_layout"))
             scroll_middle_layout =   BaseWindow.add_scroll_area_if_not_exists(tab_frame.findChild(QVBoxLayout,"middle_layout"))
 
-
-
             scroll_middle_layout.addWidget(self.interface_widget.frame_obj)
             scroll_left_layout.addWidget(self.interface_widget.left_frame_obj)
             scroll_right_layout.addWidget(self.interface_widget.right_frame_obj)
             scroll_bottom_layout.addWidget(self.interface_widget.bottom_frame_obj)
-
+            self.interface_widget.setMinimumSize()
             # 拉伸系数的layout
             main_layout:QVBoxLayout = tab_frame.findChild(QVBoxLayout,"main_layout")
             top_layout:QHBoxLayout = tab_frame.findChild(QHBoxLayout,"top_layout")
@@ -170,7 +168,7 @@ class BaseModule(ABC):
                 self.interface_widget.bottom_frame_obj.resize(int(bottom_layout.geometry().width()),
                                                               int(bottom_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
 
-            self.interface_widget.setMinimumSize()
+
 
 
 
@@ -205,7 +203,7 @@ class BaseModule(ABC):
             h_each = self.main_gui.centralWidget().geometry().width()//h_all
             v_each = self.main_gui.centralWidget().geometry().height()//v_all
 
-
+            self.interface_widget.setMinimumSize(0, 0)
             if self.interface_widget.left_frame_obj is not None:
                 self.interface_widget.left_frame_obj.menuBar().show()
                 self.interface_widget.left_frame_obj.statusBar().show()
@@ -247,8 +245,9 @@ class BaseModule(ABC):
                     v_each * (v_stretch['bottom'])-self.main_gui.toolbar.geometry().height() ,
 
                 )
-            self.interface_widget.setMinimumSize(0, 0)
+
             self.interface_widget.show()
+
             # 添加窗口
             if self not in  self.main_gui.open_windows:
                 self.main_gui.open_windows.append(self)
