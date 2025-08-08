@@ -207,6 +207,41 @@ class BaseWindow(QMainWindow):
         # 加载自定义qss样式表
         pass
 
+
+    # 为layout添加scroll_area 返回待scroll_area的layout
+    @classmethod
+    def add_scroll_area_if_not_exists(cls,layout):
+        """
+        检查指定的布局是否已经包含QScrollArea，如果没有则添加一个QScrollArea。
+
+        :param layout: QVBoxLayout 要检索和添加滚动区域的布局
+        :return: 返回滚动区域的内容布局以便添加小部件
+        """
+        if layout is None:
+            return None
+        for i in range(layout.count()):
+            item_widget = layout.itemAt(i).widget()
+            if isinstance(item_widget, QScrollArea):
+                print("QScrollArea already exists. Not adding again.")
+                return None  # 如果已经存在，返回 None
+
+        # 创建 QScrollArea
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        # scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        # scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        # 创建一个新的 QWidget 作为滚动区域的内容
+        scroll_content = QWidget()
+        scroll_content_layout = QVBoxLayout(scroll_content)
+
+        # 将内容设置为滚动区域的内容
+        scroll_area.setWidget(scroll_content)
+
+        # 将 QScrollArea 添加到布局中
+        layout.addWidget(scroll_area)
+
+        return scroll_content_layout  # 返回内容布局
+
     # 将ui文件转成py文件后 直接实例化该py文件里的类对象  uic工具转换之后就是这一段代码 应该是可以统一将文字改为其他语言
     def _retranslateUi(self, **kwargs):
         _translate = QtCore.QCoreApplication.translate

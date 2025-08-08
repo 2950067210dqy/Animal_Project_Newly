@@ -13,7 +13,7 @@ class AnimalInfoDialog(QDialog):
     def __init__(self, animal=None):
         super().__init__()
         self.setWindowTitle("动物信息")
-
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         self.layout = QVBoxLayout()
 
         self.name_label = QLabel("动物名称:")

@@ -217,7 +217,7 @@ class MainWindow_Index(ThemedWindow):
                     action = QAction(module_title, self)
                     # 创建点击事件
                     action.triggered.connect( module.adjustGUIPolicy)
-                    action.triggered.connect( module.interface_widget.show)
+                    # action.triggered.connect( module.interface_widget.show)
 
                     # 将操作添加到文件菜单
                     menu.addAction(action)
@@ -312,9 +312,12 @@ class MainWindow_Index(ThemedWindow):
         self.active_module_widgets.extend(new_active_module_widgets)
         for module in self.open_windows:
             module.adjustGUIPolicy()
+            module.interface_widget.setMinimumSize(0,0)
             module.interface_widget.show()
+
         for module in self.active_module_widgets:
             module.adjustGUIPolicy()
+            module.interface_widget.setMinimumSize()
             module.interface_widget.show()
 
 

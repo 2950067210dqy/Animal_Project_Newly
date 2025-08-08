@@ -1,6 +1,7 @@
+import typing
 from abc import ABC, abstractmethod
 
-
+from PyQt6.QtCore import QSize
 
 from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import Frame_state
@@ -93,3 +94,31 @@ class BaseInterfaceWidget(ABC):
             self.right_frame_obj.setParent(parent)
         if self.bottom_frame_obj is not None:
             self.bottom_frame_obj.setParent(parent)
+    @typing.overload
+    def setMinimumSize(self,width:int,height:int)->None:...
+    @typing.overload
+    def setMinimumSize(self)->None:...
+
+    # 这里是实际的实现
+    def setMinimumSize(self, width: typing.Union[int]=None,height: typing.Union[int]=None) -> typing.Union[None]:
+        if width is None and height is None:
+            if self.frame_obj is not None:
+                self.frame_obj.setMinimumSize(self.frame_obj.calculate_minimum_suggested_size())
+            if self.left_frame_obj is not None:
+                self.left_frame_obj.setMinimumSize(self.left_frame_obj.calculate_minimum_suggested_size())
+            if self.right_frame_obj is not None:
+                self.right_frame_obj.setMinimumSize(self.right_frame_obj.calculate_minimum_suggested_size())
+            if self.bottom_frame_obj is not None:
+                self.bottom_frame_obj.setMinimumSize(self.bottom_frame_obj.calculate_minimum_suggested_size())
+        elif isinstance(width, int) and isinstance(height, int):
+            # 设置最小界面大小
+            if self.frame_obj is not None:
+                self.frame_obj.setMinimumSize(width, height)
+            if self.left_frame_obj is not None:
+                self.left_frame_obj.setMinimumSize(width, height)
+            if self.right_frame_obj is not None:
+                self.right_frame_obj.setMinimumSize(width, height)
+            if self.bottom_frame_obj is not None:
+                self.bottom_frame_obj.setMinimumSize(width, height)
+        else:
+            raise ValueError("Invalid type")

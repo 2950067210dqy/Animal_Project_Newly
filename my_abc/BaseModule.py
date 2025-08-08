@@ -2,7 +2,7 @@
 import queue
 from abc import abstractmethod, ABC
 
-from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea, QHBoxLayout
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea, QHBoxLayout, QMainWindow
 
 from index import Content_index
 from index.Content_index import content_index
@@ -91,25 +91,29 @@ class BaseModule(ABC):
             tab_content.setObjectName(f"tab_content_{self.menu_name['text']}_{self.name}")
             tab_layout = QVBoxLayout(tab_content)
             tab_layout.setObjectName(f"tab_content_{self.menu_name['text']}_{self.name}_layout")
-            # 创建一个 QScrollArea
-            scroll_area = QScrollArea(tab_content)
-            scroll_area.setObjectName(f"scroll_tab_{self.menu_name['text']}_{self.name}")
-            scroll_area.setWidgetResizable(True)  # 使内容小部件可以调整大小
 
             # 创建一个内容小部件并填充内容
 
             tab_frame = content_index()
-            content_layout =tab_frame.findChild(QVBoxLayout,"content_layout")
-            left_layout = tab_frame.findChild(QVBoxLayout,"left_layout")
-            right_layout = tab_frame.findChild(QVBoxLayout,"right_layout")
-            bottom_layout = tab_frame.findChild(QVBoxLayout,"bottom_layout")
-            middle_layout = tab_frame.findChild(QVBoxLayout,"middle_layout")
 
 
-            content_layout.addWidget(self.interface_widget.frame_obj)
-            left_layout.addWidget(self.interface_widget.left_frame_obj)
-            right_layout.addWidget(self.interface_widget.right_frame_obj)
-            bottom_layout.addWidget(self.interface_widget.bottom_frame_obj)
+
+            left_layout =tab_frame.findChild(QVBoxLayout, "left_layout")
+            right_layout = tab_frame.findChild(QVBoxLayout, "right_layout")
+            bottom_layout = tab_frame.findChild(QVBoxLayout, "bottom_layout")
+            middle_layout =tab_frame.findChild(QVBoxLayout, "middle_layout")
+
+            scroll_left_layout =    BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"left_layout"))
+            scroll_right_layout =   BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"right_layout"))
+            scroll_bottom_layout =  BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"bottom_layout"))
+            scroll_middle_layout =   BaseWindow.add_scroll_area_if_not_exists(tab_frame.findChild(QVBoxLayout,"middle_layout"))
+
+
+
+            scroll_middle_layout.addWidget(self.interface_widget.frame_obj)
+            scroll_left_layout.addWidget(self.interface_widget.left_frame_obj)
+            scroll_right_layout.addWidget(self.interface_widget.right_frame_obj)
+            scroll_bottom_layout.addWidget(self.interface_widget.bottom_frame_obj)
 
             # 拉伸系数的layout
             main_layout:QVBoxLayout = tab_frame.findChild(QVBoxLayout,"main_layout")
@@ -119,8 +123,8 @@ class BaseModule(ABC):
                 main_layout.setStretchFactor(bottom_layout,0)
                 main_layout.setStretchFactor(top_layout,6)
             else:
-                main_layout.setStretchFactor(bottom_layout,1)
-                main_layout.setStretchFactor(top_layout, 5)
+                main_layout.setStretchFactor(bottom_layout,2)
+                main_layout.setStretchFactor(top_layout, 4)
             if self.interface_widget.left_frame_obj is None and self.interface_widget.right_frame_obj is None:
                 top_layout.setStretchFactor(left_layout,0)
                 top_layout.setStretchFactor(middle_layout,6)
@@ -137,31 +141,41 @@ class BaseModule(ABC):
                 top_layout.setStretchFactor(left_layout, 1)
                 top_layout.setStretchFactor(right_layout, 1)
                 top_layout.setStretchFactor(middle_layout, 4)
+            size_factor = 0.9
             if self.interface_widget.frame_obj is not None:
+                self.interface_widget.frame_obj.menuBar().hide()
+                self.interface_widget.frame_obj.statusBar().hide()
                 self.interface_widget.frame_obj.resize(int(middle_layout.geometry().width()),
-                                                       int(middle_layout.geometry().height()))
+                                                       int(middle_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
+
+
             if self.interface_widget.left_frame_obj is not None:
+                self.interface_widget.left_frame_obj.menuBar().hide()
+                self.interface_widget.left_frame_obj.statusBar().hide()
                 self.interface_widget.left_frame_obj.resize(
                     int(left_layout.geometry().width()),
-                    int(left_layout.geometry().height()))
+                    int(left_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
+
+
             if self.interface_widget.right_frame_obj is not None:
+                self.interface_widget.right_frame_obj.menuBar().hide()
+                self.interface_widget.right_frame_obj.statusBar().hide()
                 self.interface_widget.right_frame_obj.resize(int(right_layout.geometry().width()),
-                                                             int(right_layout.geometry().height()))
+                                                             int(right_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
+
+
             if self.interface_widget.bottom_frame_obj is not None:
+                self.interface_widget.bottom_frame_obj.menuBar().hide()
+                self.interface_widget.bottom_frame_obj.statusBar().hide()
                 self.interface_widget.bottom_frame_obj.resize(int(bottom_layout.geometry().width()),
-                                                              int(bottom_layout.geometry().height()))
-            content_widget = QWidget()
-            content_widget.setObjectName(f"scroll_tab_content_widget_{self.menu_name['text']}_{self.name}")
+                                                              int(bottom_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
 
-            content_layout = QVBoxLayout(content_widget)
-            content_layout.setObjectName(f"scroll_tab_{self.menu_name['text']}_{self.name}_content_widget_layout")
-            content_layout.addWidget(tab_frame)
+            self.interface_widget.setMinimumSize()
 
-            # 将内容小部件添加到 QScrollArea
-            scroll_area.setWidget(content_widget)
+
+
             # 将 scroll_area 添加进去
-            tab_layout.addWidget(scroll_area)
-            tab_content.setLayout(tab_layout)
+            tab_layout.addWidget(tab_frame)
             self.main_gui.tab_widget.addTab(tab_content,self.title)
 
             # 将界面放入正在显示界面
@@ -193,6 +207,8 @@ class BaseModule(ABC):
 
 
             if self.interface_widget.left_frame_obj is not None:
+                self.interface_widget.left_frame_obj.menuBar().show()
+                self.interface_widget.left_frame_obj.statusBar().show()
                 self.interface_widget.left_frame_obj.setWindowTitle(self.title + 'left')
                 self.interface_widget.left_frame_obj.setGeometry(
                     0,
@@ -202,14 +218,17 @@ class BaseModule(ABC):
 
                 )
             if self.interface_widget.frame_obj is not None:
+                self.interface_widget.frame_obj.menuBar().show()
+                self.interface_widget.frame_obj.statusBar().show()
                 self.interface_widget.frame_obj.setWindowTitle(self.title+'content')
                 self.interface_widget.frame_obj.setGeometry(h_each*(h_stretch['left']),
                                                             self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + flag,
                                                             h_each*(h_stretch['middle']),
                                                             v_each*(v_stretch['top']),
                                                             )
-
             if self.interface_widget.right_frame_obj is not None:
+                self.interface_widget.right_frame_obj.menuBar().show()
+                self.interface_widget.right_frame_obj.statusBar().show()
                 self.interface_widget.right_frame_obj.setWindowTitle(self.title+'right')
                 self.interface_widget.right_frame_obj.setGeometry(
                     h_each * (h_stretch['middle'] +h_stretch['left']),
@@ -218,16 +237,18 @@ class BaseModule(ABC):
                     v_each * (v_stretch['top']) ,
                 )
             if self.interface_widget.bottom_frame_obj is not None:
+                self.interface_widget.bottom_frame_obj.menuBar().show()
+                self.interface_widget.bottom_frame_obj.statusBar().show()
                 self.interface_widget.bottom_frame_obj.setWindowTitle(self.title+'bottom')
                 self.interface_widget.bottom_frame_obj.setGeometry(
                     0,
-                    self.main_gui.centralWidget().geometry().top()+v_each * (v_stretch['top']),
+                    self.main_gui.centralWidget().geometry().top()+v_each * (v_stretch['top'])+ self.main_gui.toolbar.geometry().height() ,
                     self.main_gui.centralWidget().width(),
-                    v_each * (v_stretch['bottom']) ,
+                    v_each * (v_stretch['bottom'])-self.main_gui.toolbar.geometry().height() ,
 
                 )
-
-
+            self.interface_widget.setMinimumSize(0, 0)
+            self.interface_widget.show()
             # 添加窗口
             if self not in  self.main_gui.open_windows:
                 self.main_gui.open_windows.append(self)

@@ -69,4 +69,5 @@ class New_experiment_index(ThemedWindow):
             self.left_dock_widget.setWidget(self.left_dock_widget_content)
         if self.right_dock_widget != None:
             self.right_dock_widget.setWidget(self.right_dock_widget_content)
-        self.center_widget_content.setParent(self.centralWidget())
+        self.setCentralWidget(self.center_widget_content)
+        # self.center_widget_content.setParent(self.centralWidget())

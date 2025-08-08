@@ -210,6 +210,8 @@ class LineChartWidget(QWidget):
         theme = self.theme
         # 创建图表对象
         self.chart = QChart()
+
+
         self.chart.setObjectName(f"{self.object_name}_chart")
         # self.chart.setTitle("自定义图表")
 
@@ -226,12 +228,6 @@ class LineChartWidget(QWidget):
         self._set_y_axis()
         # 设置样式
         # self.set_style()
-
-
-
-
-
-
         # 添加到视图
         self.chart_view.setChart(self.chart)
 
