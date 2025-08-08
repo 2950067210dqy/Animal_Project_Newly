@@ -65,9 +65,12 @@ class New_experiment_index(ThemedWindow):
         self.right_dock_widget_content:AnimalWindow = AnimalWindow()
 
         self.center_widget_content:ContentWindow=ContentWindow()
+        self.center_widget_content.setWindowTitle("新建实验操作")
         if self.left_dock_widget != None:
+            self.left_dock_widget.setWindowTitle("组/通道操作")
             self.left_dock_widget.setWidget(self.left_dock_widget_content)
         if self.right_dock_widget != None:
+            self.right_dock_widget.setWindowTitle("动物操作")
             self.right_dock_widget.setWidget(self.right_dock_widget_content)
         self.setCentralWidget(self.center_widget_content)
         # self.center_widget_content.setParent(self.centralWidget())
