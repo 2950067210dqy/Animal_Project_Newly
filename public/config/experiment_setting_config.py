@@ -11,6 +11,7 @@ class Setting_Table(Enum):
             ("create_time", "获取时间", " TIMESTAMP "),
             ("update_time", "获取时间", " TIMESTAMP ")
         ],
+        "foreign_key": None
     }
 
     Animal = {
@@ -28,6 +29,7 @@ class Setting_Table(Enum):
             ("update_time", "获取时间", " TIMESTAMP ")
 
         ],
+        "foreign_key":None
     }
 
     Group_Animal= {
@@ -42,4 +44,9 @@ class Setting_Table(Enum):
             ("update_time", "获取时间", " TIMESTAMP ")
 
         ],
+        "foreign_key":{
+            "key":['aid','gid'],
+            "reference_ley":[f"{Group.value['base_table_name']}(id)",f"{Animal.value['base_table_name']}(id)"],
+
+        }
     }

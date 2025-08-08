@@ -56,6 +56,9 @@ class CustomStatusBar(QStatusBar):
         self.progress_bar.setValue(0)
         self.addPermanentWidget(self.progress_bar)  # 将进度条添加为永久小部件
 
+        # 添加当前实验设置文件显示
+        self.setting_file_name_label = QLabel("当前未存在实验文件")
+        self.addWidget(self.setting_file_name_label)
 
         # 将更新时间信号绑定更新时间label界面函数
         self.update_time_main_signal_gui_update.connect(self.update_time_function_start_gui_update)
@@ -65,7 +68,8 @@ class CustomStatusBar(QStatusBar):
 
     def update_tip(self, message):
         self.tip_label.setText(message)
-
+    def update_setting_file_name(self,message):
+        self.setting_file_name_label.setText(message)
     def set_progress(self, value):
         self.progress_bar.setValue(value)
 

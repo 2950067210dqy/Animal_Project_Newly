@@ -6,6 +6,7 @@ from PyQt6.QtGui import QIntValidator
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QScrollArea, QListWidget, \
     QApplication, QPushButton, QMenu
 
+from public.config_class.global_setting import global_setting
 from public.entity.BaseWindow import BaseWindow
 from theme.ThemeQt6 import ThemedWindow
 
@@ -40,12 +41,12 @@ class GroupWindow(BaseWindow):
         self.top_layout.addWidget(self.line_edit)
 
         # 添加分组/动物通道标签
-        channel_label = QLabel("分组/动物通道")
+        channel_label = QLabel("个分组/动物通道")
         self.top_layout.addWidget(channel_label)
 
         # 添加确定添加按钮
         add_button = QPushButton("确定添加")
-        add_button.clicked.connect(self.add_animal)
+        add_button.clicked.connect(self.add_group)
         self.top_layout.addWidget(add_button)
 
         # 创建内容布局
@@ -67,8 +68,10 @@ class GroupWindow(BaseWindow):
         # 连接右键菜单事件
         self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_widget.customContextMenuRequested.connect(self.show_context_menu)
-
-    def add_animal(self):
+    def init_group(self):
+        global_setting.get_setting("experiment_setting",None)
+        pass
+    def add_group(self):
         # 从输入框获取动物通道号，添加到列表中
         channel_number = self.line_edit.text()
         if channel_number.isdigit():  # 检查输入值是否为数字

@@ -163,7 +163,6 @@ class Monitor_Datas_Handle():
         results = []
 
         if results_query is not None and len(results_query) > 0:
-            # 不要id 和time
             results = results_query
         return results
         pass
@@ -178,7 +177,6 @@ class Monitor_Datas_Handle():
         results = 0
 
         if results_query is not None:
-            # 不要id 和time
             results = results_query
         return results
         pass
@@ -195,7 +193,6 @@ class Monitor_Datas_Handle():
         results = []
 
         if results_query is not None and len(results_query) > 0:
-            # 不要id 和time
             results = results_query
         return results
         pass
