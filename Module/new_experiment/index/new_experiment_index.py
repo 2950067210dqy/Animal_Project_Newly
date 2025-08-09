@@ -8,6 +8,8 @@ from Module.new_experiment.ui.animal_window import AnimalWindow
 from Module.new_experiment.ui.content_window import ContentWindow
 from Module.new_experiment.ui.group_window import GroupWindow
 from Module.new_experiment.ui.new_experiment import Ui_new_experiment_window
+from public.config_class.global_setting import global_setting
+from public.entity.experiment_setting_entity import Experiment_setting_entity
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -23,6 +25,13 @@ class New_experiment_index(ThemedWindow):
         super().hideEvent(a0)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
+        # 实验配置数据
+        self.setting_data: Experiment_setting_entity = None
+        self.setting_data = global_setting.get_setting("experiment_setting",None)
+        if self.setting_data is None:
+            #如果全局变量没有存储设置则新建一个放进去
+            self.setting_data = Experiment_setting_entity()
+            global_setting.set_setting("experiment_setting",self.setting_data)
         # 布局
         self.left_dock_widget:QDockWidget=None
         self.left_dock_widget_content:GroupWindow=None
@@ -69,6 +78,7 @@ class New_experiment_index(ThemedWindow):
         if self.left_dock_widget != None:
             self.left_dock_widget.setWindowTitle("组/通道操作")
             self.left_dock_widget.setWidget(self.left_dock_widget_content)
+
         if self.right_dock_widget != None:
             self.right_dock_widget.setWindowTitle("动物操作")
             self.right_dock_widget.setWidget(self.right_dock_widget_content)

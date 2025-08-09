@@ -6,12 +6,14 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QStringListModel, Qt
 
+from public.entity.experiment_setting_entity import Experiment_setting_entity
 from theme.ThemeQt6 import ThemedWindow
 
 
 class AnimalInfoDialog(QDialog):
     def __init__(self, animal=None):
         super().__init__()
+        self.setting_data:Experiment_setting_entity = None
         self.setWindowTitle("动物信息")
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         self.layout = QVBoxLayout()
@@ -48,6 +50,7 @@ class AnimalInfoDialog(QDialog):
 class ContentWindow(ThemedWindow):
     def __init__(self):
         super().__init__()
+        self.setting_data:Experiment_setting_entity = None
 
         self.setWindowTitle("实验模板管理系统")
         self.setGeometry(100, 100, 600, 400)

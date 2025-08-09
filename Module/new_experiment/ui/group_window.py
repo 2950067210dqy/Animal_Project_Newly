@@ -1,20 +1,28 @@
 import sys
+from datetime import datetime
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIntValidator
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QScrollArea, QListWidget, \
-    QApplication, QPushButton, QMenu
+    QApplication, QPushButton, QMenu, QListWidgetItem
 
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWindow import BaseWindow
+from public.entity.experiment_setting_entity import Experiment_setting_entity, Group, AnimalGroupRecord
 from theme.ThemeQt6 import ThemedWindow
 
 
-class GroupWindow(BaseWindow):
+class GroupWindow(ThemedWindow):
+    # 更新content页面信号
+    update_content_signal=pyqtSignal()
     def __init__(self):
         super().__init__()
-
+        # 实验配置数据
+        self.setting_data:Experiment_setting_entity=None
+        self._init_ui()
+        self.init_group()
+    def _init_ui(self):
         self.setWindowTitle("动物管理系统")
         self.setGeometry(100, 100, 400, 300)
 
@@ -69,13 +77,37 @@ class GroupWindow(BaseWindow):
         self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_widget.customContextMenuRequested.connect(self.show_context_menu)
     def init_group(self):
-        global_setting.get_setting("experiment_setting",None)
+        # 里面装的是Experiment_setting_entity
+        self.setting_data:Experiment_setting_entity = global_setting.get_setting("experiment_setting",None)
+        self.list_widget.clear()
+        if self.setting_data is not None:
+            if len(self.setting_data.groups)>0:
+                for index, group in enumerate(self.setting_data.groups):
+                    group:Group
+                    item = QListWidgetItem(f"动物分组/通道: {group.name}")
+                    item.setToolTip(f"动物分组/通道: {group.name}")
+                    item.setData(Qt.ItemDataRole.UserRole, group)  # 设置自定义数据
+                    self.list_widget.addItem(item)
+                    pass
+            pass
         pass
+       #更新content页面
+        self.update_content_signal.emit()
     def add_group(self):
         # 从输入框获取动物通道号，添加到列表中
         channel_number = self.line_edit.text()
         if channel_number.isdigit():  # 检查输入值是否为数字
-            self.list_widget.addItem(f"动物 通道: {channel_number}")
+            init_index = 0
+            # 取最大name的那一个
+            if self.setting_data is not None and len(self.setting_data.groups)>0:
+                int_group_names = [int(group.name) for group in self.setting_data.groups]
+                init_index=max(int_group_names)+1
+            for i in range(int(channel_number)):
+                if self.setting_data is not None:
+                    self.setting_data.groups.append(Group(id =init_index+i ,name=str(init_index+i),create_time=datetime.now(),update_time=datetime.now()))
+                pass
+            global_setting.set_setting("experiment_setting",self.setting_data)
+            self.init_group()
             self.line_edit.clear()  # 清空输入框
             self.line_edit.setText("1")  # 重置输入框为默认值
 
@@ -93,7 +125,19 @@ class GroupWindow(BaseWindow):
     def delete_items(self):
         # 删除选中的项
         for item in self.list_widget.selectedItems():
-            self.list_widget.takeItem(self.list_widget.row(item))
+            item_data:Group = item.data(Qt.ItemDataRole.UserRole)
+            # 删除groups
+            for index, group in enumerate(self.setting_data.groups):
+                group:Group
+                if item_data is group:
+                    self.setting_data.groups.remove(group)
+            #删除groups和animals关系
+            for index,group_animal_record in enumerate(self.setting_data.animalGroupRecords):
+                group_animal_record:AnimalGroupRecord
+                if item_data.id == group_animal_record.gid:
+                    self.setting_data.animalGroupRecords.remove(group_animal_record)
+        global_setting.set_setting("experiment_setting",self.setting_data)
+        self.init_group()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

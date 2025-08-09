@@ -1,15 +1,22 @@
+import datetime
 import sys
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QMainWindow, QWidget, QVBoxLayout, \
-    QHBoxLayout, QPushButton, QListWidget, QScrollArea, QMenu, QLabel, QApplication, QComboBox, QRadioButton
+    QHBoxLayout, QPushButton, QListWidget, QScrollArea, QMenu, QLabel, QApplication, QComboBox, QRadioButton, \
+    QListWidgetItem
 
+from public.config_class.global_setting import global_setting
+from public.entity.enum.Public_Enum import AnimalGender
+from public.entity.experiment_setting_entity import Experiment_setting_entity, Animal, AnimalGroupRecord
 from theme.ThemeQt6 import ThemedWindow
 
 
+import itertools
 class AnimalDialog(QDialog):
     def __init__(self, animal=None):
         super().__init__()
+        self.setting_data:Experiment_setting_entity = None
         self.setWindowTitle("动物信息")
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         # 创建表单布局
@@ -68,6 +75,7 @@ class AnimalDialog(QDialog):
         self.notes_edit.setText(animal['notes'])
 
     def get_animal_info(self):
+
         gender = 'Male' if self.gender_group['Male'].isChecked() else 'Female'
         return {
             'name': self.name_edit.text(),
@@ -79,9 +87,16 @@ class AnimalDialog(QDialog):
         }
 
 class AnimalWindow(ThemedWindow):
+    # 更新content页面信号
+    update_content_signal = pyqtSignal()
     def __init__(self):
         super().__init__()
 
+
+        self.animal_index_init = itertools.count()  # 无穷自增序列
+        self._init_ui()
+        self.init_animal()
+    def _init_ui(self):
         self.setWindowTitle("动物管理系统")
         self.setGeometry(100, 100, 400, 300)
 
@@ -124,12 +139,32 @@ class AnimalWindow(ThemedWindow):
 
         # 连接双击事件
         self.list_widget.itemDoubleClicked.connect(self.edit_animal_info)
-
+    def init_animal(self):
+        # 里面装的是Experiment_setting_entity
+        self.setting_data: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
+        self.list_widget.clear()
+        if self.setting_data is not None:
+            if len(self.setting_data.animals) > 0:
+                for index, animal in enumerate(self.setting_data.animals):
+                    animal: Animal
+                    item = QListWidgetItem(f"动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex ==AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}")
+                    item.setToolTip(f"动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex ==AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}")
+                    item.setData(Qt.ItemDataRole.UserRole, animal)  # 设置自定义数据
+                    self.list_widget.addItem(item)
+                    pass
+            pass
+        pass
+        # 更新content页面
+        self.update_content_signal.emit()
+        pass
+    # 添加动物
     def show_animal_dialog(self):
         dialog = AnimalDialog()
         if dialog.exec() == QDialog.DialogCode.Accepted:  # 如果用户点击了OK按钮
             animal_info = dialog.get_animal_info()
-            self.list_widget.addItem(f"名称: {animal_info['name']}, ID: {animal_info['id']}, 性别: {animal_info['gender']}, 重量: {animal_info['weight']} {animal_info['unit']}, 备注: {animal_info['notes']}")
+            self.setting_data.animals.append(Animal(id=next(self.animal_index_init),name=animal_info['name'],id_write=animal_info['id'],sex= animal_info['gender'],weight=animal_info['weight'],weight_unit=animal_info['unit'],note=animal_info['notes'],create_time=datetime.datetime.now(),update_time=datetime.datetime.now()))
+        global_setting.set_setting("experiment_setting", self.setting_data)
+        self.init_animal()
 
     def show_context_menu(self, pos):
         # 创建右键菜单
@@ -145,15 +180,39 @@ class AnimalWindow(ThemedWindow):
     def delete_items(self):
         # 删除选中的项
         for item in self.list_widget.selectedItems():
-            self.list_widget.takeItem(self.list_widget.row(item))
+            item_data: Animal = item.data(Qt.ItemDataRole.UserRole)
+            # 删除animal
+            for index, animal in enumerate(self.setting_data.animals):
+                animal: Animal
+                if item_data is animal:
+                    self.setting_data.animals.remove(animal)
+            # 删除groups和animals关系
+            for index, group_animal_record in enumerate(self.setting_data.animalGroupRecords):
+                group_animal_record: AnimalGroupRecord
+                if item_data.id == group_animal_record.aid:
+                    self.setting_data.animalGroupRecords.remove(group_animal_record)
+        global_setting.set_setting("experiment_setting", self.setting_data)
+        self.init_animal()
 
-    def edit_animal_info(self, item):
+    def edit_animal_info(self, item:QListWidgetItem):
         # 获取动物信息
         animal_info = self.parse_animal_info(item.text())
         dialog = AnimalDialog(animal_info)
         if dialog.exec() == QDialog.DialogCode.Accepted:  # 如果用户点击了OK按钮
             updated_info = dialog.get_animal_info()
-            item.setText(f"名称: {updated_info['name']}, ID: {updated_info['id']}, 性别: {updated_info['gender']}, 重量: {updated_info['weight']} {updated_info['unit']}, 备注: {updated_info['notes']}")
+            item_data:Animal = item.data(Qt.ItemDataRole.UserRole)
+            for index, animal in enumerate(self.setting_data.animals):
+                if animal.id == item_data.id:
+                    self.setting_data.animals[index].name = updated_info['name']
+                    self.setting_data.animals[index].id_write = updated_info['id']
+                    self.setting_data.animals[index].sex = updated_info['gender']
+                    self.setting_data.animals[index].weight = updated_info['weight']
+                    self.setting_data.animals[index].weight_unit = updated_info['unit']
+                    self.setting_data.animals[index].note = updated_info['notes']
+                    self.setting_data.animals[index].update_time= datetime.datetime.now()
+
+            global_setting.set_setting("experiment_setting", self.setting_data)
+            self.init_animal()
 
     def parse_animal_info(self, text):
         # 解析动物信息的文本以供编辑

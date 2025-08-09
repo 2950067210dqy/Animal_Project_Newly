@@ -1,5 +1,9 @@
 from enum import Enum
-
+class AnimalGender(Enum):
+    # 雌性
+    FEMALE = True
+    # 雄性
+    MALE = False
 
 class BaseInterfaceType(Enum):
     WINDOW=0

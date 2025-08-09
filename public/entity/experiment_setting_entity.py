@@ -1,21 +1,30 @@
 from datetime import datetime
 
 
+
+
+class Experiment_setting_entity:
+    def __init__(self):
+        self.animals:[Animal] = []
+        self.groups:[Group] = []
+        self.animalGroupRecords:[AnimalGroupRecord] = []
+        super().__init__()
+
 class Animal:
     """
     类描述：表示数据库中的动物记录
     """
 
     def __init__(self,
-                 id: int,
-                 id_write: int,
-                 name: str,
-                 sex: bool,
-                 weight: float,
-                 weight_unit: str,
-                 note: str,
-                 create_time: datetime,
-                 update_time: datetime):
+                 id: int=None,
+                 id_write: int=None,
+                 name: str=None,
+                 sex: bool=None,
+                 weight: float=None,
+                 weight_unit: str=None,
+                 note: str=None,
+                 create_time: datetime=None,
+                 update_time: datetime=None):
         self.id = id  # 序号
         self.id_write = id_write  # ID
         self.name = name  # 动物名称
@@ -38,10 +47,10 @@ class Group:
     """
 
     def __init__(self,
-                 id: int,
-                 name: str,
-                 create_time: datetime,
-                 update_time: datetime):
+                 id: int=None,
+                 name: str=None,
+                 create_time: datetime=None,
+                 update_time: datetime=None):
         self.id = id  # 序号
         self.name = name  # 名称
         self.create_time = create_time  # 获取时间
@@ -56,12 +65,12 @@ class AnimalGroupRecord:
     """
 
     def __init__(self,
-                 id: int,
-                 aid: str,
-                 gid: bool,
-                 note: str,
-                 create_time: datetime,
-                 update_time: datetime):
+                 id: int=None,
+                 aid: str=None,
+                 gid: bool=None,
+                 note: str=None,
+                 create_time: datetime=None,
+                 update_time: datetime=None):
         self.id = id                    # 序号
         self.aid = aid                  # 动物序号
         self.gid = gid                  # 组/通道序号，布尔值
