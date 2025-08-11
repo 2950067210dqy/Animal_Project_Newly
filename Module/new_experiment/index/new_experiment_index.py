@@ -74,6 +74,10 @@ class New_experiment_index(ThemedWindow):
         self.right_dock_widget_content:AnimalWindow = AnimalWindow()
 
         self.center_widget_content:ContentWindow=ContentWindow()
+        # 连接信号
+        self.left_dock_widget_content.update_content_signal.connect(self.center_widget_content.init_content)
+        self.right_dock_widget_content.update_content_signal.connect(self.center_widget_content.init_content)
+        self.center_widget_content.update_group_signal.connect(self.left_dock_widget_content.init_group)
         self.center_widget_content.setWindowTitle("新建实验操作")
         if self.left_dock_widget != None:
             self.left_dock_widget.setWindowTitle("组/通道操作")

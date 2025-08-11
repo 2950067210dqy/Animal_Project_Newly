@@ -25,6 +25,18 @@ class Animal:
                  note: str=None,
                  create_time: datetime=None,
                  update_time: datetime=None):
+        """
+
+        :param id: 序号
+        :param id_write: ID
+        :param name: 动物名称
+        :param sex: 动物性别
+        :param weight: 动物重量
+        :param weight_unit: 单位
+        :param note: 备注
+        :param create_time: 创建时间
+        :param update_time: 更新时间
+        """
         self.id = id  # 序号
         self.id_write = id_write  # ID
         self.name = name  # 动物名称
@@ -51,6 +63,13 @@ class Group:
                  name: str=None,
                  create_time: datetime=None,
                  update_time: datetime=None):
+        """
+
+        :param id: 序号
+        :param name: 分组/通道名称
+        :param create_time: 创建时间
+        :param update_time: 更新时间
+        """
         self.id = id  # 序号
         self.name = name  # 名称
         self.create_time = create_time  # 获取时间
@@ -66,8 +85,8 @@ class AnimalGroupRecord:
 
     def __init__(self,
                  id: int=None,
-                 aid: str=None,
-                 gid: bool=None,
+                 aid: int=None,
+                 gid: int=None,
                  note: str=None,
                  create_time: datetime=None,
                  update_time: datetime=None):
@@ -80,4 +99,26 @@ class AnimalGroupRecord:
 
     def __repr__(self):
         return (f"AnimalGroupRecord(id={self.id}, aid='{self.aid}', gid={self.gid}, "
+                f"note='{self.note}', create_time='{self.create_time}', update_time='{self.update_time}')")
+class AnimalGroupRecord_View:
+    """
+    类描述：表示数据库中的动物和组的记录 显示在界面上的类
+    """
+
+    def __init__(self,
+                 id: int=None,
+                 animal: Animal=None,
+                 group: Group=None,
+                 note: str=None,
+                 create_time: datetime=None,
+                 update_time: datetime=None):
+        self.id = id                    # 序号
+        self.animal = animal                  # 动物
+        self.group = group                  # 组/通道
+        self.note = note                # 备注
+        self.create_time = create_time   # 获取时间
+        self.update_time = update_time   # 更新时间
+
+    def __repr__(self):
+        return (f"AnimalGroupRecord(id={self.id}, animal='{self.animal}', group={self.group}, "
                 f"note='{self.note}', create_time='{self.create_time}', update_time='{self.update_time}')")

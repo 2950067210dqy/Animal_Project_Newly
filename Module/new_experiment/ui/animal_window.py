@@ -12,7 +12,7 @@ from public.entity.experiment_setting_entity import Experiment_setting_entity, A
 from theme.ThemeQt6 import ThemedWindow
 
 
-import itertools
+
 class AnimalDialog(QDialog):
     def __init__(self, animal=None):
         super().__init__()
@@ -88,12 +88,10 @@ class AnimalDialog(QDialog):
 
 class AnimalWindow(ThemedWindow):
     # 更新content页面信号
-    update_content_signal = pyqtSignal()
+    update_content_signal = pyqtSignal(bool)
     def __init__(self):
         super().__init__()
 
-
-        self.animal_index_init = itertools.count()  # 无穷自增序列
         self._init_ui()
         self.init_animal()
     def _init_ui(self):
@@ -114,7 +112,7 @@ class AnimalWindow(ThemedWindow):
 
         # 添加创建动物按钮
         create_animal_button = QPushButton("创建动物")
-        create_animal_button.clicked.connect(self.show_animal_dialog)
+        create_animal_button.clicked.connect(self.add_animal)
         self.top_layout.addWidget(create_animal_button)
 
         # 创建内容布局
@@ -139,7 +137,12 @@ class AnimalWindow(ThemedWindow):
 
         # 连接双击事件
         self.list_widget.itemDoubleClicked.connect(self.edit_animal_info)
-    def init_animal(self):
+    def init_animal(self,is_update=True):
+        """
+
+        :param is_update:是否触发cotent等其他界面的数据更新
+        :return:
+        """
         # 里面装的是Experiment_setting_entity
         self.setting_data: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
         self.list_widget.clear()
@@ -155,14 +158,20 @@ class AnimalWindow(ThemedWindow):
             pass
         pass
         # 更新content页面
-        self.update_content_signal.emit()
+        if is_update:
+            self.update_content_signal.emit(False)
         pass
     # 添加动物
-    def show_animal_dialog(self):
+    def add_animal(self):
         dialog = AnimalDialog()
         if dialog.exec() == QDialog.DialogCode.Accepted:  # 如果用户点击了OK按钮
             animal_info = dialog.get_animal_info()
-            self.setting_data.animals.append(Animal(id=next(self.animal_index_init),name=animal_info['name'],id_write=animal_info['id'],sex= animal_info['gender'],weight=animal_info['weight'],weight_unit=animal_info['unit'],note=animal_info['notes'],create_time=datetime.datetime.now(),update_time=datetime.datetime.now()))
+            init_index = 0
+            # 取最大name的那一个
+            if self.setting_data is not None and len(self.setting_data.animals) > 0:
+                int_animal_ids = [int(animal.id) for animal in self.setting_data.animals]
+                init_index = max(int_animal_ids) + 1
+            self.setting_data.animals.append(Animal(id=init_index,name=animal_info['name'],id_write=animal_info['id'],sex= animal_info['gender'],weight=animal_info['weight'],weight_unit=animal_info['unit'],note=animal_info['notes'],create_time=datetime.datetime.now(),update_time=datetime.datetime.now()))
         global_setting.set_setting("experiment_setting", self.setting_data)
         self.init_animal()
 

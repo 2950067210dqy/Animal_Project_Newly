@@ -15,7 +15,7 @@ from theme.ThemeQt6 import ThemedWindow
 
 class GroupWindow(ThemedWindow):
     # 更新content页面信号
-    update_content_signal=pyqtSignal()
+    update_content_signal=pyqtSignal(bool)
     def __init__(self):
         super().__init__()
         # 实验配置数据
@@ -76,7 +76,12 @@ class GroupWindow(ThemedWindow):
         # 连接右键菜单事件
         self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_widget.customContextMenuRequested.connect(self.show_context_menu)
-    def init_group(self):
+    def init_group(self,is_update=True):
+        """
+
+              :param is_update:是否触发content等其他界面的数据更新
+              :return:
+        """
         # 里面装的是Experiment_setting_entity
         self.setting_data:Experiment_setting_entity = global_setting.get_setting("experiment_setting",None)
         self.list_widget.clear()
@@ -92,7 +97,8 @@ class GroupWindow(ThemedWindow):
             pass
         pass
        #更新content页面
-        self.update_content_signal.emit()
+        if is_update:
+            self.update_content_signal.emit(False)
     def add_group(self):
         # 从输入框获取动物通道号，添加到列表中
         channel_number = self.line_edit.text()

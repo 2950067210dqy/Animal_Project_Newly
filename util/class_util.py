@@ -8,7 +8,50 @@ from pathlib import Path
 class class_util():
     def __init__(self):
         pass
+    @classmethod
+    def get_public_attributes_with_notes(cls,obj):
+        """
+        备注类似于这个模板
+        :param obj:类
+        :return:
+        """
+        # 获取类的 __init__ 方法
+        init_method = obj.__init__
+        signature = inspect.signature(init_method)
 
+        # 获取 __init__ 的文档字符串
+        doc_string = init_method.__doc__
+
+        # 提取参数备注
+        param_notes = {}
+        if doc_string:
+            lines = doc_string.strip().splitlines()
+            for line in lines:
+                line:str
+                if line.strip().startswith(":param"):
+                    parts = line.split(":")
+                    if len(parts) > 2:
+                        flag_lines =  parts[1].split(" ")[1]
+                        if len(flag_lines) > 1:
+                            param_name = parts[1].split(" ")[1].strip()  # 获取参数名
+                            param_note = parts[2].strip()  # 获取备注
+                            param_notes[param_name] = param_note
+                        else:
+                            #  报错
+                            raise ValueError
+
+        # 获取类实例的公共属性及其值和备注
+        public_attributes = {}
+        for param in signature.parameters.keys():
+            if not param.startswith('_'):
+                value = getattr(obj, param)
+                note = param_notes.get(param, "无备注")
+                public_attributes[param] = {
+                    'value': value,
+                    'note': note
+                }
+
+        return public_attributes
     @classmethod
     def get_classes_from_directory(cls, directory_path="", mapping=""):
         """
