@@ -14,6 +14,36 @@ class SQLiteManager():
         # logger.info(f"数据库{db_name}连接成功")
         self.cursor = self.connection.cursor()
 
+    def convert_to_foreign_key_sql(self,foreign_key_dict):
+        """
+        将 foreign_key_dict:{
+            "key":['aid','gid'],
+            "reference_key":[Animal (id),Group (id)],
+        }转换成
+        FOREIGN KEY (aid) REFERENCES Animal(id),
+        FOREIGN KEY (gid) REFERENCES Group(id)
+        sql语句
+        :param foreign_key_dict:
+        :return:
+        """
+        foreign_keys = []
+
+        # 获取键和引用键
+        keys = foreign_key_dict["key"]
+        reference_keys = foreign_key_dict["reference_key"]
+
+        # 确保键和引用键数量一致
+        if len(keys) != len(reference_keys):
+            return ""
+
+        # 构建 SQL 外键约束语句
+        for key, reference in zip(keys, reference_keys):
+            table_ref, column_ref = reference.split('(')
+            column_ref = column_ref.strip(') ')
+            foreign_keys.append(f"FOREIGN KEY ({key}) REFERENCES {table_ref.strip()}({column_ref})")
+
+        # 连接所有的外键语句，用逗号分隔
+        return ",\n".join(foreign_keys)
     def is_exist_table(self, table_name):
         """查询数据表是否存在"""
         sql = f"""
@@ -26,10 +56,22 @@ class SQLiteManager():
         # 如果结果不为 None，则表存在
         return result is not None
 
-    def create_table(self, table_name, columns):
-        """创建表."""
+    def create_table(self, table_name, columns,foreign_key_dict:dict=None):
+        """创建表.
+        :param foreign_key_dict:{
+            "key":['aid','gid'],
+            "reference_key":[Animal (id),Group (id)],
+        }
+        """
         columns_with_types = ', '.join(f"{name} {datatype}" for name, datatype in columns.items())
-        sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns_with_types}) ;"
+        if foreign_key_dict:
+            foreign_key_sqls =",\n"+ self.convert_to_foreign_key_sql(foreign_key_dict)
+        else:
+            foreign_key_sqls = ""
+        sql = f"""CREATE TABLE IF NOT EXISTS {table_name} (
+                        {columns_with_types}{foreign_key_sqls}
+                    ) ;"""
+        print(sql)
         self.cursor.execute(sql)
         self.connection.commit()
 

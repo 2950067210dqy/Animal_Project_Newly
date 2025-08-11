@@ -46,7 +46,7 @@ def start_qt_application():
     global_setting.set_setting("screen", screen_rect)
     # 绑定突出事件
     app.aboutToQuit.connect(quit_qt_application)
-    # 主窗口实例化
+    # # 主窗口实例化
     try:
         main_window=MainWindow_Index()
     except Exception as e:
@@ -154,9 +154,9 @@ def main(q, send_message_q):
 
     global_setting.set_setting("queue", q)
     global_setting.set_setting("send_message_queue", send_message_q)
-    try:
-        # qt程序开始
-        start_qt_application()
-    except Exception as e:
-        logger.error(e)
+    # try:
+    #     # qt程序开始
+    start_qt_application()
+    # except Exception as e:
+    #     logger.error(e)
 

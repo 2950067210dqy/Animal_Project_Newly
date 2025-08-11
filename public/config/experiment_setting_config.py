@@ -3,7 +3,7 @@ from enum import Enum
 
 class Setting_Table(Enum):
     Group = {
-       "base_table_name":"group",
+       "table_name":"group",
         "desc":"通道/组",
        'column': [
             ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
@@ -15,7 +15,7 @@ class Setting_Table(Enum):
     }
 
     Animal = {
-        "base_table_name": "animals",
+        "table_name": "animals",
         "desc": "动物信息",
         'column': [
             ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
@@ -33,7 +33,7 @@ class Setting_Table(Enum):
     }
 
     Group_Animal= {
-        "base_table_name": "group_animal",
+        "table_name": "group_animal",
         "desc": "组/通道-动物信息 关系表",
         'column': [
             ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
@@ -46,7 +46,7 @@ class Setting_Table(Enum):
         ],
         "foreign_key":{
             "key":['aid','gid'],
-            "reference_ley":[f"{Group.value['base_table_name']}(id)",f"{Animal.value['base_table_name']}(id)"],
+            "reference_key":[f"{Group['table_name']}(id)",f"{Animal['table_name']}(id)"],
 
         }
     }

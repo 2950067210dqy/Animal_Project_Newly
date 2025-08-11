@@ -1,14 +1,17 @@
+import os
 import sys
+from cgitb import handler
 from datetime import datetime
 
 from PyQt6.QtGui import QStandardItemModel, QCursor, QStandardItem
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton,
-    QWidget, QTreeView, QScrollArea, QMessageBox, QMenu, QInputDialog
+    QWidget, QTreeView, QScrollArea, QMessageBox, QMenu, QInputDialog, QFileDialog
 )
 from PyQt6.QtCore import Qt, QPoint, QModelIndex, pyqtSignal
 
 from public.config_class.global_setting import global_setting
+from public.dao.SQLite.Experiment_Setting_DAO_Handle import Experiment_Setting_DAO_Handle
 from public.entity.enum.Public_Enum import AnimalGender
 from public.entity.experiment_setting_entity import Experiment_setting_entity, Group, Animal, AnimalGroupRecord, \
     AnimalGroupRecord_View
@@ -333,7 +336,17 @@ class ContentWindow(ThemedWindow):
         print("导入实验模板")  # 这里实现您的导入功能
 
     def save_template(self):
-        print("保存实验模板")  # 这里实现您的保存功能
+        file_path, _ = QFileDialog.getSaveFileName(self, "保存实验模板", "", "db Files (*.db);;All Files (*)")
+
+        if file_path:
+            # 获取文件所在的文件夹路径
+            folder_path = os.path.dirname(file_path)
+            # 获取文件名称
+            file_name = os.path.basename(file_path)
+            handle =Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
+            handle.insert_data(data=self.setting_data)
+            pass
+        pass
 
     def create_experiment(self):
         print("创建实验")  # 这里实现您的创建实验功能
