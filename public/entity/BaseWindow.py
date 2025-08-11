@@ -150,23 +150,23 @@ class BaseWindow(QMainWindow):
                     max_height = max(max_height, size.height())
         return QSize(max_width+10, max_height+10)
 
-    def mousePressEvent(self, event):
-        """处理鼠标按下事件"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.is_pressed = True
-            self.start_pos = event.pos()
-
-    def mouseMoveEvent(self, event):
-        """处理鼠标移动事件"""
-        if self.is_pressed:
-            # 移动窗口
-            self.move(self.pos() + event.pos() - self.start_pos)
-
-    def mouseReleaseEvent(self, event):
-        """处理鼠标释放事件"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            if self.is_pressed:
-                self.is_pressed = False
+    # def mousePressEvent(self, event):
+    #     """处理鼠标按下事件"""
+    #     if event.button() == Qt.MouseButton.LeftButton:
+    #         self.is_pressed = True
+    #         self.start_pos = event.pos()
+    #
+    # def mouseMoveEvent(self, event):
+    #     """处理鼠标移动事件"""
+    #     if self.is_pressed:
+    #         # 移动窗口
+    #         self.move(self.pos() + event.pos() - self.start_pos)
+    #
+    # def mouseReleaseEvent(self, event):
+    #     """处理鼠标释放事件"""
+    #     if event.button() == Qt.MouseButton.LeftButton:
+    #         if self.is_pressed:
+    #             self.is_pressed = False
 
     def __init__(self):
         super().__init__()  # 隐藏系统标题栏

@@ -9,7 +9,9 @@ class Experiment_setting_entity:
         self.groups:[Group] = []
         self.animalGroupRecords:[AnimalGroupRecord] = []
         super().__init__()
+    def is_emtpy(self) -> bool:
 
+        return all(len == 0 for len in [len(self.animals),len(self.groups),len(self.animalGroupRecords)])
 class Animal:
     """
     类描述：表示数据库中的动物记录

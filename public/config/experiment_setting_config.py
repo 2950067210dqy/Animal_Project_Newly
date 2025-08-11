@@ -37,8 +37,8 @@ class Setting_Table(Enum):
         "desc": "组/通道-动物信息 关系表",
         'column': [
             ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-            ("aid", "动物序号", " TEXT "),
-            ("gid", "组/通道序号", " BOOLEAN "),
+            ("aid", "动物序号", " INTEGER "),
+            ("gid", "组/通道序号", " INTEGER "),
             ("note", "备注", " TEXT "),
             ("create_time", "获取时间", " TIMESTAMP "),
             ("update_time", "获取时间", " TIMESTAMP ")

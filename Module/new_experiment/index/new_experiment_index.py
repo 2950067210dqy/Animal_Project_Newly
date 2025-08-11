@@ -18,20 +18,52 @@ class New_experiment_index(ThemedWindow):
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
+
+        self.center_widget_content.main_gui=self.main_gui
+        self.center_widget_content.init_content(is_update=False)
+        self.center_widget_content.update_group_signal.emit(False)
+        self.center_widget_content.update_animal_signal.emit(False)
         super().showEvent(a0)
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
-
-
+        # 是否修改模板
+        self.center_widget_content.is_update = False
+        self.center_widget_content.is_import = False
+        self.center_widget_content.template_file_path_label.setText("未导入实验模板文件")
+        self.center_widget_content.import_file_path = ""
+        self.center_widget_content.setting_file_path=""
+        # 将该全局变量重置
+        self.setting_data = Experiment_setting_entity()
+        global_setting.set_setting("experiment_setting_new", self.setting_data)
+        self.left_dock_widget_content.update_content_signal.emit(False)
+        self.right_dock_widget_content.update_content_signal.emit(False)
+        self.center_widget_content.update_group_signal.emit(False)
+        self.center_widget_content.update_animal_signal.emit(False)
         super().hideEvent(a0)
+    def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
+        # 是否修改模板
+        self.center_widget_content.is_update = False
+        self.center_widget_content.is_import = False
+        self.center_widget_content.import_file_path = ""
+        self.center_widget_content.setting_file_path=""
+        self.center_widget_content.template_file_path_label.setText("未导入实验模板文件")
+        # 将该全局变量重置
+        self.setting_data = Experiment_setting_entity()
+        global_setting.set_setting("experiment_setting_new", self.setting_data)
+        self.left_dock_widget_content.update_content_signal.emit(False)
+        self.right_dock_widget_content.update_content_signal.emit(False)
+        self.center_widget_content.update_group_signal.emit(False)
+        self.center_widget_content.update_animal_signal.emit(False)
+        super().closeEvent(a0)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
         # 实验配置数据
         self.setting_data: Experiment_setting_entity = None
-        self.setting_data = global_setting.get_setting("experiment_setting",None)
+
+        self.setting_data = global_setting.get_setting("experiment_setting_new",None)
         if self.setting_data is None:
             #如果全局变量没有存储设置则新建一个放进去
             self.setting_data = Experiment_setting_entity()
-            global_setting.set_setting("experiment_setting",self.setting_data)
+            global_setting.set_setting("experiment_setting_new",self.setting_data)
         # 布局
         self.left_dock_widget:QDockWidget=None
         self.left_dock_widget_content:GroupWindow=None
@@ -76,8 +108,11 @@ class New_experiment_index(ThemedWindow):
         self.center_widget_content:ContentWindow=ContentWindow()
         # 连接信号
         self.left_dock_widget_content.update_content_signal.connect(self.center_widget_content.init_content)
+        self.left_dock_widget_content.update_content_signal.connect(self.center_widget_content.update_status)
         self.right_dock_widget_content.update_content_signal.connect(self.center_widget_content.init_content)
+        self.right_dock_widget_content.update_content_signal.connect(self.center_widget_content.update_status)
         self.center_widget_content.update_group_signal.connect(self.left_dock_widget_content.init_group)
+        self.center_widget_content.update_animal_signal.connect(self.right_dock_widget_content.init_animal)
         self.center_widget_content.setWindowTitle("新建实验操作")
         if self.left_dock_widget != None:
             self.left_dock_widget.setWindowTitle("组/通道操作")

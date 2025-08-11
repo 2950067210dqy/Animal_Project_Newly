@@ -81,6 +81,8 @@ class MainWindow_Index(ThemedWindow):
         self.open_windows:[BaseModule]=[]
         # 工具栏
         self.toolbar = None
+        #状态栏
+        self.status_bar = None
         # 内容layout
         self.content_layout :QVBoxLayout =None
         # tab_widget
@@ -216,6 +218,7 @@ class MainWindow_Index(ThemedWindow):
                     module.set_main_gui(main_gui=self)
                     action = QAction(module_title, self)
                     # 创建点击事件
+                    action.triggered.connect(module.start_service)
                     action.triggered.connect( module.adjustGUIPolicy)
                     # action.triggered.connect( module.interface_widget.show)
 
@@ -239,7 +242,7 @@ class MainWindow_Index(ThemedWindow):
             for filename in filenames:
                 if filename.endswith('.py'):
                     module_name = filename[:-3]# 去掉 .py 后缀
-                    if module_name=="main":
+                    if module_name.startswith("main"):
                         file_path = os.path.join(dirpath, filename)
 
                         # 动态加载模块

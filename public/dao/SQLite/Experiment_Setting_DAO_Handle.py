@@ -57,6 +57,7 @@ class Experiment_Setting_DAO_Handle():
                                                description=item[1])
             pass
     def insert_data(self, data:Experiment_setting_entity):
+        insert_state=[]
         # 添加数据到表里
         if data is not None:
             # group表
@@ -68,11 +69,13 @@ class Experiment_Setting_DAO_Handle():
                 columns_query = self.sqlite_manager.query(table_name_meta)
                 columns= [i[0] for i in columns_query ]
                 group_attr:dict=class_util.get_public_attributes_with_notes(group)
-                datas = [group_attr.get(__key=column,__default=None)['value'] if group_attr.get(__key=column,__default=None) else None for column in columns ]
+                datas = [group_attr.get(column,None)['value'] if group_attr.get(column,None) else None for column in columns ]
                 result = self.sqlite_manager.insert_2(table_name, columns, datas)
                 if result == 1:
+                    insert_state.append(True)
                     logger.info(f"数据插入表{table_name}成功！")
                 else:
+                    insert_state.append(False)
                     logger.info(f"数据插入表{table_name}失败！")
            #Animal 表
             for animal in data.animals:
@@ -83,13 +86,15 @@ class Experiment_Setting_DAO_Handle():
                 columns_query = self.sqlite_manager.query(table_name_meta)
                 columns = [i[0] for i in columns_query]
                 group_attr: dict = class_util.get_public_attributes_with_notes(animal)
-                datas = [group_attr.get(__key=column, __default=None)['value'] if group_attr.get(__key=column,
-                                                                                                 __default=None) else None
+                datas = [group_attr.get(column, None)['value'] if group_attr.get(column,
+                                                                                                 None) else None
                          for column in columns]
                 result = self.sqlite_manager.insert_2(table_name, columns, datas)
                 if result == 1:
+                    insert_state.append(True)
                     logger.info(f"数据插入表{table_name}成功！")
                 else:
+                    insert_state.append(False)
                     logger.info(f"数据插入表{table_name}失败！")
             #关系表
             for animalGroupRecord in data.animalGroupRecords:
@@ -100,14 +105,17 @@ class Experiment_Setting_DAO_Handle():
                 columns_query = self.sqlite_manager.query(table_name_meta)
                 columns = [i[0] for i in columns_query]
                 group_attr: dict = class_util.get_public_attributes_with_notes(animalGroupRecord)
-                datas = [group_attr.get(__key=column, __default=None)['value'] if group_attr.get(__key=column,
-                                                                                                 __default=None) else None
+                datas = [group_attr.get(column, None)['value'] if group_attr.get(column,
+                                                                                               None) else None
                          for column in columns]
                 result = self.sqlite_manager.insert_2(table_name, columns, datas)
                 if result == 1:
+                    insert_state.append(True)
                     logger.info(f"数据插入表{table_name}成功！")
                 else:
+                    insert_state.append(False)
                     logger.info(f"数据插入表{table_name}失败！")
+        return all(insert_state) if len(insert_state) > 0 else False
     def query_data_database_all(self):
         """
         获取数据库所有表的数据
@@ -169,3 +177,23 @@ class Experiment_Setting_DAO_Handle():
             results = results_query
         return results
         pass
+    def remove_data_database_all_not_include_metaDB(self):
+        """
+        删除数据库中的所有数据表的数据，不包括数据表描述的数据表数据
+        :return:
+        """
+        deleted_state=[]
+        for table in Setting_Table:
+            # 表名称
+            table_name = f"{table.value['table_name']}"
+            deleted_state.append(self.remove_data_table_all(table_name))
+        print(deleted_state)
+        return all(deleted_state) if len(deleted_state) > 0 else False
+    def remove_data_table_all(self,table_name):
+        """
+        删除数据表中的所有数据
+        :param table_name:
+        :return:
+        """
+        result = self.sqlite_manager.delete(table_name)
+        return result

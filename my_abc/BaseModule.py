@@ -66,6 +66,10 @@ class BaseModule(ABC):
         # 获取主界面变量
         self.main_gui=main_gui
         pass
+    def start_service(self):
+        """开始服务"""
+        if self.service is not None:
+            self.service.start()
     def adjustGUIPolicy(self):
         if self.interface_widget is None or self.interface_widget.type is None or self.interface_widget.frame_obj is None or self.main_gui is None:
             return
@@ -181,7 +185,7 @@ class BaseModule(ABC):
                 self.main_gui.active_module_widgets.append(self)
             pass
         else:
-
+            #WINDOW
             flag = 10
             # ，每部分layout占多少
             if self.interface_widget.bottom_frame_obj is None:
@@ -201,7 +205,7 @@ class BaseModule(ABC):
             h_all = h_stretch['left']+h_stretch['middle']+h_stretch['right']
             v_all = v_stretch['top']+v_stretch['bottom']
             h_each = self.main_gui.centralWidget().geometry().width()//h_all
-            v_each = self.main_gui.centralWidget().geometry().height()//v_all
+            v_each = (self.main_gui.centralWidget().geometry().height()-self.main_gui.statusBar().height())//v_all
 
             self.interface_widget.setMinimumSize(0, 0)
             if self.interface_widget.left_frame_obj is not None:

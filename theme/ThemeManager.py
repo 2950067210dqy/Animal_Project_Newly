@@ -284,6 +284,26 @@ class ThemeManager(QObject):
             QToolButton:disabled {{
                  color: {theme['--text_disabled']};
             }}
+            QTreeView {{
+                background-color: {theme['--primary']};  /* 背景色 */
+                border: 1px solid {theme['--border']};      /* 边框颜色 */
+                font-size: 14px;              /* 字体大小 */
+            }}
+            
+            QTreeView::item {{
+                padding: 10px;                /* 内边距 */
+            }}
+            
+            QTreeView::item:selected {{
+                border:none;
+                background-color: {theme['--secondary']};     /* 选中项的背景色 */
+                color:{theme['--text_hover']};                  /* 选中项的文本颜色 */
+            }}
+            
+            QListView::item {{
+                padding: 10px;               /* 内边距 */
+            }}
+    
         """ + self.get_button_style(isSelected=False)
         # logger_diy.log.info("ThemeManager的get_style_sheet：" + style_sheet)
         return style_sheet

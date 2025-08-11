@@ -68,7 +68,7 @@ class SQLiteManager():
             foreign_key_sqls =",\n"+ self.convert_to_foreign_key_sql(foreign_key_dict)
         else:
             foreign_key_sqls = ""
-        sql = f"""CREATE TABLE IF NOT EXISTS {table_name} (
+        sql = f"""CREATE TABLE IF NOT EXISTS "{table_name}" (
                         {columns_with_types}{foreign_key_sqls}
                     ) ;"""
         print(sql)
@@ -78,7 +78,7 @@ class SQLiteManager():
     def create_meta_table(self, table_name):
         """创建描述表"""
         sql = f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
+        CREATE TABLE IF NOT EXISTS "{table_name}" (
             item_name TEXT PRIMARY KEY,
             item_struct TEXT, --数据类型 比如TEXT REAL等
             description TEXT
@@ -91,7 +91,7 @@ class SQLiteManager():
         """插入数据，防止 SQL 注入."""
         columns = ', '.join(kwargs.keys())
         placeholders = ', '.join('?' * len(kwargs))  # 使用 ? 占位符
-        sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders});"
+        sql = f"""INSERT INTO "{table_name}" ({columns}) VALUES ({placeholders});"""
         self.cursor.execute(sql, tuple(kwargs.values()))  # 使用参数化查询
         self.connection.commit()
         return self.cursor.rowcount
@@ -100,14 +100,14 @@ class SQLiteManager():
         """插入数据，防止 SQL 注入."""
         columns = ', '.join(columns_flag)
         placeholders = ', '.join('?' * len(datas))  # 使用 ? 占位符
-        sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders});"
+        sql = f"""INSERT INTO "{table_name}" ({columns}) VALUES ({placeholders});"""
         self.cursor.execute(sql, tuple(datas))  # 使用参数化查询
         self.connection.commit()
         return self.cursor.rowcount
 
     def insert_not_columns(self, table_name, datas):
         placeholders = ', '.join('?' * len(datas))  # 使用 ? 占位符
-        sql = f"INSERT INTO {table_name}  VALUES ({placeholders});"
+        sql = f"""INSERT INTO "{table_name}"  VALUES ({placeholders});"""
         self.cursor.execute(sql, tuple(datas))  # 使用参数化查询
         self.connection.commit()
         return self.cursor.rowcount
@@ -115,21 +115,21 @@ class SQLiteManager():
 
     def query_conditions(self, table_name, conditions=""):
         """查询数据，."""
-        sql = f"SELECT * FROM {table_name} "
+        sql = f"""SELECT * FROM "{table_name}" """
         sql += conditions
         self.cursor.execute(sql)
 
         return self.cursor.fetchall()
     def query_counts_conditions(self, table_name, conditions=""):
         """查询数据，."""
-        sql = f"SELECT COUNT(*) FROM {table_name} "
+        sql = f"""SELECT COUNT(*) FROM "{table_name}" """
         sql += conditions
         self.cursor.execute(sql)
 
         return self.cursor.fetchone()[0]
     def query(self, table_name, **kwargs):
         """查询数据，防止 SQL 注入."""
-        sql = f"SELECT * FROM {table_name}"
+        sql = f"""SELECT * FROM "{table_name}" """
         if kwargs:
             conditions = ' AND '.join(f"{key} = ?" for key in kwargs.keys())
             sql += f" WHERE {conditions};"
@@ -141,7 +141,7 @@ class SQLiteManager():
 
     def query_current_Data(self, table_name, **kwargs):
         """查询数据，防止 SQL 注入."""
-        sql = f"SELECT * FROM {table_name}"
+        sql = f"""SELECT * FROM "{table_name}" """
         if kwargs:
             conditions = ' AND '.join(f"{key} = ?" for key in kwargs.keys())
             sql += f" WHERE {conditions} "
@@ -156,7 +156,7 @@ class SQLiteManager():
     def query_current_Data_columns(self, table_name, columns, **kwargs):
         """查询数据，防止 SQL 注入."""
         columns_sql = ', '.join(columns)
-        sql = f"SELECT {columns_sql} FROM {table_name}"
+        sql = f"""SELECT {columns_sql} FROM "{table_name}" """
         if kwargs:
             conditions = ' AND '.join(f"{key} = ?" for key in kwargs.keys())
             sql += f" WHERE {conditions} "
@@ -169,7 +169,7 @@ class SQLiteManager():
         return self.cursor.fetchall()
     def query_paging(self, table_name, rows_per_page, start_row,conditions=""):
         """查询数据，."""
-        sql = f"SELECT * FROM {table_name} "
+        sql = f"""SELECT * FROM "{table_name}" """
         sql += conditions
         sql+=f" ORDER BY id DESC LIMIT {rows_per_page} OFFSET {start_row}"
         self.cursor.execute(sql)
@@ -180,17 +180,19 @@ class SQLiteManager():
         """更新数据，防止 SQL 注入."""
         set_clause = ', '.join(f"{key} = ?" for key in kwargs.keys())
         conditions = ' AND '.join(f"{key} = ?" for key in criteria.keys())
-        sql = f"UPDATE {table_name} SET {set_clause} WHERE {conditions};"
+        sql = f"""UPDATE "{table_name}" SET {set_clause} WHERE {conditions};"""
         self.cursor.execute(sql, tuple(kwargs.values()) + tuple(criteria.values()))  # 使用参数化查询
         self.connection.commit()
-
+        return self.cursor.rowcount
     def delete(self, table_name, **kwargs):
         """删除数据，防止 SQL 注入."""
         conditions = ' AND '.join(f"{key} = ?" for key in kwargs.keys())
-        sql = f"DELETE FROM {table_name} WHERE {conditions};"
+        if len(kwargs) > 0:
+            conditions = f" WHERE {conditions} "
+        sql = f"""DELETE FROM "{table_name}" {conditions} ;"""
         self.cursor.execute(sql, tuple(kwargs.values()))  # 使用参数化查询
         self.connection.commit()
-
+        return self.cursor.rowcount
     def close(self):
         """关闭数据库连接."""
         self.cursor.close()

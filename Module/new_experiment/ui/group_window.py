@@ -5,8 +5,9 @@ from PyQt6 import QtGui
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIntValidator
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QScrollArea, QListWidget, \
-    QApplication, QPushButton, QMenu, QListWidgetItem
+    QApplication, QPushButton, QMenu, QListWidgetItem, QMessageBox, QDockWidget
 
+from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWindow import BaseWindow
 from public.entity.experiment_setting_entity import Experiment_setting_entity, Group, AnimalGroupRecord
@@ -83,7 +84,7 @@ class GroupWindow(ThemedWindow):
               :return:
         """
         # 里面装的是Experiment_setting_entity
-        self.setting_data:Experiment_setting_entity = global_setting.get_setting("experiment_setting",None)
+        self.setting_data:Experiment_setting_entity = global_setting.get_setting("experiment_setting_new",None)
         self.list_widget.clear()
         if self.setting_data is not None:
             if len(self.setting_data.groups)>0:
@@ -112,7 +113,7 @@ class GroupWindow(ThemedWindow):
                 if self.setting_data is not None:
                     self.setting_data.groups.append(Group(id =init_index+i ,name=str(init_index+i),create_time=datetime.now(),update_time=datetime.now()))
                 pass
-            global_setting.set_setting("experiment_setting",self.setting_data)
+            global_setting.set_setting("experiment_setting_new",self.setting_data)
             self.init_group()
             self.line_edit.clear()  # 清空输入框
             self.line_edit.setText("1")  # 重置输入框为默认值
@@ -129,6 +130,12 @@ class GroupWindow(ThemedWindow):
         context_menu.exec(self.list_widget.mapToGlobal(pos))
 
     def delete_items(self):
+        if len(self.list_widget.selectedItems()) ==0:
+            msg_box = InfoDialog(title="删除分组/通道", info="未选中分组/通道",
+                                 icon=QMessageBox.Icon.Warning)
+            msg_box.exec()
+
+            return
         # 删除选中的项
         for item in self.list_widget.selectedItems():
             item_data:Group = item.data(Qt.ItemDataRole.UserRole)
@@ -142,7 +149,7 @@ class GroupWindow(ThemedWindow):
                 group_animal_record:AnimalGroupRecord
                 if item_data.id == group_animal_record.gid:
                     self.setting_data.animalGroupRecords.remove(group_animal_record)
-        global_setting.set_setting("experiment_setting",self.setting_data)
+        global_setting.set_setting("experiment_setting_new",self.setting_data)
         self.init_group()
 
 if __name__ == "__main__":

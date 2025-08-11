@@ -1,17 +1,22 @@
 import os
 import sys
+import typing
 from cgitb import handler
 from datetime import datetime
 
+from PyQt6 import QtGui
 from PyQt6.QtGui import QStandardItemModel, QCursor, QStandardItem
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton,
-    QWidget, QTreeView, QScrollArea, QMessageBox, QMenu, QInputDialog, QFileDialog
+    QWidget, QTreeView, QScrollArea, QMessageBox, QMenu, QInputDialog, QFileDialog, QLabel, QDialog
 )
 from PyQt6.QtCore import Qt, QPoint, QModelIndex, pyqtSignal
 
+from public.component.dialog.custom.InfoDialog import InfoDialog
+from public.component.dialog.custom.save_experiment_dialog import Save_Experiment_Dialog, Save_Experiment_Dialog_TYPE
 from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Experiment_Setting_DAO_Handle import Experiment_Setting_DAO_Handle
+from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import AnimalGender
 from public.entity.experiment_setting_entity import Experiment_setting_entity, Group, Animal, AnimalGroupRecord, \
     AnimalGroupRecord_View
@@ -19,26 +24,39 @@ from theme.ThemeQt6 import ThemedWindow
 from util.class_util import class_util
 
 
-class InfoDialog(QMessageBox):
-    """自定义对话框，用于显示动物信息"""
 
-    def __init__(self, info=""):
-        super().__init__()
-        # 实验配置数据
-        self.setting_data: Experiment_setting_entity = None
-        self.setWindowTitle("详情信息")
-        self.setText(info)
-        self.setStandardButtons(QMessageBox.StandardButton.Ok)
+
 
 
 class ContentWindow(ThemedWindow):
     # 更新group页面信号
     update_group_signal = pyqtSignal(bool)
-    def __init__(self):
+    # 更新animal界面信号
+    update_animal_signal = pyqtSignal(bool)
+    def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
+
+        self.setting_data: Experiment_setting_entity = global_setting.get_setting("experiment_setting_new", None)
+        if self.setting_data is not None and not self.setting_data.is_emtpy():
+            self.is_import = True
+            self.import_file_path =  global_setting.get_setting("experiment_setting_file_open", "")
+            self.setting_file_path = global_setting.get_setting("experiment_setting_file_open", "")
+            self.is_update=False
+            self.template_file_path_label.setText(f"当前模板文件：{self.setting_file_path}")
+        super().showEvent(a0)
+    def __init__(self,main_gui :BaseWindow=None):
         super().__init__()
+        #主界面
+        self.main_gui:BaseWindow = main_gui
         # 实验配置数据
         self.setting_data: Experiment_setting_entity = None
-
+        #是否修改模板
+        self.is_update=False
+        # 是否导入模板
+        self.is_import=False
+        # 导入的文件路径
+        self.import_file_path=""
+        # 文件设置路径
+        self.setting_file_path = ""
         self._init_ui()
         self.init_content()
     def _init_ui(self):
@@ -50,16 +68,25 @@ class ContentWindow(ThemedWindow):
 
         # 创建顶部布局
         top_layout = QHBoxLayout()
-        self.import_button = QPushButton("导入实验模板")
-        self.save_button = QPushButton("保存实验模板")
-        self.create_button = QPushButton("创建实验")
-
-        top_layout.addWidget(self.import_button)
-        top_layout.addWidget(self.save_button)
-        top_layout.addWidget(self.create_button)
-
+        self.template_file_path_label = QLabel("未导入实验模板文件")
+        top_layout.addWidget(self.template_file_path_label)
         # 添加顶部布局到主布局
         main_layout.addLayout(top_layout)
+
+        # 创建次顶部布局
+        sub_top_layout = QHBoxLayout()
+        self.clear_button = QPushButton("清空实验模板")
+        self.import_button = QPushButton("导入实验模板")
+        self.save_button = QPushButton("保存实验模板")
+        self.apply_button = QPushButton("应用实验")
+
+        sub_top_layout.addWidget(self.clear_button)
+        sub_top_layout.addWidget(self.import_button)
+        sub_top_layout.addWidget(self.save_button)
+        sub_top_layout.addWidget(self.apply_button)
+
+        # 添加顶部布局到主布局
+        main_layout.addLayout(sub_top_layout)
 
         # 创建内容布局
         self.content_layout = QVBoxLayout()
@@ -91,9 +118,10 @@ class ContentWindow(ThemedWindow):
         # self.add_group("实验组 2")
 
         # 连接按钮信号（示例）
+        self.clear_button.clicked.connect(self.clear_template)
         self.import_button.clicked.connect(self.import_template)
         self.save_button.clicked.connect(self.save_template)
-        self.create_button.clicked.connect(self.create_experiment)
+        self.apply_button.clicked.connect(self.apply_experiment)
     def init_content(self,is_update=True):
         """
 
@@ -101,7 +129,7 @@ class ContentWindow(ThemedWindow):
         :return:
         """
         # 里面装的是Experiment_setting_entity
-        self.setting_data: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
+        self.setting_data: Experiment_setting_entity = global_setting.get_setting("experiment_setting_new", None)
         # 清空treeview
         self.clear_tree()
         if self.setting_data is not None:
@@ -138,10 +166,10 @@ class ContentWindow(ThemedWindow):
                     animalGroupRecord_View.update_time = animalGroupRecord.update_time
                     # 添加显示组件
                     animal_item = QStandardItem(
-                        f"动物名称: {animalGroupRecord_View.animal.name}, ID: {animalGroupRecord_View.animal.id_write}, 性别: {'雌性' if animalGroupRecord_View.animal.sex == AnimalGender.FEMALE.value else '雄性'}, 重量: {animalGroupRecord_View.animal.weight} {animalGroupRecord_View.animal.weight_unit}, 备注: {animalGroupRecord_View.animal.note}")
+                        f"序号:{animalGroupRecord_View.animal.id},动物名称: {animalGroupRecord_View.animal.name}, ID: {animalGroupRecord_View.animal.id_write}, 性别: {'雌性' if animalGroupRecord_View.animal.sex == AnimalGender.FEMALE.value else '雄性'}, 重量: {animalGroupRecord_View.animal.weight} {animalGroupRecord_View.animal.weight_unit}, 备注: {animalGroupRecord_View.animal.note}")
 
                     animal_item.setToolTip(
-                        f"动物名称: {animalGroupRecord_View.animal.name}, ID: {animalGroupRecord_View.animal.id_write}, 性别: {'雌性' if animalGroupRecord_View.animal.sex == AnimalGender.FEMALE.value else '雄性'}, 重量: {animalGroupRecord_View.animal.weight} {animalGroupRecord_View.animal.weight_unit}, 备注: {animalGroupRecord_View.animal.note}")
+                        f"序号:{animalGroupRecord_View.animal.id},动物名称: {animalGroupRecord_View.animal.name}, ID: {animalGroupRecord_View.animal.id_write}, 性别: {'雌性' if animalGroupRecord_View.animal.sex == AnimalGender.FEMALE.value else '雄性'}, 重量: {animalGroupRecord_View.animal.weight} {animalGroupRecord_View.animal.weight_unit}, 备注: {animalGroupRecord_View.animal.note}")
 
                     # 存储动物信息
                     animal_item.setData(animalGroupRecord_View.animal,Qt.ItemDataRole.UserRole)
@@ -156,9 +184,10 @@ class ContentWindow(ThemedWindow):
                             # 自动展开组节点
                             self.tree_view.expand(group_item.index())
                             break
-        # 更新group页面
+        # 更新group和animal页面
         if is_update:
             self.update_group_signal.emit(False)
+            self.update_animal_signal.emit(False)
         pass
 
     def on_item_double_clicked(self, index):
@@ -171,9 +200,9 @@ class ContentWindow(ThemedWindow):
             item_attr = class_util.get_public_attributes_with_notes(data)
             for key, value in item_attr.items():
                 text += f"{value['note']}:{value['value']}\n"
-            dialog = InfoDialog(text)
-            dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
-            dialog.exec()
+            msg_box = InfoDialog(title="详情信息", info=text, icon=QMessageBox.Icon.Information)
+            msg_box.exec()
+
 
     def add_group_view(self, group_name,group_data):
         """添加组界面"""
@@ -200,18 +229,13 @@ class ContentWindow(ThemedWindow):
                 action = menu.exec(self.tree_view.viewport().mapToGlobal(position))
                 if action == add_animal_action:
                     # 如果没有动物 就跳出弹窗提醒用户没有动物，去添加动物
-
                     if self.setting_data is not None and  self.setting_data.animals is not None and len(self.setting_data.animals) > 0:
                         self.add_animal(index)
                         pass
                     else:
-                        msg_box = QMessageBox()
-                        msg_box.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
-                        msg_box.setWindowTitle("注意")
-                        msg_box.setText("尚未添加动物，请前往添加动物！")
-                        msg_box.setIcon(QMessageBox.Icon.Warning)  # 设置图标
-                        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)  # 添加确定按钮
-                        msg_box.exec()  # 显示弹窗并等待用户操作
+                        msg_box = InfoDialog(title="注意",info="尚未添加动物，请前往添加动物！",icon=QMessageBox.Icon.Warning)
+                        msg_box.exec()
+
                         pass
 
                 elif action == delete_group_action:
@@ -245,7 +269,9 @@ class ContentWindow(ThemedWindow):
                               update_time=datetime.now())
                     )
 
-            global_setting.set_setting("experiment_setting", self.setting_data)
+            global_setting.set_setting("experiment_setting_new", self.setting_data)
+            # 修改模板修改状态
+            self.update_status()
             self.init_content()
     def add_animal(self, group_index: QModelIndex):
         """添加动物"""
@@ -253,7 +279,7 @@ class ContentWindow(ThemedWindow):
         animal_menu = QMenu()
         for animal in self.setting_data.animals:
             animal:Animal
-            animal_menu.addAction(f"动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex ==AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}",
+            animal_menu.addAction(f"序号: {animal.id},动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex ==AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}",
                                   lambda group_index=group_index, a=animal: self.add_animal_to_group(group_index, a))
 
         animal_menu.exec(QCursor.pos())
@@ -272,7 +298,9 @@ class ContentWindow(ThemedWindow):
                     int_animalGroupRecords_ids = [int(animalGroupRecords.id) for animalGroupRecords in self.setting_data.animalGroupRecords]
                     init_index = max(int_animalGroupRecords_ids) + 1
                 self.setting_data.animalGroupRecords.append(AnimalGroupRecord(id=init_index,aid=animal.id,gid=group.id,note="无",create_time=datetime.now(),update_time=datetime.now()))
-            global_setting.set_setting("experiment_setting", self.setting_data)
+            global_setting.set_setting("experiment_setting_new", self.setting_data)
+            # 修改模板修改状态
+            self.update_status()
             # 获取滚动条位置
             # 获取垂直滚动条的位置
             vertical_scroll_position = self.scroll_area.verticalScrollBar().value()
@@ -282,10 +310,7 @@ class ContentWindow(ThemedWindow):
         else:
             pass
 
-    def show_animal_info(self, animal: str):
-        """显示动物信息对话框"""
-        info_dialog = AnimalInfoDialog(f"这是关于动物 {animal} 的信息。")
-        info_dialog.exec()
+
 
     def delete_group(self, group_index: QModelIndex):
         """删除组 关联关系一并删除"""
@@ -305,7 +330,9 @@ class ContentWindow(ThemedWindow):
             if group_item.id!=group.id:
                 newGroups.append(group_item)
         self.setting_data.groups = newGroups
-        global_setting.set_setting("experiment_setting", self.setting_data)
+        global_setting.set_setting("experiment_setting_new", self.setting_data)
+        # 修改模板修改状态
+        self.update_status()
         # 获取垂直滚动条的位置
         vertical_scroll_position = self.scroll_area.verticalScrollBar().value()
         self.init_content()
@@ -324,18 +351,141 @@ class ContentWindow(ThemedWindow):
             if animalGroupRecord.gid != group.id and animalGroupRecord.aid!=animal.id:
                 newAnimalGroupRecords.append(animalGroupRecord)
         self.setting_data.animalGroupRecords = newAnimalGroupRecords
-        global_setting.set_setting("experiment_setting", self.setting_data)
+        global_setting.set_setting("experiment_setting_new", self.setting_data)
+        # 修改模板修改状态
+        self.update_status()
         # 获取垂直滚动条的位置
         vertical_scroll_position = self.scroll_area.verticalScrollBar().value()
         self.init_content()
         self.scroll_area.verticalScrollBar().setValue(vertical_scroll_position)
 
+    def clear_template(self):
+        """清空实验模板"""
+        # 确认用户的行为
+        reply = QMessageBox.question(self, '确认', '你确定要清空模板吗？',
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
 
+        if reply == QMessageBox.StandardButton.Yes:
+            # 如果用户确定，
+            self.setting_data = Experiment_setting_entity()
+            global_setting.set_setting("experiment_setting_new", self.setting_data)
+            self.init_content(is_update=True)
+            pass
+        else:
+            pass
 
     def import_template(self):
-        print("导入实验模板")  # 这里实现您的导入功能
-
+        """导入实验模板"""
+        file_path, _ = QFileDialog.getOpenFileName(self, "导入实验模板", "", "db Files (*.db);")
+        if file_path:
+            self.is_import=True
+            self.import_file_path=file_path
+            self.setting_file_path=file_path
+            self.is_update=False
+            self.template_file_path_label.setText(f"当前模板文件：{file_path}")
+            # 获取文件所在的文件夹路径
+            folder_path = os.path.dirname(file_path)
+            # 获取文件名称
+            file_name = os.path.basename(file_path)
+            handle =Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
+            setting_data = handle.query_data_database_all()
+            self.setting_data = setting_data
+            global_setting.set_setting("experiment_setting_new", self.setting_data)
+            self.init_content()
     def save_template(self):
+        if not self.setting_data.is_emtpy():
+            # 导入了且修改了模板
+            if self.is_update and self.is_import:
+                dialog = Save_Experiment_Dialog(title="保存模板",text="当前模板存在修改操作，请选择：")
+                result = dialog.exec()  # 显示对话框并等待用户响应
+                if result ==Save_Experiment_Dialog_TYPE.SAVE_SELF:
+                    """将修改保存到原模板文件"""
+                    # 获取文件所在的文件夹路径
+                    folder_path = os.path.dirname(self.import_file_path)
+                    # 获取文件名称
+                    file_name = os.path.basename(self.import_file_path)
+                    handle = Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
+                    delete_state =handle.remove_data_database_all_not_include_metaDB()
+                    state = handle.insert_data(data=self.setting_data)
+                    if all([delete_state,state]):
+                        self.setting_file_path=self.import_file_path
+                        self.template_file_path_label.setText(self.template_file_path_label.text()[:-1])
+                        msg_box = InfoDialog(title="保存模板", info="保存实验模板成功!",
+                                             icon=QMessageBox.Icon.Information)
+                        msg_box.exec()
+                    else:
+                        msg_box = InfoDialog(title="保存模板", info="保存实验模板失败!", icon=QMessageBox.Icon.Warning)
+                        msg_box.exec()
+                    pass
+                elif result == Save_Experiment_Dialog_TYPE.SAVE_NEW:
+                    """另存为新的模板文件"""
+                    self.save_experiment_file()
+                    pass
+                else:
+                    """关闭了窗口"""
+                    return
+            #未导入模板
+            else:
+                self.save_experiment_file()
+                pass
+            self.is_update = False
+        else:
+            msg_box = InfoDialog(title="保存模板", info="模板不能为空!", icon=QMessageBox.Icon.Warning)
+            msg_box.exec()
+            pass
+
+
+    def apply_experiment(self):
+        """应用实验"""
+        if not self.setting_data.is_emtpy():
+            # 导入了且修改了模板 先保存模板
+            if self.is_update and self.is_import:
+                dialog = Save_Experiment_Dialog(title="保存模板",text="当前模板存在修改操作，请选择：")
+                result = dialog.exec()  # 显示对话框并等待用户响应
+                if result == Save_Experiment_Dialog_TYPE.SAVE_SELF:
+                    """将修改保存到原模板文件"""
+                    self.setting_file_path=self.import_file_path
+                    # 获取文件所在的文件夹路径
+                    folder_path = os.path.dirname(self.import_file_path)
+                    # 获取文件名称
+                    file_name = os.path.basename(self.import_file_path)
+                    handle = Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
+                    delete_state =handle.remove_data_database_all_not_include_metaDB()
+                    state = handle.insert_data(data=self.setting_data)
+                    if all([delete_state,state]):
+                        self.template_file_path_label.setText(self.template_file_path_label.text()[:-1])
+                        msg_box = InfoDialog(title="保存模板", info="保存实验模板成功!",
+                                             icon=QMessageBox.Icon.Information)
+                        msg_box.exec()
+                    else:
+                        msg_box = InfoDialog(title="保存模板", info="保存实验模板失败!", icon=QMessageBox.Icon.Warning)
+                        msg_box.exec()
+                        return
+                    pass
+                elif result == Save_Experiment_Dialog_TYPE.SAVE_NEW:
+                    """另存为新的模板文件"""
+                    if not self.save_experiment_file():
+                        return
+                else :
+                    """关闭了窗口"""
+                    return
+                #未导入模板
+            elif  self.is_update :
+                if not self.save_experiment_file():
+                    return
+                pass
+            self.is_update = False
+            # 将实验设置存入全局变量
+            global_setting.set_setting("experiment_setting", self.setting_data)
+            global_setting.set_setting("experiment_setting_file", self.setting_file_path)
+            self.main_gui.status_bar.update_setting_file_name(f"当前实验文件: {self.setting_file_path}")
+            msg_box = InfoDialog(title="应用实验", info="应用成功!", icon=QMessageBox.Icon.Information)
+            msg_box.exec()
+        else:
+            msg_box = InfoDialog(title="应用实验", info="模板不能为空!", icon=QMessageBox.Icon.Warning)
+            msg_box.exec()
+            pass
+    def save_experiment_file(self):
         file_path, _ = QFileDialog.getSaveFileName(self, "保存实验模板", "", "db Files (*.db);;All Files (*)")
 
         if file_path:
@@ -343,18 +493,35 @@ class ContentWindow(ThemedWindow):
             folder_path = os.path.dirname(file_path)
             # 获取文件名称
             file_name = os.path.basename(file_path)
-            handle =Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
-            handle.insert_data(data=self.setting_data)
+            handle = Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
+            state = handle.insert_data(data=self.setting_data)
+            if state:
+                self.setting_file_path=file_path
+                self.template_file_path_label.setText(f"当前模板文件: {file_path}")
+                msg_box = InfoDialog(title="保存模板", info="保存实验模板成功!", icon=QMessageBox.Icon.Information)
+                msg_box.exec()
+                return True
+            else:
+                msg_box = InfoDialog(title="保存模板", info="保存实验模板失败!", icon=QMessageBox.Icon.Warning)
+                msg_box.exec()
+                return False
             pass
-        pass
-
-    def create_experiment(self):
-        print("创建实验")  # 这里实现您的创建实验功能
-
+        else:
+            return False
+    def update_status(self):
+        """模板修改事件"""
+        if self.setting_data.is_emtpy():
+            self.template_file_path_label.setText(self.template_file_path_label.text()[:-1])
+            self.is_update = False
+            return
+        # 更改label文字 增加*显示修改未保存
+        if not self.is_update:
+            self.template_file_path_label.setText(self.template_file_path_label.text() + "*")
+            self.is_update = True
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = ContentWindow()
     window.setWindowTitle("实验管理系统")
     window.resize(600, 400)
     window.show()
