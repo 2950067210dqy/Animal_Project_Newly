@@ -18,7 +18,7 @@ from public.component.dialog.custom.save_experiment_dialog import Save_Experimen
 from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Experiment_Setting_DAO_Handle import Experiment_Setting_DAO_Handle
 from public.entity.BaseWindow import BaseWindow
-from public.entity.enum.Public_Enum import AnimalGender
+from public.entity.enum.Public_Enum import AnimalGender, AppState
 from public.entity.experiment_setting_entity import Experiment_setting_entity, Group, Animal, AnimalGroupRecord, \
     AnimalGroupRecord_View
 from theme.ThemeQt6 import ThemedWindow
@@ -575,6 +575,9 @@ class ContentWindow(ThemedWindow):
             # 将实验设置存入全局变量
             global_setting.set_setting("experiment_setting", self.setting_data)
             global_setting.set_setting("experiment_setting_file", self.setting_file_path)
+            global_setting.set_setting("app_state", AppState.APPLYING)
+            # 更新main_gui组件显示
+            self.main_gui.change_enable_component_app_state_signal.emit()
             self.main_gui.status_bar.update_setting_file_name(f"当前实验文件: {self.setting_file_path}")
             msg_box = InfoDialog(title="应用实验", info="应用成功!", icon=QMessageBox.Icon.Information)
             msg_box.exec()

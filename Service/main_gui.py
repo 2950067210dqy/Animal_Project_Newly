@@ -12,6 +12,7 @@ from Service import main_response_Modbus
 from index.MainWindow_index import MainWindow_Index
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
+from public.entity.enum.Public_Enum import AppState
 from theme.ThemeManager import ThemeManager
 
 # 过滤日志
@@ -54,6 +55,7 @@ def start_qt_application():
         return
     # 主窗口显示
     logger.info("Appliacation start")
+
     main_window.show_frame()
     # 系统退出
     sys.exit(app.exec())
@@ -103,6 +105,8 @@ def load_global_setting():
     # qt线程池
     thread_pool = QThreadPool()
     global_setting.set_setting("thread_pool", thread_pool)
+    #程序状态
+    global_setting.set_setting("app_state", AppState.INITIALIZED)
     # q = multiprocessing.Queue()  # 创建 Queue 消息传递
     # send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
     # global_setting.set_setting("queue",  q)

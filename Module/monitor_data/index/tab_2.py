@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QPushButton, QSty
 from Module.monitor_data.ui.tab.index.tab2_tab import Tab2_tab
 from Module.monitor_data.ui.tab2_window import Ui_tab2_window
 from public.config_class.global_setting import global_setting
+from public.entity.experiment_setting_entity import Experiment_setting_entity
 from theme.ThemeQt6 import ThemedWidget, ThemedWindow
 from util.time_util import time_util
 
@@ -32,17 +33,30 @@ class Tab_2(ThemedWindow):
         # # 使用 findChildren 查找所有 QWidget 的子组件
         # all_widgets =self.tabWidget.findChildren(QWidget)
         # filtered_widgets_SCROLL = [widget for widget in all_widgets if 'scroll_tab_content_widget_' in widget.objectName()]
-        filtered_widgets_SCROLL = [self.tabWidget.findChild(QWidget,f"scroll_tab_content_widget_{i}") for i in range(10)]
-        for widget in filtered_widgets_SCROLL:
-            widget:QWidget
-            if widget is not None:
-                widget.setFixedSize(int(new_size.width()*0.95), int(new_size.height()))
-                widget.updateGeometry()
+        if self.tabWidget is not None:
+            filtered_widgets_SCROLL = [self.tabWidget.findChild(QWidget,f"scroll_tab_content_widget_{i}") for i in range(10)]
+            for widget in filtered_widgets_SCROLL:
+                widget:QWidget
+                if widget is not None:
+                    widget.setFixedSize(int(new_size.width()*0.95), int(new_size.height()))
+                    widget.updateGeometry()
 
         super().resizeEvent(a0)
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 线程重新响应
         logger.warning("tab2——show")
+        # 实验设置
+        self.experiment_setting:Experiment_setting_entity=global_setting.get_setting("experiment_setting",None)
+        self.experiment_setting_file=global_setting.get_setting("experiment_setting_file",None)
+
+        # 获取相关数据
+        self._init_data()
+        # 实例化自定义ui
+        self._init_customize_ui()
+        # 实例化功能
+        self._init_function()
+        self._init_style_sheet()
+        self._init_customize_style_sheet()
         try:
             for tab_frame in  self.tab_frames:
                 tab_current = tab_frame.tab
@@ -89,6 +103,9 @@ class Tab_2(ThemedWindow):
 
         # 鼠笼下拉框数据列表
         self.mouse_cages = []
+        # 实验设置
+        self.experiment_setting:Experiment_setting_entity=global_setting.get_setting("experiment_setting",None)
+        self.experiment_setting_file=global_setting.get_setting("experiment_setting_file",None)
         # 发送的数据结构
 
         # self.send_message = {
@@ -102,16 +119,9 @@ class Tab_2(ThemedWindow):
         self.modbus = None
         # tab页面保存
         self.tab_frames = []
+        self.tabWidget=None
         # 实例化ui
         self._init_ui(parent, geometry, title)
-        # 获取相关数据
-        self._init_data()
-        # 实例化自定义ui
-        self._init_customize_ui()
-        # 实例化功能
-        self._init_function()
-        self._init_style_sheet()
-        self._init_customize_style_sheet()
 
         # 实例化ui
 
@@ -131,13 +141,13 @@ class Tab_2(ThemedWindow):
         # 获得相关数据
 
     def _init_data(self):
-
-        # 鼠笼下拉框数据
-        self.mouse_cages = [{
-            "id": i + 1,
-            "description": f"鼠笼{i + 1}",
-        } for i in range(int(global_setting.get_setting("configer")['mouse_cage']['nums']))]
-        pass
+        if self.experiment_setting is not None:
+            # 鼠笼下拉框数据
+            self.mouse_cages = [{
+                "id": i + 1,
+                "description": f"鼠笼{i + 1}",
+            } for i in range(len(self.experiment_setting.groups))]
+            pass
 
     # 实例化自定义ui
     def _init_customize_ui(self):

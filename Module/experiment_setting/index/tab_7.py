@@ -14,6 +14,7 @@ from public.config_class.global_setting import global_setting
 from public.entity.BaseWindow import BaseWindow
 
 from public.entity.MyQThread import MyQThread
+from public.entity.enum.Public_Enum import AppState
 from public.function.Modbus import Modbus_Type
 
 from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
@@ -388,9 +389,9 @@ class Tab_7(ThemedWindow):
 
 
     def send_data(self):
-        state = global_setting.get_setting("experiment")
+        state = global_setting.get_setting("app_state",AppState.INITIALIZED)
         # 根据是否已经实验来发送到自己还是main_monitor_data
-        if state is None or not state:
+        if state is None or state !=AppState.MONITORING:
             # 发送数据
             try:
                 if self.send_thread is None:

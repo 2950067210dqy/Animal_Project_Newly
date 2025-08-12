@@ -6,7 +6,7 @@ from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
 from public.entity.BaseWidget import BaseWidget
 from public.entity.BaseWindow import BaseWindow
-from public.entity.enum.Public_Enum import BaseInterfaceType
+from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
 
 
 class Main_experiment_setting_service(BaseService):
@@ -62,8 +62,12 @@ class Main_experiment_setting(BaseModule):
         self.title = self.get_title()
         self.menu_name = self.get_menu_name()
         self.service= self.create_service()
-
+        self.app_state = self.get_app_state()
         pass
+
+
+    def get_app_state(self) -> AppState:
+        return AppState.APPLYING
     def get_name(self):
         """返回组件名称"""
         return "Main_experiment_setting"

@@ -1,9 +1,32 @@
 from enum import Enum
+
+class AppState(Enum):
+    #程序当前状态
+    # 初始化状态
+    INITIALIZED = 0
+    #应用实验状态
+    APPLYING = 1
+    #开始监测数据状态
+    MONITORING = 2
+
+    def __lt__(self, other):
+        return self.value < other.value
+
+    def __le__(self, other):
+        return self.value <= other.value
+
+    def __gt__(self, other):
+        return self.value > other.value
+
+    def __ge__(self, other):
+        return self.value >= other.value
+
 class AnimalGender(Enum):
     # 雌性
     FEMALE = True
     # 雄性
     MALE = False
+
 
 class BaseInterfaceType(Enum):
     WINDOW=0

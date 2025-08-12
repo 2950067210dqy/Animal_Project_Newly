@@ -10,7 +10,7 @@ from my_abc import BaseInterfaceWidget
 
 from my_abc.BaseService import BaseService
 from public.entity.BaseWindow import BaseWindow
-from public.entity.enum.Public_Enum import Frame_state, BaseInterfaceType
+from public.entity.enum.Public_Enum import Frame_state, BaseInterfaceType, AppState
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -23,8 +23,12 @@ class BaseModule(ABC):
         self.menu_name=None
         self.service:BaseService =None
         self.main_gui:BaseWindow =None
+        self.app_state :AppState =None
         pass
-
+    @abstractmethod
+    def get_app_state(self) -> AppState:
+        """返回该组件在程序什么状态才能被点击"""
+        pass
     @abstractmethod
     def get_menu_name(self):
         """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""

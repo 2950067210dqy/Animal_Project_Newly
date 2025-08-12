@@ -10,24 +10,6 @@ from public.entity.send_message import Send_Message
 from util.number_util import number_util
 
 
-def load_global_setting():
-    # 加载监控数据配置
-    # config_file_path = os.getcwd() + "./config/monitor_datas_config.ini"
-    # # 配置数据{"section":{"key1":value1,"key2":value2,....}，...}
-    # config = ini_parser(config_file_path).read()
-    # if (len(config) != 0):
-    #     logger.info("监控配置文件读取成功。")
-    # else:
-    #     logger.error("监控配置文件读取失败。")
-    # global_setting.set_setting("monitor_data", config)
-    # 加载gui配置存储到全局类中
-    configer =ini_parser(os.getcwd() +"./config/gui_config.ini").read()
-    if configer is None:
-        logger.error(f"./gui_config.ini配置文件读取失败")
-    global_setting.set_setting("configer", configer)
-    return configer
-
-
 class Modbus_Slave_Ids(Enum):
     """
     远程地址大全
@@ -470,7 +452,6 @@ class Modbus_Slave_Ids(Enum):
 
 class Modbus_Slave_Send_Messages_Module_Info(Enum):
     # 所有读取模块id信息报文
-    load_global_setting()
     UFC = {
         'type': Modbus_Slave_Ids.UFC,
         'send_messages': [
@@ -515,7 +496,7 @@ class Modbus_Slave_Send_Messages_Module_Info(Enum):
     }
     ENM = {
         'type': Modbus_Slave_Ids.ENM,
-        'send_messages': [
+        'send_messages':
             [
 
                 Send_Message(slave_address=Modbus_Slave_Ids.ENM.value['address'],
@@ -524,76 +505,56 @@ class Modbus_Slave_Send_Messages_Module_Info(Enum):
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list(0),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.ENM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.ENM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{11}", 16), '02X'),
                     }),
             ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
 
-        ]
     }
     EM = {
         'type': Modbus_Slave_Ids.EM,
         'send_messages': [
-            [
-
                 Send_Message(slave_address=Modbus_Slave_Ids.EM.value['address'],
                              slave_desc=Modbus_Slave_Ids.EM.value['description'], function_code=17,
                              function_desc="读取模块ID信息等", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('00540008'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.EM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.EM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{11}", 16), '02X'),
                     }),
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
         ]
     }
     DWM = {
         'type': Modbus_Slave_Ids.DWM,
         'send_messages': [
-            [
-
                 Send_Message(slave_address=Modbus_Slave_Ids.DWM.value['address'],
                              slave_desc=Modbus_Slave_Ids.DWM.value['description'], function_code=17,
                              function_desc="读取模块ID信息等", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('00540008'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.DWM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.DWM.value['address']),
                             '02X'),
                         'function_code': format(int(f"{11}", 16), '02X'),
                     }),
             ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-        ]
     }
     WM = {
         'type': Modbus_Slave_Ids.WM,
         'send_messages': [
-            [
-
                 Send_Message(slave_address=Modbus_Slave_Ids.WM.value['address'],
                              slave_desc=Modbus_Slave_Ids.WM.value['description'], function_code=17,
                              function_desc="读取模块ID信息等", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('00540008'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.WM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.WM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{11}", 16), '02X'),
                     }),
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
         ]
     }
 
@@ -602,7 +563,6 @@ class Modbus_Slave_Send_Messages_Module_Info(Enum):
 
 class Modbus_Slave_Send_Messages_Senior_State(Enum):
     # 所有读取传感器状态的报文信息
-    load_global_setting()
     UFC = {
         'type': Modbus_Slave_Ids.UFC,
         'send_messages': [
@@ -650,98 +610,69 @@ class Modbus_Slave_Send_Messages_Senior_State(Enum):
     ENM = {
         'type': Modbus_Slave_Ids.ENM,
         'send_messages': [
-            [
-
                 Send_Message(slave_address=Modbus_Slave_Ids.ENM.value['address'],
                              slave_desc=Modbus_Slave_Ids.ENM.value['description'], function_code=2,
                              function_desc="读传感器状态信息", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list(3),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.ENM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.ENM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{2}", 16), '02X'),
                     }),
-
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
         ]
     }
     EM = {
         'type': Modbus_Slave_Ids.EM,
         'send_messages': [
-            [
-
                 Send_Message(slave_address=Modbus_Slave_Ids.EM.value['address'],
                              slave_desc=Modbus_Slave_Ids.EM.value['description'], function_code=2,
                              function_desc="读传感器状态信息", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('00800002'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.EM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.EM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{2}", 16), '02X'),
                     }),
-
-
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
         ]
     }
     DWM = {
         'type': Modbus_Slave_Ids.DWM,
         'send_messages': [
-            [
-
                 Send_Message(slave_address=Modbus_Slave_Ids.DWM.value['address'],
                              slave_desc=Modbus_Slave_Ids.DWM.value['description'], function_code=2,
                              function_desc="读传感器状态信息", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('00800002'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.DWM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.DWM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{2}", 16), '02X'),
                     }),
-
-
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
         ]
     }
     WM = {
         'type': Modbus_Slave_Ids.WM,
         'send_messages': [
-            [
-
                 Send_Message(slave_address=Modbus_Slave_Ids.WM.value['address'],
                              slave_desc=Modbus_Slave_Ids.WM.value['description'], function_code=2,
                              function_desc="读传感器状态信息", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('00800002'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.WM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.WM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{2}", 16), '02X'),
                     }),
 
 
             ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
-        ]
     }
 
 
 class Modbus_Slave_Send_Messages_Senior_Config(Enum):
     # 所有读取传感器配置信息报文
-    load_global_setting()
     UFC = {
         'type': Modbus_Slave_Ids.UFC,
         'send_messages': [
@@ -815,7 +746,6 @@ class Modbus_Slave_Send_Messages_Senior_Config(Enum):
     ENM = {
         'type': Modbus_Slave_Ids.ENM,
         'send_messages': [
-            [
 
                 Send_Message(slave_address=Modbus_Slave_Ids.ENM.value['address'],
                              slave_desc=Modbus_Slave_Ids.ENM.value['description'], function_code=1,
@@ -823,7 +753,7 @@ class Modbus_Slave_Send_Messages_Senior_Config(Enum):
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list(2),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.ENM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.ENM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{1}", 16), '02X'),
                     }),
@@ -834,21 +764,16 @@ class Modbus_Slave_Send_Messages_Senior_Config(Enum):
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list(3),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.ENM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.ENM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{3}", 16), '02X'),
                     }),
 
             ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
-        ]
     }
     EM = {
         'type': Modbus_Slave_Ids.EM,
-        'send_messages': [
-            [
+        'send_messages':  [
 
                 Send_Message(slave_address=Modbus_Slave_Ids.EM.value['address'],
                              slave_desc=Modbus_Slave_Ids.EM.value['description'], function_code=1,
@@ -856,35 +781,21 @@ class Modbus_Slave_Send_Messages_Senior_Config(Enum):
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list(1),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.EM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.EM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{1}", 16), '02X'),
                     }),
 
             ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
-        ]
     }
     DWM = {
         'type': Modbus_Slave_Ids.DWM,
         'send_messages': [
-            [
-
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
         ]
     }
     WM = {
         'type': Modbus_Slave_Ids.WM,
         'send_messages': [
-            [
-
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
 
         ]
     }
@@ -892,7 +803,6 @@ class Modbus_Slave_Send_Messages_Senior_Config(Enum):
 class  Modbus_Slave_Send_Messages_Senior_Data(Enum):
     #所有读取传感器数值报文
     # 所有读取数值信息报文
-    load_global_setting()
     UFC = {
         'type': Modbus_Slave_Ids.UFC,
         'send_messages': [
@@ -935,80 +845,61 @@ class  Modbus_Slave_Send_Messages_Senior_Data(Enum):
     ENM = {
         'type': Modbus_Slave_Ids.ENM,
         'send_messages': [
-            [
                 Send_Message(slave_address=Modbus_Slave_Ids.ENM.value['address'],
                              slave_desc=Modbus_Slave_Ids.ENM.value['description'], function_code=4,
                              function_desc="读传感器测量值", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list(7),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.ENM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.ENM.value['address']),
                             '02X'),
                         'function_code': format(int(f"{4}", 16), '02X'),
                     }),
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
         ]
     }
     EM = {
         'type': Modbus_Slave_Ids.EM,
         'send_messages': [
-            [
                 Send_Message(slave_address=Modbus_Slave_Ids.EM.value['address'],
                              slave_desc=Modbus_Slave_Ids.EM.value['description'], function_code=4,
                              function_desc="读传感器测量值", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('04010002'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.EM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.EM.value['address']),
                             '02X'),
                         'function_code': format(int(f"{4}", 16), '02X'),
                     }),
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
         ]
     }
     DWM = {
         'type': Modbus_Slave_Ids.DWM,
         'send_messages': [
-            [
                 Send_Message(slave_address=Modbus_Slave_Ids.DWM.value['address'],
                              slave_desc=Modbus_Slave_Ids.DWM.value['description'], function_code=4,
                              function_desc="读传感器测量值", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('04010002'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.DWM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.DWM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{4}", 16), '02X'),
                     }),
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
         ]
     }
     WM = {
         'type': Modbus_Slave_Ids.WM,
         'send_messages': [
-            [
                 Send_Message(slave_address=Modbus_Slave_Ids.WM.value['address'],
                              slave_desc=Modbus_Slave_Ids.WM.value['description'], function_code=4,
                              function_desc="读传感器测量值", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('04010002'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.WM.value['address']) + 16 * carge_number,
+                            int(Modbus_Slave_Ids.WM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{4}", 16), '02X'),
                     }),
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
         ]
     }
     pass
@@ -1020,7 +911,6 @@ class  Modbus_Slave_Send_Messages_Senior_Data(Enum):
 
 class Modbus_Slave_Send_Messages_All(Enum):
     # 所有读取数值信息报文
-    load_global_setting()
     UFC = {
         'type': Modbus_Slave_Ids.UFC,
         'send_messages': [
@@ -1060,71 +950,52 @@ class Modbus_Slave_Send_Messages_All(Enum):
     ENM = {
         'type': Modbus_Slave_Ids.ENM,
         'send_messages': [
-            [
                 send_message
-                for send_message in list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.ENM.value['send_messages'][carge_number-1],
-                                                         Modbus_Slave_Send_Messages_Senior_State.ENM.value['send_messages'][carge_number-1],
-                                                         Modbus_Slave_Send_Messages_Senior_Config.ENM.value['send_messages'][carge_number-1],
-                                                         Modbus_Slave_Send_Messages_Module_Info.ENM.value['send_messages'][carge_number-1],
+                for send_message in list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.ENM.value['send_messages'],
+                                                         Modbus_Slave_Send_Messages_Senior_State.ENM.value['send_messages'],
+                                                         Modbus_Slave_Send_Messages_Senior_Config.ENM.value['send_messages'],
+                                                         Modbus_Slave_Send_Messages_Module_Info.ENM.value['send_messages'],
                                                          )
                                          )
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
-        ]
+          ]
     }
     EM = {
         'type': Modbus_Slave_Ids.EM,
         'send_messages': [
-            [
                 send_message
                 for send_message in
-                list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.EM.value['send_messages'][carge_number-1],
-                                     Modbus_Slave_Send_Messages_Senior_State.EM.value['send_messages'][carge_number-1],
-                                     Modbus_Slave_Send_Messages_Senior_Config.EM.value['send_messages'][carge_number-1],
-                                     Modbus_Slave_Send_Messages_Module_Info.EM.value['send_messages'][carge_number-1],
+                list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.EM.value['send_messages'],
+                                     Modbus_Slave_Send_Messages_Senior_State.EM.value['send_messages'],
+                                     Modbus_Slave_Send_Messages_Senior_Config.EM.value['send_messages'],
+                                     Modbus_Slave_Send_Messages_Module_Info.EM.value['send_messages'],
                                      )
                      )
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
         ]
     }
     DWM = {
         'type': Modbus_Slave_Ids.DWM,
         'send_messages': [
-            [
                 send_message
                 for send_message in
-                list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.DWM.value['send_messages'][carge_number-1],
-                                     Modbus_Slave_Send_Messages_Senior_State.DWM.value['send_messages'][carge_number-1],
-                                     Modbus_Slave_Send_Messages_Senior_Config.DWM.value['send_messages'][carge_number-1],
-                                     Modbus_Slave_Send_Messages_Module_Info.DWM.value['send_messages'][carge_number-1],
+                list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.DWM.value['send_messages'],
+                                     Modbus_Slave_Send_Messages_Senior_State.DWM.value['send_messages'],
+                                     Modbus_Slave_Send_Messages_Senior_Config.DWM.value['send_messages'],
+                                     Modbus_Slave_Send_Messages_Module_Info.DWM.value['send_messages'],
                                      )
                      )
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
         ]
     }
     WM = {
         'type': Modbus_Slave_Ids.WM,
         'send_messages': [
-            [
                 send_message
                 for send_message in
-                list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.WM.value['send_messages'][carge_number-1],
-                                     Modbus_Slave_Send_Messages_Senior_State.WM.value['send_messages'][carge_number-1],
-                                     Modbus_Slave_Send_Messages_Senior_Config.WM.value['send_messages'][carge_number-1],
-                                     Modbus_Slave_Send_Messages_Module_Info.WM.value['send_messages'][carge_number-1],
+                list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.WM.value['send_messages'],
+                                     Modbus_Slave_Send_Messages_Senior_State.WM.value['send_messages'],
+                                     Modbus_Slave_Send_Messages_Senior_Config.WM.value['send_messages'],
+                                     Modbus_Slave_Send_Messages_Module_Info.WM.value['send_messages'],
                                      )
                      )
-            ]
-            for carge_number in range(1, int(global_setting.get_setting("configer")['mouse_cage']['nums']) + 1 if
-            int(global_setting.get_setting("configer")['mouse_cage']['nums']) is not None else 2)
-
         ]
     }
 

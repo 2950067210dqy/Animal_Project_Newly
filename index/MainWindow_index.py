@@ -7,7 +7,7 @@ from queue import Queue
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMainWindow, QMessageBox, QLabel, QVBoxLayout, QToolBar, QPushButton, QTabWidget
+from PyQt6.QtWidgets import QMainWindow, QMessageBox, QLabel, QVBoxLayout, QToolBar, QPushButton, QTabWidget, QDialog
 from loguru import logger
 
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
@@ -15,16 +15,19 @@ from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from my_abc.BaseModule import BaseModule
 
 from public.component.custom_status_bar import CustomStatusBar
+from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWidget import BaseWidget
 from public.entity.BaseWindow import BaseWindow
-from public.entity.enum.Public_Enum import BaseInterfaceType
+from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
 from theme.ThemeQt6 import ThemedWidget, ThemedWindow
 from ui.MainWindow import Ui_MainWindow
 from util.json_util import json_util
 
 
 class MainWindow_Index(ThemedWindow):
+    # 根据程序状态来改变是否可以点击的组件
+    change_enable_component_app_state_signal = QtCore.pyqtSignal()
     def closeEvent(self, event):
         if len(self.open_windows)!=0:
             # 可选择使用 QMessageBox 来确认是否关闭
@@ -51,6 +54,7 @@ class MainWindow_Index(ThemedWindow):
         pass
     def __init__(self):
         super().__init__()
+
         # 点击开始实验 接受数据和存储数据的线程
         self.store_thread_sub=None
         self.send_thread_sub=None
@@ -73,6 +77,7 @@ class MainWindow_Index(ThemedWindow):
         self.infrared_camera_delete_file_thread_sub = None
         # tool——bar-action 工具栏的action [{'obj_name':'','name';",'action':QAction}]
         self.tool_bar_actions = []
+        self.menu_bar_actions = []
         # 模块
         self.modules =[]
         # 正在显示的Widget
@@ -148,6 +153,12 @@ class MainWindow_Index(ThemedWindow):
         self.status_bar = CustomStatusBar()
         self.setStatusBar(self.status_bar)
         pass
+    def _init_function(self):
+        # 改变组件是否被点击
+        self.change_enable_component_app_state()
+        # 连接信号
+        self.change_enable_component_app_state_signal.connect(self.change_enable_component_app_state)
+        pass
     # 创建工具栏
     def create_tool_bar(self):
         # 创建 QToolBar
@@ -160,7 +171,7 @@ class MainWindow_Index(ThemedWindow):
         action_one.setObjectName(obj_name)
         action_one.setToolTip(name)
         action_one.triggered.connect(self.exchange_widget_and_window)
-        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_one})
+        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_one,"app_state":AppState.INITIALIZED})
 
 
         name = "更改主题颜色"
@@ -169,7 +180,7 @@ class MainWindow_Index(ThemedWindow):
         action_two.setObjectName(obj_name)
         action_two.setToolTip(name)
         action_two.triggered.connect(self.toggle_theme)
-        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_two})
+        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_two,"app_state":AppState.INITIALIZED})
 
         name = "开始实验"
         obj_name = "start_experiment"
@@ -177,7 +188,7 @@ class MainWindow_Index(ThemedWindow):
         action_three.setObjectName(obj_name)
         action_three.setToolTip(name)
         action_three.triggered.connect(self.start_experiment)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_three})
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_three,"app_state":AppState.APPLYING})
 
 
 
@@ -188,7 +199,9 @@ class MainWindow_Index(ThemedWindow):
         action_four.setToolTip(name)
         action_four.triggered.connect(self.stop_experiment)
         action_four.setDisabled(True)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four})
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four,"app_state":AppState.APPLYING})
+
+
 
         # 将动作添加到工具栏
         self.toolbar.addAction(action_one)
@@ -199,7 +212,9 @@ class MainWindow_Index(ThemedWindow):
         self.toolbar.addAction(action_three)
         self.toolbar.addAction(action_four)
         self.toolbar.addSeparator()
-        pass
+
+
+
     def create_menu_bar(self):
     # 创建菜单
         for menu_dict in self.menu_name:
@@ -217,11 +232,13 @@ class MainWindow_Index(ThemedWindow):
                     # 创建menu action
                     module.set_main_gui(main_gui=self)
                     action = QAction(module_title, self)
+                    action.setObjectName(f"{module.name}_menu_action")
                     # 创建点击事件
                     action.triggered.connect(module.start_service)
                     action.triggered.connect( module.adjustGUIPolicy)
                     # action.triggered.connect( module.interface_widget.show)
-
+                    self.menu_bar_actions.append(
+                        {"name": module_title, "obj_name": f"{module.name}_menu_action", "action": action, "app_state": module.app_state})
                     # 将操作添加到文件菜单
                     menu.addAction(action)
                     menu.addSeparator()  # 添加分隔线
@@ -348,23 +365,34 @@ class MainWindow_Index(ThemedWindow):
                                          QMessageBox.StandardButton.No)
             return
         # 开始实验
+
+        # try:
+        #     self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub = main_monitor_data.main(
+        #         port=port, q=global_setting.get_setting("queue"),
+        #         send_message_q=global_setting.get_setting("send_message_queue"))
+        #
+        #
+        # except Exception as e:
+        #     logger.error(f"开启数据监测线程错误，原因：{e}")
+        #     self.status_bar.update_tip(f"开启数据监测线程错误，原因：{e}")
         try:
-            self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub = main_monitor_data.main(
-                port=port, q=global_setting.get_setting("queue"),
-                send_message_q=global_setting.get_setting("send_message_queue"))
-
-            self.deep_camera_thread_sub_list,self.deep_camera_read_queue_data_thread_sub,self.deep_camera_delete_file_thread_sub = main_deep_camera.main(q=global_setting.get_setting("queue"))
-            self.infrared_camera_thread_sub_list,self.infrared_camera_read_queue_data_thread_sub,self.infrared_camera_delete_file_thread_sub = main_infrared_camera.main(q=global_setting.get_setting("queue"))
-
-
-
+            self.deep_camera_thread_sub_list, self.deep_camera_read_queue_data_thread_sub, self.deep_camera_delete_file_thread_sub = main_deep_camera.main(
+                q=global_setting.get_setting("queue"))
         except Exception as e:
-            logger.error(f"开启实验监测错误，原因：{e}")
-            self.status_bar.update_tip(f"开启实验监测错误，原因：{e}")
+            logger.error(f"开启深度相机监测线程错误，原因：{e}")
+            self.status_bar.update_tip(f"开启深度相机数据监测线程错误，原因：{e}")
+        try:
+            self.infrared_camera_thread_sub_list,self.infrared_camera_read_queue_data_thread_sub,self.infrared_camera_delete_file_thread_sub = main_infrared_camera.main(q=global_setting.get_setting("queue"))
+        except Exception as e:
+            logger.error(f"开启红外相机监测线程错误，原因：{e}")
+            self.status_bar.update_tip(f"开启红外相机数据监测线程错误，原因：{e}")
 
-        global_setting.set_setting("experiment", True)
+        global_setting.set_setting("app_state", AppState.MONITORING)
+        # 更新main_gui组件显示
+        self.change_enable_component_app_state_signal.emit()
         self.status_bar.update_status()
         self.status_bar.update_tip(f"开启实验监测成功！")
+
         for action_dict in self.tool_bar_actions:
             if action_dict["obj_name"] == "start_experiment":
                 action_dict["action"]: QAction
@@ -378,6 +406,7 @@ class MainWindow_Index(ThemedWindow):
                 module.interface_widget.frame_obj.stop_btn.setEnabled(True)
                 break
         pass
+
 
     def stop_experiment(self):
 
@@ -457,11 +486,13 @@ class MainWindow_Index(ThemedWindow):
             logger.error(f"关闭实验监测错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
 
+        global_setting.set_setting("app_state", AppState.APPLYING)
+        # 更新main_gui组件显示
+        self.change_enable_component_app_state_signal.emit()
 
-
-        global_setting.set_setting("experiment", False)
         self.status_bar.update_status()
         self.status_bar.update_tip(f"关闭实验监测成功！")
+
         for action_dict in self.tool_bar_actions:
             if action_dict["obj_name"] == "start_experiment":
                 action_dict["action"]: QAction
@@ -474,6 +505,7 @@ class MainWindow_Index(ThemedWindow):
                 module.interface_widget.frame_obj.start_btn.setEnabled(True)
                 module.interface_widget.frame_obj.stop_btn.setEnabled(False)
                 break
+
         # 停止实验
         pass
 
@@ -481,3 +513,19 @@ class MainWindow_Index(ThemedWindow):
         """关闭标签页"""
         self.tab_widget.widget(index).hide()
         self.tab_widget.removeTab(index)
+    def change_enable_component_app_state(self):
+        #根据程序状态来改变是否可以点击的组件'
+        #设置是否可以点击 menu_bar
+        for menu_bar_action in self.menu_bar_actions:
+            if menu_bar_action["app_state"] > global_setting.get_setting("app_state",AppState.INITIALIZED):
+                menu_bar_action["action"].setEnabled(False)
+            else:
+                menu_bar_action["action"].setEnabled(True)
+        # 设置是否可以点击 tool_bar
+        for tool_bar_action in self.tool_bar_actions:
+            if tool_bar_action["app_state"] > global_setting.get_setting("app_state",AppState.INITIALIZED):
+                tool_bar_action["action"].setEnabled(False)
+            else:
+                tool_bar_action["action"].setEnabled(True)
+        pass
+        pass

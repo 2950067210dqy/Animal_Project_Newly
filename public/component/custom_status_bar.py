@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QStatusBar, QLabel, QProgressBar
 
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
+from public.entity.enum.Public_Enum import AppState
 
 
 class Time_thread(MyQThread):
@@ -74,8 +75,7 @@ class CustomStatusBar(QStatusBar):
         self.progress_bar.setValue(value)
 
     def update_status(self):
-        status = global_setting.get_setting("experiment",False)
-        if status:
+        if global_setting.get_setting("app_state",AppState.INITIALIZED)==AppState.MONITORING:
             self.status_label.setText("正在监测数据")
             self.status_label.setStyleSheet("QLabel { color:green; }")
         else:
