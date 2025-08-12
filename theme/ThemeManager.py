@@ -164,10 +164,11 @@ class ThemeManager(QObject):
                 QPushButton{{
                     background-color: {theme['--selected']};
                     color:{theme['--text']};
-                   padding:20px;
+                   padding:10px;
                     border-radius: 4px;
                     font-size:13px;
-                    
+                    border-bottom:2px solid {theme['--border']};
+                    border-right:2px solid {theme['--border']};
                 }}
                 QPushButton:hover{{
                     background:{theme['--highlight']};
@@ -187,9 +188,11 @@ class ThemeManager(QObject):
                 QPushButton{{
                     background-color: {theme['--primary']};
                     color:{theme['--text']};
-                    padding: 20px;
+                    padding: 10px;
                     border-radius: 4px;
                     font-size:13px;
+                    border-bottom:2px solid {theme['--border']};
+                    border-right:2px solid {theme['--border']};
                 }}
                 QPushButton:hover{{
                     background:{theme['--highlight']};
@@ -291,17 +294,23 @@ class ThemeManager(QObject):
             }}
             
             QTreeView::item {{
+      
                 padding: 10px;                /* 内边距 */
             }}
             
             QTreeView::item:selected {{
-                border:none;
+
                 background-color: {theme['--secondary']};     /* 选中项的背景色 */
                 color:{theme['--text_hover']};                  /* 选中项的文本颜色 */
             }}
             
             QListView::item {{
                 padding: 10px;               /* 内边距 */
+            }}
+            
+            QDockWidget {{
+                background-color: {theme['--primary']};
+                border: 1px solid {theme['--border']};
             }}
     
         """ + self.get_button_style(isSelected=False)

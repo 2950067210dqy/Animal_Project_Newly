@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 import typing
@@ -61,6 +62,7 @@ class ContentWindow(ThemedWindow):
         self.init_content()
     def _init_ui(self):
         # 设置主窗口的布局
+
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
 
@@ -139,6 +141,9 @@ class ContentWindow(ThemedWindow):
                     group: Group
                     self.add_group_view(f"动物分组/通道: {group.name}",group)
                     pass
+                self.model.setHorizontalHeaderLabels([f"一共 {len(self.setting_data.groups)}个分组/通道"])
+            else:
+                self.model.setHorizontalHeaderLabels([f"请新建分组/通道"])
             pass
             #添加动物与组的关系
             if len(self.setting_data.animalGroupRecords)>0:
@@ -184,6 +189,11 @@ class ContentWindow(ThemedWindow):
                             # 自动展开组节点
                             self.tree_view.expand(group_item.index())
                             break
+        # 找到每个group里的动物数量
+        for row in range(self.model.rowCount()):
+            group_item: QStandardItem = self.model.item(row)
+            group_item.setText(f"{group_item.text()} {'共'+str(group_item.rowCount())+'个动物' if group_item.rowCount()!=0 else '无动物'}")
+
         # 更新group和animal页面
         if is_update:
             self.update_group_signal.emit(False)
@@ -224,7 +234,8 @@ class ContentWindow(ThemedWindow):
 
             if item.parent() is None:  # 组节点
                 add_animal_action = menu.addAction("添加动物")
-                delete_group_action = menu.addAction("删除组/通道")
+                copy_group_action = menu.addAction("复制该分组/通道")
+                delete_group_action = menu.addAction("删除分组/通道")
 
                 action = menu.exec(self.tree_view.viewport().mapToGlobal(position))
                 if action == add_animal_action:
@@ -237,15 +248,25 @@ class ContentWindow(ThemedWindow):
                         msg_box.exec()
 
                         pass
-
+                elif action == copy_group_action:
+                    #复制该分组
+                    self.copy_group(index)
+                    pass
                 elif action == delete_group_action:
+                    # 删除分组
                     self.delete_group(index)
             else:  # 动物节点
+                copy_animal_action = menu.addAction("复制该动物")
                 delete_animal_action = menu.addAction("删除动物")
 
                 action = menu.exec(self.tree_view.viewport().mapToGlobal(position))
                 if action == delete_animal_action:
+                    # 删除动物
                     self.delete_animal(index)
+                elif action == copy_animal_action:
+                    #复制动物
+                    self.copy_animal(index)
+                    pass
         else:
             # 如果点击在无效位置，可以选择其他操作，比如只显示添加组的选项
             add_group_action = menu.addAction("添加组")
@@ -286,10 +307,12 @@ class ContentWindow(ThemedWindow):
 
     def add_animal_to_group(self, group_index: QModelIndex, animal: Animal):
         """将动物添加到组/通道"""
-        group_item:QStandardItem = self.model.itemFromIndex(group_index)
-        group  = group_item.data(Qt.ItemDataRole.UserRole)
-        # 如果动物-组关系不存在则添加
-        if len( self.setting_data.animalGroupRecords)==0 or (group.id,animal.id) not in [(animalGroupRecord.gid,animalGroupRecord.aid) for animalGroupRecord in self.setting_data.animalGroupRecords] :
+        animal_nums , ok = QInputDialog.getInt(self, "添加动物数量", f"请输入动物\n序号: {animal.id},动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex ==AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}\n数量:")
+        if ok and animal_nums:
+            group_item:QStandardItem = self.model.itemFromIndex(group_index)
+            group  = group_item.data(Qt.ItemDataRole.UserRole)
+            ## 如果动物-组关系不存在则添加
+            # if len( self.setting_data.animalGroupRecords)==0 or (group.id,animal.id) not in [(animalGroupRecord.gid,animalGroupRecord.aid) for animalGroupRecord in self.setting_data.animalGroupRecords] :
 
             if self.setting_data is not None :
                 init_index = 0
@@ -297,7 +320,8 @@ class ContentWindow(ThemedWindow):
                 if self.setting_data is not None and len(self.setting_data.animalGroupRecords) > 0:
                     int_animalGroupRecords_ids = [int(animalGroupRecords.id) for animalGroupRecords in self.setting_data.animalGroupRecords]
                     init_index = max(int_animalGroupRecords_ids) + 1
-                self.setting_data.animalGroupRecords.append(AnimalGroupRecord(id=init_index,aid=animal.id,gid=group.id,note="无",create_time=datetime.now(),update_time=datetime.now()))
+                for animal_num in range(animal_nums):
+                    self.setting_data.animalGroupRecords.append(AnimalGroupRecord(id=init_index+animal_num,aid=animal.id,gid=group.id,note="无",create_time=datetime.now(),update_time=datetime.now()))
             global_setting.set_setting("experiment_setting_new", self.setting_data)
             # 修改模板修改状态
             self.update_status()
@@ -307,8 +331,8 @@ class ContentWindow(ThemedWindow):
             self.init_content()
             # 更新界面后直接滑动到之前选中的位置
             self.scroll_area.verticalScrollBar().setValue(vertical_scroll_position)
-        else:
-            pass
+            # else:
+            #     pass
 
 
 
@@ -338,6 +362,79 @@ class ContentWindow(ThemedWindow):
         self.init_content()
         self.scroll_area.verticalScrollBar().setValue(vertical_scroll_position)
 
+    def copy_group(self, group_index: QModelIndex):
+        """复制组"""
+        group_item: QStandardItem = self.model.itemFromIndex(group_index)
+        group: Group = group_item.data(Qt.ItemDataRole.UserRole)
+        group_2 = copy.deepcopy(group)
+        init_index = 0
+        # 取最大name的那一个
+        if self.setting_data is not None and len(self.setting_data.groups) > 0:
+            int_group_names = [int(group.name) for group in self.setting_data.groups]
+            init_index = max(int_group_names) + 1
+        group_2.id = init_index
+        group_2.name = init_index
+        self.setting_data.groups.append(group_2)
+
+
+
+        # 复制该组里的所有动物关系
+        animalGroupRecords_init_index = 0
+        # 取最大name的那一个
+        if self.setting_data is not None and len(self.setting_data.animalGroupRecords) > 0:
+            int_animalGroupRecords_ids = [int(animalGroupRecords.id) for animalGroupRecords in
+                                          self.setting_data.animalGroupRecords]
+            animalGroupRecords_init_index = max(int_animalGroupRecords_ids) + 1
+        for animal_item_index in range(group_item.rowCount()):
+            animal_item : QStandardItem= group_item.child(animal_item_index)
+            animal:Animal = animal_item.data(Qt.ItemDataRole.UserRole)
+            animalGroupRecord=AnimalGroupRecord(id=animalGroupRecords_init_index+animal_item_index,
+                                                aid=animal.id,
+                                                gid=group_2.id,
+                                                note="无",
+                                                create_time=datetime.now(),
+                                                update_time=datetime.now()
+                                                )
+            self.setting_data.animalGroupRecords.append(animalGroupRecord)
+
+        global_setting.set_setting("experiment_setting_new", self.setting_data)
+        # 修改模板修改状态
+        self.update_status()
+        # 获取垂直滚动条的位置
+        vertical_scroll_position = self.scroll_area.verticalScrollBar().value()
+        self.init_content()
+        self.scroll_area.verticalScrollBar().setValue(vertical_scroll_position)
+
+    def copy_animal(self, animal_index: QModelIndex):
+        """复制动物"""
+        animal_item: QStandardItem = self.model.itemFromIndex(animal_index)
+        animal: Animal = animal_item.data(Qt.ItemDataRole.UserRole)
+        group_item: QStandardItem = self.model.itemFromIndex(animal_index.parent())
+        group: Group = group_item.data(Qt.ItemDataRole.UserRole)
+
+        animal_nums, ok = QInputDialog.getInt(self, "复制动物数量",
+                                              f"请输入动物\n序号: {animal.id},动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex == AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}\n数量:")
+        if ok and animal_nums:
+            init_index = 0
+            # 取最大name的那一个
+            if self.setting_data is not None and len(self.setting_data.animalGroupRecords) > 0:
+                int_animalGroupRecords_ids = [int(animalGroupRecords.id) for animalGroupRecords in
+                                              self.setting_data.animalGroupRecords]
+                init_index = max(int_animalGroupRecords_ids) + 1
+
+            for animal_num in range(animal_nums):
+                self.setting_data.animalGroupRecords.append(
+                    AnimalGroupRecord(id=init_index + animal_num, aid=animal.id, gid=group.id, note="无",
+                                      create_time=datetime.now(), update_time=datetime.now()))
+
+
+            global_setting.set_setting("experiment_setting_new", self.setting_data)
+            # 修改模板修改状态
+            self.update_status()
+            # 获取垂直滚动条的位置
+            vertical_scroll_position = self.scroll_area.verticalScrollBar().value()
+            self.init_content()
+            self.scroll_area.verticalScrollBar().setValue(vertical_scroll_position)
     def delete_animal(self, animal_index: QModelIndex):
         """删除动物 其实就是删除动物与组的关系"""
         animal_item: QStandardItem = self.model.itemFromIndex(animal_index)

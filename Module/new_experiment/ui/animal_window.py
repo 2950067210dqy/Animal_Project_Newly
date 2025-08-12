@@ -96,8 +96,6 @@ class AnimalWindow(ThemedWindow):
         self._init_ui()
         self.init_animal()
     def _init_ui(self):
-        self.setWindowTitle("动物管理系统")
-        self.setGeometry(100, 100, 400, 300)
 
         # 创建中心部件
         central_widget = QWidget()
@@ -115,6 +113,11 @@ class AnimalWindow(ThemedWindow):
         create_animal_button = QPushButton("创建动物")
         create_animal_button.clicked.connect(self.add_animal)
         self.top_layout.addWidget(create_animal_button)
+        # 第二顶布布局
+        self.sub_top_layout = QVBoxLayout()
+        self.title_label = QLabel("无分组/通道")
+        self.sub_top_layout.addWidget(self.title_label)
+        main_layout.addLayout(self.sub_top_layout)
 
         # 创建内容布局
         self.content_layout = QVBoxLayout()
@@ -149,6 +152,7 @@ class AnimalWindow(ThemedWindow):
         self.list_widget.clear()
         if self.setting_data is not None:
             if len(self.setting_data.animals) > 0:
+                self.title_label.setText(f"一共 {len(self.setting_data.animals)}条动物")
                 for index, animal in enumerate(self.setting_data.animals):
                     animal: Animal
                     item = QListWidgetItem(f"序号:{animal.id},动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex ==AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}")
@@ -156,6 +160,8 @@ class AnimalWindow(ThemedWindow):
                     item.setData(Qt.ItemDataRole.UserRole, animal)  # 设置自定义数据
                     self.list_widget.addItem(item)
                     pass
+            else:
+                self.title_label.setText("暂无动物，请添加！")
             pass
         pass
         # 更新content页面

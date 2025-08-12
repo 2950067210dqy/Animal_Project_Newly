@@ -24,8 +24,7 @@ class GroupWindow(ThemedWindow):
         self._init_ui()
         self.init_group()
     def _init_ui(self):
-        self.setWindowTitle("动物管理系统")
-        self.setGeometry(100, 100, 400, 300)
+
 
         # 创建中心部件
         central_widget = QWidget()
@@ -58,6 +57,13 @@ class GroupWindow(ThemedWindow):
         add_button.clicked.connect(self.add_group)
         self.top_layout.addWidget(add_button)
 
+        # 第二顶布布局
+        self.sub_top_layout = QVBoxLayout()
+        self.title_label = QLabel("无分组/通道")
+        self.sub_top_layout.addWidget(self.title_label)
+        main_layout.addLayout(self.sub_top_layout)
+
+
         # 创建内容布局
         self.content_layout = QVBoxLayout()
         main_layout.addLayout(self.content_layout)
@@ -88,6 +94,7 @@ class GroupWindow(ThemedWindow):
         self.list_widget.clear()
         if self.setting_data is not None:
             if len(self.setting_data.groups)>0:
+                self.title_label.setText(f"一共 {len(self.setting_data.groups)}个 分组/通道")
                 for index, group in enumerate(self.setting_data.groups):
                     group:Group
                     item = QListWidgetItem(f"动物分组/通道: {group.name}")
@@ -95,7 +102,8 @@ class GroupWindow(ThemedWindow):
                     item.setData(Qt.ItemDataRole.UserRole, group)  # 设置自定义数据
                     self.list_widget.addItem(item)
                     pass
-            pass
+            else:
+                self.title_label.setText("无分组/通道")
         pass
        #更新content页面
         if is_update:
