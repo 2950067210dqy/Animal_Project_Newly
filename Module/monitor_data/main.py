@@ -74,7 +74,7 @@ class Main_Monitor_data_Module(BaseModule):
         pass
     def get_title(self):
         """获取组件title"""
-        return "数据监控"
+        return "数据监控（旧版本）"
     def get_menu_name(self):
         """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""
         return {"id":1,"text":"实验"}
