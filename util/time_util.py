@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import datetime, timedelta
 
@@ -10,6 +11,55 @@ class time_util():
     def __init__(self):
         pass
 
+    @classmethod
+    def get_file_creation_time_as_string(cls,file_path):
+        """
+        # 获取文件创建时间的时间戳
+        :param file_path:
+        :return:
+        """
+        # 获取文件创建时间的时间戳
+        creation_time = os.path.getctime(file_path)
+        # 将时间戳转换为结构化时间
+        struct_time = time.localtime(creation_time)
+        # 格式化为指定模式的字符串
+        formatted_time = time.strftime("%Y_%m_%d_%H_%M_%S", struct_time)
+        return formatted_time
+    @classmethod
+    def get_current_times_info(cls):
+        """
+        获取日期的年份 月 日 时 分 秒
+        :param times datetime类型
+        :return: year,month,day,hour,minute,second
+        """
+        # 获取当前日期和时间
+        now = datetime.now()
+
+        # 提取年份、月份、日、时、分、秒
+        year = now.year
+        month = now.month
+        day = now.day
+        hour = now.hour
+        minute = now.minute
+        second = now.second
+
+        return year, month, day, hour, minute, second
+    @classmethod
+    def get_times_info(cls, times: datetime = datetime.now()):
+        """
+        获取日期的年份 月 日 时 分 秒
+        :param times datetime类型
+        :return: year,month,day,hour,minute,second
+        """
+
+        # 提取年份、月份、日、时、分、秒
+        year = times.year
+        month = times.month
+        day = times.day
+        hour = times.hour
+        minute = times.minute
+        second = times.second
+        return year,month,day,hour,minute,second
     @classmethod
     def get_current_week_info(cls):
         """

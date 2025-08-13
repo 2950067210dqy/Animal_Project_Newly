@@ -2,6 +2,7 @@ import copy
 import multiprocessing
 import os
 import queue
+import shutil
 import threading
 import time
 
@@ -17,6 +18,7 @@ from public.entity.MyQThread import MyQThread
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.Modbus.Modbus import ModbusRTUMaster
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
+from util.time_util import time_util
 
 # 全局变量
 # 实现主线程发一整轮消息，当从线程响应完全部的消息后，主线程在发一整轮消息
@@ -298,6 +300,32 @@ class Add_message_thread(MyQThread):
             batch_complete_event.clear()  # 重置事件
             logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
 
+def copy_experiment_setting_file():
+    #将实验配置存储到该实验的文件夹中去
+    # 将实验设置存入全局变量
+    experiment_setting_file=global_setting.get_setting("experiment_setting_file", None)
+    if experiment_setting_file is not None and  os.path.exists(experiment_setting_file):
+        # 获取文件所在的文件夹路径
+        folder_path = os.path.dirname(experiment_setting_file)
+        # 获取文件名称
+        file_name = os.path.basename(experiment_setting_file)
+        # 不带扩展名的文件名称
+        file_name_without_extension = os.path.splitext(file_name)[0]
+        #获取文件的扩展名
+        file_name_extension = os.path.splitext(file_name)[1]
+        # 定义文件夹路径
+        folder_path_copy = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE']['fold_path'] + os.path.join(
+            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],f"{file_name_without_extension}_{time_util.get_file_creation_time_as_string(experiment_setting_file)}","experiment_setting")
+
+        # 创建文件夹（如果不存在）
+        os.makedirs(folder_path_copy, exist_ok=True)
+
+        source_file = experiment_setting_file
+        destination_file=os.path.join(folder_path_copy,f"experiment_setting.{file_name_extension}")
+        # 复制文件并保留元数据
+        shutil.copy2(source_file, destination_file)
+        pass
+    pass
 def main(port,q,send_message_q):
     # logger.remove(0)
     logger.add(
@@ -333,6 +361,9 @@ def main(port,q,send_message_q):
     add_message_thread=Add_message_thread("monitor_data_add_message",send_thread, port)
     add_message_thread.start()
 
+
+    # 将实验配置存储到该实验的文件夹中去
+    copy_experiment_setting_file()
     return store_thread,send_thread,read_queue_data_thread,add_message_thread
 
 

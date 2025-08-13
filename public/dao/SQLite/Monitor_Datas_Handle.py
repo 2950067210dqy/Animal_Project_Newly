@@ -36,15 +36,23 @@ class Monitor_Datas_Handle():
         创建数据库
         :return:
         """
-        year, week_number, weekday = time_util.get_current_week_info()
+        year, month, day, hour, minute, second = time_util.get_current_times_info()
+        # 获取实验配置文件名称
+        file_name_without_extension =""
+        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+            # 获取文件名称
+            file_name = os.path.basename(experiment_setting_file)
+            # 不带扩展名的文件名称
+            file_name_without_extension = os.path.splitext(file_name)[0]
         # 定义文件夹路径
         folder_path =os.getcwd()+ global_setting.get_setting('monitor_data')['STORAGE']['fold_path'] + os.path.join(
 
-            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'], f'{year}', f'{week_number:02}')
+            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'], f"{file_name_without_extension}_{time_util.get_file_creation_time_as_string(experiment_setting_file)}",f'{year}', f'{month}')
 
         # 创建文件夹（如果不存在）
         os.makedirs(folder_path, exist_ok=True)
-        db_name = f"{weekday}.db"
+        db_name = f"{day}.db"
         db_file_path = os.path.join(folder_path, db_name)
         return db_file_path
 
