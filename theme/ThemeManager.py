@@ -251,6 +251,10 @@ class ThemeManager(QObject):
                 color:{theme['--text']};
                  border: 1px solid {theme['--border']};
             }}
+            QMenu::item:disabled {{
+                background-color: {theme['--disabled']};  /* 禁用状态背景颜色 */
+               color:{theme['--text_disabled']};                  /* 禁用状态文字颜色 */
+            }}
             QMenuBar {{
                 background-color: {theme['--secondary']};
                 color: {theme['--text']};

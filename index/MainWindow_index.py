@@ -366,15 +366,15 @@ class MainWindow_Index(ThemedWindow):
             return
         # 开始实验
 
-        # try:
-        #     self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub = main_monitor_data.main(
-        #         port=port, q=global_setting.get_setting("queue"),
-        #         send_message_q=global_setting.get_setting("send_message_queue"))
-        #
-        #
-        # except Exception as e:
-        #     logger.error(f"开启数据监测线程错误，原因：{e}")
-        #     self.status_bar.update_tip(f"开启数据监测线程错误，原因：{e}")
+        try:
+            self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub = main_monitor_data.main(
+                port=port, q=global_setting.get_setting("queue"),
+                send_message_q=global_setting.get_setting("send_message_queue"))
+
+
+        except Exception as e:
+            logger.error(f"开启数据监测线程错误，原因：{e}")
+            self.status_bar.update_tip(f"开启数据监测线程错误，原因：{e}")
         try:
             self.deep_camera_thread_sub_list, self.deep_camera_read_queue_data_thread_sub, self.deep_camera_delete_file_thread_sub = main_deep_camera.main(
                 q=global_setting.get_setting("queue"))

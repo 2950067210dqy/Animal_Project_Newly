@@ -1,3 +1,4 @@
+import copy
 import multiprocessing
 import os
 import queue
@@ -13,6 +14,7 @@ from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
+from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.Modbus.Modbus import ModbusRTUMaster
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 
@@ -249,6 +251,7 @@ class Add_message_thread(MyQThread):
         super().__init__(name=name)
         self.send_thread = send_thread
         self.port=port
+        self.experiment_setting:Experiment_setting_entity = global_setting.get_setting("experiment_setting",None)
         pass
     def run(self):
         logger.warning(f"{self.name} thread has been started！")
@@ -260,7 +263,7 @@ class Add_message_thread(MyQThread):
             if self._paused:
                 self.condition.wait(self.mutex)  # 等待条件变量
             self.mutex.unlock()
-
+            self.experiment_setting = global_setting.get_setting("experiment_setting", None)
             send_messages = []
             # 公共传感器数据的send_messages  现在只发传感器数值查询报文DEBUGGER
             for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Senior_Data.value:
@@ -273,16 +276,20 @@ class Add_message_thread(MyQThread):
                     MESSAGE_BATCH_SIZE += 1
             # 每个笼子里的传感器的send_messages
             for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
-                for mouse_cage in data_type.value['send_messages']:
-                    # 所有消息
-                    for message_struct in mouse_cage:
-                        message_temp = message_struct.message
-                        message_temp['port'] =  self.port
-                        self.send_thread.add_message(message=message_temp, urgent=False)
-                        send_messages.append(message_temp)
-                        MESSAGE_BATCH_SIZE += 1
-                    # 测试专用 只拿一个笼子鼠笼1里的数据 DEBUGGER
-                    # break
+                if self.experiment_setting  is not None:
+                    for mouse_cage in range(1,len(self.experiment_setting.groups)+1):
+                        # 所有消息
+
+                        for message_struct in data_type.value['send_messages']:
+                            message_temp = copy.deepcopy(message_struct.message)
+                            message_temp['port'] =  self.port
+                            print(f"{format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X')} | {message_temp['slave_id']}")
+                            message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
+                            self.send_thread.add_message(message=message_temp, urgent=False)
+                            send_messages.append(message_temp)
+                            MESSAGE_BATCH_SIZE += 1
+                        # 测试专用 只拿一个笼子鼠笼1里的数据 DEBUGGER
+                        # break
                 pass
                 # 等待从线程处理完当前批次
             logger.info(f"数据请求报文：一共{len(send_messages)}条报文！")
