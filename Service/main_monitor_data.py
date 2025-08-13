@@ -283,7 +283,7 @@ class Add_message_thread(MyQThread):
                         for message_struct in data_type.value['send_messages']:
                             message_temp = copy.deepcopy(message_struct.message)
                             message_temp['port'] =  self.port
-                            print(f"{format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X')} | {message_temp['slave_id']}")
+
                             message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
                             self.send_thread.add_message(message=message_temp, urgent=False)
                             send_messages.append(message_temp)

@@ -10,7 +10,7 @@ class SQLiteManager():
         """初始化数据库连接."""
         self.connection = sqlite3.connect(db_name)
         # WAL模式提供更好的并发性，读取器不会阻塞写入器，反之亦然
-        self.connection.execute('PRAGMA journal_mode=WAL')  # 启用WAL模式
+        # self.connection.execute('PRAGMA journal_mode=WAL')  # 启用WAL模式
         # logger.info(f"数据库{db_name}连接成功")
         self.cursor = self.connection.cursor()
 
@@ -194,6 +194,9 @@ class SQLiteManager():
         self.connection.commit()
         return self.cursor.rowcount
     def close(self):
+        # 使用 PRAGMA wal_checkpoint 进行合并
+        # self.connection.execute('PRAGMA wal_checkpoint(TRUNCATE);')#TRUNCATE会删除WAL文件
+        # self.connection.execute('PRAGMA journal_mode=DELETE;')  # 将WAL模式变为默认模式
         """关闭数据库连接."""
         self.cursor.close()
         self.connection.close()
