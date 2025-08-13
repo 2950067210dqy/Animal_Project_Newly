@@ -1,7 +1,6 @@
 import json
 import threading
 import traceback
-from threading import Thread
 
 from loguru import logger
 
@@ -9,10 +8,10 @@ from public.component.dialog.index.deep_camera_config_dialog_index import deep_c
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from public.entity.MyQThread import MyQThread
-from util.folder_util import folder_util
-from util.json_util import json_util
+from public.util.folder_util import folder_util
+from public.util.json_util import json_util
 
-from util.time_util import time_util
+from public.util.time_util import time_util
 import pyrealsense2 as rs
 import cv2
 import csv

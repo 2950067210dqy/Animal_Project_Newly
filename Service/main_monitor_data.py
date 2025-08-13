@@ -6,19 +6,17 @@ import shutil
 import threading
 import time
 
-from PyQt6.QtCore import pyqtSignal
 from loguru import logger
 
 
 from public.config_class.global_setting import global_setting
 
-from public.config_class.ini_parser import ini_parser
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.Modbus.Modbus import ModbusRTUMaster
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
-from util.time_util import time_util
+from public.util.time_util import time_util
 
 # 全局变量
 # 实现主线程发一整轮消息，当从线程响应完全部的消息后，主线程在发一整轮消息
@@ -315,7 +313,7 @@ def copy_experiment_setting_file():
         file_name_extension = os.path.splitext(file_name)[1]
         # 定义文件夹路径
         folder_path_copy = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE']['fold_path'] + os.path.join(
-            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],f"{file_name_without_extension}_{time_util.get_file_creation_time_as_string(experiment_setting_file)}","experiment_setting")
+            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time',time.time()))}","experiment_setting")
 
         # 创建文件夹（如果不存在）
         os.makedirs(folder_path_copy, exist_ok=True)
@@ -342,7 +340,9 @@ def main(port,q,send_message_q):
     # 读取共享信息线程
     # q = global_setting.get_setting("queue")
     # send_message_q = global_setting.get_setting("send_message_queue")
-    global read_queue_data_thread
+    global read_queue_data_thread,MESSAGE_BATCH_SIZE,total_messages_processed
+    MESSAGE_BATCH_SIZE = 0
+    total_messages_processed = 1
     read_queue_data_thread.queue = send_message_q
 
 

@@ -1,13 +1,12 @@
 import importlib
 import json
 import os
+import time
 from json import JSONDecodeError
-from queue import Queue
 
-from PyQt6 import QtWidgets, QtCore
-from PyQt6.QtCore import QRect, Qt
+from PyQt6 import QtCore
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMainWindow, QMessageBox, QLabel, QVBoxLayout, QToolBar, QPushButton, QTabWidget, QDialog
+from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget
 from loguru import logger
 
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
@@ -15,19 +14,27 @@ from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from my_abc.BaseModule import BaseModule
 
 from public.component.custom_status_bar import CustomStatusBar
-from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.config_class.global_setting import global_setting
-from public.entity.BaseWidget import BaseWidget
-from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
-from theme.ThemeQt6 import ThemedWidget, ThemedWindow
+from public.util.custom_data_file_util import custom_data_file_util
+from public.util.time_util import time_util
+from theme.ThemeQt6 import ThemedWindow
 from ui.MainWindow import Ui_MainWindow
-from util.json_util import json_util
 
 
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
     change_enable_component_app_state_signal = QtCore.pyqtSignal()
+    def close_window_handle(self):
+        """
+        关闭窗口执行的事件
+        :return:
+        """
+        state = global_setting.get_setting("app_state", None)
+        # 如果在开始实验期间关闭窗口
+        if state is not None and state ==AppState.MONITORING:
+            # 停止实验
+            self.stop_experiment()
     def closeEvent(self, event):
         if len(self.open_windows)!=0:
             # 可选择使用 QMessageBox 来确认是否关闭
@@ -37,6 +44,7 @@ class MainWindow_Index(ThemedWindow):
                                          QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
                 for window in self.open_windows:
+                    self.close_window_handle()
                     window.close()
                 event.accept()  # 关闭窗口
             else:
@@ -48,6 +56,7 @@ class MainWindow_Index(ThemedWindow):
                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                          QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
+                self.close_window_handle()
                 event.accept()  # 关闭窗口
             else:
                 event.ignore()  # 忽略关闭事件
@@ -365,7 +374,8 @@ class MainWindow_Index(ThemedWindow):
                                          QMessageBox.StandardButton.No)
             return
         # 开始实验
-
+        global_setting.set_setting("app_state", AppState.MONITORING)
+        global_setting.set_setting("start_experiment_time", time.time())
         try:
             self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub = main_monitor_data.main(
                 port=port, q=global_setting.get_setting("queue"),
@@ -387,7 +397,7 @@ class MainWindow_Index(ThemedWindow):
             logger.error(f"开启红外相机监测线程错误，原因：{e}")
             self.status_bar.update_tip(f"开启红外相机数据监测线程错误，原因：{e}")
 
-        global_setting.set_setting("app_state", AppState.MONITORING)
+
         # 更新main_gui组件显示
         self.change_enable_component_app_state_signal.emit()
         self.status_bar.update_status()
@@ -487,6 +497,7 @@ class MainWindow_Index(ThemedWindow):
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
 
         global_setting.set_setting("app_state", AppState.APPLYING)
+        global_setting.set_setting("stop_experiment_time", time.time())
         # 更新main_gui组件显示
         self.change_enable_component_app_state_signal.emit()
 
@@ -506,7 +517,24 @@ class MainWindow_Index(ThemedWindow):
                 module.interface_widget.frame_obj.stop_btn.setEnabled(False)
                 break
 
-        # 停止实验
+        # 停止实验 将文件夹的数据合并成一个数据文件
+        # 读取实验设置文件路径
+        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+            # 获取文件所在的文件夹路径
+            folder_path = os.path.dirname(experiment_setting_file)
+            # 获取文件名称
+            file_name = os.path.basename(experiment_setting_file)
+            # 不带扩展名的文件名称
+            file_name_without_extension = os.path.splitext(file_name)[0]
+            # 获取文件的扩展名
+            file_name_extension = os.path.splitext(file_name)[1]
+            # 定义文件夹路径
+            folder_path_data= os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE'][
+                'fold_path'] + os.path.join(
+                global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
+                f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time',time.time()))}")
+            custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
         pass
 
     def close_tab(self, index):

@@ -1,4 +1,5 @@
 import os
+import time
 from datetime import datetime
 
 from loguru import logger
@@ -9,7 +10,7 @@ from public.dao.SQLite.SQliteManager import SQLiteManager
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 # 监控数据操作类
-from util.time_util import time_util
+from public.util.time_util import time_util
 
 
 class Monitor_Datas_Handle():
@@ -48,7 +49,7 @@ class Monitor_Datas_Handle():
         # 定义文件夹路径
         folder_path =os.getcwd()+ global_setting.get_setting('monitor_data')['STORAGE']['fold_path'] + os.path.join(
 
-            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'], f"{file_name_without_extension}_{time_util.get_file_creation_time_as_string(experiment_setting_file)}",f'{year}', f'{month}')
+            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'], f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time',time.time()))}",f'{year}', f'{month}')
 
         # 创建文件夹（如果不存在）
         os.makedirs(folder_path, exist_ok=True)

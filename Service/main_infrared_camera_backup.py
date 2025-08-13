@@ -16,9 +16,9 @@ from public.config_class.ini_parser import ini_parser
 from public.entity.MyQThread import MyQThread
 
 
-from util.folder_util import folder_util
-from util.json_util import json_util
-from util.time_util import time_util
+from public.util.folder_util import folder_util
+from public.util.json_util import json_util
+from public.util.time_util import time_util
 import argparse
 import time
 import os

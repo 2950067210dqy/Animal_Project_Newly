@@ -10,8 +10,8 @@ import pyrealsense2 as rs
 
 from public.component.dialog.deep_camera_config_dialog import Ui_deep_camera_config_dialog
 from public.config_class.global_setting import global_setting
-from util.folder_util import folder_util
-from util.json_util import json_util
+from public.util.folder_util import folder_util
+from public.util.json_util import json_util
 
 
 

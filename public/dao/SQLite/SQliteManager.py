@@ -8,7 +8,8 @@ class SQLiteManager():
 
     def __init__(self, db_name):
         """初始化数据库连接."""
-        self.connection = sqlite3.connect(db_name)
+        #check_same_thread 参数设置为 False，这将允许在多个线程之间共享连接。但这样做会引入线程安全问题
+        self.connection = sqlite3.connect(db_name,check_same_thread=False)
         # WAL模式提供更好的并发性，读取器不会阻塞写入器，反之亦然
         # self.connection.execute('PRAGMA journal_mode=WAL')  # 启用WAL模式
         # logger.info(f"数据库{db_name}连接成功")

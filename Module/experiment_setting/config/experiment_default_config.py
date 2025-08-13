@@ -7,7 +7,7 @@
 import json
 
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
-from util.json_util import json_util
+from public.util.json_util import json_util
 
 
 def get_default_config():

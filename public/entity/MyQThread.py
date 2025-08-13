@@ -1,3 +1,5 @@
+import threading
+
 from PyQt6.QtCore import QThread, QMutex, QWaitCondition
 from loguru import logger
 
@@ -14,7 +16,7 @@ class MyQThread(QThread):
         self._paused = False
 
     def run(self):
-        logger.warning(f"{self.name} thread has been started！")
+        logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
         while self._running:
             self.mutex.lock()
             if self._paused:
@@ -33,23 +35,23 @@ class MyQThread(QThread):
         self.mutex.lock()
         self._paused = True
         self.mutex.unlock()
-        logger.warning(f"{self.name} thread has been paused！")
+        logger.warning(f"{self.name} thread {threading.get_ident()} has been paused！")
 
     def resume(self):
         self.mutex.lock()
         self._paused = False
         self.condition.wakeAll()  # 唤醒线程
         self.mutex.unlock()
-        logger.warning(f"{self.name} thread has been resumed！")
+        logger.warning(f"{self.name} thread {threading.get_ident()} has been resumed！")
 
     def stop(self):
-        logger.warning(f"{self.name} thread has been stopped！")
+        logger.warning(f"{self.name} thread {threading.get_ident()} has been stopped！")
         self.mutex.lock()
         self._running = False
         self._paused = False  # 确保在停止前取消暂停
         self.condition.wakeAll()  # 可能需要唤醒线程以便其能正常退出
         self.mutex.unlock()
-        # super().terminate()
+        self.terminate()
 
     def __del__(self):
         logger.debug(f"线程{self.name}被销毁!")

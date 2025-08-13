@@ -4,7 +4,7 @@ import traceback
 import typing
 from datetime import datetime, timedelta
 
-from PyQt6.QtGui import QPixmap, QAction
+from PyQt6.QtGui import QPixmap
 from loguru import logger
 
 
@@ -23,7 +23,7 @@ from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QPushButton, \
     QLabel
 
-from util.folder_util import folder_util
+from public.util.folder_util import folder_util
 
 
 class ImageLoaderThread(MyQThread):

@@ -1,4 +1,6 @@
 import os
+import shutil
+import time
 import traceback
 from enum import Enum
 
@@ -20,6 +22,23 @@ class folder_util():
 
     def __init__(self):
         pass
+
+    @classmethod
+    def remove_non_empty_folder(cls,folder_path,retries=5,wait_second_time=5):
+        #加入异常处理和重试机制
+        for attempt in range(retries):
+            try:
+                shutil.rmtree(folder_path)
+                logger.info(f"成功删除文件夹: {folder_path}")
+                return
+            except OSError as e:
+                if e.winerror == 32:  # 文件被占用
+                    logger.warning(f"尝试 {attempt + 1}/{retries}: 文件夹被占用，等待 {wait_second_time} 秒后重试...")
+                    time.sleep(wait_second_time)
+                else:
+                    logger.error(f"删除失败: {e}")
+                    return
+        logger.error("超出最大重试次数，文件夹未能删除。")
 
     @classmethod
     def create_folder(cls, path):

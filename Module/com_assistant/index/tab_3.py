@@ -1,8 +1,6 @@
 import re
 import time
-import traceback
 import typing
-from datetime import datetime
 
 from loguru import logger
 
@@ -14,13 +12,12 @@ from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
 from public.function.Modbus.Modbus import ModbusRTUMaster
 from theme.ThemeQt6 import ThemedWindow
 
-from PyQt6 import QtCore, QtGui
-from PyQt6.QtCore import QRect, pyqtSignal, QThread
-from PyQt6.QtWidgets import QWidget, QComboBox, QTextBrowser, QListWidget, QPushButton, QLineEdit, QVBoxLayout, QFrame
+from PyQt6 import QtGui
+from PyQt6.QtCore import QRect, pyqtSignal
+from PyQt6.QtWidgets import QComboBox, QListWidget, QPushButton, QLineEdit
 
-from theme.ThemeQt6 import ThemedWidget
-from util.number_util import number_util
-from util.time_util import time_util
+from public.util.number_util import number_util
+from public.util.time_util import time_util
 
 
 class read_queue_data_Thread(MyQThread):

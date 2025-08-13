@@ -1,17 +1,13 @@
 import time
 import typing
 
-from PyQt6.QtGui import QAction
 from loguru import logger
 
 from Module.experiment_setting.config.experiment_default_config import get_default_config
 
-from Module.experiment_setting.ui.tab7 import Ui_tab7_frame
 from Module.experiment_setting.ui.tab7_window import Ui_tab7_window
-from Service import main_monitor_data
 
 from public.config_class.global_setting import global_setting
-from public.entity.BaseWindow import BaseWindow
 
 from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import AppState
@@ -19,15 +15,13 @@ from public.function.Modbus import Modbus_Type
 
 from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
 from public.function.Modbus.Modbus import ModbusRTUMaster
-from theme.ThemeQt6 import ThemedWidget, ThemedWindow
-from PyQt6 import QtCore, QtGui
+from theme.ThemeQt6 import ThemedWindow
+from PyQt6 import QtGui
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
-from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QScrollArea, QGroupBox, QLabel, QSlider, QRadioButton, \
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QGroupBox, QLabel, QSlider, QRadioButton, \
     QGridLayout, QButtonGroup, QComboBox, QListWidget, QPushButton
 
-from theme.ThemeQt6 import ThemedWidget
-
-from util.time_util import time_util
+from public.util.time_util import time_util
 
 
 class read_queue_data_Thread(MyQThread):

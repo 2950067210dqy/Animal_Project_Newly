@@ -1,21 +1,19 @@
 import json
-import time
 import traceback
 import typing
 
 from loguru import logger
 
 
-from PyQt6 import QtCore, QtWidgets, QtGui
-from PyQt6.QtCore import QRect, QThread, pyqtSignal, QSize
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QPushButton, QStyle, QComboBox, QListWidget
+from PyQt6 import QtWidgets, QtGui
+from PyQt6.QtCore import QRect, pyqtSignal, QSize
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QPushButton, QComboBox
 
 from Module.monitor_data.ui.tab.index.tab2_tab import Tab2_tab
 from Module.monitor_data.ui.tab2_window import Ui_tab2_window
 from public.config_class.global_setting import global_setting
 from public.entity.experiment_setting_entity import Experiment_setting_entity
-from theme.ThemeQt6 import ThemedWidget, ThemedWindow
-from util.time_util import time_util
+from theme.ThemeQt6 import ThemedWindow
 
 
 class Tab_2(ThemedWindow):
