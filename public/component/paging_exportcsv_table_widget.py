@@ -65,7 +65,7 @@ class TableWidgetPaging(ThemedWidget):
         :param parent:父组件
         :param object_name:图表objectName
         :param rows_per_page 每一页几行
-        :param type:模块类型 UFC,UGC等 枚举类
+        :param type:模块类型 UFC,UGC等 枚举类 Modbus_Slave_Ids.UFC
         :param data_type: 数据类型 比如monitor_data senior_state等
         """
         super().__init__()

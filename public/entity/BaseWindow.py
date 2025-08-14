@@ -94,11 +94,7 @@ class BaseWindow(QMainWindow):
         for child in direct_children:
             child.resize(new_size.width(), new_size.height())
             child.updateGeometry()
-        # 如果存在dockwidget
-        dock_widgets = self.findChildren(QDockWidget)
-        if dock_widgets and len(dock_widgets)>0:
-            for dock_widget in dock_widgets:
-                dock_widget.resize(new_size.width(), new_size.height())
+
         # # 更新scroll_area
         # scroll_areas = self.findChildren(QScrollArea)
         # for scroll_area in scroll_areas:
@@ -261,6 +257,12 @@ class BaseWindow(QMainWindow):
         child.setVisible(visible)
         pass
 
+    def delete_central_widget(self):
+        # 删除当前的 centralWidget
+        widget = self.centralWidget()  # 获取当前的 centralWidget
+        if widget:
+            widget.setParent(None)  # 移除并删除 (也可以使用 deleteLater())
+            self.setCentralWidget(None)  # 设置 centralWidget 为 None
     def get_ancestor(self, ancestor_obj_name):
         # 获取当前对象的祖先对象
         ancestor = self
