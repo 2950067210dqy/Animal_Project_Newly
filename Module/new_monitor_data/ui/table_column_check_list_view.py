@@ -64,7 +64,8 @@ class Table_Column_check_list_view(BaseWindow):
         # model
         self.model = QStandardItemModel()
         self.list_view.setModel(self.model)
-
+        # 不使用多选的 selection，全部由 checkbox 控制
+        self.list_view.setSelectionMode(QListView.SelectionMode.NoSelection)
         # 状态栏
         self.status = QStatusBar()
         self.setStatusBar(self.status)
@@ -81,10 +82,19 @@ class Table_Column_check_list_view(BaseWindow):
 
         # 当界面上 item 的复选框被切换时，更新内部数据
         self.model.itemChanged.connect(self.on_model_item_changed)
-
+        self.list_view.clicked.connect(self.on_list_view_clicked)
         # 加载数据
         self.load_json()
 
+    def on_list_view_clicked(self, index):
+        # 切换 CheckStateRole
+
+
+
+        cur_index = self.model.data(index, Qt.ItemDataRole.UserRole)
+        if isinstance(cur_index, int):
+            self.items[cur_index]['checked'] = not self.items[cur_index]['checked']
+        self.refresh_view()
     def _update_buttons_enabled(self, has_items: bool):
         self.select_all_btn.setEnabled(has_items)
         self.invert_btn.setEnabled(has_items)
@@ -187,7 +197,9 @@ class Table_Column_check_list_view(BaseWindow):
         if not hasattr(self, "model") or self.model is None:
             self.model = QStandardItemModel(self.list_view)
             self.list_view.setModel(self.model)
-
+            self.model.itemChanged.connect(self.on_model_item_changed)
+        # 屏蔽信号
+        self.model.blockSignals(True)
         self.model.clear()
         for index,it in enumerate(self.items):
             if it["is_displayed"]:
@@ -201,7 +213,8 @@ class Table_Column_check_list_view(BaseWindow):
                     item.setCheckable(True)
                     item.setCheckState(Qt.CheckState.Checked if it.get("checked") else Qt.CheckState.Unchecked)
                 self.model.appendRow(item)
-
+        # 解除屏蔽信号
+        self.model.blockSignals(False)
         # 更新 info_label（如果有）
         try:
             count = self.model.rowCount()
@@ -214,10 +227,10 @@ class Table_Column_check_list_view(BaseWindow):
         当界面上的某项复选框被切换时，写回 self.items。
         """
 
-        index = item.data(Qt.ItemDataRole.UserRole)
-        if isinstance(index, int) :
-            self.items[index]['checked'] = not self.items[index]['checked']
-        self.refresh_view()
+        # index = item.data(Qt.ItemDataRole.UserRole)
+        # if isinstance(index, int) :
+        #     self.items[index]['checked'] = not self.items[index]['checked']
+        # self.refresh_view()
 
 
     def on_filter_changed(self, text: str):
