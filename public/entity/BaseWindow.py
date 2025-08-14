@@ -6,7 +6,7 @@ from PyQt6 import QtCore, QtGui
 from PyQt6.QtCore import QRect, Qt, QSize, QPoint, QEvent
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QLayout, \
-    QScrollArea, QSizePolicy, QMessageBox, QTabWidget, QGroupBox, QTableWidget, QToolBar, QApplication
+    QScrollArea, QSizePolicy, QMessageBox, QTabWidget, QGroupBox, QTableWidget, QToolBar, QApplication, QDockWidget
 from loguru import logger
 
 from public.component.Window_Title_Bar import TitleBar
@@ -94,6 +94,11 @@ class BaseWindow(QMainWindow):
         for child in direct_children:
             child.resize(new_size.width(), new_size.height())
             child.updateGeometry()
+        # 如果存在dockwidget
+        dock_widgets = self.findChildren(QDockWidget)
+        if dock_widgets and len(dock_widgets)>0:
+            for dock_widget in dock_widgets:
+                dock_widget.resize(new_size.width(), new_size.height())
         # # 更新scroll_area
         # scroll_areas = self.findChildren(QScrollArea)
         # for scroll_area in scroll_areas:
