@@ -1,6 +1,7 @@
 import os
 import time
 from datetime import datetime
+from typing import Dict, Any, List
 
 from loguru import logger
 
@@ -8,6 +9,8 @@ from loguru import logger
 from public.config_class.global_setting import global_setting
 from public.dao.SQLite.SQliteManager import SQLiteManager
 from public.entity.experiment_setting_entity import Experiment_setting_entity
+from public.function.DataCaculation import Data_Caculation
+from public.function.DataCaculation.Data_Caculation import DataCaculation
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 # 监控数据操作类
 from public.util.time_util import time_util
@@ -22,7 +25,7 @@ class Monitor_Datas_Handle():
         self.init_construct()
 
     def init_construct(self):
-        self.db_name = self.create_db()
+        self.db_name = self.create_db_not_time()
         if self.sqlite_manager is not None:
             self.stop()
         self.sqlite_manager = SQLiteManager(db_name=self.db_name)
@@ -31,7 +34,29 @@ class Monitor_Datas_Handle():
 
     def stop(self):
         self.sqlite_manager.close()
+    def create_db_not_time(self):
+        """创建数据库 不按时间分库，直接一个实验一个库"""
+        # 获取实验配置文件名称
+        file_name_without_extension = ""
+        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+            # 获取文件名称
+            file_name = os.path.basename(experiment_setting_file)
+            # 不带扩展名的文件名称
+            file_name_without_extension = os.path.splitext(file_name)[0]
+        # 定义文件夹路径
+        folder_path = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE']['fold_path'] + os.path.join(
 
+            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
+            f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}",
+            f'data'
+        )
+
+        # 创建文件夹（如果不存在）
+        os.makedirs(folder_path, exist_ok=True)
+        db_name = f"data.db"
+        db_file_path = os.path.join(folder_path, db_name)
+        return db_file_path
     def create_db(self):
         """
         创建数据库
@@ -275,3 +300,63 @@ class Monitor_Datas_Handle():
         if columns_query is not None and len(columns_query) > 0:
             columns_desc = [{'desc': i[2], 'name': i[0]} for i in columns_query]
         return columns_desc
+
+    def query_monitor_data_all_tables_paging(self, page: int = 1,
+            page_size: int = 100,all_column_datas=[])-> dict:
+        """
+        :param page 第几页
+        :param page_size 每页多少
+        :param all_column_datas 用户选择的列数据
+        :return:把传入的表按 time 字段联立并分页返回结果，返回字典包含:
+          - total_items: 总行数（time 的并集大小）
+          - total_pages
+          - page (实际返回页，1-based)
+          - page_size
+          - columns: 列名列表（与 rows 中 dict 的 key 对应）
+          - rows: 列表，每行为 dict（key=列名, value=值）
+
+        从 SQLite 数据库中找出所有表名（排除名称中包含 "meta" 的表，大小写不敏感）；
+        仅保留包含 time 字段的表；
+        将这些表按 time 联立（以 time 的并集为主），把各表的其它字段并列（别名为 表名__列名，避免重名）；
+        支持分页（page 1-based，page_size），并返回总条数、总页数、当前页数据等分页信息。
+        注意事项：
+
+            SQLite 没有 FULL OUTER JOIN，所以用 UNION 把各表的 time 合并成一个派生表 all_times，然后 LEFT JOIN 每个表；
+            为防止 SQL 注入与标识符冲突，对表名与列名使用双引号转义（quote_ident）；
+            统计总条数时使用 SELECT COUNT(*) FROM ( ... UNION ... )；
+            LIMIT / OFFSET 用于分页（page 从 1 开始）。如果数据量很大，COUNT 与 UNION 可能较慢，建议为 time 列建索引或在后端分片
+
+        """
+        if len(all_column_datas) == 0:
+            return []
+        tables = self.sqlite_manager.get_non_meta_tables_with_time(exclude_substr="meta",columns=['time'])
+        result = self.sqlite_manager.query_joined_by_time( tables, page=page, page_size=page_size, order_asc=True)
+
+        result_title = ["时间"]
+
+        # 找到中文列名
+        for columns in result["columns"][1:]:
+            columns_split = columns.split('__')
+            table_name = columns_split[0]
+            column_name = columns_split[1]
+            columns_query =self.sqlite_manager.query_conditions(table_name=f"{table_name}_meta", conditions=f" where item_name='{column_name}'")
+            print(columns_query,table_name,column_name)
+            result_title.append(columns_query[0][2])
+        result["columns_title"]=result_title
+        # print("参与联立的表:", tables)
+        # print(
+        #     f"总条数: {result['total_items']}, 总页数: {result['total_pages']}, 当前页: {result['page']}, 每页: {result['page_size']}")
+        # print("列:", result["columns"])
+        # print("示例行（最多 10 行）:")
+        # for i, row in enumerate(result["rows"][:10]):
+        #     print(i + 1, row)
+
+        if len(result) == 0:
+            return []
+        # caculation_handle = DataCaculation(sqlite_manager = self.sqlite_manager)
+        #
+        # return_results = caculation_handle.caculate_data(columns=all_column_datas,datas=result)
+
+
+        return result
+        pass

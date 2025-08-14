@@ -29,7 +29,7 @@
          <layout class="QVBoxLayout" name="left_layout"/>
         </item>
         <item>
-         <layout class="QVBoxLayout" name="middle_layout" stretch="">
+         <layout class="QVBoxLayout" name="middle_layout">
           <property name="topMargin">
            <number>0</number>
           </property>

@@ -1,13 +1,91 @@
+import base64
+import datetime
 import importlib.util
 import inspect
 import os
+import sqlite3
 import sys
+from dataclasses import is_dataclass, asdict
 from pathlib import Path
+from typing import Any
 
 
 class class_util():
     def __init__(self):
         pass
+    @classmethod
+    def to_dict(cls,obj: Any, *, _seen=None, max_depth: int = 10) -> Any:
+        """
+        把常见对象递归转换为可 JSON 序列化（或易读）的 dict/list/primitive。
+        支持：None, bool, int, float, str, datetime, bytes, dict, list/tuple/set,
+               dataclass, namedtuple, sqlite3.Row, 普通对象（取 __dict__）。
+        参数：
+          - max_depth: 防止无限递归
+        返回：
+          - 如果是可映射的对象，返回 dict；如果是列表类返回 list；基本类型原样返回。
+        注意：
+          - 对于 bytes 使用 base64 编码字符串表示。
+          - 对于自定义类会读取 obj.__dict__（如果存在），忽略以双下划线开头的私有属性。
+          - 不能保证处理任意复杂循环引用；会在循环情况下返回 "<cycle>"。
+        """
+        if _seen is None:
+            _seen = set()
+        if max_depth <= 0:
+            return repr(obj)
+
+        # 基本类型直接返回
+        if obj is None or isinstance(obj, (bool, int, float, str)):
+            return obj
+
+        # 避循环：用 id 识别对象
+        oid = id(obj)
+        if oid in _seen:
+            return "<cycle>"
+        _seen.add(oid)
+
+        try:
+            # datetime -> ISO
+            if isinstance(obj, (datetime.datetime, datetime.date, datetime.time)):
+                return obj.isoformat()
+
+            # bytes -> base64 字符串
+            if isinstance(obj, (bytes, bytearray)):
+                return base64.b64encode(bytes(obj)).decode('ascii')
+
+            # dict -> 递归处理 key/value（key 转为 str）
+            if isinstance(obj, dict):
+                return {str(k): cls.to_dict(v, _seen=_seen, max_depth=max_depth - 1) for k, v in obj.items()}
+
+            # sqlite3.Row 支持 dict() 直接转换
+            if isinstance(obj, sqlite3.Row):
+                return {k: cls.to_dict(obj[k], _seen=_seen, max_depth=max_depth - 1) for k in obj.keys()}
+
+            # dataclass -> asdict 然后递归
+            if is_dataclass(obj):
+                return cls.to_dict(asdict(obj), _seen=_seen, max_depth=max_depth - 1)
+
+            # # namedtuple -> _asdict
+            # if _is_namedtuple_instance(obj):
+            #     return to_dict(obj._asdict(), _seen=_seen, max_depth=max_depth - 1)
+
+            # list/tuple/set -> list
+            if isinstance(obj, (list, tuple, set)):
+                return [cls.to_dict(i, _seen=_seen, max_depth=max_depth - 1) for i in obj]
+
+            # 普通对象：尽量使用 __dict__，否则使用 repr
+            if hasattr(obj, "__dict__"):
+                d = {}
+                for k, v in vars(obj).items():
+                    # 可根据需要跳过私有属性：如果 k.startswith('_'): continue
+                    if k.startswith("__"):  # 跳过 Python 魔法属性
+                        continue
+                    d[k] = cls.to_dict(v, _seen=_seen, max_depth=max_depth - 1)
+                return d
+
+            # fallback: 尝试转换为 str
+            return repr(obj)
+        finally:
+            _seen.discard(oid)
     @classmethod
     def get_public_attributes_with_notes(cls,obj):
         """

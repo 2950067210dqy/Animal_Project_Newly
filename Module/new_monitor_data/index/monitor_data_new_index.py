@@ -1,39 +1,74 @@
 import typing
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import QRect, QSize
-from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout
+from PyQt6.QtCore import QRect, QSize, Qt
+from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel
 
 from Module.new_experiment.ui.group_window import GroupWindow
+from Module.new_monitor_data.ui.Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
 from Module.new_monitor_data.ui.monitor_data_new import Ui_monitor_data_new
+from Module.new_monitor_data.ui.monitor_data_windows import MonitorDataWindows
 from Module.new_monitor_data.ui.table_column_check_list_view import Table_Column_check_list_view
 from public.component.paging_exportcsv_table_widget import TableWidgetPaging
+from public.config_class.global_setting import global_setting
+from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
 from theme.ThemeQt6 import ThemedWindow
 
 
 class Monitor_data_new_index(ThemedWindow):
+    def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
+        for widget in self.left_top_dock_widget_content._docks_widget:
+            widget: Table_select_columns_paging_bottom
+            if widget is not None and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
+                widget.data_fetcher_thread.pause()
 
+        pass
+    def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
+        for widget in self.left_top_dock_widget_content._docks_widget:
+            widget: Table_select_columns_paging_bottom
+            if widget is not None and widget.data_fetcher_thread is not None and  widget.data_fetcher_thread.isRunning():
+
+                widget.data_fetcher_thread.resume()
+            elif widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
+
+                widget.data_fetcher_thread.start()
+        # pass
+        pass
+    def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
+        pass
     def resizeEvent(self, a0 :typing.Optional[QtGui.QResizeEvent]):
         new_size:QSize = a0.size()
         #
 
 
         if self.left_bottom_dock_widget is not None:
-            self.left_bottom_dock_widget.resize(int(new_size.width() * 0.6), int(new_size.height() * 0.4))
-        if self.left_top_dock_widget is not None:
-            self.left_top_dock_widget.resize(int(new_size.width() * 0.6), int(new_size.height()* 0.6))
-        if self.right_dock_widget is not None:
-            self.right_dock_widget.resize(int(new_size.width() * 0.4), int(new_size.height()))
+            self.left_bottom_dock_widget.widget().resize(int(new_size.width() * 0.8), int(new_size.height() * 0.4))
+            self.left_bottom_dock_widget.resize(int(new_size.width() * 0.8), int(new_size.height() * 0.4))
 
+        if self.left_top_dock_widget is not None:
+            self.left_top_dock_widget.widget().resize(int(new_size.width() * 0.8), int(new_size.height() * 0.6))
+            self.left_top_dock_widget.resize(int(new_size.width() * 0.8), int(new_size.height()* 0.6))
+
+        if self.right_top_dock_widget is not None:
+            self.right_top_dock_widget.widget().resize(int(new_size.width() * 0.2), int(new_size.height()*0.4))
+            self.right_top_dock_widget.resize(int(new_size.width() * 0.2), int(new_size.height()*0.4))
+        if self.right_bottom_dock_widget is not None:
+            self.right_bottom_dock_widget.widget().resize(int(new_size.width() * 0.2), int(new_size.height()*0.6))
+            self.right_bottom_dock_widget.resize(int(new_size.width() * 0.2), int(new_size.height()*0.6))
+
+        self.setMinimumSize(0, 0)
 
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
+        self.setMinimumSize(0,0)
         self.left_top_dock_widget:QDockWidget = None
-        self.left_top_dock_widget_content:TableWidgetPaging=None
+        self.left_top_dock_widget_content:MonitorDataWindows=None
         self.left_bottom_dock_widget:QDockWidget = None
-        self.right_dock_widget:QDockWidget = None
-        self.right_dock_widget_content: Table_Column_check_list_view = None
+        self.right_top_dock_widget:QDockWidget = None
+        self.right_top_dock_widget_content: Table_Column_check_list_view = None
+        self.right_bottom_dock_widget:QDockWidget = None
+        self.right_bottom_dock_widget_content: Table_Column_check_list_view = None
 
         # 实例化ui
         self._init_ui(parent, geometry, title)
@@ -67,20 +102,43 @@ class Monitor_data_new_index(ThemedWindow):
         self.delete_central_widget()
         self.left_top_dock_widget:QDockWidget = self.findChild(QDockWidget, "left_top_dock_widget")
 
-        left_top_dock_widget_content_Widget=QWidget()
-        left_top_dock_widget_content_Widget.setObjectName("left_top_dock_widget_content_Widget")
-        left_top_dock_widget_content_Widget_layout = QVBoxLayout()
-        left_top_dock_widget_content_Widget_layout.setObjectName("left_top_dock_widget_content_Widget_layout")
-        # self.left_top_dock_widget_content: TableWidgetPaging = TableWidgetPaging(type=Modbus_Slave_Ids.UFC,
-        #                                                                          data_type="monitor_data",
-        #                                                                          parent=left_top_dock_widget_content_Widget_layout,
-        #                                                                          mouse_cage_number=0)
-        # left_top_dock_widget_content_Widget.setLayout(left_top_dock_widget_content_Widget_layout)
-        self.left_top_dock_widget.setWidget( left_top_dock_widget_content_Widget)
+        self.left_top_dock_widget_content: MonitorDataWindows = MonitorDataWindows()
+        self.left_top_dock_widget.setWidget( self.left_top_dock_widget_content)
 
-        self.left_bottom_dock_widget = self.findChild(QDockWidget, "left_bottom_dock_widget")
+        self.left_bottom_dock_widget:QDockWidget = self.findChild(QDockWidget, "left_bottom_dock_widget")
 
-        self.right_dock_widget = self.findChild(QDockWidget, "right_dock_widget")
-        self.right_dock_widget_content = Table_Column_check_list_view()
-        self.right_dock_widget.setWidget(self.right_dock_widget_content)
+        self.right_top_dock_widget:QDockWidget = self.findChild(QDockWidget, "right_top_dock_widget")
+
+        self.right_top_dock_widget_content = Table_Column_check_list_view(ok_btn_text="确定选择通道",datas_type=1)
+        self.right_top_dock_widget.setWidget(self.right_top_dock_widget_content)
+
+        self.right_top_dock_widget_content.set_table_column_signal.connect(self.create_table)
+
+
+        self.right_bottom_dock_widget: QDockWidget = self.findChild(QDockWidget, "right_bottom_dock_widget")
+
+        self.right_bottom_dock_widget_content = Table_Column_check_list_view(ok_btn_text="生成图表",datas_type=0)
+        self.right_bottom_dock_widget.setWidget(self.right_bottom_dock_widget_content)
+
+        self.right_bottom_dock_widget_content.set_table_column_signal.connect(
+            self.create_table)
+
+        pass
+    def create_table(self,dict_ids:dict):
+        if dict_ids is not None:
+            type = dict_ids.get('type',"")
+            if type == "column":
+                for widget in self.left_top_dock_widget_content._docks_widget:
+                    widget: Table_select_columns_paging_bottom
+                    widget.on_replace_headers(dict_ids['data'])
+                pass
+            elif type == "group":
+                settings: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
+                if settings:
+                    gids = [group.id  for index,group in enumerate(settings.groups) if index in dict_ids['data']]
+                    self.left_top_dock_widget_content.create_tiled_docks(n=len(gids),gids=gids)
+                pass
+            else:
+
+                pass
         pass

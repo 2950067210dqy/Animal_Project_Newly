@@ -1,23 +1,44 @@
 import json
 import re
 import sys
+import typing
 
-from PyQt6.QtCore import Qt, QModelIndex, QAbstractItemModel, QVariant, QRegularExpression
+from PyQt6 import QtGui
+from PyQt6.QtCore import Qt, QModelIndex, QAbstractItemModel, QVariant, QRegularExpression, pyqtSignal
 from PyQt6.QtGui import QStandardItemModel, QStandardItem
 from PyQt6.QtWidgets import QListView, QVBoxLayout, QCheckBox, QMainWindow, QHBoxLayout, QPushButton, QScrollArea, \
     QWidget, QApplication, QListWidget, QListWidgetItem, QLabel, QLineEdit, QComboBox, QAbstractItemView, QStatusBar, \
     QFileDialog, QMessageBox, QInputDialog
 
+from public.config.Data_Column import Data_column_list
+from public.config_class.global_setting import global_setting
 from public.entity.BaseWindow import BaseWindow
+from public.entity.experiment_setting_entity import Experiment_setting_entity
+from public.util.class_util import class_util
 from theme.ThemeQt6 import ThemedWindow
-data_list_all = [
-            {"column_text":"笼内光强","column_name":"cage_inside_light","unit":"Lux","desc":"笼内光照强度","data_format":"origin_data","note":""},
-            {"column_text":"笼内光照色温","column_name":"cage_inside_color_temp","unit":"/","desc":"笼内光照色温","data_format":"origin_data","note":""},
 
-            ]
 class Table_Column_check_list_view(BaseWindow):
-    def __init__(self):
+    set_table_column_signal = pyqtSignal(dict)
+    def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
+        # 加载数据
+        if self.datas_type == 0:
+            self.load_json()
+        else:
+            self.load_group()
+     
+
+        pass
+
+
+    def __init__(self,ok_btn_text="",datas_type=0):
         super().__init__()
+        self.ok_btn_text = ok_btn_text
+        self.datas_type = datas_type
+        self._init_ui()
+        self._init_function()
+
+
+    def _init_ui(self):
         self.setWindowTitle("PyQt6 -- 搜索/过滤 / 全选 / 反选 示例（已去除排序）")
         self.resize(820, 620)
 
@@ -29,16 +50,16 @@ class Table_Column_check_list_view(BaseWindow):
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QVBoxLayout(central)
-
         # 顶部操作按钮
         top_layout = QHBoxLayout()
         main_layout.addLayout(top_layout)
 
         self.select_all_btn = QPushButton("全选")
         self.invert_btn = QPushButton("反选 / 切换")
-        self.show_selected_btn = QPushButton("显示所选")
+        self.show_selected_btn = QPushButton(self.ok_btn_text)
         top_layout.addWidget(self.select_all_btn)
         top_layout.addWidget(self.invert_btn)
+
         top_layout.addWidget(self.show_selected_btn)
         top_layout.addStretch()
 
@@ -71,9 +92,8 @@ class Table_Column_check_list_view(BaseWindow):
         self.setStatusBar(self.status)
 
 
-
+    def _init_function(self):
         # 信号连接
-
         self.select_all_btn.clicked.connect(self.select_all)
         self.invert_btn.clicked.connect(self.invert_selection)
         self.show_selected_btn.clicked.connect(self.show_selected)
@@ -82,32 +102,110 @@ class Table_Column_check_list_view(BaseWindow):
 
         # 当界面上 item 的复选框被切换时，更新内部数据
         self.model.itemChanged.connect(self.on_model_item_changed)
-        self.list_view.clicked.connect(self.on_list_view_clicked)
-        # 加载数据
-        self.load_json()
 
-    def on_list_view_clicked(self, index):
-        # 切换 CheckStateRole
-
-
-
-        cur_index = self.model.data(index, Qt.ItemDataRole.UserRole)
-        if isinstance(cur_index, int):
-            self.items[cur_index]['checked'] = not self.items[cur_index]['checked']
-        self.refresh_view()
+        pass
     def _update_buttons_enabled(self, has_items: bool):
         self.select_all_btn.setEnabled(has_items)
         self.invert_btn.setEnabled(has_items)
         self.show_selected_btn.setEnabled(has_items)
         self.search_edit.setEnabled(has_items)
 
-    def load_json(self):
+    def load_group(self):
         """
-        加载 JSON：调用 fetch_json_list() 获取 JSON 解析后的数据（list 或 dict）。
-        如果 fetch_json_list 返回 None，表示用户取消或未处理。
+
+        如果 data 返回 None，表示用户取消或未处理。
         """
         try:
-            data = self.fetch_json_list()
+            settings:Experiment_setting_entity = global_setting.get_setting("experiment_setting",None)
+            data = []
+            if settings is not None:
+                data =[class_util.to_dict(group) for group in settings.groups]
+        except Exception as e:
+            QMessageBox.critical(self, "导入错误", f"调用 fetch_json_list() 时发生异常：\n{e}")
+            return
+
+        if data is None:
+            return
+
+        ok = self._prepare_items_from_list(data)
+        if not ok:
+            return
+
+        self.refresh_view()
+        self._update_buttons_enabled(len(self.items) > 0)
+        self.status.showMessage(f"已加载 {len(self.items)} 项", 5000)
+
+    def _prepare_items_from_list(self, data_list):
+        """
+        将从 fetch_json_list 得到的 data_list 转换成 self.items 列表。
+        自动优先使用 'column_text' 作为显示字段（若存在），否则回退到第一个键，
+        若元素不是 dict 则序列化为字符串显示。返回 True 表示成功，False 表示失败/取消。
+        """
+
+        self.items = []
+        if not data_list:
+            # 空列表，仍然清空 items 并返回成功
+            return True
+
+        # 检测是否有 dict 元素
+        has_dict = any(isinstance(x, dict) for x in data_list)
+        display_key = None
+
+        if has_dict:
+            first_obj = next((x for x in data_list if isinstance(x, dict)), {})
+            keys = list(first_obj.keys())
+            # 优先使用 column_text，其次回退到 keys[0]（如果有）
+            if "column_text" in keys:
+                display_key = "column_text"
+            elif "name" in keys:
+                display_key = "name"
+            elif keys:
+                display_key = keys[0]
+            else:
+                display_key = None
+        else:
+            first_obj = next((x.value for x in data_list if isinstance(x.value, dict)), {})
+            keys = list(first_obj.keys())
+            # 优先使用 column_text，其次回退到 keys[0]（如果有）
+            if "column_text" in keys:
+                display_key = "column_text"
+            elif "name" in keys:
+                display_key = "name"
+            elif keys:
+                display_key = keys[0]
+            else:
+                display_key = None
+
+        # 构造 items
+        for elem in data_list:
+            if isinstance(elem, dict) and display_key is not None:
+
+                val = elem.get(display_key, "")
+                # 确保是字符串
+                disp_text = "" if val is None else "通道 "+str(val)
+                self.items.append({'orig': elem, 'display': disp_text, 'checked': False, 'is_displayed': True})
+            else:
+                val = elem.value.get(display_key, "")
+                # 确保是字符串
+                disp_text = "" if val is None else str(val)
+                self.items.append({'orig': elem.value, 'display': disp_text, 'checked': False, 'is_displayed': True})
+                # # 非 dict 或未找到 display_key：序列化为 JSON 字符串作为显示
+                # try:
+                #     disp_text = json.dumps(elem.value, ensure_ascii=False)
+                # except Exception:
+                #     disp_text = str(elem.value)
+
+
+        return True
+
+
+    def load_json(self):
+        """
+
+        如果 data 返回 None，表示用户取消或未处理。
+        """
+        try:
+            data =  Data_column_list.Data_list.value
         except Exception as e:
             QMessageBox.critical(self, "导入错误", f"调用 fetch_json_list() 时发生异常：\n{e}")
             return
@@ -125,86 +223,29 @@ class Table_Column_check_list_view(BaseWindow):
         self._update_buttons_enabled(len(self.items) > 0)
         self.status.showMessage(f"已加载 {len(self.items)} 项", 5000)
 
-    def fetch_json_list(self):
-        """
-        JSON 导入接口：请在此方法中实现你自己的导入逻辑，并返回解析后的数据（list 或 dict）。
-        返回 None 表示取消/无数据。
-
-        示例实现（仅作参考 -- 请在你自己的代码中实现）：
-            from PyQt6.QtWidgets import QFileDialog
-            path, _ = QFileDialog.getOpenFileName(self, "选择 JSON 文件", "", "JSON Files (*.json);;All Files (*)")
-            if not path:
-                return None
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data
-
-        默认行为：抛出 NotImplementedError，提醒你实现该方法。
-        """
-        return data_list_all
-
-    def _prepare_items_from_list(self, data_list):
-        """
-        将从 fetch_json_list 得到的 data_list 转换成 self.items 列表。
-        自动优先使用 'column_text' 作为显示字段（若存在），否则回退到第一个键，
-        若元素不是 dict 则序列化为字符串显示。返回 True 表示成功，False 表示失败/取消。
-        """
 
 
-        self.items = []
-        if not data_list:
-            # 空列表，仍然清空 items 并返回成功
-            return True
 
-        # 检测是否有 dict 元素
-        has_dict = any(isinstance(x, dict) for x in data_list)
-        display_key = None
-
-        if has_dict:
-            first_obj = next((x for x in data_list if isinstance(x, dict)), {})
-            keys = list(first_obj.keys())
-            # 优先使用 column_text，其次回退到 keys[0]（如果有）
-            if "column_text" in keys:
-                display_key = "column_text"
-            elif keys:
-                display_key = keys[0]
-            else:
-                display_key = None
-
-        # 构造 items
-        for elem in data_list:
-            if isinstance(elem, dict) and display_key is not None:
-                val = elem.get(display_key, "")
-                # 确保是字符串
-                disp_text = "" if val is None else str(val)
-            else:
-                # 非 dict 或未找到 display_key：序列化为 JSON 字符串作为显示
-                try:
-                    disp_text = json.dumps(elem, ensure_ascii=False)
-                except Exception:
-                    disp_text = str(elem)
-            self.items.append({'orig': elem, 'display': disp_text, 'checked': False,'is_displayed': True})
-
-        return True
 
     def refresh_view(self):
-        print("refresh_view: items count =", len(getattr(self, "items", [])))
-        print("display list:", [i.get("display") for i in getattr(self, "items", [])])
+
 
 
 
         # 确保 model 存在
-        if not hasattr(self, "model") or self.model is None:
-            self.model = QStandardItemModel(self.list_view)
-            self.list_view.setModel(self.model)
-            self.model.itemChanged.connect(self.on_model_item_changed)
+
+        self.model = QStandardItemModel(self.list_view)
+        self.list_view.setModel(self.model)
+        self.model.itemChanged.connect(self.on_model_item_changed)
         # 屏蔽信号
         self.model.blockSignals(True)
         self.model.clear()
+        # print(self.items)
         for index,it in enumerate(self.items):
             if it["is_displayed"]:
                 disp = it.get("display", "")
                 item = QStandardItem(disp)
+                item.setToolTip(it.get("orig", {}).get("desc", ""))
                 item.setEditable(False)
                 # 存储原始对象以便后续使用
                 item.setData(index, Qt.ItemDataRole.UserRole)
@@ -218,7 +259,7 @@ class Table_Column_check_list_view(BaseWindow):
         # 更新 info_label（如果有）
         try:
             count = self.model.rowCount()
-            self.info_label.setText(f"显示 {count} / 总计 {len(self.items)} 项")
+            self.info_label.setText(f"数据项：显示 {count} / 总计 {len(self.items)} 项")
         except Exception:
             pass
 
@@ -227,10 +268,13 @@ class Table_Column_check_list_view(BaseWindow):
         当界面上的某项复选框被切换时，写回 self.items。
         """
 
-        # index = item.data(Qt.ItemDataRole.UserRole)
-        # if isinstance(index, int) :
-        #     self.items[index]['checked'] = not self.items[index]['checked']
-        # self.refresh_view()
+        index = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(index, int) :
+            self.items[index]['checked'] = not self.items[index]['checked']
+            if self.items[index]['checked']:
+                self.status.showMessage(f"已选中{item.text()}", 3000)
+            else:
+                self.status.showMessage(f"已取消选中{item.text()}", 5000)
 
 
     def on_filter_changed(self, text: str):
@@ -269,17 +313,13 @@ class Table_Column_check_list_view(BaseWindow):
         self.status.showMessage("已切换选择状态", 3000)
 
     def show_selected(self):
-        checked = [it['display'] for it in self.items if it['checked']]
-        if not checked:
-            QMessageBox.information(self, "选中结果", "没有选中任何项")
-            return
-        max_show = 200
-        display_list = checked if len(checked) <= max_show else checked[:max_show]
-        note = "" if len(checked) <= max_show else f"\n\n（仅显示前 {max_show} 项，总计 {len(checked)} 项）"
-        QMessageBox.information(self, "选中结果", "选中的项：\n" + "\n".join(display_list) + note)
-        print("选中项数量:", len(checked))
-        for i, t in enumerate(checked[:100], start=1):
-            print(f"{i}: {t}")
+        checkids_dict={}
+        if self.datas_type == 0:
+            checkids_dict['type']='column'
+        else:
+            checkids_dict['type']='group'
+        checkids_dict['data']= [it['orig']['id'] for it in self.items if it['checked']]
+        self.set_table_column_signal.emit(checkids_dict)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

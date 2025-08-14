@@ -23,3 +23,6 @@ pipreqs . --encoding=utf8 --ignore ./build,./dist,./entity,./log,./model,./resou
 1.响应式界面
 2.实验配置读取各传感器配置信息
 3.数据处理
+
+2025-8-15
+1.开始实验时 配置文件experiment..db 有两个点

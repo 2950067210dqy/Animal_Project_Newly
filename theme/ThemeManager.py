@@ -218,11 +218,7 @@ class ThemeManager(QObject):
                 qproperty-themeHighlight: {theme['--highlight']};
                 qproperty-themeBorder: {theme['--border']};
             }}
-            QWidget {{
-                background-color: {theme['--primary']};
-                color: {theme['--text']};
-                border:none;
-            }}
+  
             
             QTabBar::tab {{
                 background: {theme['--primary']};         /* 标签按钮的背景颜色 */
@@ -316,6 +312,7 @@ class ThemeManager(QObject):
                 background-color: {theme['--primary']};
                 border: 1px solid {theme['--border']};
             }}
+          
     
         """ + self.get_button_style(isSelected=False)
         # logger_diy.log.info("ThemeManager的get_style_sheet：" + style_sheet)

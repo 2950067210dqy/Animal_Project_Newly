@@ -85,15 +85,15 @@ class BaseWindow(QMainWindow):
         old_size:QSize = a0.oldSize()
         # logger.error(f"resizeEvent:{new_size}|{old_size}")
 
-
-        self.centralWidget().resize(new_size.width(),new_size.height())
-        self.centralWidget().updateGeometry()
-        # 直接下一级的子控件
-        children = self.centralWidget().findChildren(QWidget)  # 获取所有子 QWidget
-        direct_children = [child for child in children if child.parent() == self.centralWidget()]
-        for child in direct_children:
-            child.resize(new_size.width(), new_size.height())
-            child.updateGeometry()
+        if self.centralWidget() is not None:
+            self.centralWidget().resize(new_size.width(),new_size.height())
+            self.centralWidget().updateGeometry()
+            # 直接下一级的子控件
+            children = self.centralWidget().findChildren(QWidget)  # 获取所有子 QWidget
+            direct_children = [child for child in children if child.parent() == self.centralWidget()]
+            for child in direct_children:
+                child.resize(new_size.width(), new_size.height())
+                child.updateGeometry()
 
         # # 更新scroll_area
         # scroll_areas = self.findChildren(QScrollArea)
