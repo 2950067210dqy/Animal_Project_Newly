@@ -20,6 +20,7 @@ from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import AnimalGender, AppState
 from public.entity.experiment_setting_entity import Experiment_setting_entity, Group, Animal, AnimalGroupRecord, \
     AnimalGroupRecord_View
+from public.util.custom_data_file_util import custom_template_file_util
 from theme.ThemeQt6 import ThemedWindow
 from public.util.class_util import class_util
 
@@ -472,22 +473,27 @@ class ContentWindow(ThemedWindow):
 
     def import_template(self):
         """导入实验模板"""
-        file_path, _ = QFileDialog.getOpenFileName(self, "导入实验模板", "", "db Files (*.db);")
+        file_path, _ = QFileDialog.getOpenFileName(self, "导入实验模板", "", f"template Files (*.{custom_template_file_util.extension_name});")
         if file_path:
             self.is_import=True
             self.import_file_path=file_path
             self.setting_file_path=file_path
             self.is_update=False
             self.template_file_path_label.setText(f"当前模板文件：{file_path}")
+            db_file_path = custom_template_file_util.load_template_contents_from_custom_file(file_path)
             # 获取文件所在的文件夹路径
-            folder_path = os.path.dirname(file_path)
+            folder_path = os.path.dirname(db_file_path)
             # 获取文件名称
-            file_name = os.path.basename(file_path)
+            file_name = os.path.basename(db_file_path)
             handle =Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
             setting_data = handle.query_data_database_all()
+            handle.stop()
             self.setting_data = setting_data
             global_setting.set_setting("experiment_setting_new", self.setting_data)
             self.init_content()
+            # 检查文件是否存在
+            if os.path.isfile(db_file_path):
+                os.remove(db_file_path)  # 删除文件
     def save_template(self):
         if not self.setting_data.is_emtpy():
             # 导入了且修改了模板
@@ -496,14 +502,17 @@ class ContentWindow(ThemedWindow):
                 result = dialog.exec()  # 显示对话框并等待用户响应
                 if result ==Save_Experiment_Dialog_TYPE.SAVE_SELF:
                     """将修改保存到原模板文件"""
+                    db_file_path = custom_template_file_util.load_template_contents_from_custom_file(self.import_file_path)
                     # 获取文件所在的文件夹路径
-                    folder_path = os.path.dirname(self.import_file_path)
+                    folder_path = os.path.dirname(db_file_path)
                     # 获取文件名称
-                    file_name = os.path.basename(self.import_file_path)
+                    file_name = os.path.basename(db_file_path)
                     handle = Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
                     delete_state =handle.remove_data_database_all_not_include_metaDB()
                     state = handle.insert_data(data=self.setting_data)
+                    handle.stop()
                     if all([delete_state,state]):
+                        custom_file_path = custom_template_file_util.save_template_contents_as_custom_file(db_file_path)
                         self.setting_file_path=self.import_file_path
                         self.template_file_path_label.setText(self.template_file_path_label.text()[:-1])
                         msg_box = InfoDialog(title="保存模板", info="保存实验模板成功!",
@@ -540,15 +549,20 @@ class ContentWindow(ThemedWindow):
                 result = dialog.exec()  # 显示对话框并等待用户响应
                 if result == Save_Experiment_Dialog_TYPE.SAVE_SELF:
                     """将修改保存到原模板文件"""
+                    db_file_path = custom_template_file_util.load_template_contents_from_custom_file(
+                        self.import_file_path)
                     self.setting_file_path=self.import_file_path
                     # 获取文件所在的文件夹路径
-                    folder_path = os.path.dirname(self.import_file_path)
+                    folder_path = os.path.dirname(db_file_path)
                     # 获取文件名称
-                    file_name = os.path.basename(self.import_file_path)
+                    file_name = os.path.basename(db_file_path)
                     handle = Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
                     delete_state =handle.remove_data_database_all_not_include_metaDB()
                     state = handle.insert_data(data=self.setting_data)
+                    handle.stop()
                     if all([delete_state,state]):
+                        custom_file_path = custom_template_file_util.save_template_contents_as_custom_file(
+                            db_file_path=db_file_path)
                         self.template_file_path_label.setText(self.template_file_path_label.text()[:-1])
                         msg_box = InfoDialog(title="保存模板", info="保存实验模板成功!",
                                              icon=QMessageBox.Icon.Information)
@@ -585,18 +599,22 @@ class ContentWindow(ThemedWindow):
             msg_box.exec()
             pass
     def save_experiment_file(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "保存实验模板", "", "db Files (*.db);;All Files (*)")
+        file_path, _ = QFileDialog.getSaveFileName(self, "保存实验模板", "", f"template Files (*.{custom_template_file_util.extension_name});")
 
         if file_path:
+            db_file_path =custom_template_file_util.get_db_extension_file(file_path)
             # 获取文件所在的文件夹路径
-            folder_path = os.path.dirname(file_path)
+            folder_path = os.path.dirname(db_file_path)
             # 获取文件名称
-            file_name = os.path.basename(file_path)
+            file_name = os.path.basename(db_file_path)
             handle = Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
             state = handle.insert_data(data=self.setting_data)
+            handle.stop()
             if state:
-                self.setting_file_path=file_path
-                self.template_file_path_label.setText(f"当前模板文件: {file_path}")
+                # 转换文件格式
+                custom_file_path = custom_template_file_util.save_template_contents_as_custom_file(db_file_path=db_file_path)
+                self.setting_file_path=custom_file_path
+                self.template_file_path_label.setText(f"当前模板文件: {custom_file_path}")
                 msg_box = InfoDialog(title="保存模板", info="保存实验模板成功!", icon=QMessageBox.Icon.Information)
                 msg_box.exec()
                 return True

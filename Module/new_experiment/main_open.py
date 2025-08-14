@@ -10,6 +10,7 @@ from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Experiment_Setting_DAO_Handle import Experiment_Setting_DAO_Handle
 from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
+from public.util.custom_data_file_util import custom_template_file_util
 
 
 class Main_New_experiment_service(BaseService):
@@ -19,15 +20,19 @@ class Main_New_experiment_service(BaseService):
         pass
     def start(self):
         # 打开实验设置文件
-        file_path, _ = QFileDialog.getOpenFileName(self.module.main_gui, "打开实验文件", "", "db Files (*.db);")
+        file_path, _ = QFileDialog.getOpenFileName(self.module.main_gui, "打开实验文件", "", f"template Files (*.{custom_template_file_util.extension_name});")
         if file_path:
-
+            db_file_path = custom_template_file_util.load_template_contents_from_custom_file(file_path)
             # 获取文件所在的文件夹路径
-            folder_path = os.path.dirname(file_path)
+            folder_path = os.path.dirname(db_file_path)
             # 获取文件名称
-            file_name = os.path.basename(file_path)
+            file_name = os.path.basename(db_file_path)
             handle = Experiment_Setting_DAO_Handle(db_fold_path=folder_path, db_name=file_name)
             setting_data = handle.query_data_database_all()
+            handle.stop()
+            # 检查文件是否存在
+            if os.path.isfile(db_file_path):
+                os.remove(db_file_path)  # 删除文件
             global_setting.set_setting("experiment_setting_new", setting_data)
             global_setting.set_setting("experiment_setting_file_open", file_path)
 

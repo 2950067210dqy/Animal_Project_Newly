@@ -1,5 +1,7 @@
 import os
 
+from sympy.external.gmpy import remove
+
 from public.config.experiment_setting_config import Setting_Table
 from public.dao.SQLite.SQliteManager import SQLiteManager
 
@@ -183,8 +185,17 @@ class Experiment_Setting_DAO_Handle():
         for table in Setting_Table:
             # 表名称
             table_name = f"{table.value['table_name']}"
-            deleted_state.append(self.remove_data_table_all(table_name))
-        print(deleted_state)
+            results_query = self.sqlite_manager.query_counts_conditions(table_name)
+
+            results = 0
+            if results_query is not None:
+                results = results_query
+            if results == 0:
+                #空表就不删除
+                deleted_state.append(True)
+            else:
+                deleted_state.append(self.remove_data_table_all(table_name))
+        # print(deleted_state)
         return all(deleted_state) if len(deleted_state) > 0 else False
     def remove_data_table_all(self,table_name):
         """

@@ -72,7 +72,7 @@ class SQLiteManager():
         sql = f"""CREATE TABLE IF NOT EXISTS "{table_name}" (
                         {columns_with_types}{foreign_key_sqls}
                     ) ;"""
-        print(sql)
+        # print(sql)
         self.cursor.execute(sql)
         self.connection.commit()
 

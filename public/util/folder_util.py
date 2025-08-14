@@ -24,7 +24,7 @@ class folder_util():
         pass
 
     @classmethod
-    def remove_non_empty_folder(cls,folder_path,retries=5,wait_second_time=5):
+    def remove_non_empty_folder(cls,folder_path,retries=1,wait_second_time=1):
         #加入异常处理和重试机制
         for attempt in range(retries):
             try:

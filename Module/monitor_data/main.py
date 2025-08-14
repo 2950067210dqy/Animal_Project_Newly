@@ -67,7 +67,7 @@ class Main_Monitor_data_Module(BaseModule):
         pass
 
     def get_app_state(self) -> AppState:
-        return AppState.APPLYING
+        return AppState.MONITORING
     def get_name(self):
         """返回组件名称"""
         return "Main_Monitor_data"

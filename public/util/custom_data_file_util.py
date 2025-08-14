@@ -7,9 +7,72 @@ import json
 import os
 
 from public.util.folder_util import folder_util
+class custom_template_file_util:
+    """自定义模板文件"""
+    encoding = "utf-8-sig"
+    extension_name = "template"
+    db_extension_name="db"
+    pass
+    @classmethod
+    def save_template_contents_as_custom_file(cls,db_file_path):
+        content=None
+        with open(db_file_path, 'rb') as f:
+            #将二进制内容编码为 Base64 的字符串
+            content = base64.b64encode(f.read()).decode(cls.encoding)  #  转成base64字符串格式
 
+        # 获取上层路径
+        parent_directory = os.path.dirname(db_file_path)
+        folder_name = os.path.basename(db_file_path)
+        # 分离扩展名
+        file_name_without_extension, _ = os.path.splitext(folder_name)
+        custom_file_path = os.path.join(parent_directory, f'{file_name_without_extension}.{cls.extension_name}')
+        # 将内容写入自定义格式文件
+        with open(custom_file_path, 'w', encoding=cls.encoding) as custom_file:
+            json.dump(content, custom_file, ensure_ascii=False, indent=4)
+        #删除该DB文件
+        # 检查文件是否存在
+        if os.path.isfile(db_file_path):
+            os.remove(db_file_path)  # 删除文件
+        return custom_file_path
+    @classmethod
+    def load_template_contents_from_custom_file(cls,custom_file_path):
+        # 读取自定义格式文件
+        with open(custom_file_path, 'r', encoding=cls.encoding) as custom_file:
+            content = json.load(custom_file)
 
+        # 获取文件所在的文件夹路径
+        folder_path = os.path.dirname(custom_file_path)
+        # 从路径中获取文件名（带扩展名）
+        file_name_with_extension = os.path.basename(custom_file_path)
+        # 分离扩展名
+        file_name_without_extension, _ = os.path.splitext(file_name_with_extension)
+        target_file = os.path.join(folder_path, f"{file_name_without_extension}.{cls.db_extension_name}")
+
+        # 将内容写入文件
+        with open(target_file, 'wb') as f:
+            f.write(base64.b64decode(content))
+        return target_file
+    @classmethod
+    def get_db_extension_file(cls,file_path):
+        # 获取文件所在的文件夹路径
+        folder_path = os.path.dirname(file_path)
+        # 从路径中获取文件名（带扩展名）
+        file_name_with_extension = os.path.basename(file_path)
+        # 分离扩展名
+        file_name_without_extension, _ = os.path.splitext(file_name_with_extension)
+        return os.path.join(folder_path, f"{file_name_without_extension}.{cls.db_extension_name}")
+
+    @classmethod
+    def get_template_extension_file(cls, file_path):
+        # 获取文件所在的文件夹路径
+        folder_path = os.path.dirname(file_path)
+        # 从路径中获取文件名（带扩展名）
+        file_name_with_extension = os.path.basename(file_path)
+        # 分离扩展名
+        file_name_without_extension, _ = os.path.splitext(file_name_with_extension)
+        return os.path.join(folder_path, f"{file_name_without_extension}.{cls.extension_name}")
 class custom_data_file_util:
+    """自定义数据文件"""
     encoding = "utf-8-sig"
     extension_name = "Mdata"
     @classmethod

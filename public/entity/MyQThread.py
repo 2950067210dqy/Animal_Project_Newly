@@ -51,7 +51,7 @@ class MyQThread(QThread):
         self._paused = False  # 确保在停止前取消暂停
         self.condition.wakeAll()  # 可能需要唤醒线程以便其能正常退出
         self.mutex.unlock()
-        self.terminate()
+        # self.terminate()
 
     def __del__(self):
         logger.debug(f"线程{self.name}被销毁!")
