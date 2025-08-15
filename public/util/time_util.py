@@ -10,7 +10,38 @@ class time_util():
 
     def __init__(self):
         pass
+    @classmethod
+    def format_timedelta(cls,a: datetime, b: datetime, signed: bool = False, zero_pad: bool = False) -> str:
+        """
+        计算 a - b 的时间差，并返回形如 "Xd Yh Zm Ws" 的字符串（中文：天 时 分 秒）。
+        参数:
+          a, b: datetime 对象
+          signed: 若 True，则保留负号（如 "-1天 ..."），否则总是返回绝对值
+          zero_pad: 若 True，则小时/分钟/秒使用两位零填充，例如 "1天 03时 04分 05秒"
+        返回:
+          字符串，例如 "2天 03时 04分 05秒" 或 "-0天 00时 00分 05秒"
+        """
+        if not isinstance(a, datetime) or not isinstance(b, datetime):
+            raise TypeError("a 和 b 必须为 datetime.datetime 对象")
 
+        delta: timedelta = a - b
+        total_seconds = int(abs(delta.total_seconds()))
+        days = total_seconds // 86400
+        hours = (total_seconds % 86400) // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+
+        if zero_pad:
+            h = f"{hours:02d}"
+            m = f"{minutes:02d}"
+            s = f"{seconds:02d}"
+        else:
+            h = str(hours)
+            m = str(minutes)
+            s = str(seconds)
+
+        sign = "-" if (delta.total_seconds() < 0 and signed) else ""
+        return f"{sign}{days}天 {h}时 {m}分 {s}秒"
     @classmethod
     def get_file_creation_time_as_string(cls,file_path):
         """

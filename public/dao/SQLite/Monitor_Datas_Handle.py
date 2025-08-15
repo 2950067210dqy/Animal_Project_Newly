@@ -17,15 +17,18 @@ from public.util.time_util import time_util
 
 
 class Monitor_Datas_Handle():
-    def __init__(self):
+    def __init__(self,db_name=None):
         # 实验设置
         self.experiment_setting: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
         self.experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
         self.sqlite_manager: SQLiteManager = None
-        self.init_construct()
+        self.init_construct(db_name)
 
-    def init_construct(self):
-        self.db_name = self.create_db_not_time()
+    def init_construct(self,db_name):
+        if db_name is None:
+            self.db_name = self.create_db_not_time()
+        else:
+            self.db_name = db_name
         if self.sqlite_manager is not None:
             self.stop()
         self.sqlite_manager = SQLiteManager(db_name=self.db_name)
@@ -359,4 +362,7 @@ class Monitor_Datas_Handle():
 
 
         return result
+        pass
+
+    def query_monitor_data_all_tables(self, all_column_datas=[]) -> dict:
         pass

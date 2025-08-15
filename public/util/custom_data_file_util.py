@@ -6,6 +6,9 @@ import base64
 import json
 import os
 
+import pandas as pd
+
+from public.function.Tansfer.DbTransferExcel import DbTransferExcel
 from public.util.folder_util import folder_util
 class custom_template_file_util:
     """自定义模板文件"""
@@ -95,6 +98,12 @@ class custom_data_file_util:
         # 将内容写入自定义格式文件
         with open(custom_file_path, 'w', encoding=cls.encoding) as custom_file:
             json.dump(contents, custom_file, ensure_ascii=False, indent=4)
+        #将数据db文件转成excel文件
+        transfer_handle =DbTransferExcel()
+        excel_file_path = os.path.join(parent_directory, f'{folder_name}.xlsx')
+        used_sheet_names = set()
+        with pd.ExcelWriter(excel_file_path, engine="openpyxl") as writer:
+            transfer_handle.export_db_to_excel( writer, combine_mode=True, sheet_used=used_sheet_names, chunksize=(5000 or None))
         #删除该文件夹
         folder_util.remove_non_empty_folder(folder_path)
     def load_folder_contents_from_custom_file(cls,custom_file_path):

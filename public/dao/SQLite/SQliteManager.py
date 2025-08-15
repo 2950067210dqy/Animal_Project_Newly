@@ -258,7 +258,7 @@ class SQLiteManager():
         """查询数据，."""
         sql = f"""SELECT * FROM "{table_name}" """
         sql += conditions
-        print(sql)
+        # print(sql)
         self.cursor.execute(sql)
 
         return self.cursor.fetchall()
