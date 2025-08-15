@@ -10,6 +10,7 @@ from loguru import logger
 
 from Service import main_response_Modbus
 from index.MainWindow_index import MainWindow_Index
+from index.Program_self_check import Program_self_check_index
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from public.entity.enum.Public_Enum import AppState
@@ -47,16 +48,19 @@ def start_qt_application():
     global_setting.set_setting("screen", screen_rect)
     # 绑定突出事件
     app.aboutToQuit.connect(quit_qt_application)
-    # # 主窗口实例化
-    try:
-        main_window=MainWindow_Index()
-    except Exception as e:
-        logger.error(f"gui程序实例化失败，原因:{e} ")
-        return
-    # 主窗口显示
-    logger.info("Appliacation start")
+    program_self_check_index_dialog = Program_self_check_index()
+    return_Data = program_self_check_index_dialog.exec()
+    if return_Data:
+        # # 主窗口实例化
+        try:
+            main_window=MainWindow_Index()
+        except Exception as e:
+            logger.error(f"gui程序实例化失败，原因:{e} ")
+            return
+        # 主窗口显示
+        logger.info("Appliacation start")
 
-    main_window.show_frame()
+        main_window.show_frame()
     # 系统退出
     sys.exit(app.exec())
     pass

@@ -38,9 +38,14 @@ class GroupWindow(ThemedWindow):
         self.top_layout = QHBoxLayout()
         main_layout.addLayout(self.top_layout)
 
+        import_template_btn = QPushButton("从模板导入通道")
+        self.top_layout.addWidget(import_template_btn)
+
         # 创建并添加标签到顶部布局
         quick_add_label = QLabel("快速添加")
         self.top_layout.addWidget(quick_add_label)
+
+
 
         # 创建只能写数字的输入框，默认值为1
         self.line_edit = QLineEdit()
@@ -57,6 +62,8 @@ class GroupWindow(ThemedWindow):
         add_button.clicked.connect(self.add_group)
         self.top_layout.addWidget(add_button)
 
+        export_template_btn = QPushButton("保存为通道模板")
+        self.top_layout.addWidget(export_template_btn)
         # 第二顶布布局
         self.sub_top_layout = QVBoxLayout()
         self.title_label = QLabel("无分组/通道")

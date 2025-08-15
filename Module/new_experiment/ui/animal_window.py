@@ -109,10 +109,16 @@ class AnimalWindow(ThemedWindow):
         self.top_layout = QHBoxLayout()
         main_layout.addLayout(self.top_layout)
 
+        import_template_btn =QPushButton("从模板导入动物")
+
         # 添加创建动物按钮
         create_animal_button = QPushButton("创建动物")
         create_animal_button.clicked.connect(self.add_animal)
+
+        export_template_btn = QPushButton("保存为动物模板")
+        self.top_layout.addWidget(import_template_btn)
         self.top_layout.addWidget(create_animal_button)
+        self.top_layout.addWidget(export_template_btn)
         # 第二顶布布局
         self.sub_top_layout = QVBoxLayout()
         self.title_label = QLabel("无分组/通道")
