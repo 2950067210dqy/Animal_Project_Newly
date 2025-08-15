@@ -5,7 +5,7 @@ import time
 from multiprocessing import freeze_support, Process
 
 from PyQt6.QtCore import QThreadPool, QRect
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QDialog
 from loguru import logger
 
 from Service import main_response_Modbus
@@ -50,7 +50,8 @@ def start_qt_application():
     app.aboutToQuit.connect(quit_qt_application)
     program_self_check_index_dialog = Program_self_check_index()
     return_Data = program_self_check_index_dialog.exec()
-    if return_Data:
+    if return_Data ==QDialog.DialogCode.Accepted:
+        #点了确认
         # # 主窗口实例化
         try:
             main_window=MainWindow_Index()
