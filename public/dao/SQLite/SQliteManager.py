@@ -126,7 +126,7 @@ class SQLiteManager():
 
         select_clause = ",\n  ".join(select_cols)
         join_clause = "\n  ".join(join_clauses)
-        order = "ASC" if order_asc else "DESC"
+        order = "DESC" if order_asc else "ASC"
 
         # 最终 SQL，带 LIMIT/OFFSET 用于分页
         final_sql = f"""

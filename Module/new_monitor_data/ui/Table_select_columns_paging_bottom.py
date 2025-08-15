@@ -273,7 +273,7 @@ class Table_select_columns_paging_bottom(BaseWindow):
         cols = result['columns_title']
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
-        print(result)
+        # print(result)
         # 如果表头还没置换，不加载任何数据
         if self.table.columnCount() == 0:
             return
@@ -289,12 +289,17 @@ class Table_select_columns_paging_bottom(BaseWindow):
 
         # 填充当前页的行
         for row_idx, record in enumerate(page_records):
-            for col_idx, col_name in enumerate(self.all_columns):
-                value = record.get(col_name, "")
-                item = QTableWidgetItem(str(value))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-                self.table.setItem(row_idx, col_idx, item)
+            record:dict
+            index = 0
+            for col_key, col_record in record.items():
 
+                item = QTableWidgetItem(str(col_record))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                self.table.setItem(row_idx, index, item)
+                index+=1
+
+        self.current_page=result['page']
+        self.total_items=result['total_items']
         # 更新分页信息与按钮状态
         self.info_label.setText(self._info_text())
         self.page_spin.setMaximum(max(1, self.total_pages))
