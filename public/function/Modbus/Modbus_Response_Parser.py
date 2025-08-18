@@ -628,7 +628,7 @@ class Modbus_Response_ENM(Modbus_Response_Parents):
                         'value': float(
                             str(int("".join(self.int_to_8bit_binary(
                                 num_list=[self.response_struct['data'][i - 2], self.response_struct['data'][i - 1]])),
-                                2)) + "." + str(self.response_struct['data'][i]))
+                                2)) + "." + str(float(self.response_struct['data'][i])/36))
                     }
                     )
                     j += 1
@@ -1578,7 +1578,8 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['氧传感器测量值(%)', '温度传感器测量值(℃)']
+        # port_types = ['氧传感器测量值(%)', '温度传感器测量值(℃)']
+        port_types = ['氧传感器测量值(%)', '氧传感器2测量值(%)']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
@@ -1593,12 +1594,20 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                 case 3:
                     return_datas.append({
                         "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)
+                        'value': float(
+                            str(self.response_struct['data'][i - 1]) + "." + str(self.response_struct['data'][i]))
                     }
                     )
                     j += 1
-                    pass
+                # case 3:
+                #     return_datas.append({
+                #         "desc": port_types[j],
+                #         'value': int("".join(self.int_to_8bit_binary(
+                #             num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)
+                #     }
+                #     )
+                #     j += 1
+                #     pass
 
                 case _:
                     pass

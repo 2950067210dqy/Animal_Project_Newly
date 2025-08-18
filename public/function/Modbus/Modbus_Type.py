@@ -191,7 +191,7 @@ class Modbus_Slave_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("oxygen_num", "氧气传感器测量值(%)", " REAL "),
-                ("temperature_num", "温度传感器测量值(°C)", " REAL "),
+                ("oxygen2_num", "氧气传感器2测量值(%)", " REAL "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
         }

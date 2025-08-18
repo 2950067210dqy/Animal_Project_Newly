@@ -25,4 +25,6 @@ pipreqs . --encoding=utf8 --ignore ./build,./dist,./entity,./log,./model,./resou
 3.数据处理
 
 2025-8-15
-1.开始实验时 配置文件experiment..db 有两个点
+1.开始实验时 配置文件experiment..db 有两个点 done
+2.跑轮数据 小数部分除以36  done
+3.04 04 最后两个字节也是氧传感器 done

@@ -319,7 +319,7 @@ def copy_experiment_setting_file():
         os.makedirs(folder_path_copy, exist_ok=True)
 
         source_file = experiment_setting_file
-        destination_file=os.path.join(folder_path_copy,f"experiment_setting.{file_name_extension}")
+        destination_file=os.path.join(folder_path_copy,f"experiment_setting{file_name_extension}")
         # 复制文件并保留元数据
         shutil.copy2(source_file, destination_file)
         pass

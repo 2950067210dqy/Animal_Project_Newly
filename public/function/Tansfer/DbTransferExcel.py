@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 import pandas as pd
+from loguru import logger
 
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 
@@ -74,7 +75,7 @@ class DbTransferExcel():
                 sheet_name = self.sanitize_sheet_name(raw_sheet, sheet_used)
 
                 sql = f"SELECT * FROM {name}"
-                print(f"[INFO] 从 db 的 {typ} {name} 导出到 sheet '{sheet_name}' ...")
+                logger.info(f"[INFO] 从 db 的 {typ} {name} 导出到 sheet '{sheet_name}' ...")
                 if chunksize and chunksize > 0:
                     startrow = 0
                     # 使用 pandas.read_sql_query 的 chunksize 返回迭代器
