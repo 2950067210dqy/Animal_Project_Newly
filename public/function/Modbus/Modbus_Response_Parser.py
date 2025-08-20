@@ -1944,75 +1944,11 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['流量计1', '流量计2', '温度1(℃)', '温度2(℃)', '湿度1(%RH)', '湿度2(%RH)', '气压1(KPa)', '气压2(KPa)', 'CO2', '保留']
+        port_types = ['流量计1',  'CO2', '保留']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
                 case 1:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)
-                    }
-                    )
-                    j += 1
-                    pass
-                case 3:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)
-                    }
-                    )
-                    j += 1
-                    pass
-                case 5:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)/10
-                    }
-                    )
-                    j += 1
-                    pass
-                case 7:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)/10
-                    }
-                    )
-                    j += 1
-                    pass
-                case 9:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)/10
-                    }
-                    )
-                    j += 1
-                    pass
-                    pass
-                case 11:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)/10
-                    }
-                    )
-                    j += 1
-                    pass
-                case 13:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)/10
-                    }
-                    )
-                    j += 1
-                    pass
-                case 15:
                     return_datas.append({
                         "desc": port_types[j],
                         'value': int("".join(self.int_to_8bit_binary(

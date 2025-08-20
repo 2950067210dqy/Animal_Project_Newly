@@ -86,19 +86,13 @@ class Modbus_Slave_Tables(Enum):
                 ]
             }
         }
+    #03 04
     UGC_monitor_data={
         "monitor_data": {
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("flow_num_1", "流量计1", " INTEGER "),
-                ("flow_num_2", "流量计2", " INTEGER "),
-                ("temperature_num_1", "温度1(°C)", " REAL "),
-                ("temperature_num_2", "温度2(°C)", " REAL "),
-                ("humidity_num_1", "湿度1(%RH)", " REAL "),
-                ("humidity_num_2", "湿度2(%RH)", " REAL "),
-                ("air_pressure_num_1", "气压1(KPa)", " REAL "),
-                ("air_pressure_num_2", "气压2(KPa)", " REAL "),
                 ("CO2_num", "CO2", " REAL "),
                 ("reserve", "保留", " REAL "),
                 ("time", "获取时间", " TIMESTAMP ")
