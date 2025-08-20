@@ -3,6 +3,8 @@
 2.每个半个小时删除一次照片 ，删除之前把照片大小记录一次 记录坐标处理的运行时间
 
 .\Scripts\activate
+.\.venv\Scripts\activate
+pyinstaller ./other/main.spec
 pyinstaller -d main.py --hidden-import=pyqt6-plugin
 
 2025-05-27

@@ -1,21 +1,16 @@
-import multiprocessing
 import os
 import sys
 import time
-from multiprocessing import freeze_support, Process
-
+from multiprocessing import freeze_support
 from PyQt6.QtCore import QThreadPool, QRect
 from PyQt6.QtWidgets import QApplication, QDialog
 from loguru import logger
-
-from Service import main_response_Modbus
 from index.MainWindow_index import MainWindow_Index
 from index.Program_self_check import Program_self_check_index
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from public.entity.enum.Public_Enum import AppState
 from theme.ThemeManager import ThemeManager
-
 # 过滤日志
 logger = logger.bind(category="gui_logger")
 def quit_qt_application():
@@ -69,7 +64,6 @@ def load_global_setting():
     config_path = "/config"
     # 加载配置
     config_file_path = os.getcwd() +config_path+ "/gui_config.ini"
-
     # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
     configer = ini_parser(config_file_path).read()
     if (len(configer) != 0):
@@ -78,10 +72,8 @@ def load_global_setting():
         logger.error("gui配置文件读取失败。")
         quit_qt_application()
     global_setting.set_setting("configer", configer)
-
     # 加载相机配置
     config_file_path = os.getcwd() +config_path+ "/camera_config.ini"
-
     # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
     config = ini_parser(config_file_path).read()
     if (len(config) != 0):
@@ -89,7 +81,6 @@ def load_global_setting():
     else:
         logger.error("相机配置文件读取失败。")
     global_setting.set_setting("camera_config", config)
-
     # 加载监控数据配置
     config_file_path = os.getcwd() +config_path+ "/monitor_datas_config.ini"
     # 配置数据{"section":{"key1":value1,"key2":value2,....}，...}
@@ -99,7 +90,6 @@ def load_global_setting():
     else:
         logger.error("监控配置文件读取失败。")
     global_setting.set_setting("monitor_data", config)
-
     # 风格默认是dark  light
     global_setting.set_setting("style", configer['theme']['default'])
     # 图标风格 white black
@@ -112,37 +102,7 @@ def load_global_setting():
     global_setting.set_setting("thread_pool", thread_pool)
     #程序状态
     global_setting.set_setting("app_state", AppState.INITIALIZED)
-    # q = multiprocessing.Queue()  # 创建 Queue 消息传递
-    # send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
-    # global_setting.set_setting("queue",  q)
-    # global_setting.set_setting("send_message_queue",  send_message_q)
     pass
-
-
-"""
-确认子进程没有启动其他子进程，如果有，必须递归管理或用系统命令杀死整个进程树。
-用 psutil 库递归杀死进程树
-multiprocessing.Process.terminate() 只会终止对应的单个进程，如果该进程启动了其他进程，这些“子进程”不会被自动终止，因而可能会在任务管理器中残留。
-"""
-
-
-def kill_process_tree(pid, including_parent=True, psutil=None):
-    try:
-        parent = psutil.Process(pid)
-    except psutil.NoSuchProcess:
-        return
-    children = parent.children(recursive=True)
-    for child in children:
-        child.terminate()
-    gone, alive = psutil.wait_procs(children, timeout=5)
-    for p in alive:
-        p.kill()
-    if including_parent:
-        if psutil.pid_exists(pid):
-            parent.terminate()
-            parent.wait(5)
-
-
 
 def main(q, send_message_q):
     freeze_support()
@@ -157,15 +117,11 @@ def main(q, send_message_q):
     )
     logger.info(f"{'-' * 40}main_gui_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
-
     load_global_setting()
-
-
     global_setting.set_setting("queue", q)
     global_setting.set_setting("send_message_queue", send_message_q)
-    # try:
-    #     # qt程序开始
-    start_qt_application()
-    # except Exception as e:
-    #     logger.error(e)
-
+    try:
+        # qt程序开始
+        start_qt_application()
+    except Exception as e:
+        logger.error(e)

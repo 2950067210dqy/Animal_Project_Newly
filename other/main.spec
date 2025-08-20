@@ -2,18 +2,17 @@
 
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    ['../main.py'],
+    pathex=['.', '.venv/lib/site-packages'],
     binaries=[
 
     ],
     datas=[
-    ('D:/WorkSpace/pythonProjectAnimal/camera_config.ini', '.'),
-    ('D:/WorkSpace/pythonProjectAnimal/communicate_config.ini', '.'),
-    ('D:/WorkSpace/pythonProjectAnimal/deep_camera_intrinsics.json', '.'),
-    ('D:/WorkSpace/pythonProjectAnimal/gui_configer.yaml', '.'),
-    ('D:/WorkSpace/pythonProjectAnimal/monitor_datas_config.ini', '.'),
-    ('D:/WorkSpace/pythonProjectAnimal/model/yolo11n.pt', 'model')
+    ('D:/WorkSpace/PythonProject/Animal_Project_newly/config/camera_config.ini', 'config'),
+    ('D:/WorkSpace/PythonProject/Animal_Project_newly/config/deep_camera_intrinsics.json', 'config'),
+    ('D:/WorkSpace/PythonProject/Animal_Project_newly/config/gui_config.ini', 'config'),
+    ('D:/WorkSpace/PythonProject/Animal_Project_newly/config/monitor_datas_config.ini', 'config'),
+    ('D:/WorkSpace/PythonProject/Animal_Project_newly/model/yolo11n.pt', 'model')
     ],
     hiddenimports=[],
     hookspath=[],

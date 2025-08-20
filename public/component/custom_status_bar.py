@@ -36,7 +36,7 @@ class Time_thread(MyQThread):
 
     pass
 
-class Start_Experiment_Time_thread(MyQThread):
+class Start_Experiment_Time_thread(MyQThread ):
     # 线程信号
     update_time_thread_doing = pyqtSignal()
 
