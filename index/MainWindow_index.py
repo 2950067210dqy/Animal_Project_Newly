@@ -57,6 +57,8 @@ class MainWindow_Index(ThemedWindow):
         pass
     def __init__(self):
         super().__init__()
+        #暂停实验标志位
+        self.is_paused = False
         # 点击开始实验 接受数据和存储数据的线程
         self.store_thread_sub=None
         self.send_thread_sub=None
@@ -173,14 +175,23 @@ class MainWindow_Index(ThemedWindow):
         action_three.setToolTip(name)
         action_three.triggered.connect(self.start_experiment)
         self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_three,"app_state":AppState.APPLYING})
-        name = "停止实验"
-        obj_name = "stop_experiment"
+        name = "暂停实验"
+        obj_name = "pause_experiment"
         action_four = QAction(name, self)
         action_four.setObjectName(obj_name)
         action_four.setToolTip(name)
-        action_four.triggered.connect(self.stop_experiment)
         action_four.setDisabled(True)
+        action_four.triggered.connect(self.pause_experiment)
         self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four,"app_state":AppState.APPLYING})
+
+        name = "停止实验"
+        obj_name = "stop_experiment"
+        action_five = QAction(name, self)
+        action_five.setObjectName(obj_name)
+        action_five.setToolTip(name)
+        action_five.triggered.connect(self.stop_experiment)
+        action_five.setDisabled(True)
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_five,"app_state":AppState.APPLYING})
         # 将动作添加到工具栏
         self.toolbar.addAction(action_one)
         self.toolbar.addSeparator()
@@ -188,6 +199,7 @@ class MainWindow_Index(ThemedWindow):
         self.toolbar.addSeparator()
         self.toolbar.addAction(action_three)
         self.toolbar.addAction(action_four)
+        self.toolbar.addAction(action_five)
         self.toolbar.addSeparator()
     def create_menu_bar(self):
     # 创建菜单
@@ -350,11 +362,138 @@ class MainWindow_Index(ThemedWindow):
             if action_dict["obj_name"] == "stop_experiment":
                 action_dict["action"]: QAction
                 action_dict["action"].setDisabled(False)
+            if action_dict["obj_name"] == "pause_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(False)
         for module in self.modules:
             if module.name == "Main_experiment_setting":
                 module.interface_widget.frame_obj.start_btn.setEnabled(False)
                 module.interface_widget.frame_obj.stop_btn.setEnabled(True)
                 break
+        pass
+    def pause_experiment(self):
+        try:
+            if self.store_thread_sub is not None and not self.store_thread_sub.isPaused():
+                self.store_thread_sub.pause()
+            else:
+                self.store_thread_sub.resume()
+        except Exception as e:
+            logger.error(f"暂停实验监测store_thread_sub错误，原因：{e}")
+            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        try:
+            if self.add_message_thread_sub is not None and not self.add_message_thread_sub.isPaused():
+                self.add_message_thread_sub.pause()
+            else:
+                self.add_message_thread_sub.resume()
+        except Exception as e:
+            logger.error(f"暂停实验监测add_message_thread_sub错误，原因：{e}")
+            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        try:
+            if self.send_thread_sub is not None and not self.send_thread_sub.isPaused():
+                self.send_thread_sub.pause()
+            else:
+                self.send_thread_sub.resume()
+        except Exception as e:
+            logger.error(f"暂停实验监测send_thread_sub错误，原因：{e}")
+            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        try:
+            if self.read_queue_data_thread_sub is not None and not self.read_queue_data_thread_sub.isPaused():
+                self.read_queue_data_thread_sub.pause()
+            else:
+                self.read_queue_data_thread_sub.resume()
+        except Exception as e:
+            logger.error(f"暂停实验监测read_queue_data_thread_sub错误，原因：{e}")
+            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        # 所有红外相机线程停止
+        for camera_struct_l in self.infrared_camera_thread_sub_list:
+            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                try:
+                    if camera_struct_l['camera'] is not None and not camera_struct_l['camera'].isPaused():
+                        camera_struct_l['camera'].pause()
+                    else:
+                        camera_struct_l['camera'].resume()
+                except Exception as e:
+                    logger.error(f"暂停实验监测infrared_camera_thread_sub_list错误，原因：{e}")
+                    self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        try:
+            if self.infrared_camera_delete_file_thread_sub is not None and not self.infrared_camera_delete_file_thread_sub.isPaused():
+                self.infrared_camera_delete_file_thread_sub.pause()
+            else:
+                self.infrared_camera_delete_file_thread_sub.resume()
+        except Exception as e:
+            logger.error(f"暂停实验监测infrared_camera_delete_file_thread_sub错误，原因：{e}")
+            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        try:
+            if self.infrared_camera_read_queue_data_thread_sub is not None and not self.infrared_camera_read_queue_data_thread_sub.isPaused():
+                self.infrared_camera_read_queue_data_thread_sub.pause()
+            else:
+                self.infrared_camera_read_queue_data_thread_sub.resume()
+        except Exception as e:
+            logger.error(f"暂停实验监测infrared_camera_read_queue_data_thread_sub错误，原因：{e}")
+            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        # 所有深度相机线程停止
+        for camera_struct_l in self.deep_camera_thread_sub_list:
+            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                try:
+                    if camera_struct_l['camera'] is not None and not camera_struct_l['camera'].isPaused():
+                        camera_struct_l['camera'].pause()
+                    else:
+                        camera_struct_l['camera'].resume()
+                except Exception as e:
+                    logger.error(f"暂停实验监测deep_camera_thread_sub_list错误，原因：{e}")
+                    self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
+                try:
+                    if camera_struct_l['img_process'] is not None and not camera_struct_l['img_process'].isPaused():
+                        camera_struct_l['img_process'].pause()
+                    else:
+                        camera_struct_l['img_process'].resume()
+                except Exception as e:
+                    logger.error(f"暂停实验监测deep_camera_thread_sub_list_img_process错误，原因：{e}")
+                    self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        try:
+            if self.deep_camera_delete_file_thread_sub is not None and not self.deep_camera_delete_file_thread_sub.isPaused():
+                self.deep_camera_delete_file_thread_sub.pause()
+            else:
+                self.deep_camera_delete_file_thread_sub.resume()
+        except Exception as e:
+            logger.error(f"暂停实验监测deep_camera_delete_file_thread_sub错误，原因：{e}")
+            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        try:
+            if self.deep_camera_read_queue_data_thread_sub is not None and not self.deep_camera_read_queue_data_thread_sub.isPaused():
+                self.deep_camera_read_queue_data_thread_sub.pause()
+            else:
+                self.deep_camera_read_queue_data_thread_sub.resume()
+        except Exception as e:
+            logger.error(f"暂停实验监测deep_camera_read_queue_data_thread_sub错误，原因：{e}")
+            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+        pass
+
+
+        self.is_paused = not self.is_paused
+        if self.is_paused:
+            pause_experiment_time=global_setting.get_setting("pause_experiment_time",[])
+            pause_experiment_time.append(time.time())
+            global_setting.set_setting("pause_experiment_time",pause_experiment_time )
+            self.status_bar.update_tip(f"暂停实验监测成功！")
+        else:
+            relieve_pause_experiment_time = global_setting.get_setting("relieve_pause_experiment_time", [])
+            relieve_pause_experiment_time.append(time.time())
+            global_setting.set_setting("relieve_pause_experiment_time", relieve_pause_experiment_time)
+            self.status_bar.update_tip(f"解除暂停实验监测成功！")
+        self.status_bar.update_status(is_paused=self.is_paused)
+
+
+        for action_dict in self.tool_bar_actions:
+            if action_dict["obj_name"] == "pause_experiment":
+                action_dict["action"]: QAction
+                if self.is_paused:
+                    action_dict["name"]="解除暂停实验"
+                else:
+                    action_dict["name"] = "暂停实验"
+                action_dict["action"].setToolTip(action_dict["name"])
+                action_dict["action"].setText(action_dict["name"])
+
         pass
     def stop_experiment(self):
         try:
@@ -479,11 +618,17 @@ class MainWindow_Index(ThemedWindow):
                 menu_bar_action["action"].setEnabled(False)
             else:
                 menu_bar_action["action"].setEnabled(True)
+
         # 设置是否可以点击 tool_bar
         for tool_bar_action in self.tool_bar_actions:
             if tool_bar_action["app_state"] > global_setting.get_setting("app_state",AppState.INITIALIZED):
                 tool_bar_action["action"].setEnabled(False)
             else:
                 tool_bar_action["action"].setEnabled(True)
+            # 特殊按钮需要特殊配置
+            if tool_bar_action['obj_name'] in ["stop_experiment", "pause_experiment"]:
+                tool_bar_action["action"].setEnabled(False)
         pass
+
+
         pass

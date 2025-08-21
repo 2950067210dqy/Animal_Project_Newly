@@ -14,7 +14,10 @@ class MyQThread(QThread):
         self.condition = QWaitCondition()
         self._running = True
         self._paused = False
-
+    def isStart(self):
+        return self._running
+    def isPaused(self):
+        return self._paused and self._running
     def run(self):
         logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
         while self._running:

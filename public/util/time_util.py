@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from datetime import datetime, timedelta
 
@@ -10,6 +11,78 @@ class time_util():
 
     def __init__(self):
         pass
+    @classmethod
+    # 定义一个函数，用于解析时间字符串
+    def parse_time_format_timedelta_string(cls,time_str):
+        # 匹配天、时、分、秒的正则表达式
+        pattern = re.compile(
+            r'(?P<days>-?\d+)天\s*(?P<hours>\d{1,2})时\s*(?P<minutes>\d{1,2})分\s*(?P<seconds>\d{1,2})秒')
+        match = pattern.match(time_str)
+
+        if not match:
+            raise ValueError("时间字符串格式不正确")
+
+        # 提取天、小时、分钟和秒
+        days = int(match.group('days'))
+        hours = int(match.group('hours'))
+        minutes = int(match.group('minutes'))
+        seconds = int(match.group('seconds'))
+
+        # 将解析后的数据转换为 timedelta 对象
+        return timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+    @classmethod
+    # 定义一个函数，用于将 timedelta 对象转换回时间字符串
+    def timedelta_to_format_timedelta_string(cls,td:timedelta, signed: bool = False, zero_pad: bool = False):
+        """
+
+        :param td:
+        :signed: 若 True，则保留负号（如 "-1天 ..."），否则总是返回绝对值
+        zero_pad: 若 True，则小时/分钟/秒使用两位零填充，例如 "1天 03时 04分 05秒"
+        :return:
+        """
+        total_seconds = int(abs(td.total_seconds()))
+        days = total_seconds // 86400
+        hours = (total_seconds % 86400) // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+
+        if zero_pad:
+            h = f"{hours:02d}"
+            m = f"{minutes:02d}"
+            s = f"{seconds:02d}"
+        else:
+            h = str(hours)
+            m = str(minutes)
+            s = str(seconds)
+
+        sign = "-" if (td.total_seconds() < 0 and signed) else ""
+        return f"{sign}{days}天 {h}时 {m}分 {s}秒"
+
+    @classmethod
+    def operator_timedelta_str(cls, a: str, b: str,operator:str="+", signed: bool = False, zero_pad: bool = False) -> str:
+        """
+        计算 a - b 的时间差，并返回形如 "Xd Yh Zm Ws" 的字符串（中文：天 时 分 秒）。
+        参数:
+          a, b: "2天 03时 04分 05秒" 或 "-0天 00时 00分 05秒" 字符串\
+          operator:操作符+-
+          signed: 若 True，则保留负号（如 "-1天 ..."），否则总是返回绝对值
+          zero_pad: 若 True，则小时/分钟/秒使用两位零填充，例如 "1天 03时 04分 05秒"
+        返回:
+          字符串，例如 "2天 03时 04分 05秒" 或 "-0天 00时 00分 05秒"
+        """
+        if not isinstance(a, str) or not isinstance(b, str):
+            raise TypeError("a 和 b 必须为 str.str 对象")
+        td1 = cls.parse_time_format_timedelta_string(a)
+        td2 = cls.parse_time_format_timedelta_string(b)
+        # 解析时间字符串
+        match operator:
+            case "+":
+                return cls.timedelta_to_format_timedelta_string(td=td1+td2, signed=signed, zero_pad=zero_pad)
+            case "-":
+                return cls.timedelta_to_format_timedelta_string(td=td1-td2, signed=signed, zero_pad=zero_pad)
+            case "_":
+                return "时间格式错误"
+
     @classmethod
     def format_timedelta(cls,a: datetime, b: datetime, signed: bool = False, zero_pad: bool = False) -> str:
         """
@@ -25,23 +98,7 @@ class time_util():
             raise TypeError("a 和 b 必须为 datetime.datetime 对象")
 
         delta: timedelta = a - b
-        total_seconds = int(abs(delta.total_seconds()))
-        days = total_seconds // 86400
-        hours = (total_seconds % 86400) // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-
-        if zero_pad:
-            h = f"{hours:02d}"
-            m = f"{minutes:02d}"
-            s = f"{seconds:02d}"
-        else:
-            h = str(hours)
-            m = str(minutes)
-            s = str(seconds)
-
-        sign = "-" if (delta.total_seconds() < 0 and signed) else ""
-        return f"{sign}{days}天 {h}时 {m}分 {s}秒"
+        return  cls.timedelta_to_format_timedelta_string(td=delta, signed=signed, zero_pad=zero_pad)
     @classmethod
     def get_file_creation_time_as_string(cls,file_path):
         """
