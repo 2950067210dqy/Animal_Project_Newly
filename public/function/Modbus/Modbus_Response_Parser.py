@@ -628,7 +628,7 @@ class Modbus_Response_ENM(Modbus_Response_Parents):
                         'value': float(
                             str(int("".join(self.int_to_8bit_binary(
                                 num_list=[self.response_struct['data'][i - 2], self.response_struct['data'][i - 1]])),
-                                2)) + "." + str(float(self.response_struct['data'][i])/36))
+                                2)+ round(float(self.response_struct['data'][i])/36, 3)))
                     }
                     )
                     j += 1

@@ -26,6 +26,8 @@ import numpy as np
 """
 # 过滤日志
 logger = logger.bind(category="deep_camera_logger")
+# 错误记录标志 为了只在第一次错误时报错，避免一直重复报错
+logged_errors = set()
 # 删除文件线程
 delete_file_thread = None
 camera_list = []
@@ -437,8 +439,19 @@ class RealSenseProcessor(MyQThread):
         self.serial_number = serial_number
         self.id = id
         self.path = path
-        self.init_state = self.init_camera()
+        self.init_state =  self.init_camera()
 
+    def check_device_by_serial(self,serial_number):
+        # 根据SN码来查找所连接的设备里是否存在该设备
+        # 获取当前系统中的所有设备
+        context = rs.context()
+        devices = context.query_devices()
+
+        # 遍历所有设备并检查 serial number
+        for device in devices:
+            if device.get_info(rs.camera_info.serial_number) == serial_number:
+                return True  # 找到了匹配的设备
+        return False  # 没有找到匹配的设备
     def check_pipeline_status(self):
         try:
             # 获取当前的传输状态
@@ -460,6 +473,13 @@ class RealSenseProcessor(MyQThread):
         self.config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, self.fps)
         self.config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, self.fps)
         self.align = rs.align(rs.stream.color)
+
+        if not self.check_device_by_serial(self.serial_number):
+            error_message = f"SN码：{self.serial_number}的设备未连接至上位机，无法启动。"
+            if error_message not in logged_errors:  # 根据异常内容判断是否记录
+                logger.error(error_message)
+                logged_errors.add(str(error_message))  # 标记此错误已记录
+            return False
         try:
             # 尝试启动 RealSense 流
             self.pipeline.start(self.config)
@@ -467,7 +487,9 @@ class RealSenseProcessor(MyQThread):
             # logger.info(f"深度相机_{self.id} | 设备已连接。")
             return True
         except Exception as e:
-            logger.error(f"深度相机_{self.id} | 设备未连接: 异常原因{e} |   异常堆栈跟踪：{traceback.print_exc()}")
+            if str(e) not in logged_errors:  # 根据异常内容判断是否记录
+                logger.error(f"深度相机_{self.id} | 设备未连接: 异常原因{e} |   异常堆栈跟踪：{traceback.print_exc()}")
+                logged_errors.add(str(e))  # 标记此错误已记录
             return False
 
     def img_save(self, image, depth_image):
@@ -488,7 +510,8 @@ class RealSenseProcessor(MyQThread):
 
 
     def stop(self):
-        self.pipeline.stop()
+        if self.pipeline is not None and self.init_state:
+            self.pipeline.stop()
         super().stop()
 
     # 启动，获取一帧

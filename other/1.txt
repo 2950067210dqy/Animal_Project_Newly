@@ -30,3 +30,7 @@ pipreqs . --encoding=utf8 --ignore ./build,./dist,./entity,./log,./model,./resou
 1.开始实验时 配置文件experiment..db 有两个点 done
 2.跑轮数据 小数部分除以36  done
 3.04 04 最后两个字节也是氧传感器 done
+
+2025-08-20
+1.当deep_camera_to_mouse_cage_number_file_name.json和另一个相机配置文件存在相机SN号时但是相机没插上，就会无响应！ done
+2.开始实验的时候需要实验配置一下串口，不然串口默认第一个

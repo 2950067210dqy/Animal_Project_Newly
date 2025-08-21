@@ -361,25 +361,25 @@ class MainWindow_Index(ThemedWindow):
             if self.store_thread_sub is not None and self.store_thread_sub.isRunning():
                 self.store_thread_sub.stop()
         except Exception as e:
-            logger.error(f"关闭实验监测错误，原因：{e}")
+            logger.error(f"关闭实验监测store_thread_sub错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         try:
             if self.add_message_thread_sub is not None and self.add_message_thread_sub.isRunning():
                 self.add_message_thread_sub.stop()
         except Exception as e:
-            logger.error(f"关闭实验监测错误，原因：{e}")
+            logger.error(f"关闭实验监测add_message_thread_sub错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         try:
             if self.send_thread_sub is not None and self.send_thread_sub.isRunning():
                 self.send_thread_sub.stop()
         except Exception as e:
-            logger.error(f"关闭实验监测错误，原因：{e}")
+            logger.error(f"关闭实验监测send_thread_sub错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         try:
             if self.read_queue_data_thread_sub is not None and self.read_queue_data_thread_sub.isRunning():
                 self.read_queue_data_thread_sub.stop()
         except Exception as e:
-            logger.error(f"关闭实验监测错误，原因：{e}")
+            logger.error(f"关闭实验监测read_queue_data_thread_sub错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         # 所有红外相机线程停止
         for camera_struct_l in self.infrared_camera_thread_sub_list:
@@ -388,19 +388,19 @@ class MainWindow_Index(ThemedWindow):
                     if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
                         camera_struct_l['camera'].stop()
                 except Exception as e:
-                    logger.error(f"关闭实验监测错误，原因：{e}")
+                    logger.error(f"关闭实验监测infrared_camera_thread_sub_list错误，原因：{e}")
                     self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         try:
             if self.infrared_camera_delete_file_thread_sub is not None and self.infrared_camera_delete_file_thread_sub.isRunning():
                 self.infrared_camera_delete_file_thread_sub.stop()
         except Exception as e:
-            logger.error(f"关闭实验监测错误，原因：{e}")
+            logger.error(f"关闭实验监测infrared_camera_delete_file_thread_sub错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         try:
             if self.infrared_camera_read_queue_data_thread_sub is not None and self.infrared_camera_read_queue_data_thread_sub.isRunning():
                 self.infrared_camera_read_queue_data_thread_sub.stop()
         except Exception as e:
-            logger.error(f"关闭实验监测错误，原因：{e}")
+            logger.error(f"关闭实验监测infrared_camera_read_queue_data_thread_sub错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         # 所有深度相机线程停止
         for camera_struct_l in self.deep_camera_thread_sub_list:
@@ -409,26 +409,26 @@ class MainWindow_Index(ThemedWindow):
                     if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
                         camera_struct_l['camera'].stop()
                 except Exception as e:
-                    logger.error(f"关闭实验监测错误，原因：{e}")
+                    logger.error(f"关闭实验监测deep_camera_thread_sub_list错误，原因：{e}")
                     self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
             if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
                 try:
                     if camera_struct_l['img_process'] is not None and camera_struct_l['img_process'].isRunning():
                         camera_struct_l['img_process'].stop()
                 except Exception as e:
-                    logger.error(f"关闭实验监测错误，原因：{e}")
+                    logger.error(f"关闭实验监测deep_camera_thread_sub_list_img_process错误，原因：{e}")
                     self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         try:
             if self.deep_camera_delete_file_thread_sub is not None and self.deep_camera_delete_file_thread_sub.isRunning():
                 self.deep_camera_delete_file_thread_sub.stop()
         except Exception as e:
-            logger.error(f"关闭实验监测错误，原因：{e}")
+            logger.error(f"关闭实验监测deep_camera_delete_file_thread_sub错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         try:
             if self.deep_camera_read_queue_data_thread_sub is not None and self.deep_camera_read_queue_data_thread_sub.isRunning():
                 self.deep_camera_read_queue_data_thread_sub.stop()
         except Exception as e:
-            logger.error(f"关闭实验监测错误，原因：{e}")
+            logger.error(f"关闭实验监测deep_camera_read_queue_data_thread_sub错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         global_setting.set_setting("app_state", AppState.APPLYING)
         global_setting.set_setting("stop_experiment_time", time.time())
