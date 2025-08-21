@@ -7,6 +7,7 @@ import json
 import os
 
 import pandas as pd
+from loguru import logger
 
 from public.function.Tansfer.DbTransferExcel import DbTransferExcel
 from public.util.folder_util import folder_util
@@ -103,8 +104,12 @@ class custom_data_file_util:
         transfer_handle =DbTransferExcel()
         excel_file_path = os.path.join(parent_directory, f'{folder_name}.xlsx')
         used_sheet_names = set()
-        with pd.ExcelWriter(excel_file_path, engine="openpyxl") as writer:
-            transfer_handle.export_db_to_excel( writer, combine_mode=True, sheet_used=used_sheet_names, chunksize=(5000 or None))
+        try:
+            import openpyxl
+            with pd.ExcelWriter(excel_file_path, engine="openpyxl") as writer:
+                transfer_handle.export_db_to_excel( writer, combine_mode=True, sheet_used=used_sheet_names, chunksize=(5000 or None))
+        except Exception as e:
+            logger.error(e)
         #删除该文件夹
         folder_util.remove_non_empty_folder(folder_path)
     def load_folder_contents_from_custom_file(cls,custom_file_path):

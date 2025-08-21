@@ -12,7 +12,7 @@ class MyQThread(QThread):
         self.name = name
         self.mutex = QMutex()
         self.condition = QWaitCondition()
-        self._running = True
+        self._running = False
         self._paused = False
     def isStart(self):
         return self._running
@@ -20,6 +20,8 @@ class MyQThread(QThread):
         return self._paused and self._running
     def run(self):
         logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
+        self._running = True
+        self.before_Runing_work()
         while self._running:
             self.mutex.lock()
             if self._paused:
@@ -28,7 +30,9 @@ class MyQThread(QThread):
 
             # 执行一些工作（替代为你需要的任务）
             self.dosomething()
-
+    def before_Runing_work(self):
+        #执行前的一些工作
+        pass
     def dosomething(self):
         # 执行一些工作（替代为你需要的任务）
         pass

@@ -6,6 +6,7 @@ from loguru import logger
 from Module.experiment_setting.config.experiment_default_config import get_default_config
 
 from Module.experiment_setting.ui.tab7_window import Ui_tab7_window
+from public.component.dialog.custom.InfoDialog import InfoDialog
 
 from public.config_class.global_setting import global_setting
 
@@ -19,7 +20,7 @@ from theme.ThemeQt6 import ThemedWindow
 from PyQt6 import QtGui
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QGroupBox, QLabel, QSlider, QRadioButton, \
-    QGridLayout, QButtonGroup, QComboBox, QListWidget, QPushButton
+    QGridLayout, QButtonGroup, QComboBox, QListWidget, QPushButton, QMessageBox
 
 from public.util.time_util import time_util
 
@@ -156,6 +157,8 @@ class Tab_7(ThemedWindow):
         self.config = None
         # 配置layout
         self.config_layout:QVBoxLayout = None
+        # 确定设备配置按钮
+        self.start_btn: QPushButton=None
         # 实例化ui
         self._init_ui(parent, geometry, title)
         # 获得相关数据
@@ -317,19 +320,31 @@ class Tab_7(ThemedWindow):
         refresh_port_btn: QPushButton = self.findChild(QPushButton, "tab_7_refresh_port_btn")
 
         refresh_port_btn.clicked.connect(self.refresh_port)
-        # 开始实验按钮
+        # 确定设备配置按钮
         self.start_btn: QPushButton = self.findChild(QPushButton, "start_btn")
-        self.start_btn.clicked.connect(self.start_experiment)
-        # 停止实验按钮
-        self.stop_btn: QPushButton = self.findChild(QPushButton, "stop_btn")
-        self.stop_btn.clicked.connect(self.stop_experiment)
-        self.stop_btn.setEnabled(False)
+        self.start_btn.clicked.connect(self.start_device_config)
+
         pass
 
-    def start_experiment(self):
-        if self.main_gui is not None:
-            self.main_gui.start_experiment()
-            pass
+    def start_device_config(self):
+        #确定设备配置按钮
+        reply = QMessageBox.question(self, '确定设备配置',
+                                     "确定该设备配置？",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                     QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            global_setting.set_setting("app_state", AppState.CONFIGURING)
+            if self.main_gui is not None:
+                self.main_gui.change_enable_component_app_state_signal.emit()
+                pass
+            self.close()
+            msg_box = InfoDialog(title="确定设备配置", info="确定该设备配置成功!",
+                                 icon=QMessageBox.Icon.Information)
+            msg_box.exec()
+
+
+
+
 
     def stop_experiment(self):
         if self.main_gui is not None:

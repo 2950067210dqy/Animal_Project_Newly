@@ -39,6 +39,7 @@ class GroupWindow(ThemedWindow):
         main_layout.addLayout(self.top_layout)
 
         import_template_btn = QPushButton("从模板导入通道")
+        import_template_btn.setEnabled(False)
         self.top_layout.addWidget(import_template_btn)
 
         # 创建并添加标签到顶部布局
@@ -63,6 +64,7 @@ class GroupWindow(ThemedWindow):
         self.top_layout.addWidget(add_button)
 
         export_template_btn = QPushButton("保存为通道模板")
+        export_template_btn.setEnabled(False)
         self.top_layout.addWidget(export_template_btn)
         # 第二顶布布局
         self.sub_top_layout = QVBoxLayout()

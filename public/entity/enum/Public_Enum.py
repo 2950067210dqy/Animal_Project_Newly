@@ -6,8 +6,10 @@ class AppState(Enum):
     INITIALIZED = 0
     #应用实验状态
     APPLYING = 1
+    #设备配置状态
+    CONFIGURING = 2
     #开始监测数据状态
-    MONITORING = 2
+    MONITORING = 3
 
     def __lt__(self, other):
         return self.value < other.value

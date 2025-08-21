@@ -356,6 +356,7 @@ class Thermal_process(MyQThread):
 
     def run(self) -> None:
         logger.warning(f"{self.name} thread has been started！")
+        self._running=True
         # 图片保存路径 如果不存在则创建
         pic_save_path = self.path + global_setting.get_setting("camera_config")['INFRARED_CAMERA']['pic_dir']
         if not os.path.exists(pic_save_path):

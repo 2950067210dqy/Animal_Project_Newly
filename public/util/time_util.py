@@ -20,7 +20,7 @@ class time_util():
         match = pattern.match(time_str)
 
         if not match:
-            raise ValueError("时间字符串格式不正确")
+            return timedelta(days=0, hours=0, minutes=0, seconds=0)
 
         # 提取天、小时、分钟和秒
         days = int(match.group('days'))

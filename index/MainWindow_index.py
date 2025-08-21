@@ -174,7 +174,7 @@ class MainWindow_Index(ThemedWindow):
         action_three.setObjectName(obj_name)
         action_three.setToolTip(name)
         action_three.triggered.connect(self.start_experiment)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_three,"app_state":AppState.APPLYING})
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_three,"app_state":AppState.CONFIGURING})
         name = "暂停实验"
         obj_name = "pause_experiment"
         action_four = QAction(name, self)
@@ -182,7 +182,7 @@ class MainWindow_Index(ThemedWindow):
         action_four.setToolTip(name)
         action_four.setDisabled(True)
         action_four.triggered.connect(self.pause_experiment)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four,"app_state":AppState.APPLYING})
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four,"app_state":AppState.CONFIGURING})
 
         name = "停止实验"
         obj_name = "stop_experiment"
@@ -191,7 +191,7 @@ class MainWindow_Index(ThemedWindow):
         action_five.setToolTip(name)
         action_five.triggered.connect(self.stop_experiment)
         action_five.setDisabled(True)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_five,"app_state":AppState.APPLYING})
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_five,"app_state":AppState.CONFIGURING})
         # 将动作添加到工具栏
         self.toolbar.addAction(action_one)
         self.toolbar.addSeparator()
@@ -323,6 +323,8 @@ class MainWindow_Index(ThemedWindow):
         self.setStyleSheet(global_setting.get_setting("theme_manager").get_style_sheet())
         pass
     def start_experiment(self):
+        self.setEnabled(False)
+        self.status_bar.update_tip(f"正在开启实验监测...")
         port = global_setting.get_setting("port")
         if port is None or port == "":
             reply = QMessageBox.question(self, '注意',
@@ -333,6 +335,8 @@ class MainWindow_Index(ThemedWindow):
         # 开始实验
         global_setting.set_setting("app_state", AppState.MONITORING)
         global_setting.set_setting("start_experiment_time", time.time())
+        global_setting.set_setting("pause_experiment_time", [])
+        global_setting.set_setting("relieve_pause_experiment_time", [])
         try:
             self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub = main_monitor_data.main(
                 port=port, q=global_setting.get_setting("queue"),
@@ -365,13 +369,10 @@ class MainWindow_Index(ThemedWindow):
             if action_dict["obj_name"] == "pause_experiment":
                 action_dict["action"]: QAction
                 action_dict["action"].setDisabled(False)
-        for module in self.modules:
-            if module.name == "Main_experiment_setting":
-                module.interface_widget.frame_obj.start_btn.setEnabled(False)
-                module.interface_widget.frame_obj.stop_btn.setEnabled(True)
-                break
+        self.setEnabled(True)
         pass
     def pause_experiment(self):
+        self.setEnabled(False)
         try:
             if self.store_thread_sub is not None and not self.store_thread_sub.isPaused():
                 self.store_thread_sub.pause()
@@ -493,9 +494,11 @@ class MainWindow_Index(ThemedWindow):
                     action_dict["name"] = "暂停实验"
                 action_dict["action"].setToolTip(action_dict["name"])
                 action_dict["action"].setText(action_dict["name"])
-
+        self.setEnabled(True)
         pass
     def stop_experiment(self):
+        self.setEnabled(False)
+        self.status_bar.update_tip(f"正在关闭实验监测...")
         try:
             if self.store_thread_sub is not None and self.store_thread_sub.isRunning():
                 self.store_thread_sub.stop()
@@ -569,24 +572,10 @@ class MainWindow_Index(ThemedWindow):
         except Exception as e:
             logger.error(f"关闭实验监测deep_camera_read_queue_data_thread_sub错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        global_setting.set_setting("app_state", AppState.APPLYING)
+
+        global_setting.set_setting("app_state", AppState.CONFIGURING)
         global_setting.set_setting("stop_experiment_time", time.time())
-        # 更新main_gui组件显示
-        self.change_enable_component_app_state_signal.emit()
-        self.status_bar.update_status()
-        self.status_bar.update_tip(f"关闭实验监测成功！")
-        for action_dict in self.tool_bar_actions:
-            if action_dict["obj_name"] == "start_experiment":
-                action_dict["action"]: QAction
-                action_dict["action"].setDisabled(False)
-            if action_dict["obj_name"] == "stop_experiment":
-                action_dict["action"]: QAction
-                action_dict["action"].setDisabled(True)
-        for module in self.modules:
-            if module.name == "Main_experiment_setting":
-                module.interface_widget.frame_obj.start_btn.setEnabled(True)
-                module.interface_widget.frame_obj.stop_btn.setEnabled(False)
-                break
+
         # 停止实验 将文件夹的数据合并成一个数据文件
         # 读取实验设置文件路径
         experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
@@ -600,17 +589,35 @@ class MainWindow_Index(ThemedWindow):
             # 获取文件的扩展名
             file_name_extension = os.path.splitext(file_name)[1]
             # 定义文件夹路径
-            folder_path_data= os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE'][
+            folder_path_data = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE'][
                 'fold_path'] + os.path.join(
                 global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
-                f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time',time.time()))}")
+                f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
             custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
+
+        # 更新main_gui组件显示
+        self.change_enable_component_app_state_signal.emit()
+        self.status_bar.update_status()
+        self.status_bar.update_tip(f"关闭实验监测成功！")
+        for action_dict in self.tool_bar_actions:
+            if action_dict["obj_name"] == "start_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(False)
+            if action_dict["obj_name"] == "stop_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(True)
+
+
+
+        self.setEnabled(True)
         pass
     def close_tab(self, index):
         """关闭标签页"""
         self.tab_widget.widget(index).hide()
         self.tab_widget.removeTab(index)
     def change_enable_component_app_state(self):
+        # 更新程序状态值
+        self.status_bar.update_app_state()
         #根据程序状态来改变是否可以点击的组件'
         #设置是否可以点击 menu_bar
         for menu_bar_action in self.menu_bar_actions:

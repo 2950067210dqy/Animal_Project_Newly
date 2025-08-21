@@ -24,7 +24,7 @@
     <rect>
      <x>10</x>
      <y>10</y>
-     <width>901</width>
+     <width>1058</width>
      <height>541</height>
     </rect>
    </property>
@@ -51,8 +51,13 @@
       </property>
       <item>
        <widget class="QLabel" name="label_3">
+        <property name="styleSheet">
+         <string notr="true">QLabel{
+color:red;
+}</string>
+        </property>
         <property name="text">
-         <string>串口：</string>
+         <string>串口配置（串口配置决定了数据监控时响应的串口）：</string>
         </property>
        </widget>
       </item>
@@ -139,14 +144,7 @@
         <item>
          <widget class="QPushButton" name="start_btn">
           <property name="text">
-           <string>开始实验</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="stop_btn">
-          <property name="text">
-           <string>停止实验</string>
+           <string>确定设备配置</string>
           </property>
          </widget>
         </item>
