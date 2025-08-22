@@ -1,3 +1,4 @@
+import math
 import time
 import typing
 
@@ -12,6 +13,7 @@ from public.config_class.global_setting import global_setting
 
 from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import AppState
+from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.Modbus import Modbus_Type
 
 from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
@@ -132,6 +134,8 @@ class Tab_7(ThemedWindow):
         logger.warning("tab7——show")
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.resume()
+        # 实例化自定义ui
+        self._init_customize_ui()
         super().showEvent(a0)
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
         logger.warning("tab7--hide")
@@ -140,7 +144,7 @@ class Tab_7(ThemedWindow):
         super().hideEvent(a0)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
-
+        self.experiment_setting: Experiment_setting_entity =None
         # 发送报文线程
         self.send_thread:Send_thread = None
         # 发送的数据结构
@@ -258,8 +262,10 @@ class Tab_7(ThemedWindow):
                         self.remove_layout_items(sub_layout)  # 递归清空子布局
     def init_config_ui(self):
         #添加config ——ui
-
-        # 找到layout
+        self.experiment_setting: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
+        if self.experiment_setting is None:
+            return
+            # 找到layout
         self.config_layout :QVBoxLayout= self.findChild(QVBoxLayout,"content_layout")
         if self.config_layout is not None:
             # 清除所有子组件
@@ -425,6 +431,7 @@ class Tab_7(ThemedWindow):
             logger.debug(f"tab_7开始发送消息:{message}")
 
     def init_em_config_ui(self, module_key, module_value, scroll_area_layout):
+
         # 创建 GroupBox
         group_box = QGroupBox(f"{module_value['desc']}-{module_value['config'][0]['value'][0]['desc']}")
         group_box.setContentsMargins(10, 10, 10, 10)
@@ -436,31 +443,34 @@ class Tab_7(ThemedWindow):
         group_box.setLayout(grid_layout1)
 
         # 添加鼠笼和 radio buttons
-        for i in range(4):  # 行
-            for j in range(2):  # 列
-                index = i * 2 + j + 1  # 计算鼠笼编号
-                label = QLabel(f"鼠笼 {index}")
+        group_nums = len(self.experiment_setting.groups) if self.experiment_setting.groups is not None else 0
+        columns = 2
+        for i in range(math.ceil(group_nums/columns)):  # 行
+            for j in range(columns):  # 列
+                index = i * columns + j + 1  # 计算鼠笼编号
+                if index<=group_nums:
+                    label = QLabel(f"鼠笼 {index}")
 
-                radio_on = QRadioButton(f"{module_value['config'][0]['value'][0]['refer_value']['0']['desc']}")
-                radio_on.setObjectName("on")
-                radio_off = QRadioButton(f"{module_value['config'][0]['value'][0]['refer_value']['1']['desc']}")
-                radio_off.setObjectName("off")
-                radio_off.setChecked(True)
-                # 创建一个 ButtonGroup
-                button_group = QButtonGroup(grid_layout1)  # 绑定到主窗口以便于管理
-                # 添加到 ButtonGroup 中
-                button_group.addButton(radio_on)
-                button_group.addButton(radio_off)
-                # 连接信号
-                button_group.buttonClicked.connect(
-                    lambda button, address=module_value['address'], mouse_cage_number=index,
-                           function_code=module_value['config'][0]['function_code'],
-                           data_lists=module_value['config'][0]['value'][0]['refer_value']:
-                    self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists))
-                # 这里的3代表组件数量  label  radio_on radio_off 3个
-                grid_layout1.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
-                grid_layout1.addWidget(radio_on, i, j * 3 + 1)  # ON 按钮在 (i, j * 3 + 1)
-                grid_layout1.addWidget(radio_off, i, j * 3 + 2)  # OFF 按钮在 (i, j * 3 + 2)
+                    radio_on = QRadioButton(f"{module_value['config'][0]['value'][0]['refer_value']['0']['desc']}")
+                    radio_on.setObjectName("on")
+                    radio_off = QRadioButton(f"{module_value['config'][0]['value'][0]['refer_value']['1']['desc']}")
+                    radio_off.setObjectName("off")
+                    radio_off.setChecked(True)
+                    # 创建一个 ButtonGroup
+                    button_group = QButtonGroup(grid_layout1)  # 绑定到主窗口以便于管理
+                    # 添加到 ButtonGroup 中
+                    button_group.addButton(radio_on)
+                    button_group.addButton(radio_off)
+                    # 连接信号
+                    button_group.buttonClicked.connect(
+                        lambda button, address=module_value['address'], mouse_cage_number=index,
+                               function_code=module_value['config'][0]['function_code'],
+                               data_lists=module_value['config'][0]['value'][0]['refer_value']:
+                        self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists))
+                    # 这里的3代表组件数量  label  radio_on radio_off 3个
+                    grid_layout1.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
+                    grid_layout1.addWidget(radio_on, i, j * 3 + 1)  # ON 按钮在 (i, j * 3 + 1)
+                    grid_layout1.addWidget(radio_off, i, j * 3 + 2)  # OFF 按钮在 (i, j * 3 + 2)
         pass
     def init_enm_config_ui(self, module_key, module_value,scroll_area_layout):
         # 创建 GroupBox
@@ -473,29 +483,32 @@ class Tab_7(ThemedWindow):
         grid_layout1.setContentsMargins(10,30,10,10)
         group_box.setLayout(grid_layout1)
 
+        group_nums = len(self.experiment_setting.groups) if self.experiment_setting.groups is not None else 0
+        columns = 2
         # 添加鼠笼和 radio buttons
-        for i in range(4):  # 行
-            for j in range(2):  # 列
+        for i in range(math.ceil(group_nums/columns)):  # 行
+            for j in range(columns):  # 列
                 index = i * 2 + j + 1  # 计算鼠笼编号
-                label = QLabel(f"鼠笼 {index}")
+                if index <= group_nums:
+                    label = QLabel(f"鼠笼 {index}")
 
-                radio_on = QRadioButton(f"{module_value['config'][0]['value'][0]['refer_value']['0']['desc']}")
-                radio_on.setObjectName("on")
-                radio_off = QRadioButton(f"{module_value['config'][0]['value'][0]['refer_value']['1']['desc']}")
-                radio_off.setObjectName("off")
-                radio_off.setChecked(True)
-                # 创建一个 ButtonGroup
-                button_group = QButtonGroup(grid_layout1)  # 绑定到主窗口以便于管理
-                # 添加到 ButtonGroup 中
-                button_group.addButton(radio_on)
-                button_group.addButton(radio_off)
-                # 连接信号
-                button_group.buttonClicked.connect(lambda button,address=module_value['address'],mouse_cage_number=index,function_code=module_value['config'][0]['function_code'],data_lists=module_value['config'][0]['value'][0]['refer_value']:
-                                                   self.on_radio_button_clicked(button,address,mouse_cage_number,function_code,data_lists))
-                # 这里的3代表组件数量  label  radio_on radio_off 3个
-                grid_layout1.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
-                grid_layout1.addWidget(radio_on, i, j * 3 + 1)  # ON 按钮在 (i, j * 3 + 1)
-                grid_layout1.addWidget(radio_off, i, j * 3 + 2)  # OFF 按钮在 (i, j * 3 + 2)
+                    radio_on = QRadioButton(f"{module_value['config'][0]['value'][0]['refer_value']['0']['desc']}")
+                    radio_on.setObjectName("on")
+                    radio_off = QRadioButton(f"{module_value['config'][0]['value'][0]['refer_value']['1']['desc']}")
+                    radio_off.setObjectName("off")
+                    radio_off.setChecked(True)
+                    # 创建一个 ButtonGroup
+                    button_group = QButtonGroup(grid_layout1)  # 绑定到主窗口以便于管理
+                    # 添加到 ButtonGroup 中
+                    button_group.addButton(radio_on)
+                    button_group.addButton(radio_off)
+                    # 连接信号
+                    button_group.buttonClicked.connect(lambda button,address=module_value['address'],mouse_cage_number=index,function_code=module_value['config'][0]['function_code'],data_lists=module_value['config'][0]['value'][0]['refer_value']:
+                                                       self.on_radio_button_clicked(button,address,mouse_cage_number,function_code,data_lists))
+                    # 这里的3代表组件数量  label  radio_on radio_off 3个
+                    grid_layout1.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
+                    grid_layout1.addWidget(radio_on, i, j * 3 + 1)  # ON 按钮在 (i, j * 3 + 1)
+                    grid_layout1.addWidget(radio_off, i, j * 3 + 2)  # OFF 按钮在 (i, j * 3 + 2)
 
         # 创建第2个 GridLayout
         group_box2 = QGroupBox(f"{module_value['desc']}-{module_value['config'][0]['value'][1]['desc']}")
@@ -506,29 +519,30 @@ class Tab_7(ThemedWindow):
         group_box2.setLayout(grid_layout2)
 
         # 添加鼠笼和 radio buttons
-        for i in range(4):  # 行
-            for j in range(2):  # 列
+        for i in range(math.ceil(group_nums/columns)):  # 行
+            for j in range(columns):  # 列
                 index = i * 2 + j + 1  # 计算鼠笼编号
-                label = QLabel(f"鼠笼 {index}")
+                if index <= group_nums:
+                    label = QLabel(f"鼠笼 {index}")
 
-                radio_on = QRadioButton(f"{module_value['config'][0]['value'][1]['refer_value']['0']['desc']}")
-                radio_on.setObjectName("on")
-                radio_off = QRadioButton(f"{module_value['config'][0]['value'][1]['refer_value']['1']['desc']}")
-                radio_off.setObjectName("off")
-                radio_off.setChecked(True)
-                # 创建一个 ButtonGroup
-                button_group = QButtonGroup(grid_layout2)  # 绑定到主窗口以便于管理
-                # 添加到 ButtonGroup 中
-                button_group.addButton(radio_on)
-                button_group.addButton(radio_off)
-                button_group.buttonClicked.connect(
-                    lambda button, address=module_value['address'], mouse_cage_number=index,
-                           function_code=module_value['config'][0]['function_code'],
-                           data_lists=module_value['config'][0]['value'][1]['refer_value']:
-                    self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists))
-                grid_layout2.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
-                grid_layout2.addWidget(radio_on, i, j * 3 + 1)  # ON 按钮在 (i, j * 3 + 1)
-                grid_layout2.addWidget(radio_off, i, j * 3 + 2)  # OFF 按钮在 (i, j * 3 + 2)
+                    radio_on = QRadioButton(f"{module_value['config'][0]['value'][1]['refer_value']['0']['desc']}")
+                    radio_on.setObjectName("on")
+                    radio_off = QRadioButton(f"{module_value['config'][0]['value'][1]['refer_value']['1']['desc']}")
+                    radio_off.setObjectName("off")
+                    radio_off.setChecked(True)
+                    # 创建一个 ButtonGroup
+                    button_group = QButtonGroup(grid_layout2)  # 绑定到主窗口以便于管理
+                    # 添加到 ButtonGroup 中
+                    button_group.addButton(radio_on)
+                    button_group.addButton(radio_off)
+                    button_group.buttonClicked.connect(
+                        lambda button, address=module_value['address'], mouse_cage_number=index,
+                               function_code=module_value['config'][0]['function_code'],
+                               data_lists=module_value['config'][0]['value'][1]['refer_value']:
+                        self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists))
+                    grid_layout2.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
+                    grid_layout2.addWidget(radio_on, i, j * 3 + 1)  # ON 按钮在 (i, j * 3 + 1)
+                    grid_layout2.addWidget(radio_off, i, j * 3 + 2)  # OFF 按钮在 (i, j * 3 + 2)
 
         # 创建第3个 GridLayout
         group_box3 = QGroupBox(f"{module_value['desc']}-{module_value['config'][1]['value'][0]['desc']}")
@@ -540,28 +554,29 @@ class Tab_7(ThemedWindow):
         group_box3.setLayout(grid_layout3)
 
         # 添加鼠笼和 sliders
-        for i in range(4):  # 行
-            for j in range(2):  # 列
+        for i in range(math.ceil(group_nums/columns)):  # 行
+            for j in range(columns):  # 列
                 index = i * 2 + j + 1  # 计算鼠笼编号
-                label = QLabel(f"鼠笼 {index}")
-                slider = QSlider()  # 创建滑块
-                slider.setOrientation(Qt.Orientation.Horizontal)  # 设置为横向
-                slider.setMinimum(1)  # 最小值
-                slider.setMaximum(9)  # 最大值
-                slider.setValue(1)  # 默认值
+                if index <= group_nums:
+                    label = QLabel(f"鼠笼 {index}")
+                    slider = QSlider()  # 创建滑块
+                    slider.setOrientation(Qt.Orientation.Horizontal)  # 设置为横向
+                    slider.setMinimum(1)  # 最小值
+                    slider.setMaximum(9)  # 最大值
+                    slider.setValue(1)  # 默认值
 
-                # 创建一个 label 来显示当前值
-                current_value_label = QLabel("当前值: 1")
+                    # 创建一个 label 来显示当前值
+                    current_value_label = QLabel("当前值: 1")
 
-                # 连接滑块的值变化信号到更新标签的槽
-                slider.valueChanged.connect(lambda value, label=current_value_label:self.update_slider_label(value, label))
-                slider.sliderReleased.connect(lambda address=module_value['address'],mouse_cage_number=index,function_code=module_value['config'][1]['function_code'],data_lists=module_value['config'][1]['value'][0]['refer_value'], slider=slider
-                                            : self.update_slider(address,mouse_cage_number,function_code,data_lists,slider))
+                    # 连接滑块的值变化信号到更新标签的槽
+                    slider.valueChanged.connect(lambda value, label=current_value_label:self.update_slider_label(value, label))
+                    slider.sliderReleased.connect(lambda address=module_value['address'],mouse_cage_number=index,function_code=module_value['config'][1]['function_code'],data_lists=module_value['config'][1]['value'][0]['refer_value'], slider=slider
+                                                : self.update_slider(address,mouse_cage_number,function_code,data_lists,slider))
 
-                # 添加到布局中
-                grid_layout3.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
-                grid_layout3.addWidget(slider, i, j * 3 + 1)  # 滑块在 (i, j * 3 + 1)
-                grid_layout3.addWidget(current_value_label, i, j * 3 + 2)  # 当前值标签在 (i, j * 3 + 2)
+                    # 添加到布局中
+                    grid_layout3.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
+                    grid_layout3.addWidget(slider, i, j * 3 + 1)  # 滑块在 (i, j * 3 + 1)
+                    grid_layout3.addWidget(current_value_label, i, j * 3 + 2)  # 当前值标签在 (i, j * 3 + 2)
         # 创建第4个 GridLayout
         group_box4 = QGroupBox(f"{module_value['desc']}-{module_value['config'][1]['value'][1]['desc']}")
         group_box4.setContentsMargins(10, 10, 10, 10)
@@ -571,33 +586,34 @@ class Tab_7(ThemedWindow):
         group_box4.setLayout(grid_layout4)
 
         # 添加鼠笼和 sliders
-        for i in range(4):  # 行
-            for j in range(2):  # 列
+        for i in range(math.ceil(group_nums/columns)):  # 行
+            for j in range(columns):  # 列
                 index = i * 2 + j + 1  # 计算鼠笼编号
-                label = QLabel(f"鼠笼 {index}")
-                slider = QSlider()  # 创建滑块
-                slider.setOrientation(Qt.Orientation.Horizontal)  # 设置为横向
-                slider.setMinimum(1)  # 最小值
-                slider.setMaximum(9)  # 最大值
-                slider.setValue(1)  # 默认值
+                if index <= group_nums:
+                    label = QLabel(f"鼠笼 {index}")
+                    slider = QSlider()  # 创建滑块
+                    slider.setOrientation(Qt.Orientation.Horizontal)  # 设置为横向
+                    slider.setMinimum(1)  # 最小值
+                    slider.setMaximum(9)  # 最大值
+                    slider.setValue(1)  # 默认值
 
-                # 创建一个 label 来显示当前值
-                current_value_label = QLabel("当前值: 1")
+                    # 创建一个 label 来显示当前值
+                    current_value_label = QLabel("当前值: 1")
 
-                # 连接滑块的值变化信号到更新标签的槽
-                slider.valueChanged.connect(
-                    lambda value, label=current_value_label: self.update_slider_label(value, label))
-                slider.sliderReleased.connect(lambda address=module_value['address'], mouse_cage_number=index,
-                                                     function_code=module_value['config'][1]['function_code'],
-                                                     data_lists=module_value['config'][1]['value'][1]['refer_value'],
-                                                     slider=slider
-                                              : self.update_slider(address, mouse_cage_number, function_code,
-                                                                   data_lists, slider))
+                    # 连接滑块的值变化信号到更新标签的槽
+                    slider.valueChanged.connect(
+                        lambda value, label=current_value_label: self.update_slider_label(value, label))
+                    slider.sliderReleased.connect(lambda address=module_value['address'], mouse_cage_number=index,
+                                                         function_code=module_value['config'][1]['function_code'],
+                                                         data_lists=module_value['config'][1]['value'][1]['refer_value'],
+                                                         slider=slider
+                                                  : self.update_slider(address, mouse_cage_number, function_code,
+                                                                       data_lists, slider))
 
-                # 添加到布局中
-                grid_layout4.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
-                grid_layout4.addWidget(slider, i, j * 3 + 1)  # 滑块在 (i, j * 3 + 1)
-                grid_layout4.addWidget(current_value_label, i, j * 3 + 2)  # 当前值标签在 (i, j * 3 + 2)
+                    # 添加到布局中
+                    grid_layout4.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
+                    grid_layout4.addWidget(slider, i, j * 3 + 1)  # 滑块在 (i, j * 3 + 1)
+                    grid_layout4.addWidget(current_value_label, i, j * 3 + 2)  # 当前值标签在 (i, j * 3 + 2)
         pass
 
 

@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1144</width>
+    <width>1272</width>
     <height>584</height>
    </rect>
   </property>
@@ -34,11 +34,11 @@
      <rect>
       <x>7</x>
       <y>7</y>
-      <width>1178</width>
+      <width>1272</width>
       <height>541</height>
      </rect>
     </property>
-    <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,3,0">
+    <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,4,0">
      <property name="sizeConstraint">
       <enum>QLayout::SetMinAndMaxSize</enum>
      </property>
@@ -58,6 +58,12 @@
       <layout class="QHBoxLayout" name="horizontalLayout">
        <property name="sizeConstraint">
         <enum>QLayout::SetMaximumSize</enum>
+       </property>
+       <property name="leftMargin">
+        <number>5</number>
+       </property>
+       <property name="rightMargin">
+        <number>5</number>
        </property>
        <item>
         <widget class="QLabel" name="label_3">
@@ -147,6 +153,13 @@ color:red;
          </property>
         </widget>
        </item>
+       <item>
+        <widget class="QPushButton" name="start_btn">
+         <property name="text">
+          <string>确定设备配置</string>
+         </property>
+        </widget>
+       </item>
       </layout>
      </item>
      <item>
@@ -155,41 +168,7 @@ color:red;
      <item>
       <layout class="QVBoxLayout" name="verticalLayout" stretch="0,1">
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_2">
-         <item>
-          <spacer name="horizontalSpacer">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>20</width>
-             <height>40</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-         <item>
-          <widget class="QPushButton" name="start_btn">
-           <property name="text">
-            <string>确定设备配置</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer_2">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>20</width>
-             <height>40</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-        </layout>
+        <layout class="QHBoxLayout" name="horizontalLayout_2"/>
        </item>
        <item>
         <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,1">
@@ -221,7 +200,7 @@ color:red;
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1144</width>
+     <width>1272</width>
      <height>22</height>
     </rect>
    </property>

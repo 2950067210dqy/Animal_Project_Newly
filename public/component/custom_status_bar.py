@@ -3,7 +3,7 @@ from datetime import datetime
 
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QStatusBar, QLabel, QProgressBar
-from traci.connection import switch
+
 
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
