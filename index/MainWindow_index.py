@@ -331,6 +331,7 @@ class MainWindow_Index(ThemedWindow):
                                          "未设置串口，请去实验配置配置串口!",
                                          QMessageBox.StandardButton.Cancel,
                                          QMessageBox.StandardButton.No)
+            self.setEnabled(True)
             return
         # 开始实验
         global_setting.set_setting("app_state", AppState.MONITORING)
