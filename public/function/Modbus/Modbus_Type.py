@@ -93,7 +93,7 @@ class Modbus_Slave_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("flow_num_1", "流量计1", " INTEGER "),
-                ("CO2_num", "CO2", " REAL "),
+                ("CO2_num", "CO2(%)", " REAL "),
                 ("reserve", "保留", " REAL "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]

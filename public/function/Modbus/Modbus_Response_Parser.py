@@ -1944,7 +1944,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['流量计1',  'CO2', '保留']
+        port_types = ['流量计1',  'CO2(%)', '保留']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
@@ -1961,7 +1961,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                     return_datas.append({
                         "desc": port_types[j],
                         'value':int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)/1000
+                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)/10000
                     }
                     )
                     j += 1

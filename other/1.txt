@@ -33,4 +33,4 @@ pipreqs . --encoding=utf8 --ignore ./build,./dist,./entity,./log,./model,./resou
 
 2025-08-20
 1.当deep_camera_to_mouse_cage_number_file_name.json和另一个相机配置文件存在相机SN号时但是相机没插上，就会无响应！ done
-2.开始实验的时候需要实验配置一下串口，不然串口默认第一个
+2.开始实验的时候需要实验配置一下串口，不然串口默认第一个 done
