@@ -218,11 +218,7 @@ class ThemeManager(QObject):
                 qproperty-themeHighlight: {theme['--highlight']};
                 qproperty-themeBorder: {theme['--border']};
             }}
-             QPushButton,QScrollArea QWidget,QMainWindow QWidget,QDockWidget,QDockWidget QWidget,QTabWidget {{
-                background-color: {theme['--primary']};
-                color: {theme['--text']};
-                border:none;
-            }}
+            
             
             QTabBar::tab {{
                 background: {theme['--primary']};         /* 标签按钮的背景颜色 */

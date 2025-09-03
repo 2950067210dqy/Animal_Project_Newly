@@ -216,7 +216,7 @@ class Modbus_Response_Diffent_Type_Not_Each_Mouse_Cage():
         """
         if self.name == Modbus_Slave_Ids.UFC.value['name']:
 
-            self.specific_response = Modbus_Response_URC(
+            self.specific_response = Modbus_Response_UFC(
                 slave_id=self.slave_id,
                 response=self.response,
                 response_hex=self.response_hex,
@@ -2141,7 +2141,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         return None, parser_message
 
 
-class Modbus_Response_URC(Modbus_Response_Parents):
+class Modbus_Response_UFC(Modbus_Response_Parents):
     def __init__(self, slave_id, response,
                  response_hex, function_code
                  ):

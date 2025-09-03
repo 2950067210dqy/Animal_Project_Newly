@@ -57,6 +57,11 @@ class BaseModule(ABC):
     def show(self):
         """显示页面"""
         if self.interface_widget is not None:
+            # 重新加载页面 而不是加载之前的页面 start
+            self.interface_widget.close()
+            self.interface_widget = None
+            self.interface_widget=self.get_interface_widget()
+            # 重新加载页面 而不是加载之前的页面 end
             self.interface_widget.show()
     def hide(self):
         """隐藏页面"""
@@ -189,6 +194,7 @@ class BaseModule(ABC):
                 self.main_gui.active_module_widgets.append(self)
             pass
         else:
+            self.show()
             #WINDOW
             flag = 10
             # ，每部分layout占多少
@@ -254,7 +260,7 @@ class BaseModule(ABC):
 
                 )
 
-            self.interface_widget.show()
+
 
             # 添加窗口
             if self not in  self.main_gui.open_windows:
