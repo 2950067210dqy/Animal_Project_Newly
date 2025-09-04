@@ -963,7 +963,7 @@ class communication(threading.Thread):
                                                                             return_bytes_nums=None,
                                                                             data_hex_list=[
                                                                                 "0x00",
-                                                                                "0x02",
+                                                                                "0x00",
                                                                                 "0x00",
                                                                                 "0x2F",
                                                                             ],
@@ -1012,11 +1012,11 @@ class communication(threading.Thread):
                                             """
                                             03 01 X
                                             读输出端口状态信息
-                                            参数长度：3
+                                            参数长度：2
                                             """
                                             return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
                                                                             function_code=f"{function_code_int:X}",
-                                                                            return_bytes_nums='2',
+                                                                            return_bytes_nums=None,
                                                                             data_hex_list=[
                                                                                 self.binary_to_hex_for_all("00000001"),
                                                                                 self.binary_to_hex_for_all("10101110")
@@ -1124,9 +1124,9 @@ class communication(threading.Thread):
                                                                             return_bytes_nums=None,
                                                                             data_hex_list=[
                                                                                 "0x00",
-                                                                                "0x02",
+                                                                                "0x13",
                                                                                 "0x00",
-                                                                                "0x2F",
+                                                                                "0x01",
                                                                             ],
                                                                             struct_type="B"
                                                                             )

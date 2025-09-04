@@ -4,8 +4,10 @@ import time
 
 from loguru import logger
 
-from public.config_class.global_setting import global_setting
-from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser
+from Module.UFC_UGC_ZOS_Test.config_class.global_setting import global_setting
+from Module.UFC_UGC_ZOS_Test.function.modbus.Modbus_Response_Parser import Modbus_Response_Parser
+
+
 from public.util.time_util import time_util
 
 
@@ -22,7 +24,8 @@ class ModbusRTUMaster:
         self.ser = None
 
     def close(self):
-        self.ser.close()
+        if self.ser is not None:
+            self.ser.close()
 
     def calculate_crc(self, data: bytes) -> bytes:
         '''计算Modbus RTU CRC-16，小端返回'''
@@ -59,9 +62,9 @@ class ModbusRTUMaster:
         except Exception as e:
             if self.origin is not None:
                 # 把返回数据返回给源头
-                message_struct = {'to': self.origin, 'data': f"构造报文出错: {e}", 'from': 'main_monitor_data'}
+                message_struct = {'to': self.origin, 'data': f"{time_util.get_format_from_time(time.time())} | 构造报文出错: {e}", 'from': 'main_monitor_data'}
                 global_setting.get_setting("send_message_queue").put(message_struct)
-            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-构造报文出错: {e}")
+            logger.error(f"{time_util.get_format_from_time(time.time())} | {self.sport}-构造报文出错: {e}")
             return None
 
     def send_command(self, slave_id, function_code, data_hex_list, is_parse_response=True):
@@ -81,18 +84,18 @@ class ModbusRTUMaster:
                 stopbits=1,
                 timeout=self.timeout
             )
-            if self.origin is not None:
-                # 把返回数据返回给源头
-                message_struct = {'to': self.origin,
-                                  'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-连接成功",
-                                  'from': 'main_monitor_data'}
-                global_setting.get_setting("send_message_queue").put(message_struct)
+            # if self.origin is not None:
+            #     # 把返回数据返回给源头
+            #     message_struct = {'to': self.origin,
+            #                       'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-连接成功",
+            #                       'from': 'main_monitor_data'}
+            #     global_setting.get_setting("send_message_queue").put(message_struct)
             logger.info(f"{self.sport}-连接成功")
             frame = self.build_frame(slave_id, function_code, data_hex_list)
             if self.origin is not None:
                 # 把返回数据返回给源头
                 message_struct = {'to': self.origin,
-                                  'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-发送数据帧{frame.hex()}",
+                                  'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-发送数据帧{frame.hex()}",
                                   'from': 'main_monitor_data'}
                 global_setting.get_setting("send_message_queue").put(message_struct)
             logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-发送数据帧{frame.hex()}")
@@ -104,7 +107,7 @@ class ModbusRTUMaster:
 
             except Exception as e:
                 logger.error(e)
-            time.sleep(float(global_setting.get_setting('monitor_data')['SEND']['get_response_delay']))
+            time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['SEND']['get_response_delay']))
 
             response = self.ser.read(256)
             # self.update_status_main_signal.emit(
@@ -114,10 +117,10 @@ class ModbusRTUMaster:
                 if self.origin is not None:
                     # 把返回数据返回给源头
                     message_struct = {'to': self.origin,
-                                      'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-Time OUT1-未获取到响应数据",
+                                      'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT1-未获取到响应数据",
                                       'from': 'main_monitor_data'}
                     global_setting.get_setting("send_message_queue").put(message_struct)
-                logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-Time OUT1-未获取到响应数据")
+                logger.error(f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT1-未获取到响应数据")
                 if self.ser is not None and self.ser.is_open:  # 确保关闭连接
                     logger.error("关闭连接")
                     self.ser.close()
@@ -129,10 +132,10 @@ class ModbusRTUMaster:
                 if self.origin is not None:
                     # 把返回数据返回给源头
                     message_struct = {'to': self.origin,
-                                      'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-Time OUT2-返回数据位数错误",
+                                      'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT2-返回数据位数错误",
                                       'from': 'main_monitor_data'}
                     global_setting.get_setting("send_message_queue").put(message_struct)
-                logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-Time OUT2-返回数据位数错误")
+                logger.error(f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT2-返回数据位数错误")
                 if self.ser is not None and self.ser.is_open:  # 确保关闭连接
                     self.ser.close()
                     self.ser = None
@@ -147,10 +150,10 @@ class ModbusRTUMaster:
                 if self.origin is not None:
                     # 把返回数据返回给源头
                     message_struct = {'to': self.origin,
-                                      'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-Time OUT3-数据错误，CRC验证失败",
+                                      'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT3-数据错误，CRC验证失败",
                                       'from': 'main_monitor_data'}
                     global_setting.get_setting("send_message_queue").put(message_struct)
-                logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-Time OUT3-数据错误，CRC验证失败")
+                logger.error(f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT3-数据错误，CRC验证失败")
                 if self.ser is not None and self.ser.is_open:  # 确保关闭连接
                     self.ser.close()
                     self.ser = None
@@ -163,31 +166,31 @@ class ModbusRTUMaster:
                 if self.origin is not None:
                     # 把返回数据返回给源头
                     message_struct = {'to': self.origin,
-                                      'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-异常：功能码=0x{function_code:02X}, 异常码=0x{exception_code:02X}",
+                                      'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-异常：功能码=0x{function_code:02X}, 异常码=0x{exception_code:02X}",
                                       'from': 'main_monitor_data'}
                     global_setting.get_setting("send_message_queue").put(message_struct)
 
                 logger.error(
-                    f"{time_util.get_format_from_time(time.time())}-{self.sport}-异常：功能码=0x{function_code:02X}, 异常码=0x{exception_code:02X}")
+                    f"{time_util.get_format_from_time(time.time())} | {self.sport}-异常：功能码=0x{function_code:02X}, 异常码=0x{exception_code:02X}")
                 if self.ser is not None and self.ser.is_open:  # 确保关闭连接
                     self.ser.close()
                     self.ser = None
                 return response, response.hex(), False
+            # if self.origin is not None:
+            #     # 把返回数据返回给源头
+            #     message_struct = {'to': self.origin,
+            #                       'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-CRC校验通过，正常响应",
+            #                       'from': 'main_monitor_data'}
+            #     global_setting.get_setting("send_message_queue").put(message_struct)
+            logger.info(f"{time_util.get_format_from_time(time.time())} | {self.sport}-CRC校验通过，正常响应")
             if self.origin is not None:
                 # 把返回数据返回给源头
                 message_struct = {'to': self.origin,
-                                  'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-CRC校验通过，正常响应",
-                                  'from': 'main_monitor_data'}
-                global_setting.get_setting("send_message_queue").put(message_struct)
-            logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-CRC校验通过，正常响应")
-            if self.origin is not None:
-                # 把返回数据返回给源头
-                message_struct = {'to': self.origin,
-                                  'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-收到响应消息-{response.hex()}-数据部分{data_part.hex()}",
+                                  'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-收到响应消息-{response.hex()}-数据部分{data_part.hex()}",
                                   'from': 'main_monitor_data'}
                 global_setting.get_setting("send_message_queue").put(message_struct)
             logger.info(
-                f"{time_util.get_format_from_time(time.time())}-{self.sport}-收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
+                f"{time_util.get_format_from_time(time.time())} | {self.sport}-收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
             if self.ser is not None and self.ser.is_open:  # 确保关闭连接
                 self.ser.close()
                 self.ser = None
@@ -203,10 +206,10 @@ class ModbusRTUMaster:
             if self.origin is not None:
                 # 把返回数据返回给源头
                 message_struct = {'to': self.origin,
-                                  'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-❗ 串口通信异常: {e}",
+                                  'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-❗ 串口通信异常: {e}",
                                   'from': 'main_monitor_data'}
                 global_setting.get_setting("send_message_queue").put(message_struct)
-            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-❗ 串口通信异常: {e}")
+            logger.error(f"{time_util.get_format_from_time(time.time())} |  {self.sport}-❗ 串口通信异常: {e}")
             if self.ser is not None and self.ser.is_open:  # 确保关闭连接
                 self.ser.close()
                 self.ser = None

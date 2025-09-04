@@ -1,8 +1,9 @@
 import itertools
 from enum import Enum
 
-from public.entity.send_message import Send_Message
-from public.util.number_util import number_util
+from Module.UFC_UGC_ZOS_Test.entity.send_message import Send_Message
+from Module.UFC_UGC_ZOS_Test.util.number_util import number_util
+
 
 class Modbus_Slave_Tables(Enum):
     """

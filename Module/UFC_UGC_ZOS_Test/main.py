@@ -1,4 +1,6 @@
-from PyQt6.QtWidgets import QMainWindow
+import sys
+
+from PyQt6.QtWidgets import QMainWindow, QApplication
 
 from Module.UFC_UGC_ZOS_Test.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 
@@ -92,4 +94,5 @@ class Main_experiment_setting(BaseModule):
         widget_builder.module = self  # 可以通过引用将组件功能传递给界面构建器
         return widget_builder
         pass
-
+if __name__ == '__main__':
+    pass
