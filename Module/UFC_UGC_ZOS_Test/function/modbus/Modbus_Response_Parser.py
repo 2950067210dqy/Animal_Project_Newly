@@ -347,7 +347,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         data_binary_str_list = self.int_to_8bit_binary(num_list=self.response_struct['data'])
         data_binary_str_list_all = "".join(data_binary_str_list)
         return_datas = []
-        port_types = ['氧传感器','ZOS状态']
+        port_types = ['ZOS状态','氧传感器']
         index = 0
         for str_single in data_binary_str_list_all:
             if index >= 6:
@@ -360,7 +360,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
 
         return_data_str = ""
         for return_data in return_datas:
-            if return_data['desc'] ==port_types[0]:
+            if return_data['desc'] ==port_types[1]:
                 return_data_str += f"{return_data['desc']}状态：{'打开' if return_data['value'] == 1 else '关闭'} | "
                 pass
             else:

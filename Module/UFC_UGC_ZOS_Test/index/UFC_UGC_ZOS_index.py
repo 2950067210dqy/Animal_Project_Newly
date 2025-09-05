@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import QComboBox, QListWidget, QPushButton, QLabel
 
 report_logger = logger.bind(category="report_logger")
 read_queue_data_Thread_Lock = threading.Lock()
-
+auto_wait_event = threading.Event()
 class SimpleLRU:
     """去除report.log的重复项"""
     def __init__(self, cap=1000):
@@ -60,7 +60,73 @@ def log_once_lru(message):
         return
     report_logger.info(message)
 
+class auto_run_Thread(MyQThread):
+    #開始回調信號
+    start_finish_signal=pyqtSignal()
+    #運行回調信號
+    run_finish_signal = pyqtSignal()
+    #標定回調信號
+    carlibration_finish_signal = pyqtSignal()
+    #狀態檢測回調信號
+    check_finish_signal = pyqtSignal()
+    def __init__(self,name,start_signal,run_signal,carlibration_signal,gas_state_check_signal,auto_finish_signal):
+        super().__init__(name=name)
+        # 開始信號
+        self.start_signal =start_signal
+        # 運行信號
+        self.run_signal = run_signal
+        # 标定信號
+        self.carlibration_signal = carlibration_signal
+        # 量程标定信號
 
+        # 状态检测信號
+        self.gas_state_check_signal =gas_state_check_signal
+
+        #自動運行結束信號
+        self.auto_finish_signal = auto_finish_signal
+
+        self.before_start_flag =True
+        self.start_finish_flag =False
+        self.run_finish_flag =False
+        self.carlibration_finish_flag =False
+        self.check_finish_flag =False
+
+        self.start_finish_signal.connect(self.start_finish)
+        self.run_finish_signal.connect(self.run_finish)
+        self.carlibration_finish_signal.connect(self.carlibration_finish)
+        self.check_finish_signal.connect(self.check_finish)
+
+    def start_finish(self):
+        self.start_finish_flag=True
+        pass
+    def run_finish(self):
+        self.run_finish_flag=True
+    def carlibration_finish(self):
+        self.carlibration_finish_flag=True
+    def check_finish(self):
+        self.check_finish_flag=True
+
+    def dosomething(self):
+        if self.before_start_flag:
+            self.start_signal.emit()
+            self.before_start_flag=False
+        if self.start_finish_flag:
+            self.start_finish_flag = False
+            auto_wait_event.wait()
+            self.run_signal.emit()
+
+        if self.run_finish_flag:
+            self.carlibration_signal.emit()
+            self.run_finish_flag=False
+        if self.carlibration_finish_flag:
+            self.gas_state_check_signal.emit()
+            self.carlibration_finish_flag=False
+        if self.check_finish_flag:
+            self.auto_finish_signal.emit()
+            self.check_finish_flag=False
+            self.stop()
+
+        pass
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
         super().__init__(name)
@@ -116,6 +182,17 @@ class UFC_UGC_ZOS_index(ThemedWindow):
     #更新开始状态的信号
     update_start_state_signal=pyqtSignal()
 
+    # 開始信號
+    start_signal =pyqtSignal()
+    #運行信號
+    run_signal =pyqtSignal()
+    # 标定信號
+    carlibration_signal =pyqtSignal()
+    #自動運行結束信號
+    auto_finish_signal =pyqtSignal()
+
+    # 状态检测信號
+    gas_state_check_signal =pyqtSignal()
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
         logger.warning("UFC_UGC_ZOS_index——show")
@@ -182,6 +259,8 @@ class UFC_UGC_ZOS_index(ThemedWindow):
 
         #监测开始状态的线程
         self.monitor_start_state_Thread:MyQThread = None
+        #自動運行按鈕綫程
+        self.auto_run_thread:auto_run_Thread=None
         # 实例化ui
         self._init_ui(parent, geometry, title)
         # 获得相关数据
@@ -341,6 +420,13 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         # 将更新status信号绑定更新status界面函数
         self.update_status_main_signal_gui_update.connect(self.send_response_text)
         self.update_start_state_signal.connect(self.update_start_state)
+
+        self.start_signal.connect(self.start_btn_handle)
+        self.run_signal.connect(self.run_btn_handle)
+        self.carlibration_signal.connect(self.carlibation)
+        self.gas_state_check_signal.connect(self.gas_state_check)
+        self.auto_finish_signal.connect(lambda :self.disabled_auto_btn.setEnabled(True))
+
         #实例化气路
         self.UFC_gas_path_system_obj:UFC_gas_path_system = UFC_gas_path_system()
         self.UGC_gas_path_system_obj:UGC_gas_path_system = UGC_gas_path_system()
@@ -415,10 +501,14 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         self.init_port_combox()
     def update_start_state(self):
         self.monitor_start_state_Thread.stop()
+        self.close_timers()
         self.stop_btn.setEnabled(True)
         self.run_btn.setEnabled(True)
         self.state_label.setText("已启动")
         self.state_label.setStyleSheet("QLabel { color:blue; }")
+        #預熱完之後取消自動運行的阻塞
+        auto_wait_event.set()
+        auto_wait_event.clear()
     #启动按钮事件 启动气路
     def start_btn_handle(self):
         self.start_btn.setEnabled(False)
@@ -435,8 +525,13 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         ).catch(lambda e: logger.error(f"{e}"))
 
         #等开始状态都结束
-        self.monitor_start_state_Thread = Monitor_start_state_Thread(name="Monitor_start_state_Thread",UFC_gas_path_system_obj=self.UFC_gas_path_system_obj,UGC_gas_path_system_obj=self.UGC_gas_path_system_obj,ZOS_gas_path_system_obj=self.ZOS_gas_path_system_obj,update_start_state_signal=self.update_start_state_signal)
+        if self.monitor_start_state_Thread is  None:
+            self.monitor_start_state_Thread = Monitor_start_state_Thread(name="Monitor_start_state_Thread",UFC_gas_path_system_obj=self.UFC_gas_path_system_obj,UGC_gas_path_system_obj=self.UGC_gas_path_system_obj,ZOS_gas_path_system_obj=self.ZOS_gas_path_system_obj,update_start_state_signal=self.update_start_state_signal)
         self.monitor_start_state_Thread.start()
+
+        #開始結束回調
+        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
+            self.auto_run_thread.start_finish_signal.emit()
 
 
         return p
@@ -455,12 +550,17 @@ class UFC_UGC_ZOS_index(ThemedWindow):
             ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
         self.run_btn.setEnabled(False)
+        # 運行結束回調
+        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
+            self.auto_run_thread.run_finish_signal.emit()
         return p
         pass
     #停止按钮事件 停止气路
     def stop_btn_handle(self):
         self.state_label.setText("正在停止")
         self.state_label.setStyleSheet("QLabel { color:black; }")
+        self.monitor_start_state_Thread.stop()
+        self.close_timers()
         p=AsyPromise(self.UGC_gas_path_system_obj.stop).then(
             lambda v: AsyPromise(
                 self.UFC_gas_path_system_obj.stop,
@@ -483,31 +583,36 @@ class UFC_UGC_ZOS_index(ThemedWindow):
                 self.Range_carlibration_obj.calibrate
             ).then().catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
+        # 標定結束回調
+        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
+            self.auto_run_thread.carlibration_finish_signal.emit()
         return p
         pass
     #状态检测
     def gas_state_check(self):
         p= AsyPromise(self.UFC_gas_state_check_obj.state_check).then(
         ).catch(lambda e: logger.error(f"{e}"))
+        # 狀態結束回調
+        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
+            self.auto_run_thread.check_finish_signal.emit()
         return p
         pass
 
     #自动执行按钮事件
     def auto_btn_handle(self):
         self.auto_btn.setEnabled(False)
-        self.start_btn_handle().then(
-            self.run_btn_handle().then(
-                self.carlibation().then(
-                    self.gas_state_check().then(
-                        self.disabled_auto_btn.setEnabled(True)
-                    )
-                )
-            )
-        )
-
+        if self.auto_run_thread is None:
+            self.auto_run_thread = auto_run_Thread(name="auto_run_thread",
+                                                   start_signal=self.start_signal,
+                                                   run_signal=self.run_signal,
+                                                   carlibration_signal=self.carlibration_signal,
+                                                   gas_state_check_signal=self.gas_state_check_signal
+                                                   )
+        self.auto_run_thread.start()
         pass
     #解除自动执行按钮事件
     def disabled_auto_btn_handle(self):
+        self.auto_run_thread.stop()
         self.disabled_auto_btn.setEnabled(False)
         self.stop_btn_handle().then(
             self.auto_btn.setEnabled(True)

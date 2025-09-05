@@ -91,23 +91,26 @@ class UFC_gas_path_system_start_thread(MyQThread):
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             return
         mouse_cages_2byte_str: str = global_setting.get_setting("mouse_cages_2byte_str", "11111111")
-
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list(str(int(mouse_cages_2byte_str, 2))),
-            'slave_id': '2',
-            'function_code': '6',
-            'timeout': 1
-        }
-        self.update_status_main_signal_gui_update.emit(
-            f"{time_util.get_format_from_time(time.time())} | UFC 启动-1.设定运行鼠笼")
-        self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            # 2UFC启动
-            lambda r: AsyPromise(self.ufc_start).then(
-                self.stop()
-            )
-        ).catch(lambda e: logger.error(e))
+        #
+        # self.send_message = {
+        #     'port': port,
+        #     'data': number_util.set_int_to_4_bytes_list(str(int(mouse_cages_2byte_str, 2))),
+        #     'slave_id': '2',
+        #     'function_code': '6',
+        #     'timeout': 1
+        # }
+        # self.update_status_main_signal_gui_update.emit(
+        #     f"{time_util.get_format_from_time(time.time())} | UFC 启动-1.设定运行鼠笼")
+        # self.send_thread.send_message = self.send_message
+        # AsyPromise(self.send_thread.Send).then(
+        #     # 2UFC启动
+        #     lambda r: AsyPromise(self.ufc_start).then(
+        #         self.stop()
+        #     )
+        # ).catch(lambda e: logger.error(e))
+        AsyPromise(self.ufc_start).then(
+            self.stop()
+        )
         pass
         pass
 
@@ -539,7 +542,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
         self.update_status_main_signal_gui_update.emit(
-            f"{time_util.get_format_from_time(time.time())} | UGC-运行 3. 循环读取CO2浓度")
+            f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取CO2浓度")
         self.send_thread.send_message = self.send_message
         self.send_thread.Send_no_promise()
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
@@ -575,9 +578,9 @@ class UGC_gas_path_system(Gas_path_system):
             reject()
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("0"),
+            'data': number_util.set_int_to_4_bytes_list("0004ff00"),
             'slave_id': '3',
-            'function_code': '1',
+            'function_code': '5',
             'timeout': 1
         }
 
@@ -614,29 +617,31 @@ class UGC_gas_path_system(Gas_path_system):
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 1.鼠笼气电磁阀开(sample 气)(开机默认打开)")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            #2.鼠笼气电磁阀关(sample 气)
-            lambda r: AsyPromise(self.close_mouse_cage_valve,port=port),resolve()
-        ).catch(lambda e: reject(e))
-        pass
-    def close_mouse_cage_valve(self,resolve,reject,port):
-        # 2.鼠笼气电磁阀关(sample 气)
-        time.sleep(0.01)
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("00000000"),
-            'slave_id': '3',
-            'function_code': '5',
-            'timeout': 1
-        }
-        self.update_status_main_signal_gui_update.emit(
-            f"{time_util.get_format_from_time(time.time())} | UGC-运行 2.鼠笼气电磁阀关(sample 气)(开机默认打开)")
-        self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            # 3.循环读取CO2浓度
+            # #2.鼠笼气电磁阀关(sample 气)
+            # lambda r: AsyPromise(self.close_mouse_cage_valve,port=port),resolve()
+            # 2.循环读取CO2浓度
             lambda r: AsyPromise(self.circular_running),resolve()
         ).catch(lambda e: reject(e))
-
         pass
+    # def close_mouse_cage_valve(self,resolve,reject,port):
+    #     # 2.鼠笼气电磁阀关(sample 气)
+    #     time.sleep(0.01)
+    #     self.send_message = {
+    #         'port': port,
+    #         'data': number_util.set_int_to_4_bytes_list("00000000"),
+    #         'slave_id': '3',
+    #         'function_code': '5',
+    #         'timeout': 1
+    #     }
+    #     self.update_status_main_signal_gui_update.emit(
+    #         f"{time_util.get_format_from_time(time.time())} | UGC-运行 2.鼠笼气电磁阀关(sample 气)(开机默认打开)")
+    #     self.send_thread.send_message = self.send_message
+    #     AsyPromise(self.send_thread.Send).then(
+    #         # 3.循环读取CO2浓度
+    #         lambda r: AsyPromise(self.circular_running),resolve()
+    #     ).catch(lambda e: reject(e))
+    #
+    #     pass
 
     def circular_running(self, resolve, reject):
         # 3.循环读取CO2浓度
@@ -655,9 +660,28 @@ class UGC_gas_path_system(Gas_path_system):
         """
         self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | UGC 正在停止{'.'*100}")
         self.ugc_gas_path_system_run_thread.stop()
+
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            self.update_status_main_signal_gui_update.emit(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+            reject()
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("00040000"),
+            'slave_id': '3',
+            'function_code': '5',
+            'timeout': 1
+        }
+        time.sleep(0.01)
         self.update_status_main_signal_gui_update.emit(
-            f"{time_util.get_format_from_time(time.time())} | UGC 已停止{'.' * 100}")
-        resolve()
+            f"{time_util.get_format_from_time(time.time())} | UGC-停止 1.停止UGC閥門")
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            # 2.鼠笼气电磁阀关(sample 气)
+            lambda r:self.update_status_main_signal_gui_update.emit(
+            f"{time_util.get_format_from_time(time.time())} | UGC 已停止{'.' * 100}"), resolve()
+        ).catch(lambda e: reject(e))
         pass
 
     pass
