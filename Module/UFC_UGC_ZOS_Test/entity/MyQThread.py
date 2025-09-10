@@ -9,7 +9,10 @@ class MyQThread(QThread):
     def __init__(self, name):
         super().__init__()
         super().setObjectName(name)
-        self.name = name
+        if name is None:
+            self.name =""
+        else:
+            self.name = name
         self.mutex = QMutex()
         self.condition = QWaitCondition()
         self._running = False

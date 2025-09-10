@@ -394,9 +394,9 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
 
         index = 0
         for str_single in data_binary_str_list_all:
-            if index == 6:
+            if index == 7:
                 return_datas.append({
-                    "desc": port_types[index - 6],
+                    "desc": port_types[index - 7],
                     'value': int(str_single)
                 }
                 )
@@ -562,9 +562,9 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         port_types = ['CO2阀门状态']
         index = 0
         for str_single in data_binary_str_list_all:
-            if index == 6:
+            if index == 7:
                 return_datas.append({
-                    "desc": port_types[index - 6],
+                    "desc": port_types[index - 7],
                     'value': int(str_single)
                 }
                 )
@@ -715,7 +715,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
         port_types = ['电磁阀名称', '电磁阀开、关控制']
-        valve_desc = ['鼠笼气电磁阀', '校零气路(Zero气)电磁阀', '量程标定气路电磁阀']
+        valve_desc = ['鼠笼气电磁阀(sample 气)', '校零气路(Zero气)电磁阀', '量程标定气路电磁阀','','抽气泵']
         valve_index = 0
         j = 0
         for i in range(len(self.response_struct['data'])):
@@ -967,8 +967,8 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
         data_binary_str_list = self.int_to_8bit_binary(num_list=self.response_struct['data'])
         data_binary_str_list_all = "".join(data_binary_str_list)
         return_datas = []
-        port_types = ['参考气阀门', '采样阀','气泵','机器状态', '鼠笼1的电磁阀', '鼠笼2的电磁阀', '鼠笼3的电磁阀', '鼠笼4的电磁阀', '鼠笼5的电磁阀', '鼠笼6的电磁阀', '鼠笼7的电磁阀',
-                      '鼠笼8的电磁阀']
+        port_types = [ '机器状态','气泵','采样阀','参考气阀门', '鼠笼8的电磁阀', '鼠笼7的电磁阀', '鼠笼6的电磁阀', '鼠笼5的电磁阀', '鼠笼4的电磁阀', '鼠笼3的电磁阀', '鼠笼2的电磁阀',
+                      '鼠笼1的电磁阀']
         index = 0
         for str_single in data_binary_str_list_all:
             if index >= 4:
@@ -1009,7 +1009,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         data_binary_str = self.int_to_8bit_binary(num_list=self.response_struct['data'])[0]
         return_datas = []
-        sensor_types = ['流量传感器1', '流量传感器2', '流量传感器3', '流量传感器4', '流量传感器5', '流量传感器6','流量传感器7','流量传感器8']
+        sensor_types = ['流量传感器8', '流量传感器7', '流量传感器6', '流量传感器5', '流量传感器4', '流量传感器3','流量传感器2','流量传感器1']
         index = 0
         for str_single in data_binary_str:
 
@@ -1220,7 +1220,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
         port_types_0 =['鼠笼阀门操作','运行状态']
-        port_types_0_value = [['鼠笼1','鼠笼2','鼠笼3','鼠笼4','鼠笼5','鼠笼6','鼠笼7','鼠笼8'],
+        port_types_0_value = [['鼠笼8','鼠笼7','鼠笼6','鼠笼5','鼠笼4','鼠笼3','鼠笼2','鼠笼1'],
                         ['运行','不运行']]
         port_types_1 = ['流量计操作', '值']
         port_types_1_value = [ ['设定流量计测量范围'],

@@ -606,7 +606,8 @@ class UFC_UGC_ZOS_index(ThemedWindow):
                                                    start_signal=self.start_signal,
                                                    run_signal=self.run_signal,
                                                    carlibration_signal=self.carlibration_signal,
-                                                   gas_state_check_signal=self.gas_state_check_signal
+                                                   gas_state_check_signal=self.gas_state_check_signal,
+                                                   auto_finish_signal=self.auto_finish_signal,
                                                    )
         self.auto_run_thread.start()
         pass
