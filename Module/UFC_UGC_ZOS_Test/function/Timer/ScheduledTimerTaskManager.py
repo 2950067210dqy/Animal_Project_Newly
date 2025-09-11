@@ -1,3 +1,4 @@
+import json
 import threading
 
 import time
@@ -779,7 +780,7 @@ class AdvancedScheduledTaskManager:
 # 使用示例
 def sample_task(name: str, count: int = 1):
     """示例任务函数"""
-    logger.info("执行示例任务", name=name, count=count)
+    logger.info(f"执行示例任务{name}|{count}")
     time.sleep(2)
     return f"任务 {name} 完成，计数: {count}"
 
@@ -867,28 +868,33 @@ if __name__ == "__main__":
             stats = manager.get_task_statistics()
             tasks = manager.list_tasks()
 
-            logger.info("系统状态", **status)
-            logger.info("任务统计", **stats)
+            # 使用 JSON 格式输出
+            logger.info(f"系统状态: {json.dumps(status, indent=2, ensure_ascii=False, default=str)}")
+            logger.info(f"任务统计: {json.dumps(stats, indent=2, ensure_ascii=False, default=str)}")
 
             # 显示各种任务状态
             for task_id, task_info in tasks.items():
                 if task_info['type'] == 'dynamic_scheduled_to_interval':
-                    logger.info(
-                        "动态任务状态",
-                        task_id=task_id,
-                        name=task_info['name'],
-                        status=task_info.get('status', 'unknown'),
-                        execution_count=task_info.get('execution_count', 0)
-                    )
+                    dynamic_info = {
+                        'task_id': task_id,
+                        'name': task_info['name'],
+                        'status': task_info.get('status', 'unknown'),
+                        'execution_count': task_info.get('execution_count', 0),
+                        'start_time': task_info.get('start_time')
+                    }
+                    logger.info(f"动态任务状态: {json.dumps(dynamic_info, indent=2, ensure_ascii=False, default=str)}")
                 elif task_info['type'] == 'normal' and task_info.get('convert_to_interval'):
+                    normal_info = {
+                        'task_id': task_id,
+                        'name': task_info['name'],
+                        'execution_count': task_info.get('execution_count', 0),
+                        'converted_to_interval': task_info.get('converted_to_interval', False),
+                        'end_time': task_info.get('end_time')
+                    }
                     logger.info(
-                        "定时转间隔任务状态",
-                        task_id=task_id,
-                        name=task_info['name'],
-                        execution_count=task_info.get('execution_count', 0),
-                        converted=task_info.get('converted_to_interval', False),
-                        end_time=task_info.get('end_time')
-                    )
+                        f"定时转间隔任务状态: {json.dumps(normal_info, indent=2, ensure_ascii=False, default=str)}")
+
+                time.sleep(20)
 
             time.sleep(20)
     except Exception as e:
