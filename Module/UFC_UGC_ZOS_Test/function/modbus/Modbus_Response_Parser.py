@@ -409,7 +409,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         logger.info(parser_message)
         return return_datas, parser_message
         pass
-        pass
+
 
 
 
