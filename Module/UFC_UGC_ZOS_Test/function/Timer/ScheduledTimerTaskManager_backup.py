@@ -1,17 +1,16 @@
 import json
 import threading
-
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Dict, Any, Optional, Union
+from typing import Callable, Optional, Union, Dict, Any
 from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from enum import Enum
 
 import schedule
 from loguru import logger
 import signal
 import sys
-from enum import Enum
-
 
 class TaskStatus(Enum):
     """任务状态枚举"""
@@ -22,28 +21,13 @@ class TaskStatus(Enum):
     STOPPED = "stopped"  # 已停止
     ERROR = "error"  # 出错
 
-
+@dataclass
 class StopCondition:
     """停止条件类"""
-
-    def __init__(self,
-                 max_executions: Optional[int] = None,
-                 max_duration: Optional[int] = None,  # 秒
-                 stop_time: Optional[str] = None,  # "HH:MM" 格式
-                 custom_condition: Optional[Callable] = None):
-        """
-        初始化停止条件
-
-        Args:
-            max_executions: 最大执行次数
-            max_duration: 最大运行时长（秒）
-            stop_time: 停止时间 "HH:MM" 格式
-            custom_condition: 自定义停止条件函数，返回True时停止
-        """
-        self.max_executions = max_executions
-        self.max_duration = max_duration
-        self.stop_time = stop_time
-        self.custom_condition = custom_condition
+    max_executions: Optional[int] = None
+    max_duration: Optional[int] = None  # 秒
+    stop_time: Optional[str] = None  # "HH:MM" 格式
+    custom_condition: Optional[Callable] = None
 
     def should_stop(self, execution_count: int, start_time: datetime, task_result: Any = None) -> bool:
         """检查是否应该停止"""
@@ -77,6 +61,66 @@ class StopCondition:
 
         return False
 
+@dataclass
+class TaskState:
+    """任务状态类"""
+    execution_count: int = 0
+    start_time: Optional[datetime] = None
+    status: TaskStatus = TaskStatus.WAITING
+    last_result: Any = None
+    interval_job: Any = None
+    should_stop: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            'execution_count': self.execution_count,
+            'start_time': self.start_time,
+            'status': self.status.value if isinstance(self.status, TaskStatus) else self.status,
+            'last_result': self.last_result,
+            'should_stop': self.should_stop
+        }
+
+@dataclass
+class ExecutionState:
+    """普通任务执行状态类"""
+    execution_count: int = 0
+    first_executed: bool = False
+    converted_to_interval: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            'execution_count': self.execution_count,
+            'first_executed': self.first_executed,
+            'converted_to_interval': self.converted_to_interval
+        }
+
+@dataclass
+class TaskInfo:
+    """基础任务信息类"""
+    task_id: str
+    name: str
+    func: Callable
+    job: Optional[Any] = None
+    schedule_type: str = 'interval'
+    interval: Union[int, str] = 0
+    unit: str = 'seconds'
+    created_at: datetime = None
+    kwargs: dict = None
+    task_type: str = 'normal'
+    convert_to_interval: bool = False
+    interval_after_first: int = 0
+    interval_unit_after_first: str = 'seconds'
+    run_duration: int = 0
+    run_duration_unit: str = 'seconds'
+    initial_job: Optional[Any] = None
+    initial_time: str = ''
+    interval_seconds: int = 0
+    stop_condition: Optional[StopCondition] = None
+    task_state: dict = field(default_factory=dict)
+    execution_state: dict = field(default_factory=dict)
+    end_time: Optional[datetime] = None
 
 class AdvancedScheduledTaskManager:
     """
@@ -145,7 +189,6 @@ class AdvancedScheduledTaskManager:
         """信号处理器"""
         logger.warning("接收到信号 {signum}，开始优雅关闭...", signum=signum)
         self.shutdown()
-        # sys.exit(0)
 
     def add_scheduled_to_interval_task(self,
                                        func: Callable,
@@ -175,7 +218,6 @@ class AdvancedScheduledTaskManager:
         if task_name is None:
             task_name = f"{func.__name__}_{task_id}"
 
-        # 任务状态跟踪
         task_state = {
             'execution_count': 0,
             'start_time': None,
@@ -189,8 +231,6 @@ class AdvancedScheduledTaskManager:
 
         def dynamic_task_wrapper():
             """动态任务包装器"""
-            nonlocal task_state
-
             start_time = time.time()
             thread_name = threading.current_thread().name
 
@@ -256,20 +296,19 @@ class AdvancedScheduledTaskManager:
             logger.error("创建定时任务失败", task_name=task_name, error=str(e))
             raise
 
-        # 存储任务信息
-        task_info = {
-            'id': task_id,
-            'name': task_name,
-            'func': func,
-            'initial_job': initial_job,
-            'initial_time': initial_time,
-            'interval_seconds': interval_seconds,
-            'stop_condition': stop_condition,
-            'task_state': task_state,
-            'created_at': datetime.now(),
-            'kwargs': kwargs,
-            'type': 'dynamic_scheduled_to_interval'
-        }
+        task_info = TaskInfo(
+            task_id=task_id,
+            name=task_name,
+            func=func,
+            initial_job=initial_job,
+            initial_time=initial_time,
+            interval_seconds=interval_seconds,
+            stop_condition=stop_condition,
+            task_state=task_state,
+            created_at=datetime.now(),
+            kwargs=kwargs,
+            task_type='dynamic_scheduled_to_interval'
+        )
 
         with self.lock:
             self.tasks[task_id] = task_info
@@ -292,20 +331,20 @@ class AdvancedScheduledTaskManager:
             task_info = self.tasks[task_id]
 
             # 取消原始的定时任务
-            if task_info.get('initial_job'):
-                schedule.cancel_job(task_info['initial_job'])
-                task_info['initial_job'] = None
+            if hasattr(task_info, 'initial_job') and task_info.initial_job:
+                schedule.cancel_job(task_info.initial_job)
+                task_info.initial_job = None
 
             # 创建间隔任务
             interval_job = schedule.every(interval_seconds).seconds.do(task_func)
-            task_info['interval_job'] = interval_job
+            task_state['interval_job'] = interval_job
             task_state['status'] = TaskStatus.INTERVAL_MODE
 
         logger.info(
             "任务已切换到间隔模式",
             task_id=task_id,
             interval_seconds=interval_seconds,
-            task_name=task_info['name']
+            task_name=task_info.name
         )
 
     def _stop_dynamic_task(self, task_id: str, task_state: dict, reason: str):
@@ -317,13 +356,14 @@ class AdvancedScheduledTaskManager:
             task_info = self.tasks[task_id]
 
             # 取消所有相关的调度任务
-            if task_info.get('initial_job'):
-                schedule.cancel_job(task_info['initial_job'])
-                task_info['initial_job'] = None
+            if hasattr(task_info, 'initial_job') and task_info.initial_job:
+                schedule.cancel_job(task_info.initial_job)
+                task_info.initial_job = None
 
-            if task_info.get('interval_job'):
-                schedule.cancel_job(task_info['interval_job'])
-                task_info['interval_job'] = None
+            # 检查 task_state 中的间隔任务
+            if task_state and 'interval_job' in task_state and task_state['interval_job']:
+                schedule.cancel_job(task_state['interval_job'])
+                task_state['interval_job'] = None
 
             task_state['status'] = TaskStatus.COMPLETED
             task_state['should_stop'] = True
@@ -331,7 +371,7 @@ class AdvancedScheduledTaskManager:
         logger.info(
             "动态任务已停止",
             task_id=task_id,
-            task_name=task_info['name'],
+            task_name=task_info.name,
             reason=reason,
             execution_count=task_state['execution_count']
         )
@@ -374,9 +414,6 @@ class AdvancedScheduledTaskManager:
         if task_name is None:
             task_name = f"{func.__name__}_{task_id}"
 
-        task_logger = logger.bind(task_id=task_id, task_name=task_name)
-
-        # 任务执行状态跟踪
         task_execution_state = {
             'execution_count': 0,
             'first_executed': False,
@@ -390,6 +427,7 @@ class AdvancedScheduledTaskManager:
             try:
                 task_execution_state['execution_count'] += 1
 
+                task_logger = logger.bind(task_id=task_id, task_name=task_name)
                 task_logger.info(
                     "开始执行任务",
                     thread=thread_name,
@@ -428,6 +466,7 @@ class AdvancedScheduledTaskManager:
 
             except Exception as e:
                 execution_time = time.time() - start_time
+                task_logger = logger.bind(task_id=task_id, task_name=task_name)
                 task_logger.error(
                     "任务执行失败",
                     error=str(e),
@@ -450,26 +489,25 @@ class AdvancedScheduledTaskManager:
             logger.error("添加任务失败", task_name=task_name, error=str(e))
             raise
 
-        # 存储任务信息
-        task_info = {
-            'id': task_id,
-            'name': task_name,
-            'func': func,
-            'job': job,
-            'schedule_type': schedule_type,
-            'interval': interval,
-            'unit': unit,
-            'created_at': datetime.now(),
-            'kwargs': kwargs,
-            'type': 'normal',
-            'convert_to_interval': convert_to_interval,
-            'interval_after_first': interval_after_first,
-            'interval_unit_after_first': interval_unit_after_first,
-            'run_duration': run_duration,
-            'run_duration_unit': run_duration_unit,
-            'execution_state': task_execution_state,
-            'end_time': None
-        }
+        task_info = TaskInfo(
+            task_id=task_id,
+            name=task_name,
+            func=func,
+            job=job,
+            schedule_type=schedule_type,
+            interval=interval,
+            unit=unit,
+            created_at=datetime.now(),
+            kwargs=kwargs,
+            task_type='normal',
+            convert_to_interval=convert_to_interval,
+            interval_after_first=interval_after_first,
+            interval_unit_after_first=interval_unit_after_first,
+            run_duration=run_duration,
+            run_duration_unit=run_duration_unit,
+            execution_state=task_execution_state,
+            end_time=None
+        )
 
         with self.lock:
             self.tasks[task_id] = task_info
@@ -509,14 +547,14 @@ class AdvancedScheduledTaskManager:
 
                 # 取消原始任务
                 if task_info.get('job'):
-                    schedule.cancel_job(task_info['job'])
+                    schedule.cancel_job(task_info.job)
 
                 # 重新调度为间隔任务
                 new_job = self._schedule_interval(wrapped_func, interval, unit)
-                task_info['job'] = new_job
-                task_info['schedule_type'] = 'interval'
-                task_info['interval'] = interval
-                task_info['unit'] = unit
+                task_info.job = new_job
+                task_info.schedule_type = 'interval'
+                task_info.interval = interval
+                task_info.unit = unit
 
                 # 添加任务持续时间
                 if run_duration > 0:
@@ -529,12 +567,12 @@ class AdvancedScheduledTaskManager:
 
                     if run_duration_unit in duration_mapping:
                         end_time = datetime.now() + duration_mapping[run_duration_unit]
-                        task_info['end_time'] = end_time
+                        task_info.end_time = end_time
 
                         logger.info(
                             "任务已转换为间隔调度，将在指定时间后自动移除",
                             task_id=task_id,
-                            task_name=task_info['name'],
+                            task_name=task_info.name,
                             interval=interval,
                             unit=unit,
                             end_time=end_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -544,7 +582,7 @@ class AdvancedScheduledTaskManager:
                         logger.info(
                             "任务已转换为间隔调度，将无限期运行",
                             task_id=task_id,
-                            task_name=task_info['name'],
+                            task_name=task_info.name,
                             interval=interval,
                             unit=unit
                         )
@@ -552,7 +590,7 @@ class AdvancedScheduledTaskManager:
                     logger.info(
                         "任务已转换为间隔调度，将无限期运行",
                         task_id=task_id,
-                        task_name=task_info['name'],
+                        task_name=task_info.name,
                         interval=interval,
                         unit=unit
                     )
@@ -584,22 +622,27 @@ class AdvancedScheduledTaskManager:
                 task_info = self.tasks[task_id]
 
                 # 取消不同类型的任务
-                if task_info['type'] == 'dynamic_scheduled_to_interval':
-                    if task_info.get('initial_job'):
-                        schedule.cancel_job(task_info['initial_job'])
-                    if task_info.get('interval_job'):
-                        schedule.cancel_job(task_info['interval_job'])
+                if task_info.task_type == 'dynamic_scheduled_to_interval':
+                    # 处理动态任务
+                    if hasattr(task_info, 'initial_job') and task_info.initial_job:
+                        schedule.cancel_job(task_info.initial_job)
+                    # 检查 task_state 中的间隔任务
+                    if hasattr(task_info, 'task_state') and task_info.task_state:
+                        interval_job = task_info.task_state.get('interval_job')
+                        if interval_job:
+                            schedule.cancel_job(interval_job)
                 else:
-                    if task_info.get('job'):
-                        schedule.cancel_job(task_info['job'])
+                    # 处理普通任务
+                    if hasattr(task_info, 'job') and task_info.job:
+                        schedule.cancel_job(task_info.job)
 
                 del self.tasks[task_id]
 
                 logger.info(
                     "任务已移除",
                     task_id=task_id,
-                    task_name=task_info['name'],
-                    task_type=task_info['type']
+                    task_name=task_info.name,
+                    task_type=task_info.task_type
                 )
                 return True
             else:
@@ -622,53 +665,54 @@ class AdvancedScheduledTaskManager:
             if self.tasks:
                 # 统计任务类型和状态
                 for task in self.tasks.values():
-                    task_type = task['type']
-                    unit = task.get('unit', 'unknown')
+                    task_type = task.task_type
+                    unit = task.unit or 'unknown'
 
                     stats['tasks_by_type'][task_type] = stats['tasks_by_type'].get(task_type, 0) + 1
                     stats['tasks_by_unit'][unit] = stats['tasks_by_unit'].get(unit, 0) + 1
 
                     # 统计执行次数
-                    if task_type == 'dynamic_scheduled_to_interval':
-                        execution_count = task['task_state']['execution_count']
-                        status = task['task_state']['status'].value
+                    if task.task_type == 'dynamic_scheduled_to_interval':
+                        execution_count = task.task_state['execution_count']
+                        status = task.task_state['status'].value
                     else:
-                        execution_count = task.get('execution_state', {}).get('execution_count', 0)
+                        execution_count = task.execution_state.get('execution_count', 0)
                         status = 'running' if execution_count > 0 else 'waiting'
 
                     stats['total_executions'] += execution_count
                     stats['tasks_by_status'][status] = stats['tasks_by_status'].get(status, 0) + 1
 
                 # 查找最老和最新的任务
-                sorted_tasks = sorted(self.tasks.values(), key=lambda x: x['created_at'])
+                sorted_tasks = sorted(self.tasks.values(), key=lambda x: x.created_at)
                 stats['oldest_task'] = {
-                    'id': sorted_tasks[0]['id'],
-                    'name': sorted_tasks[0]['name'],
-                    'created_at': sorted_tasks[0]['created_at'].isoformat()
+                    'id': sorted_tasks[0].task_id,
+                    'name': sorted_tasks[0].name,
+                    'created_at': sorted_tasks[0].created_at.isoformat()
                 }
                 stats['newest_task'] = {
-                    'id': sorted_tasks[-1]['id'],
-                    'name': sorted_tasks[-1]['name'],
-                    'created_at': sorted_tasks[-1]['created_at'].isoformat()}
+                    'id': sorted_tasks[-1].task_id,
+                    'name': sorted_tasks[-1].name,
+                    'created_at': sorted_tasks[-1].created_at.isoformat()}
 
             return stats
+
     def get_task_info(self, task_id: str) -> Optional[Dict[str, Any]]:
         """获取任务信息"""
         with self.lock:
             task_info = self.tasks.get(task_id, None)
             if task_info:
                 # 创建副本并处理特殊对象
-                info_copy = task_info.copy()
+                info_copy = task_info.__dict__.copy()
 
                 # 处理动态任务的状态信息
-                if task_info['type'] == 'dynamic_scheduled_to_interval':
-                    state = task_info['task_state']
+                if task_info.task_type == 'dynamic_scheduled_to_interval':
+                    state = task_info.task_state
                     info_copy['execution_count'] = state['execution_count']
                     info_copy['status'] = state['status'].value
                     info_copy['start_time'] = state['start_time']
                     info_copy['last_result'] = state['last_result']
-                elif task_info['type'] == 'normal':
-                    execution_state = task_info.get('execution_state', {})
+                elif task_info.task_type == 'normal':
+                    execution_state = task_info.execution_state
                     info_copy['execution_count'] = execution_state.get('execution_count', 0)
                     info_copy['first_executed'] = execution_state.get('first_executed', False)
                     info_copy['converted_to_interval'] = execution_state.get('converted_to_interval', False)
@@ -681,17 +725,17 @@ class AdvancedScheduledTaskManager:
         with self.lock:
             result = {}
             for k, v in self.tasks.items():
-                info_copy = v.copy()
+                info_copy = v.__dict__.copy()
 
                 # 处理动态任务的状态信息
-                if v['type'] == 'dynamic_scheduled_to_interval':
-                    state = v['task_state']
+                if v.task_type == 'dynamic_scheduled_to_interval':
+                    state = v.task_state
                     info_copy['execution_count'] = state['execution_count']
                     info_copy['status'] = state['status'].value
                     info_copy['start_time'] = state['start_time']
                     info_copy['last_result'] = state['last_result']
-                elif v['type'] == 'normal':
-                    execution_state = v.get('execution_state', {})
+                elif v.task_type == 'normal':
+                    execution_state = v.execution_state
                     info_copy['execution_count'] = execution_state.get('execution_count', 0)
                     info_copy['first_executed'] = execution_state.get('first_executed', False)
                     info_copy['converted_to_interval'] = execution_state.get('converted_to_interval', False)
@@ -757,148 +801,247 @@ class AdvancedScheduledTaskManager:
 
         logger.success("高级任务管理器已关闭", cleared_tasks=task_count)
 
-    def get_status(self) -> Dict[str, Any]:
-        """获取管理器状态"""
-        with self.lock:
-            dynamic_tasks = sum(1 for task in self.tasks.values() if task['type'] == 'dynamic_scheduled_to_interval')
-            normal_tasks = len(self.tasks) - dynamic_tasks
-
-            status = {
-                'is_running': self.is_running,
-                'total_tasks': len(self.tasks),
-                'dynamic_tasks': dynamic_tasks,
-                'normal_tasks': normal_tasks,
-                'max_workers': self.max_workers,
-                'scheduler_thread_alive': self.scheduler_thread.is_alive() if self.scheduler_thread else False,
-                'pending_jobs': len(schedule.jobs),
-                'shutdown_requested': self.shutdown_event.is_set()
-            }
-
-        return status
-
 
 # 使用示例
 def sample_task(name: str, count: int = 1):
     """示例任务函数"""
     logger.info(f"执行示例任务{name}|{count}")
     time.sleep(2)
-    return f"任务 {name} 完成，计数: {count}"
+    return f"任务{name}完成，计数：{count}"
 
 
-def data_processing_task():
-    """数据处理任务示例"""
-    logger.info("开始数据处理")
-    # 模拟数据处理
+def database_backup():
+    """数据库备份任务"""
+    logger.info("开始数据库备份...")
+    # 模拟备份过程
     time.sleep(3)
-    return {"processed_records": 100, "status": "success"}
-def error_task():
-    """会出错的任务,用于测试错误处理"""
-    logger.info("执行会出错的任务")
-    raise ValueError("这是一个测试错误")
+    logger.info("数据库备份完成")
+    return "backup_completed"
 
-def custom_stop_condition(execution_count: int, start_time: datetime, result: Any) -> bool:
-    """自定义停止条件示例"""
-    # 如果结果包含错误或处理的记录数少于50，则停止
-    if isinstance(result, dict):
-        if result.get("status") == "error" or result.get("processed_records", 0) < 50:
-            return True
-    return False
+
+def send_notification(message: str):
+    """发送通知任务"""
+    logger.info(f"发送通知: {message}")
+    time.sleep(1)
+    return f"notification_sent: {message}"
+
+
+def cleanup_temp_files():
+    """清理临时文件任务"""
+    logger.info("开始清理临时文件...")
+    time.sleep(2)
+    logger.info("临时文件清理完成")
+    return "cleanup_completed"
+
+
+def health_check():
+    """健康检查任务"""
+    logger.info("执行系统健康检查...")
+    time.sleep(1)
+    # 模拟健康检查结果
+    import random
+    is_healthy = random.choice([True, False])
+    result = "healthy" if is_healthy else "unhealthy"
+    logger.info(f"健康检查结果: {result}")
+    return result
+
+
+def main():
+    """主函数 - 演示各种任务调度场景"""
+
+    # 创建任务管理器
+    manager = AdvancedScheduledTaskManager(max_workers=3, log_level="INFO")
+
+    try:
+        # 启动任务管理器
+        manager.start()
+        logger.info("=" * 60)
+        logger.info("任务管理器演示开始")
+        logger.info("=" * 60)
+
+        # 示例1: 普通间隔任务
+        logger.info("添加普通间隔任务...")
+        task1_id = manager.add_task(
+            func=sample_task,
+            schedule_type='interval',
+            interval=10,
+            unit='seconds',
+            task_name="普通间隔任务",
+            name="间隔任务",
+            count=1
+        )
+
+        # 示例2: 定时任务转间隔任务
+        logger.info("添加定时转间隔任务...")
+        task2_id = manager.add_task(
+            func=database_backup,
+            schedule_type='at',
+            interval="14:30",  # 每天14:30执行
+            task_name="数据库备份转间隔",
+            convert_to_interval=True,
+            interval_after_first=30,  # 首次执行后每30分钟执行一次
+            interval_unit_after_first='minutes',
+            run_duration=2,  # 间隔模式运行2小时后停止
+            run_duration_unit='hours'
+        )
+
+        # 示例3: 动态定时到间隔任务
+        logger.info("添加动态定时到间隔任务...")
+
+        # 创建停止条件
+        stop_condition = StopCondition(
+            max_executions=5,  # 最多执行5次
+            max_duration=300,  # 最长运行5分钟
+            stop_time="23:59"  # 每天23:59前停止
+        )
+
+        task3_id = manager.add_scheduled_to_interval_task(
+            func=health_check,
+            initial_time="14:32",  # 首次执行时间
+            interval_seconds=20,  # 后续每20秒执行一次
+            stop_condition=stop_condition,
+            task_name="健康检查动态任务"
+        )
+
+        # 示例4: 带自定义停止条件的动态任务
+        logger.info("添加带自定义条件的动态任务...")
+
+        def custom_stop_condition(execution_count, start_time, task_result):
+            """自定义停止条件：如果健康检查失败就停止"""
+            return task_result == "unhealthy"
+
+        stop_condition2 = StopCondition(
+            max_executions=10,
+            custom_condition=custom_stop_condition
+        )
+
+        task4_id = manager.add_scheduled_to_interval_task(
+            func=health_check,
+            initial_time="14:33",
+            interval_seconds=15,
+            stop_condition=stop_condition2,
+            task_name="带自定义条件的健康检查"
+        )
+
+        # 示例5: 通知任务
+        logger.info("添加通知任务...")
+        task5_id = manager.add_task(
+            func=send_notification,
+            schedule_type='interval',
+            interval=25,
+            unit='seconds',
+            task_name="定期通知",
+            message="系统运行正常"
+        )
+
+        # 等待一段时间，观察任务执行
+        logger.info("等待任务执行...")
+        time.sleep(60)  # 等待1分钟
+
+        # 显示任务统计信息
+        logger.info("=" * 40)
+        logger.info("当前任务统计信息：")
+        stats = manager.get_task_statistics()
+        logger.info(f"总任务数: {stats['total_tasks']}")
+        logger.info(f"按类型分组: {stats['tasks_by_type']}")
+        logger.info(f"按状态分组: {stats['tasks_by_status']}")
+        logger.info(f"总执行次数: {stats['total_executions']}")
+
+        # 显示具体任务信息
+        logger.info("=" * 40)
+        logger.info("任务详细信息：")
+        tasks = manager.list_tasks()
+        for task_id, task_info in tasks.items():
+            logger.info(f"任务ID: {task_id}")
+            logger.info(f"  名称: {task_info['name']}")
+            logger.info(f"  类型: {task_info['task_type']}")
+            logger.info(f"  执行次数: {task_info.get('execution_count', 0)}")
+            if 'status' in task_info:
+                logger.info(f"  状态: {task_info['status']}")
+            logger.info("-" * 30)
+
+        # 继续运行一段时间
+        logger.info("继续运行，观察任务状态变化...")
+        time.sleep(10)  # 再等待2分钟
+
+        # 手动移除某个任务
+        logger.info(f"移除任务: {task5_id}")
+        manager.remove_task(task5_id)
+
+        # 最终统计
+        logger.info("=" * 40)
+        logger.info("最终任务统计信息：")
+        final_stats = manager.get_task_statistics()
+        logger.info(f"剩余任务数: {final_stats['total_tasks']}")
+        logger.info(f"总执行次数: {final_stats['total_executions']}")
+
+        # 继续运行直到手动停止
+        logger.info("任务管理器将继续运行，按 Ctrl+C 停止...")
+        try:
+            while True:
+                time.sleep(10)
+                # 每10秒显示一次运行状态
+                logger.debug("任务管理器运行中...")
+        except KeyboardInterrupt:
+            logger.info("接收到停止信号...")
+
+    except Exception as e:
+        logger.error(f"运行出错: {e}", exc_info=True)
+    finally:
+        # 优雅关闭
+        logger.info("正在关闭任务管理器...")
+        manager.shutdown()
+        logger.info("任务管理器已关闭")
+
+
+def demo_advanced_features():
+    """演示高级功能"""
+    manager = AdvancedScheduledTaskManager(max_workers=2, log_level="DEBUG")
+
+    try:
+        manager.start()
+
+        # 演示复杂的自定义停止条件
+        def complex_stop_condition(execution_count, start_time, task_result):
+            """复杂的停止条件"""
+            # 如果执行超过3次且运行时间超过1分钟
+            running_time = (datetime.now() - start_time).total_seconds()
+            if execution_count >= 3 and running_time > 60:
+                logger.info("满足复杂停止条件：执行次数>=3且运行时间>60秒")
+                return True
+            return False
+
+        stop_condition = StopCondition(
+            max_executions=10,  # 最大执行10次
+            max_duration=180,  # 最长运行3分钟
+            custom_condition=complex_stop_condition
+        )
+
+        # 添加复杂的动态任务
+        task_id = manager.add_scheduled_to_interval_task(
+            func=cleanup_temp_files,
+            initial_time=datetime.now().strftime("%H:%M"),  # 立即开始
+            interval_seconds=30,
+            stop_condition=stop_condition,
+            task_name="复杂条件清理任务"
+        )
+
+        logger.info("演示复杂停止条件的任务已启动")
+
+        # 等待任务完成
+        time.sleep(200)
+
+    except KeyboardInterrupt:
+        logger.info("演示被中断")
+    finally:
+        manager.shutdown()
 
 
 if __name__ == "__main__":
-    # 创建高级任务管理器
-    manager = AdvancedScheduledTaskManager(max_workers=3, log_level="DEBUG")
+    # 选择运行模式
+    import sys
 
-    try:
-        # 启动管理器
-        manager.start()
-
-        # 添加普通任务
-        normal_task_id = manager.add_task(
-            func=sample_task,
-            schedule_type='interval',
-            interval=30,
-            unit='seconds',
-            task_name='普通周期任务',
-            name='测试',
-            count=5,
-            convert_to_interval=True,
-            interval_after_first=10,
-            interval_unit_after_first='seconds',
-            run_duration=300,
-            run_duration_unit='seconds'
-        )
-
-        # 添加动态调度任务：12:00开始，然后每10秒执行一次，最多执行5次
-        stop_condition = StopCondition(
-            max_executions=5,
-            max_duration=300,  # 5分钟
-            # stop_time="18:00",
-            # custom_condition=custom_stop_condition
-        )
-
-        # 注意：这里使用当前时间后2分钟作为示例,实际使用时设置为具体时间如"12:00"
-        from datetime import datetime, timedelta
-
-        start_time_dynamic = (datetime.now() + timedelta(minutes=2)).strftime("%H:%M")
-
-        dynamic_task_id = manager.add_scheduled_to_interval_task(
-            func=data_processing_task,
-            initial_time=start_time_dynamic,
-            interval_seconds=10,
-            stop_condition=stop_condition,
-            task_name='动态数据处理任务'
-        )
-
-        # 添加一个会出错的任务来测试错误处理
-        error_task_id = manager.add_task(
-            func=error_task,
-            schedule_type='interval',
-            interval=45,
-            unit='seconds',
-            task_name='错误测试任务'
-        )
-
-        logger.info("任务管理器运行中，按 Ctrl+C 退出...")
-        logger.info(f"动态任务将在 {start_time_dynamic} 开始执行")
-
-        # 主线程监控
-        while True:
-            status = manager.get_status()
-            stats = manager.get_task_statistics()
-            tasks = manager.list_tasks()
-
-            # 使用 JSON 格式输出
-            logger.info(f"系统状态: {json.dumps(status, indent=2, ensure_ascii=False, default=str)}")
-            logger.info(f"任务统计: {json.dumps(stats, indent=2, ensure_ascii=False, default=str)}")
-
-            # 显示各种任务状态
-            for task_id, task_info in tasks.items():
-                if task_info['type'] == 'dynamic_scheduled_to_interval':
-                    dynamic_info = {
-                        'task_id': task_id,
-                        'name': task_info['name'],
-                        'status': task_info.get('status', 'unknown'),
-                        'execution_count': task_info.get('execution_count', 0),
-                        'start_time': task_info.get('start_time')
-                    }
-                    logger.info(f"动态任务状态: {json.dumps(dynamic_info, indent=2, ensure_ascii=False, default=str)}")
-                elif task_info['type'] == 'normal' and task_info.get('convert_to_interval'):
-                    normal_info = {
-                        'task_id': task_id,
-                        'name': task_info['name'],
-                        'execution_count': task_info.get('execution_count', 0),
-                        'converted_to_interval': task_info.get('converted_to_interval', False),
-                        'end_time': task_info.get('end_time')
-                    }
-                    logger.info(
-                        f"定时转间隔任务状态: {json.dumps(normal_info, indent=2, ensure_ascii=False, default=str)}")
-
-                time.sleep(20)
-
-            time.sleep(20)
-    except Exception as e:
-        logger.error("程序运行出错", error=str(e), exc_info=True)
-    finally:
-        manager.shutdown()
-        logger.success("程序已退出")
+    if len(sys.argv) > 1 and sys.argv[1] == "demo":
+        demo_advanced_features()
+    else:
+        main()
