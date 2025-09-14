@@ -7,7 +7,7 @@ from loguru import logger
 
 from public.entity.BaseWindow import BaseWindow
 
-
+logger = logger.bind(category="gui_logger")
 class BaseWidget(QWidget):
     def __init__(self):
         super().__init__()

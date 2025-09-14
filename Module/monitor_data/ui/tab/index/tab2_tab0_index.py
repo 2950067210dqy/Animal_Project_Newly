@@ -18,7 +18,7 @@ from PyQt6.QtCore import QRect, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QPushButton, QGroupBox, QGridLayout, QHBoxLayout, QLabel, \
     QVBoxLayout, QScrollArea
 
-
+logger = logger.bind(category="gui_logger")
 class Store_thread_for_tab_frame(MyQThread):
     # 线程信号
 

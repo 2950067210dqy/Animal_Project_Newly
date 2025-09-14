@@ -21,7 +21,7 @@ from public.dao.SQLite.SQliteManager import SQLiteManager
 from public.entity.MyQThread import MyQThread
 from theme.ThemeManager import Charts_Style_Name
 
-
+logger = logger.bind(category="gui_logger")
 class DataFetcher(MyQThread):
     data_fetched = pyqtSignal(list)  # 信号传递时间和值
 

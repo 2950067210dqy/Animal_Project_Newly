@@ -15,7 +15,7 @@ from public.config_class.global_setting import global_setting
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from theme.ThemeQt6 import ThemedWindow
 
-
+logger = logger.bind(category="gui_logger")
 class Tab_2(ThemedWindow):
     # 状态栏更新信息信号
     # 更新btn css样式

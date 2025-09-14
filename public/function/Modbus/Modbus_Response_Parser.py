@@ -9,7 +9,7 @@ from loguru import logger
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids, Modbus_Slave_Type
 from public.util.time_util import time_util
 
-
+logger = logger.bind(category="monitor_data_logger")
 class Modbus_Response_Parser():
     """
 响应报文解析

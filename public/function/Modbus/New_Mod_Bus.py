@@ -11,8 +11,8 @@ from public.config_class.global_setting import global_setting
 from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser
 from public.util.time_util import time_util
 
-
-class ModbusRTUMaster:
+logger = logger.bind(category="monitor_data_logger")
+class ModbusRTUMasterNew:
     """
     可随时随处调用的Modbus RTU通信类
     支持连接复用、自动重连、线程安全
@@ -338,7 +338,7 @@ class ModbusRTUMaster:
         """支持with语句"""
         self.close()
  # 简单测试
-modbus = ModbusRTUMaster('COM4', baudrate=115200, timeout=2)
+modbus = ModbusRTUMasterNew('COM4', baudrate=115200, timeout=2)
 def worker1():
     response, hex_data, success = modbus.send_command('03', '01', ['00', '00', '00', '01'])
     if success:

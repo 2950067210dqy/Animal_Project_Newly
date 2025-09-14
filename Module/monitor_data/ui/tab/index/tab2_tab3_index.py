@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import QWidget, QPushButton, QGroupBox, QGridLayout, QHBoxL
     QVBoxLayout, QScrollArea
 
 
-
+logger = logger.bind(category="gui_logger")
 
 class Tab2_tab3(ThemedWindow):
     # 更新端口选择和鼠笼选择

@@ -5,7 +5,7 @@ from loguru import logger
 
 from public.config_class.global_setting import global_setting
 
-
+logger = logger.bind(category="gui_logger")
 # 图表样式名称枚举类
 class Charts_Style_Name(Enum):
     NORMAL = 'normal'

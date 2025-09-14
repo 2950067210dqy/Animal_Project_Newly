@@ -1,4 +1,5 @@
 import multiprocessing
+import sys
 import traceback
 from multiprocessing import Process, freeze_support
 import os
@@ -31,14 +32,19 @@ def kill_process_tree(pid, including_parent=True):
 if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
     freeze_support()
     # 加载日志配置
+    # 移除默认处理器
+    # logger.remove()
+
+
     logger.add(
         "./log/main/main_{time:YYYY-MM-DD}.log",
         rotation="00:00",  # 日志文件转存
         retention="30 days",  # 多长时间之后清理
         enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-        filter = lambda record: record["extra"].get("category") == "main_logger"
+        filter=lambda record: record["extra"].get("category") == "main_logger"
     )
+
     logger.info(f"{'-' * 40}main_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
     q = multiprocessing.Queue()  # 创建 Queue 消息传递

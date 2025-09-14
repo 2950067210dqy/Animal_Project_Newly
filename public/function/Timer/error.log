@@ -1,0 +1,10 @@
+2025-09-14 22:23:05 | ERROR    | __main__:_run_scheduler:730 | 调度器运行出错
+2025-09-14 22:23:05 | ERROR    | __main__:add_task:450 | 添加任务失败
+2025-09-14 22:23:05 | ERROR    | __main__:<module>:901 | 程序运行出错
+2025-09-14 22:23:14 | ERROR    | __main__:_run_scheduler:730 | 调度器运行出错
+2025-09-14 22:23:14 | ERROR    | __main__:add_task:450 | 添加任务失败
+2025-09-14 22:23:14 | ERROR    | __main__:<module>:901 | 程序运行出错
+2025-09-14 22:25:27 | ERROR    | __main__:wrapped_task:431 | 任务执行失败
+2025-09-14 22:26:12 | ERROR    | __main__:wrapped_task:431 | 任务执行失败
+2025-09-14 22:26:59 | ERROR    | __main__:wrapped_task:431 | 任务执行失败
+2025-09-14 22:27:44 | ERROR    | __main__:wrapped_task:431 | 任务执行失败

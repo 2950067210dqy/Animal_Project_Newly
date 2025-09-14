@@ -10,6 +10,7 @@ from index.Program_self_check import Program_self_check_index
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from public.entity.enum.Public_Enum import AppState
+from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeManager import ThemeManager
 # 过滤日志
 logger = logger.bind(category="gui_logger")
@@ -19,8 +20,13 @@ def quit_qt_application():
     :return:
     """
     logger.error(f"{'-' * 40}quit Qt application{'-' * 40}")
+    modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+    if modbus is not None:
+        modbus.close()
+
     #
     # 等待5秒系统退出
+
     step = 5
     while step >= 0:
         step -= 1
@@ -106,14 +112,15 @@ def load_global_setting():
 
 def main(q, send_message_q):
     freeze_support()
-    # 加载日志配置
+
+
     logger.add(
         "./log/gui/gui_{time:YYYY-MM-DD}.log",
         rotation="00:00",  # 日志文件转存
         retention="30 days",  # 多长时间之后清理
         enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-        filter = lambda record: record["extra"].get("category") == "gui_logger"
+        filter=lambda record: record["extra"].get("category") == "gui_logger"
     )
     logger.info(f"{'-' * 40}main_gui_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")

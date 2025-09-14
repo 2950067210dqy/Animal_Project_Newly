@@ -3,7 +3,7 @@ import sqlite3
 from typing import List, Dict, Any
 
 from loguru import logger
-
+logger = logger.bind(category="monitor_data_logger")
 
 class SQLiteManager():
     TIME_COLUMN_NAME = 'time'

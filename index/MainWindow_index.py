@@ -1,6 +1,7 @@
 import importlib
 import json
 import os
+import threading
 import time
 from json import JSONDecodeError
 from PyQt6 import QtCore
@@ -8,6 +9,7 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget
 from loguru import logger
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
+from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 from my_abc.BaseModule import BaseModule
 from public.component.custom_status_bar import CustomStatusBar
 from public.config_class.global_setting import global_setting
@@ -16,6 +18,7 @@ from public.util.custom_data_file_util import custom_data_file_util
 from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
 from ui.MainWindow import Ui_MainWindow
+logger = logger.bind(category="gui_logger")
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
     change_enable_component_app_state_signal = QtCore.pyqtSignal()
@@ -64,6 +67,8 @@ class MainWindow_Index(ThemedWindow):
         self.send_thread_sub=None
         self.read_queue_data_thread_sub=None
         self.add_message_thread_sub=None
+        self.ufc_ugc_zos:UFC_UGC_ZOS_index=None
+        self.ufc_ugc_zos_thread=None
         # 深度相机线程
         self.deep_camera_thread_sub_list=[]
         self.deep_camera_read_queue_data_thread_sub=None
@@ -340,7 +345,7 @@ class MainWindow_Index(ThemedWindow):
         global_setting.set_setting("pause_experiment_time", [])
         global_setting.set_setting("relieve_pause_experiment_time", [])
         try:
-            self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub = main_monitor_data.main(
+            self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub,self.ufc_ugc_zos,self.ufc_ugc_zos_thread = main_monitor_data.main(
                 port=port, q=global_setting.get_setting("queue"),
                 send_message_q=global_setting.get_setting("send_message_queue"))
         except Exception as e:
@@ -524,6 +529,13 @@ class MainWindow_Index(ThemedWindow):
                 self.read_queue_data_thread_sub.stop()
         except Exception as e:
             logger.error(f"关闭实验监测read_queue_data_thread_sub错误，原因：{e}")
+            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+        try:
+            if self.ufc_ugc_zos is not None and self.ufc_ugc_zos_thread is not None :
+                self.ufc_ugc_zos.disabled_auto_btn_handle()
+                self.ufc_ugc_zos_thread:threading.Thread.join()
+        except Exception as e:
+            logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
             self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
         # 所有红外相机线程停止
         for camera_struct_l in self.infrared_camera_thread_sub_list:

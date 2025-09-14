@@ -14,7 +14,7 @@ from public.function.DataCaculation.Data_Caculation import DataCaculation
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 # 监控数据操作类
 from public.util.time_util import time_util
-
+logger = logger.bind(category="monitor_data_logger")
 
 class Monitor_Datas_Handle():
     def __init__(self,db_name=None):
@@ -97,13 +97,13 @@ class Monitor_Datas_Handle():
                 if not self.sqlite_manager.is_exist_table(table_name):
                     self.sqlite_manager.create_table(table_name,
                                                      columns)
-                    logger.info(f"数据库{self.db_name}创建数据表{table_name}成功！")
+                    # logger.info(f"数据库{self.db_name}创建数据表{table_name}成功！")
                 # 创建该表描述的表
                 table_meta_name = f"{table_name}_meta"
                 # 不存在则创建和插入
                 if not self.sqlite_manager.is_exist_table(table_meta_name):
                     self.sqlite_manager.create_meta_table(table_meta_name)
-                    logger.info(f"数据库{self.db_name}创建表结构描述数据表{table_meta_name}成功！")
+                    # logger.info(f"数据库{self.db_name}创建表结构描述数据表{table_meta_name}成功！")
                     # 插入描述信息
                     for item in data_type.value['table'][table_name_short]['column']:
                         self.sqlite_manager.insert(table_meta_name, item_name=item[0], item_struct=item[2],
@@ -122,12 +122,12 @@ class Monitor_Datas_Handle():
                         if not self.sqlite_manager.is_exist_table(table_name):
                             self.sqlite_manager.create_table(table_name,
                                                              columns)
-                            logger.info(f"数据库{self.db_name}创建数据表{table_name}成功！")
+                            # logger.info(f"数据库{self.db_name}创建数据表{table_name}成功！")
                         # 创建该表描述的表
                         table_meta_name = f"{table_name}_meta"
                         # 不存在则创建和插入
                         if not self.sqlite_manager.is_exist_table(table_meta_name):
-                            logger.info(f"数据库{self.db_name}创建表结构描述数据表{table_meta_name}成功！")
+                            # logger.info(f"数据库{self.db_name}创建表结构描述数据表{table_meta_name}成功！")
                             self.sqlite_manager.create_meta_table(table_meta_name)
                             # 插入描述信息
                             for item in data_type.value['table'][table_name_short]['column']:

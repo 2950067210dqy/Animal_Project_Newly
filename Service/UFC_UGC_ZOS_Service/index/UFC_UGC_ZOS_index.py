@@ -11,55 +11,32 @@ from pathlib import Path
 from loguru import logger
 
 
-from Module.UFC_UGC_ZOS_Test.config_class.global_setting import global_setting
-from Module.UFC_UGC_ZOS_Test.config_class.ini_parser import ini_parser
-from Module.UFC_UGC_ZOS_Test.entity.MyQThread import MyQThread
-from Module.UFC_UGC_ZOS_Test.function.Timer.ProcederTimer import PeriodicTimer
-from Module.UFC_UGC_ZOS_Test.function.gas_calibration.Gas_Carlibration import Zero_Carlibration, Range_Carlibration
-from Module.UFC_UGC_ZOS_Test.function.gas_path_system.Gas_path_system import UFC_gas_path_system, UGC_gas_path_system, \
-    ZOS_gas_path_system
-from Module.UFC_UGC_ZOS_Test.function.gas_state_check.Gas_State_Check import UFC_Gas_State_Check
-from Module.UFC_UGC_ZOS_Test.function.promise.AsyPromise import AsyPromise
-from Module.UFC_UGC_ZOS_Test.ui.UFC_UGC_ZOS_window import Ui_UFC_UGC_ZOS_window
 
 
 
 
 
 
-from Module.UFC_UGC_ZOS_Test.function.modbus.COM_Scan import scan_serial_ports_with_id
-from Module.UFC_UGC_ZOS_Test.util.time_util import time_util
-from Service.main_monitor_data import read_queue_data_Thread
-from theme.ThemeQt6 import ThemedWindow
-from PyQt6 import QtGui
-from PyQt6.QtCore import QRect, Qt, pyqtSignal
-from PyQt6.QtWidgets import QComboBox, QListWidget, QPushButton, QLabel
+
+from PyQt6.QtCore import QRect, Qt, pyqtSignal, QObject
+
+from Service.UFC_UGC_ZOS_Service.function.gas_calibration.Gas_Carlibration import Zero_Carlibration, Range_Carlibration
+from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
+    UGC_gas_path_system, UFC_gas_path_system
+from Service.UFC_UGC_ZOS_Service.function.gas_state_check.Gas_State_Check import UFC_Gas_State_Check
+from public.config_class.global_setting import global_setting
+from public.config_class.ini_parser import ini_parser
+from public.entity.MyQThread import MyQThread
+from public.function.Timer.ProcederTimer import PeriodicTimer
+from public.function.promise.AsyPromise import AsyPromise
+
 # 过滤日志
 
-# report_logger = logger.bind(category="report_logger")
+logger = logger.bind(category="monitor_data_logger")
 read_queue_data_Thread_Lock = threading.Lock()
 auto_wait_event = threading.Event()
-class SimpleLRU:
-    """去除report.log的重复项"""
-    def __init__(self, cap=1000):
-        self.cap = cap
-        self.od = OrderedDict()
 
-    def add(self, key):
-        if key in self.od:
-            self.od.move_to_end(key)
-            return False
-        self.od[key] = True
-        if len(self.od) > self.cap:
-            self.od.popitem(last=False)
-        return True
-"""去除report.log的重复项"""
-_lru = SimpleLRU(cap=500)
-def log_once_lru(message):
-    if not _lru.add(message):
-        return
-    # report_logger.info(message)
-    logger.info(message)
+
 class auto_run_Thread(MyQThread):
     #開始回調信號
     start_finish_signal=pyqtSignal()
@@ -107,12 +84,16 @@ class auto_run_Thread(MyQThread):
         self.check_finish_flag=True
 
     def dosomething(self):
+
         if self.before_start_flag:
+            logger.debug("333333333333333333333333333333333333333333")
             self.start_signal.emit()
             self.before_start_flag=False
         if self.start_finish_flag:
             self.start_finish_flag = False
+            logger.error(12333333331)
             auto_wait_event.wait()
+            logger.error(4444444444444444444)
             self.run_signal.emit()
 
         if self.run_finish_flag:
@@ -176,9 +157,8 @@ class Monitor_start_state_Thread(MyQThread):
         pass
 
 
-class UFC_UGC_ZOS_index(ThemedWindow):
+class UFC_UGC_ZOS_index(QObject):
     update_status_main_signal_gui_update = pyqtSignal(str)
-
     #更新开始状态的信号
     update_start_state_signal=pyqtSignal()
 
@@ -193,21 +173,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
 
     # 状态检测信號
     gas_state_check_signal =pyqtSignal()
-    def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
-        # 加载qss样式表
-        logger.warning("UFC_UGC_ZOS_index——show")
 
-        # 实例化自定义ui
-        self._init_customize_ui()
-        super().showEvent(a0)
-    def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
-        logger.warning("UFC_UGC_ZOS_index--hide")
-
-        super().hideEvent(a0)
-    def closeEvent(self, event):
-        logger.warning("UFC_UGC_ZOS_index--close")
-        self.close_timers()
-        super().closeEvent(event)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
 
@@ -220,25 +186,8 @@ class UFC_UGC_ZOS_index(ThemedWindow):
             'function_code': 0,
             'timeout': 0
         }
-        # 下拉框数据列表
-        self.ports = []
-        #状态显示label
-        self.state_label:QLabel = None
-        # 重新获取端口按钮
-        self.refresh_port_btn: QPushButton=None
 
-        #自动按钮
-        self.auto_btn:QPushButton=None
-        #解除自动按钮
-        self.disabled_auto_btn: QPushButton=None
-        #开始按钮
-        self.start_btn: QPushButton=None
-        #运行按钮
-        self.run_btn :  QPushButton=None
-        #停止按钮
-        self. stop_btn: QPushButton=None
-        #打开日志文件夹按钮
-        self.open_log_btn: QPushButton=None
+
 
         #UFC气路系统
         self.UFC_gas_path_system_obj:UFC_gas_path_system =None
@@ -261,38 +210,24 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         self.monitor_start_state_Thread:MyQThread = None
         #自動運行按鈕綫程
         self.auto_run_thread:auto_run_Thread=None
-        # 实例化ui
-        self._init_ui(parent, geometry, title)
+
         # 获得相关数据
         self._init_data()
-        # 实例化自定义ui
-        self._init_customize_ui()
+
         # 实例化功能
         self._init_function()
-        # 加载qss样式表
-        self._init_style_sheet()
+
         pass
 
 
     # 获得相关数据
     def _init_data(self):
-        # 获得端口下拉框数据
-        self.ports = scan_serial_ports_with_id()
 
 
-        #保存状态栏信息的日志
-        # logger.remove()
-        # logger.add(
-        #     "./"+"Module/UFC_UGC_ZOS_Test/"+"log/report_data/report_{time:YYYY-MM-DD}.log",
-        #     rotation="00:00",  # 日志文件转存
-        #     retention="30 days",  # 多长时间之后清理
-        #     enqueue=True,
-        #     format="{time:YYYY.MM.DD HH:mm:ss} {message}",
-        #     filter=lambda record: record["extra"].get("category") == "report_logger"
-        # )
+
         #读取config ini文件
         # 加载配置 如果ini文件在最外层要去除module+
-        config_file_path =os.getcwd() + "./"+"Module/UFC_UGC_ZOS_Test/"+"config/UFC_UGC_ZOS_Test.ini"
+        config_file_path =os.getcwd() + "./"+"config/UFC_UGC_ZOS_Test.ini"
         # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
         configer = ini_parser(config_file_path).read()
         if (len(configer) != 0):
@@ -309,123 +244,23 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         global_setting.set_setting("serial_lock", serial_lock)
 
         pass
-    # 实例化ui
-    def _init_ui(self, parent=None, geometry: QRect = None, title=""):
-        # 将ui文件转成py文件后 直接实例化该py文件里的类对象  uic工具转换之后就是这一段代码
-        # 有父窗口添加父窗口
-        if parent != None and geometry != None:
-            self.setParent(parent)
-            self.setGeometry(geometry)
-        else:
-            pass
 
-        self.ui = Ui_UFC_UGC_ZOS_window()
 
-        self.ui.setupUi(self)
 
-        self._retranslateUi()
 
-        pass
-
-    # 实例化自定义ui
-    def _init_customize_ui(self):
-        # 实例化下拉框
-        self.init_port_combox()
-        self.state_label=self.findChild(QLabel, "state_label")
-        self.state_label.setText("未启动")
-        self.state_label.setStyleSheet("QLabel { color:red; }")
-
-        # logger.error(self.config)
-
-        pass
-
-    # 实例化端口下拉框
-    def init_port_combox(self):
-        port_combox: QComboBox = self.findChild(QComboBox, "port_combox")
-        if port_combox == None:
-            logger.error("实例化端口下拉框失败！")
-            return
-        port_combox.clear()
-        for port_obj in self.ports:
-            port_combox.addItem(f"- 设备: {port_obj['device']}" + f" #{port_obj['description']}")
-            pass
-        if len(self.ports) != 0:
-            # 默认下拉项
-            self.send_message['port'] = self.ports[0]['device']
-            global_setting.set_setting("port", self.send_message['port'])
-            self.send_response_text(
-                f"{time_util.get_format_from_time(time.time())} | 设备: {self.ports[0]['device']}" + f" #{self.ports[0]['description']}" + "  默认已被选中!")
-        port_combox.disconnect()
-        port_combox.currentIndexChanged.connect(self.selectionchange)
-    #端口下拉框选择事件
-    def selectionchange(self, index):
-        try:
-            self.send_message['port'] = self.ports[index]['device']
-            global_setting.set_setting("port", self.send_message['port'])
-
-            self.send_response_text(
-                f"{time_util.get_format_from_time(time.time())} | 设备: {self.ports[index]['device']}" + f" #{self.ports[index]['description']}" + "  已被选中!")
-        except Exception as e:
-            logger.error(e)
-        pass
-    # 往响应栏添加信息
-    def send_response_text(self, text):
-        # 往状态栏发消息
-        response_text: QListWidget = self.findChild(QListWidget, "responselist")
-        if response_text == None:
-            logger.error("response_text状态栏未找到！")
-            return
-        #去重复项日志
-        log_once_lru(text)
-        response_text.addItem(text)
-        self.sort_qlistwidget_by_time(response_text=response_text)
-        if self.main_gui is not None:
-            self.main_gui.status_bar.update_tip(text)
-        # 滑动滚动条到最底下
-        scroll_bar = response_text.verticalScrollBar()
-        if scroll_bar != None:
-            scroll_bar.setValue(scroll_bar.maximum())
-        pass
-    #响应栏内容根据时间来排序
-    def sort_qlistwidget_by_time(self,response_text:QListWidget):
-        items = []
-        for idx in range(response_text.count()):
-            it = response_text.item(idx)
-            text = it.text()
-            dt = self.parse_time_from_item(text)
-            items.append((dt, idx, text))  # idx 为次要键，确保稳定排序
-
-        items.sort(key=lambda x: (x[0], x[1]))
-
-        response_text.clear()
-        for _, _, text in items:
-
-            response_text.addItem(text)
-
-    # QListWidget中的item为字符串"2025-09-04 23:21:54:123 - xxxxxx",解析前面的时间
-    def parse_time_from_item(self,text):
-        # 假设格式: "2025-09-04 23:21:54:123 - xxxxxx"
-        # 提取前面的时间部分
-        time_part = text.split("|")[0].strip()  # "2025-09-04 23:21:54:123"
-        # 解析为 datetime
-        try:
-            dt = datetime.strptime(time_part, "%Y-%m-%d %H:%M:%S.%f")
-        except ValueError as e:
-            logger.error(e)
-            # 如果没有毫秒，退回简单解析
-            dt = datetime.strptime(time_part, "%Y-%m-%d %H:%M:%S")
-        return dt
+    def logger_info(self,text):
+        logger.info(text)
     # 实例化功能
     def _init_function(self):
         # 将更新status信号绑定更新status界面函数
-        self.update_status_main_signal_gui_update.connect(self.send_response_text)
+        self.update_status_main_signal_gui_update.connect(self.logger_info)
         self.update_start_state_signal.connect(self.update_start_state)
 
         self.start_signal.connect(self.start_btn_handle)
         self.run_signal.connect(self.run_btn_handle)
         self.carlibration_signal.connect(self.carlibation)
         self.gas_state_check_signal.connect(self.gas_state_check)
-        self.auto_finish_signal.connect(lambda :self.disabled_auto_btn.setEnabled(True))
+        self.auto_finish_signal.connect(self.auto_finish_handle)
 
         #实例化气路
         self.UFC_gas_path_system_obj:UFC_gas_path_system = UFC_gas_path_system()
@@ -444,8 +279,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         #实例化状态检测
         self.UFC_gas_state_check_obj=UFC_Gas_State_Check()
         self.UFC_gas_state_check_obj.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
-        # 实例化按钮信号槽绑定
-        self.init_btn_func()
+
         # 实例化信号
 
         global read_queue_data_thread
@@ -456,64 +290,20 @@ class UFC_UGC_ZOS_index(ThemedWindow):
             pass
         pass
 
-    # 实例化按钮信号槽绑定
-    def init_btn_func(self):
-        # 重新获取端口按钮
-        self.refresh_port_btn: QPushButton = self.findChild(QPushButton, "refresh_port_btn")
-        self.refresh_port_btn.clicked.connect(self.refresh_port)
-        #开始按钮
-        self.start_btn: QPushButton = self.findChild(QPushButton, "start_btn")
-        self.start_btn.clicked.connect(self.start_btn_handle)
-        #运行按钮
-        self.run_btn: QPushButton = self.findChild(QPushButton, "run_btn")
-        self.run_btn.setEnabled(False)
-        self.run_btn.clicked.connect(self.run_btn_handle)
-        #停止按钮
-        self.stop_btn: QPushButton = self.findChild(QPushButton, "stop_btn")
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self.stop_btn_handle)
 
-        #自动按钮
-        self.auto_btn: QPushButton = self.findChild(QPushButton, "auto_btn")
-        self.auto_btn.clicked.connect(self.auto_btn_handle)
-        #解除自动按钮
-        self.disabled_auto_btn: QPushButton = self.findChild(QPushButton, "disabled_auto_btn")
-        self.disabled_auto_btn.clicked.connect(self.disabled_auto_btn_handle)
-        self.disabled_auto_btn.setEnabled(False)
 
-        #打开日志文件夹
-        self.open_log_btn: QPushButton = self.findChild(QPushButton, "open_log_btn")
-        self.open_log_btn.clicked.connect(self.open_log)
+    def auto_finish_handle(self):
         pass
-
-    def open_log(self):
-        """打开日志文件夹"""
-        # 获取当前工作目录
-        current_directory = Path.cwd()
-        open_direct = Path.joinpath(current_directory,
-                                    "./"+"Module/UFC_UGC_ZOS_Test/"+"log/report_data/")
-        open_direct.mkdir(parents=True, exist_ok=True)
-        os.startfile(open_direct)  # 替换为你要打开的文件夹路径
-    # 重新获取端口
-    def refresh_port(self):
-        self.ports = []
-        self._init_data()
-        self.init_port_combox()
     def update_start_state(self):
         self.monitor_start_state_Thread.stop()
         self.close_timers()
-        self.stop_btn.setEnabled(True)
-        self.run_btn.setEnabled(True)
-        self.state_label.setText("已启动")
-        self.state_label.setStyleSheet("QLabel { color:blue; }")
+
         #預熱完之後取消自動運行的阻塞
         auto_wait_event.set()
         auto_wait_event.clear()
     #启动按钮事件 启动气路
     def start_btn_handle(self):
-        self.start_btn.setEnabled(False)
-        self.state_label.setText("正在启动...")
-        self.state_label.setStyleSheet("QLabel { color:black; }")
+
         p= AsyPromise(self.ZOS_gas_path_system_obj.start).then(
             AsyPromise(
                 self.UFC_gas_path_system_obj.start,
@@ -540,8 +330,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
 
     #运行按钮事件 运行气路
     def run_btn_handle(self):
-        self.state_label.setText("正在运行...")
-        self.state_label.setStyleSheet("QLabel { color:green; }")
+
         p=AsyPromise(self.UFC_gas_path_system_obj.run).then(
             lambda v: AsyPromise(
                 self.UGC_gas_path_system_obj.run,
@@ -549,7 +338,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.run)
             ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
-        self.run_btn.setEnabled(False)
+
         # 運行結束回調
         if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
             self.auto_run_thread.run_finish_signal.emit()
@@ -557,8 +346,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         pass
     #停止按钮事件 停止气路
     def stop_btn_handle(self):
-        self.state_label.setText("正在停止")
-        self.state_label.setStyleSheet("QLabel { color:black; }")
+
         self.monitor_start_state_Thread.stop()
         self.close_timers()
         p=AsyPromise(self.UGC_gas_path_system_obj.stop).then(
@@ -568,11 +356,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.stop)
             ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
-        self.state_label.setText("未启动")
-        self.state_label.setStyleSheet("QLabel { color:red; }")
-        self.start_btn.setEnabled(True)
-        self.run_btn.setEnabled(False)
-        self.stop_btn.setEnabled(False)
+
         return p
         pass
 
@@ -600,7 +384,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
 
     #自动执行按钮事件
     def auto_btn_handle(self):
-        self.auto_btn.setEnabled(False)
+
         if self.auto_run_thread is None:
             self.auto_run_thread = auto_run_Thread(name="auto_run_thread",
                                                    start_signal=self.start_signal,
@@ -614,9 +398,9 @@ class UFC_UGC_ZOS_index(ThemedWindow):
     #解除自动执行按钮事件
     def disabled_auto_btn_handle(self):
         self.auto_run_thread.stop()
-        self.disabled_auto_btn.setEnabled(False)
+
         self.stop_btn_handle().then(
-            self.auto_btn.setEnabled(True)
+
         )
         pass
     #设置启动阶段的定时器

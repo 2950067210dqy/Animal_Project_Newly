@@ -18,6 +18,7 @@ from public.function.Modbus import Modbus_Type
 
 from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
 from public.function.Modbus.Modbus import ModbusRTUMaster
+from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeQt6 import ThemedWindow
 from PyQt6 import QtGui
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
@@ -26,7 +27,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QGroupBox, QLabel
 
 from public.util.time_util import time_util
 
-
+logger = logger.bind(category="gui_logger")
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
         super().__init__(name)
@@ -218,6 +219,16 @@ class Tab_7(ThemedWindow):
             # 默认下拉项
             self.send_message['port'] = self.ports[0]['device']
             global_setting.set_setting("port", self.send_message['port'])
+            modbus:ModbusRTUMasterNew =global_setting.get_setting("modbus",None)
+            if modbus is None:
+                modbus = ModbusRTUMasterNew( self.send_message['port'], baudrate=115200,timeout=float(
+                    global_setting.get_setting('monitor_data')['Serial']['timeout']),)
+                global_setting.set_setting("modbus", modbus)
+            else:
+                modbus.close()
+                modbus = ModbusRTUMasterNew(self.send_message['port'], baudrate=115200, timeout=float(
+                    global_setting.get_setting('monitor_data')['Serial']['timeout']), )
+                global_setting.set_setting("modbus", modbus)
             self.send_response_text(
                 f"{time_util.get_format_from_time(time.time())}- 设备: {self.ports[0]['device']}" + f" #{self.ports[0]['description']}" + "  默认已被选中!")
         port_combox.disconnect()
@@ -227,7 +238,16 @@ class Tab_7(ThemedWindow):
         try:
             self.send_message['port'] = self.ports[index]['device']
             global_setting.set_setting("port", self.send_message['port'])
-
+            modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+            if modbus is None:
+                modbus = ModbusRTUMasterNew(self.send_message['port'], baudrate=115200, timeout=float(
+                    global_setting.get_setting('monitor_data')['Serial']['timeout']), )
+                global_setting.set_setting("modbus", modbus)
+            else:
+                modbus.close()
+                modbus = ModbusRTUMasterNew(self.send_message['port'], baudrate=115200, timeout=float(
+                    global_setting.get_setting('monitor_data')['Serial']['timeout']), )
+                global_setting.set_setting("modbus", modbus)
             self.send_response_text(
                 f"{time_util.get_format_from_time(time.time())}- 设备: {self.ports[index]['device']}" + f" #{self.ports[index]['description']}" + "  已被选中!")
         except Exception as e:

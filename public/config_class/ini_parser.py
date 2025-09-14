@@ -3,7 +3,7 @@ import traceback
 
 from loguru import logger
 
-
+logger = logger.bind(category="gui_logger")
 class ini_parser():
     """
     ini文件读取器

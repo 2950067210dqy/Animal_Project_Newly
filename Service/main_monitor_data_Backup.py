@@ -8,7 +8,7 @@ import time
 
 from loguru import logger
 
-from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
+
 from public.config_class.global_setting import global_setting
 
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
@@ -16,7 +16,6 @@ from public.entity.MyQThread import MyQThread
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.Modbus.Modbus import ModbusRTUMaster
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data
-from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.util.time_util import time_util
 
 # 全局变量
@@ -119,7 +118,7 @@ class Send_thread(MyQThread):
                  ):
         super().__init__(name)
 
-        self.modbus: ModbusRTUMasterNew= global_setting.get_setting("modbus", None)
+        self.modbus: ModbusRTUMaster = modbus
         # 正常队列和紧急队列 紧急队列的消息立即处理
         self.normal_queue = queue.Queue()
         self.priority_queue = queue.Queue()
@@ -134,7 +133,17 @@ class Send_thread(MyQThread):
         else:
             self.normal_queue.put(message)
 
+    def init_modBus(self, port, origin=None):
+        try:
 
+            self.modbus = ModbusRTUMaster(port=port, timeout=float(
+                global_setting.get_setting('monitor_data')['Serial']['timeout']),
+                                          origin=origin
+                                          )
+        except Exception as e:
+            logger.error(f"{self.name},实例化modbus错误：{e}")
+            pass
+        pass
     def stop(self):
         if self.modbus is not None:
             self.modbus.close()
@@ -161,7 +170,7 @@ class Send_thread(MyQThread):
                 try:
                     message = self.priority_queue.get_nowait()
                     send_message = message['message']
-
+                    self.init_modBus(port=send_message['port'], origin=message['origin'])
                     logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
                     response, response_hex, send_state = self.modbus.send_command(
                         slave_id=send_message['slave_id'],
@@ -193,7 +202,7 @@ class Send_thread(MyQThread):
                 try:
 
                     send_message = self.normal_queue.get(timeout=0.1)
-
+                    self.init_modBus(port=send_message['port'])
                     response, response_hex, send_state = self.modbus.send_command(
                         slave_id=send_message['slave_id'],
                         function_code=send_message['function_code'],
@@ -258,21 +267,21 @@ class Add_message_thread(MyQThread):
             self.mutex.unlock()
             self.experiment_setting = global_setting.get_setting("experiment_setting", None)
             send_messages = []
-            # # 公共传感器数据的send_messages  现在只发传感器数值查询报文DEBUGGER
-            # for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Senior_Data.value:
-            #     """debugger专用 需要哪个模块的数据监控就放进去"""
-            #     if data_type in [
-            #         Modbus_Slave_Send_Messages_Senior_Data.UFC,
-            #         Modbus_Slave_Send_Messages_Senior_Data.UGC,
-            #         Modbus_Slave_Send_Messages_Senior_Data.ZOS
-            #     ]:
-            #         # 所有消息
-            #         for message_struct in data_type.value['send_messages']:
-            #             message_temp = message_struct.message
-            #             message_temp['port'] =  self.port
-            #             self.send_thread.add_message(message=message_temp, urgent=False)
-            #             send_messages.append(message_temp)
-            #             MESSAGE_BATCH_SIZE += 1
+            # 公共传感器数据的send_messages  现在只发传感器数值查询报文DEBUGGER
+            for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Senior_Data.value:
+                """debugger专用 需要哪个模块的数据监控就放进去"""
+                if data_type in [
+                    Modbus_Slave_Send_Messages_Senior_Data.UFC,
+                    Modbus_Slave_Send_Messages_Senior_Data.UGC,
+                    Modbus_Slave_Send_Messages_Senior_Data.ZOS
+                ]:
+                    # 所有消息
+                    for message_struct in data_type.value['send_messages']:
+                        message_temp = message_struct.message
+                        message_temp['port'] =  self.port
+                        self.send_thread.add_message(message=message_temp, urgent=False)
+                        send_messages.append(message_temp)
+                        MESSAGE_BATCH_SIZE += 1
             # 每个笼子里的传感器的send_messages
             for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
                 """debugger专用 需要哪个模块的数据监控就放进去"""
@@ -332,14 +341,13 @@ def copy_experiment_setting_file():
     pass
 def main(port,q,send_message_q):
     # logger.remove(0)
-    # 加载日志配置
     logger.add(
         "./log/monitor_data/monitor_{time:YYYY-MM-DD}.log",
         rotation="00:00",
         retention="30 days",
         enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-        filter=lambda record: record["extra"].get("category") == "monitor_data_logger"
+        filter = lambda record: record["extra"].get("category") == "monitor_data_logger"
     )
     logger.info(f"{'-' * 30}monitor_data_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
@@ -368,23 +376,10 @@ def main(port,q,send_message_q):
     add_message_thread=Add_message_thread("monitor_data_add_message",send_thread, port)
     add_message_thread.start()
 
-    #UFC_UGC_ZOS
-    ufc_ugc_zos_thread=None
-    ufc_ugc_zos=None
-    try:
-
-
-        ufc_ugc_zos = UFC_UGC_ZOS_index()
-        ufc_ugc_zos_thread = threading.Thread(target=ufc_ugc_zos.auto_btn_handle)
-        ufc_ugc_zos_thread.start()
-
-    except Exception as ex:
-        print(ex)
-        logger.error(f"<UNK>{ex}")
 
     # 将实验配置存储到该实验的文件夹中去
     copy_experiment_setting_file()
-    return store_thread,send_thread,read_queue_data_thread,add_message_thread,ufc_ugc_zos,ufc_ugc_zos_thread
+    return store_thread,send_thread,read_queue_data_thread,add_message_thread
 
 
 
