@@ -1176,9 +1176,21 @@ class communication(threading.Thread):
                                             return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
                                                                             function_code=f"{function_code_int:X}",
                                                                             return_bytes_nums='1',
-                                                                            data_hex_list=[
-                                                                                self.binary_to_hex_for_all("00000001")
-                                                                            ],
+                                                                            data_hex_list=
+                                                                            random.choice([
+                                                                                [
+                                                                                    self.binary_to_hex_for_all(
+                                                                                        "00000010")
+                                                                                ],
+                                                                                [
+                                                                                    self.binary_to_hex_for_all(
+                                                                                        "00000001")
+                                                                                ],
+                                                                                [
+                                                                                    self.binary_to_hex_for_all(
+                                                                                        "00000011")
+                                                                                ],
+                                                                            ]),
                                                                             struct_type="B"
                                                                             )
 

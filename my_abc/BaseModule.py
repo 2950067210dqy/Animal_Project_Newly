@@ -11,6 +11,7 @@ from my_abc import BaseInterfaceWidget
 from my_abc.BaseService import BaseService
 from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import Frame_state, BaseInterfaceType, AppState
+from public.function.promise.AsyPromise import AsyPromise
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -58,11 +59,13 @@ class BaseModule(ABC):
         """显示页面"""
         if self.interface_widget is not None:
             # 重新加载页面 而不是加载之前的页面 start
-            self.interface_widget.close()
+            # self.interface_widget.close()
             self.interface_widget = None
             self.interface_widget=self.get_interface_widget()
+            self.set_main_gui_to_children()
             # 重新加载页面 而不是加载之前的页面 end
             self.interface_widget.show()
+
     def hide(self):
         """隐藏页面"""
         if self.interface_widget is not None:
@@ -75,27 +78,43 @@ class BaseModule(ABC):
         # 获取主界面变量
         self.main_gui=main_gui
         pass
-    def start_service(self):
-        """开始服务"""
-        if self.service is not None:
-            self.service.start()
-    def adjustGUIPolicy(self):
-        if self.interface_widget is None or self.interface_widget.type is None or self.interface_widget.frame_obj is None or self.main_gui is None:
-            return
+    def set_main_gui_to_children(self):
         # 设置父界面给所有子界面
         if self.interface_widget.frame_obj is not None:
             self.interface_widget.frame_obj.set_main_gui(self.main_gui)
-            self.interface_widget.frame_obj_state=Frame_state.Opening
+            self.interface_widget.frame_obj_state = Frame_state.Opening
         if self.interface_widget.left_frame_obj is not None:
             self.interface_widget.left_frame_obj.set_main_gui(self.main_gui)
-            self.interface_widget.left_frame_obj_state=Frame_state.Opening
+            self.interface_widget.left_frame_obj_state = Frame_state.Opening
         if self.interface_widget.right_frame_obj is not None:
             self.interface_widget.right_frame_obj.set_main_gui(self.main_gui)
-            self.interface_widget.right_frame_obj_state=Frame_state.Opening
+            self.interface_widget.right_frame_obj_state = Frame_state.Opening
         if self.interface_widget.bottom_frame_obj is not None:
             self.interface_widget.bottom_frame_obj.set_main_gui(self.main_gui)
-            self.interface_widget.bottom_frame_obj_state=Frame_state.Opening
+            self.interface_widget.bottom_frame_obj_state = Frame_state.Opening
+        pass
+    # 点击的方法
+    def click_method(self):
+        AsyPromise(self.start_service).then(
+            lambda r:AsyPromise(self.adjustGUIPolicy).then()
+        )
+        # self.start_service()
+        # self.adjustGUIPolicy()
+    def start_service(self,resolve,reject):
+        """开始服务"""
+        if self.service is not None:
+            AsyPromise(self.service.start).then(
+                lambda r:resolve(r)
+            ).catch( lambda e:reject(e))
+        else:
+            resolve(None)
 
+    def adjustGUIPolicy(self,resolve,reject):
+        if self.interface_widget is None or self.interface_widget.type is None or self.interface_widget.frame_obj is None or self.main_gui is None:
+            reject(None)
+            return
+
+        self.set_main_gui_to_children()
         # 根据type来确定相关策略
         if self.interface_widget.type == BaseInterfaceType.WIDGET or self.interface_widget.type == BaseInterfaceType.FRAME:
 
@@ -268,5 +287,6 @@ class BaseModule(ABC):
 
             pass
 
+        resolve()
         pass
 

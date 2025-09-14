@@ -217,8 +217,9 @@ class MainWindow_Index(ThemedWindow):
                     action = QAction(module_title, self)
                     action.setObjectName(f"{module.name}_menu_action")
                     # 创建点击事件
-                    action.triggered.connect(module.start_service)
-                    action.triggered.connect( module.adjustGUIPolicy)
+                    # action.triggered.connect(module.start_service)
+                    action.triggered.connect(module.click_method)
+                    # action.triggered.connect( module.adjustGUIPolicy)
                     # action.triggered.connect( module.interface_widget.show)
                     self.menu_bar_actions.append(
                         {"name": module_title, "obj_name": f"{module.name}_menu_action", "action": action, "app_state": module.app_state})

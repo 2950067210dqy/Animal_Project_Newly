@@ -14,8 +14,9 @@ class Main_com_assistant_service(BaseService):
     # 组件服务
     def __init__(self):
         pass
-    def start(self):
-        pass
+
+    def start(self, resolve, reject):
+        resolve()
     def stop(self):
         pass
 

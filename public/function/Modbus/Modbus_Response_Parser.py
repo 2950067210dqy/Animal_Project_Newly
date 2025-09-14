@@ -1465,9 +1465,9 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
 
     def parser_function_code_1(self):
         function_desc = """
-                  读输出端口状态信息
-                  参数长度：2
-                  """
+               读输出端口状态信息
+               参数长度：2
+               """
         pack_struct = "B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
@@ -1521,9 +1521,9 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
 
         index = 0
         for str_single in data_binary_str_list_all:
-            if index == 6:
+            if index == 7:
                 return_datas.append({
-                    "desc": port_types[index - 6],
+                    "desc": port_types[index - 7],
                     'value': int(str_single)
                 }
                 )
@@ -1532,10 +1532,9 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}状态：{'正常' if return_data['value'] == 1 else '故障'} | "
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
-        pass
         pass
 
     """
@@ -1601,7 +1600,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']} | "
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
         pass
@@ -1834,9 +1833,9 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         port_types = ['CO2阀门状态']
         index = 0
         for str_single in data_binary_str_list_all:
-            if index ==6:
+            if index == 7:
                 return_datas.append({
-                    "desc": port_types[index-6],
+                    "desc": port_types[index - 7],
                     'value': int(str_single)
                 }
                 )
@@ -1845,7 +1844,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}状态：{'ON' if return_data['value'] == 1 else 'OFF'} | "
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
         pass
@@ -1880,7 +1879,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}状态：{'ON' if return_data['value'] == 1 else 'OFF'} | "
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
         pass
@@ -1912,7 +1911,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']}% | "
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
         pass
@@ -1931,7 +1930,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['流量计1',  'CO2(%)', '保留']
+        port_types = ['流量计1', 'CO2(%)', '保留']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
@@ -1939,7 +1938,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                     return_datas.append({
                         "desc": port_types[j],
                         'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)/10
+                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2) / 10
                     }
                     )
                     j += 1
@@ -1947,8 +1946,9 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                 case 17:
                     return_datas.append({
                         "desc": port_types[j],
-                        'value':int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)/10000
+                        'value': int("".join(self.int_to_8bit_binary(
+                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])),
+                            2) / 10000
                     }
                     )
                     j += 1
@@ -1967,7 +1967,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']} | "
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
         pass
@@ -1987,7 +1987,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
         port_types = ['电磁阀名称', '电磁阀开、关控制']
-        valve_desc= ['鼠笼气电磁阀','校零气路(Zero气)电磁阀','量程标定气路电磁阀']
+        valve_desc = ['鼠笼气电磁阀(sample 气)', '校零气路(Zero气)电磁阀', '量程标定气路电磁阀', '', '抽气泵']
         valve_index = 0
         j = 0
         for i in range(len(self.response_struct['data'])):
@@ -2016,11 +2016,9 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']} |"
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
-
-        pass
 
     """
                03 06 X
@@ -2043,13 +2041,13 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         port_types_16 = ['设置', '设置状态']
         port_types_19 = ['设置', '设置状态']
 
-        co2_desc= ['CO2零点设置','CO2零点恢复']
+        co2_desc = ['CO2零点设置', 'CO2零点恢复']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
                 case 1:
                     match self.response_struct['data'][1]:
-                        case 1|2|3|4:
+                        case 1 | 2 | 3 | 4:
                             return_datas.append({
                                 "desc": port_types_1[j],
                                 'value': f"0X{self.response_struct['data'][i - 1]:02X}{self.response_struct['data'][i]:02X}"
@@ -2104,13 +2102,13 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                         case 16:
                             return_datas.append({
                                 "desc": port_types_16[j],
-                                 'value': f"{'设置成功' if int(''.join(self.int_to_8bit_binary(num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)==0 else '设置失败'}"
+                                'value': f"{'设置成功' if int(''.join(self.int_to_8bit_binary(num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2) == 0 else '设置失败'}"
                             })
                             pass
                         case 19:
                             return_datas.append({
                                 "desc": port_types_19[j],
-                                 'value': f"{'设置成功' if int(''.join(self.int_to_8bit_binary(num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)==0 else '设置失败'}"
+                                'value': f"{'设置成功' if int(''.join(self.int_to_8bit_binary(num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2) == 0 else '设置失败'}"
                             })
                             pass
                         case _:
@@ -2123,7 +2121,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']} |"
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
         pass
@@ -2229,9 +2227,9 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
 
     def parser_function_code_1(self):
         function_desc = """
-          读输出端口状态信息
-          参数长度：3
-          """
+        读输出端口状态信息
+        参数长度：3
+        """
         pack_struct = "B B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
@@ -2239,9 +2237,9 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
         data_binary_str_list = self.int_to_8bit_binary(num_list=self.response_struct['data'])
         data_binary_str_list_all = "".join(data_binary_str_list)
         return_datas = []
-        port_types = ['参考气阀门', '采样阀', '气泵', '机器状态', '鼠笼1的电磁阀', '鼠笼2的电磁阀', '鼠笼3的电磁阀',
-                      '鼠笼4的电磁阀', '鼠笼5的电磁阀', '鼠笼6的电磁阀', '鼠笼7的电磁阀',
-                      '鼠笼8的电磁阀']
+        port_types = ['机器状态', '气泵', '采样阀', '参考气阀门', '鼠笼8的电磁阀', '鼠笼7的电磁阀', '鼠笼6的电磁阀',
+                      '鼠笼5的电磁阀', '鼠笼4的电磁阀', '鼠笼3的电磁阀', '鼠笼2的电磁阀',
+                      '鼠笼1的电磁阀']
         index = 0
         for str_single in data_binary_str_list_all:
             if index >= 4:
@@ -2262,7 +2260,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
                 pass
             if index % 3 == 0:
                 return_data_str += "\n"
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
 
@@ -2273,17 +2271,17 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
 
     def parser_function_code_2(self):
         function_desc = """
-                  读传感器状态信息
-                  参数长度：2
-                  """
+                读传感器状态信息
+                参数长度：2
+                """
         pack_struct = "B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         data_binary_str = self.int_to_8bit_binary(num_list=self.response_struct['data'])[0]
         return_datas = []
-        sensor_types = ['流量传感器1', '流量传感器2', '流量传感器3', '流量传感器4', '流量传感器5', '流量传感器6',
-                        '流量传感器7', '流量传感器8']
+        sensor_types = ['流量传感器8', '流量传感器7', '流量传感器6', '流量传感器5', '流量传感器4', '流量传感器3',
+                        '流量传感器2', '流量传感器1']
         index = 0
         for str_single in data_binary_str:
             return_datas.append({
@@ -2298,7 +2296,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
             return_data_str += f"{return_data['desc']}传感器状态：{'正常' if return_data['value'] == 1 else '故障'} | "
             if index % 3 == 0:
                 return_data_str += "\n"
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
 
@@ -2308,9 +2306,9 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
 
     def parser_function_code_3(self):
         function_desc = """
-                          读配置寄存器
-                          参数长度：7
-                          """
+                        读配置寄存器
+                        参数长度：7
+                        """
         pack_struct = "B B B B B B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
@@ -2339,7 +2337,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
                     pass
 
             index += 1
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
 
@@ -2349,9 +2347,9 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
 
     def parser_function_code_4(self):
         function_desc = """
-                          读传感器测量值
-                          参数长度：13
-                           """
+                        读传感器测量值
+                        参数长度：13
+                         """
         pack_struct = "B B B B B B B B B B B B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
@@ -2424,7 +2422,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']} | "
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
 
@@ -2434,9 +2432,9 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
 
     def parser_function_code_5(self):
         function_desc = """
-                         写从机单个开关量输出（ON/OFF）
-                         参数长度：4
-                         """
+                       写从机单个开关量输出（ON/OFF）
+                       参数长度：4
+                       """
         pack_struct = "B B B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=False)
         logger.info(
@@ -2444,7 +2442,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
         return_datas = []
         port_types = ['电磁阀名称', '电磁阀状态']
         valve_desc = ['鼠笼1气路', '鼠笼1气路', '鼠笼2气路', '鼠笼3气路', '鼠笼4气路', '鼠笼5气路', '鼠笼6气路',
-                      '鼠笼7气路', '鼠笼8气路', '参考气气路', '采样阀气路', '气泵', 'UFC']
+                      '鼠笼7气路', '鼠笼8气路', '参考气气路', 'ZOS采样阀气路', '气泵', 'UFC']
         valve_state_desc = [['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'],
                             ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'],
                             ['运行', '断开'], ['运行', '停止']]
@@ -2478,7 +2476,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']} |"
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
 
@@ -2488,16 +2486,16 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
 
     def parser_function_code_6(self):
         function_desc = """
-                              写单个保持寄存器
-                              参数长度：4
-                          """
+                            写单个保持寄存器
+                            参数长度：4
+                        """
         pack_struct = "B B B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=False)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
         port_types_0 = ['鼠笼阀门操作', '运行状态']
-        port_types_0_value = [['鼠笼1', '鼠笼2', '鼠笼3', '鼠笼4', '鼠笼5', '鼠笼6', '鼠笼7', '鼠笼8'],
+        port_types_0_value = [['鼠笼8', '鼠笼7', '鼠笼6', '鼠笼5', '鼠笼4', '鼠笼3', '鼠笼2', '鼠笼1'],
                               ['运行', '不运行']]
         port_types_1 = ['流量计操作', '值']
         port_types_1_value = [['设定流量计测量范围'],
@@ -2567,7 +2565,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']} |"
-        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
 

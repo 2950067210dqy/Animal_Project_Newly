@@ -18,7 +18,7 @@ class Main_New_experiment_service(BaseService):
     def __init__(self):
         super().__init__()
         pass
-    def start(self):
+    def start(self,resolve,reject):
         # 打开实验设置文件
         file_path, _ = QFileDialog.getOpenFileName(self.module.main_gui, "打开实验文件", "", f"template Files (*.{custom_template_file_util.extension_name});")
         if file_path:
@@ -35,7 +35,9 @@ class Main_New_experiment_service(BaseService):
                 os.remove(db_file_path)  # 删除文件
             global_setting.set_setting("experiment_setting_new", setting_data)
             global_setting.set_setting("experiment_setting_file_open", file_path)
-
+            resolve(None)
+        else:
+            reject(None)
         pass
     def stop(self):
         pass

@@ -10,7 +10,8 @@ class Main_New_experiment_service(BaseService):
     # 组件服务
     def __init__(self):
         pass
-    def start(self):
+    def start(self,resolve,reject):
+        resolve()
         pass
     def stop(self):
         pass
