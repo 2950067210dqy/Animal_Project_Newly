@@ -113,7 +113,7 @@ def load_global_setting():
 def main(q, send_message_q):
     freeze_support()
 
-
+    # logger.remove(0)
     logger.add(
         "./log/gui/gui_{time:YYYY-MM-DD}.log",
         rotation="00:00",  # 日志文件转存

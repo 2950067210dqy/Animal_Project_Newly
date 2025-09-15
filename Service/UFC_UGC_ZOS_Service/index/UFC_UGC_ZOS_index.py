@@ -3,10 +3,7 @@ import multiprocessing
 import os
 import threading
 import time
-import typing
-from collections import OrderedDict
-from datetime import datetime
-from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -18,7 +15,7 @@ from loguru import logger
 
 
 
-from PyQt6.QtCore import QRect, Qt, pyqtSignal, QObject
+from PyQt6.QtCore import QRect, Qt, pyqtSignal, QObject, pyqtBoundSignal, QMetaObject, Q_ARG
 
 from Service.UFC_UGC_ZOS_Service.function.gas_calibration.Gas_Carlibration import Zero_Carlibration, Range_Carlibration
 from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
@@ -29,6 +26,7 @@ from public.config_class.ini_parser import ini_parser
 from public.entity.MyQThread import MyQThread
 from public.function.Timer.ProcederTimer import PeriodicTimer
 from public.function.promise.AsyPromise import AsyPromise
+from theme.ThemeQt6 import ThemedWindow
 
 # 过滤日志
 
@@ -39,13 +37,13 @@ auto_wait_event = threading.Event()
 
 class auto_run_Thread(MyQThread):
     #開始回調信號
-    start_finish_signal=pyqtSignal()
+    start_finish_signal: pyqtBoundSignal=pyqtSignal()
     #運行回調信號
-    run_finish_signal = pyqtSignal()
+    run_finish_signal: pyqtBoundSignal = pyqtSignal()
     #標定回調信號
-    carlibration_finish_signal = pyqtSignal()
+    carlibration_finish_signal: pyqtBoundSignal = pyqtSignal()
     #狀態檢測回調信號
-    check_finish_signal = pyqtSignal()
+    check_finish_signal: pyqtBoundSignal = pyqtSignal()
     def __init__(self,name,start_signal,run_signal,carlibration_signal,gas_state_check_signal,auto_finish_signal):
         super().__init__(name=name)
         # 開始信號
@@ -63,7 +61,7 @@ class auto_run_Thread(MyQThread):
         self.auto_finish_signal = auto_finish_signal
 
         self.before_start_flag =True
-        self.start_finish_flag =False
+        self.start_finish_flag =True
         self.run_finish_flag =False
         self.carlibration_finish_flag =False
         self.check_finish_flag =False
@@ -83,10 +81,12 @@ class auto_run_Thread(MyQThread):
     def check_finish(self):
         self.check_finish_flag=True
 
+
+
     def dosomething(self):
 
         if self.before_start_flag:
-            logger.debug("333333333333333333333333333333333333333333")
+
             self.start_signal.emit()
             self.before_start_flag=False
         if self.start_finish_flag:
@@ -163,16 +163,16 @@ class UFC_UGC_ZOS_index(QObject):
     update_start_state_signal=pyqtSignal()
 
     # 開始信號
-    start_signal =pyqtSignal()
+    start_signal: pyqtBoundSignal =pyqtSignal()
     #運行信號
-    run_signal =pyqtSignal()
+    run_signal : pyqtBoundSignal=pyqtSignal()
     # 标定信號
-    carlibration_signal =pyqtSignal()
+    carlibration_signal: pyqtBoundSignal =pyqtSignal()
     #自動運行結束信號
-    auto_finish_signal =pyqtSignal()
+    auto_finish_signal: pyqtBoundSignal =pyqtSignal()
 
     # 状态检测信號
-    gas_state_check_signal =pyqtSignal()
+    gas_state_check_signal: pyqtBoundSignal =pyqtSignal()
 
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
@@ -321,7 +321,13 @@ class UFC_UGC_ZOS_index(QObject):
 
         #開始結束回調
         if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
-            self.auto_run_thread.start_finish_signal.emit()
+            try:
+                # 方法1：使用 QTimer 延迟发射
+                # from PyQt6.QtCore import QTimer
+                # QTimer.singleShot(200, self.auto_run_thread.start_finish_signal.emit)
+                self.auto_run_thread.start_finish_signal.emit()
+            except Exception as e:
+                logger.error(e)
 
 
         return p

@@ -273,31 +273,31 @@ class Add_message_thread(MyQThread):
             #             self.send_thread.add_message(message=message_temp, urgent=False)
             #             send_messages.append(message_temp)
             #             MESSAGE_BATCH_SIZE += 1
-            # 每个笼子里的传感器的send_messages
-            for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
-                """debugger专用 需要哪个模块的数据监控就放进去"""
-                if data_type in [
-                                Modbus_Slave_Send_Messages_Senior_Data.ENM,
-                                  Modbus_Slave_Send_Messages_Senior_Data.EM,
-                                  Modbus_Slave_Send_Messages_Senior_Data.DWM,
-                                  Modbus_Slave_Send_Messages_Senior_Data.WM
-                ]:
-                    if self.experiment_setting  is not None:
-                        for mouse_cage in range(1,len(self.experiment_setting.groups)+1):
-                            # 所有消息
-
-                            for message_struct in data_type.value['send_messages']:
-                                message_temp = copy.deepcopy(message_struct.message)
-                                message_temp['port'] =  self.port
-
-                                message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
-                                self.send_thread.add_message(message=message_temp, urgent=False)
-                                send_messages.append(message_temp)
-                                MESSAGE_BATCH_SIZE += 1
-                            """测试专用 只拿一个笼子鼠笼1里的数据 DEBUGGER"""
-                            break
-                pass
-                # 等待从线程处理完当前批次
+            # # 每个笼子里的传感器的send_messages
+            # for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
+            #     """debugger专用 需要哪个模块的数据监控就放进去"""
+            #     if data_type in [
+            #                     Modbus_Slave_Send_Messages_Senior_Data.ENM,
+            #                       Modbus_Slave_Send_Messages_Senior_Data.EM,
+            #                       Modbus_Slave_Send_Messages_Senior_Data.DWM,
+            #                       Modbus_Slave_Send_Messages_Senior_Data.WM
+            #     ]:
+            #         if self.experiment_setting  is not None:
+            #             for mouse_cage in range(1,len(self.experiment_setting.groups)+1):
+            #                 # 所有消息
+            #
+            #                 for message_struct in data_type.value['send_messages']:
+            #                     message_temp = copy.deepcopy(message_struct.message)
+            #                     message_temp['port'] =  self.port
+            #
+            #                     message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
+            #                     self.send_thread.add_message(message=message_temp, urgent=False)
+            #                     send_messages.append(message_temp)
+            #                     MESSAGE_BATCH_SIZE += 1
+            #                 """测试专用 只拿一个笼子鼠笼1里的数据 DEBUGGER"""
+            #                 break
+            #     pass
+            #     # 等待从线程处理完当前批次
             logger.info(f"数据请求报文：一共{len(send_messages)}条报文！")
             # print(f"send_messages:{send_messages}")
             batch_complete_event.wait()

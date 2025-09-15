@@ -30,6 +30,8 @@ class MyQThread(QThread):
 
             # 执行一些工作（替代为你需要的任务）
             self.dosomething()
+    def move_work_to_thread(self,work):
+        self.dosomething=work
     def before_Runing_work(self):
         #执行前的一些工作
         pass
