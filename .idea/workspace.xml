@@ -7,10 +7,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.1.5.9.1 调试界面2，剩余窗口变换的时候frame-&gt;windows出现minisize不不匹配问题">
-      <change beforePath="$PROJECT_DIR$/.idea/Animal_Project_newly.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Animal_Project_newly.iml" afterDir="false" />
+    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.3.3.5 完成标定数据存储，待优化开始实验停止实验线程化">
+      <change afterPath="$PROJECT_DIR$/public/function/Timer/task_manager.log" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Module/new_experiment/index/new_experiment_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/Module/new_experiment/index/new_experiment_index.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -27,7 +26,20 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RESET_MODE" value="HARD" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;2950067210dqy&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:2950067210dqy/Animal_Project_Newly.git&quot;,
+    &quot;accountId&quot;: &quot;e254beac-5d97-4626-8080-61c824286e30&quot;
+  }
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 7
 }</component>
@@ -36,43 +48,116 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python.MainWindow_index.executor&quot;: &quot;Run&quot;,
-    &quot;Python.ThemeQt6.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;last_opened_file_path&quot;: &quot;D:/WorkSpace/PythonProject/Animal_Project_newly&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;run.code.analysis.last.selected.profile&quot;: &quot;aDefault&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.LoadingMask.executor": "Run",
+    "Python.MainWindow_index.executor": "Run",
+    "Python.New_Mod_Bus.executor": "Run",
+    "Python.ScheduledTimerTaskManager.executor": "Run",
+    "Python.ThemeQt6.executor": "Run",
+    "Python.main.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "data.grip.promo.notification.shown": "true",
+    "git-widget-placeholder": "master",
+    "last_opened_file_path": "D:/WorkSpace/Animal_Project_Newly/index",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "run.code.analysis.last.selected.profile": "aDefault",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\model" />
-      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Service" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\index" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\UFC_UGC_ZOS_Test\function\modbus" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\config" />
+      <recent name="D:\WorkSpace\Animal_Project_Newly\Service\UFC_UGC_ZOS_Service" />
       <recent name="D:\WorkSpace\Animal_Project_Newly\Service" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera\ui" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="D:\WorkSpace\Animal_Project_Newly\public\function" />
       <recent name="D:\WorkSpace\Animal_Project_Newly\public\component" />
       <recent name="D:\WorkSpace\Animal_Project_Newly" />
       <recent name="D:\WorkSpace\Animal_Project_Newly\Service" />
       <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera\ui" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera" />
     </key>
   </component>
-  <component name="RunManager">
+  <component name="RunManager" selected="Python.main">
+    <configuration name="LoadingMask" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Animal_Project_newly" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/public/component/mask" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/public/component/mask/LoadingMask.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="New_Mod_Bus" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Animal_Project_newly" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/public/function/Modbus" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/public/function/Modbus/New_Mod_Bus.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="ScheduledTimerTaskManager" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Animal_Project_newly" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer/ScheduledTimerTaskManager.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
       <module name="Animal_Project_newly" />
       <option name="ENV_FILES" value="" />
@@ -96,12 +181,19 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.LoadingMask" />
+        <item itemvalue="Python.New_Mod_Bus" />
+        <item itemvalue="Python.ScheduledTimerTaskManager" />
+      </list>
+    </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-PY-251.26927.90" />
-        <option value="bundled-python-sdk-41e8cd69c857-64d779b69b7a-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.26927.90" />
+        <option value="bundled-js-predefined-d6986cc7102b-6a121458b545-JavaScript-PY-251.25410.159" />
+        <option value="bundled-python-sdk-e0ed3721d81e-36ea0e71a18c-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.25410.159" />
       </set>
     </attachedChunks>
   </component>
@@ -124,6 +216,8 @@
       <workItem from="1754439403725" duration="5925000" />
       <workItem from="1754498758565" duration="19073000" />
       <workItem from="1754650774372" duration="1577000" />
+      <workItem from="1757859541606" duration="20316000" />
+      <workItem from="1757879965181" duration="50801000" />
     </task>
     <task id="LOCAL-00001" summary="1.0 创建基本项目 模块化筹备">
       <option name="closed" value="true" />
@@ -213,7 +307,55 @@
       <option name="project" value="LOCAL" />
       <updated>1754620918903</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="1.3.3.3 准备修改modbus">
+      <option name="closed" value="true" />
+      <created>1757876429363</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1757876429363</updated>
+    </task>
+    <task id="LOCAL-00013" summary="1.3.3.4 修改main_monitor_data">
+      <option name="closed" value="true" />
+      <created>1757894099934</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1757894099934</updated>
+    </task>
+    <task id="LOCAL-00014" summary="1.3.3.4.2 添加零点标定和span标定">
+      <option name="closed" value="true" />
+      <created>1757933020623</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1757933020623</updated>
+    </task>
+    <task id="LOCAL-00015" summary="1.3.3.4.4 完成ufc状态检测">
+      <option name="closed" value="true" />
+      <created>1757949051340</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1757949051340</updated>
+    </task>
+    <task id="LOCAL-00016" summary="1.3.3.4.4 完成ufc状态检测 并且修改细节">
+      <option name="closed" value="true" />
+      <created>1757950461145</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1757950461145</updated>
+    </task>
+    <task id="LOCAL-00017" summary="1.3.3.5 完成标定数据存储，待优化开始实验停止实验线程化">
+      <option name="closed" value="true" />
+      <created>1757963435073</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1757963435073</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -242,15 +384,46 @@
     <MESSAGE value="1.1.5.5 未解决日志bug引发的开始实验bug，正在显示窗口和frame的类型从QMainwindow改成了BaseModule，正在BaseWindow里面的show和closeEvent还未适配！2" />
     <MESSAGE value="1.1.5.8 调试界面" />
     <MESSAGE value="1.1.5.9.1 调试界面2，剩余窗口变换的时候frame-&gt;windows出现minisize不不匹配问题" />
-    <option name="LAST_COMMIT_MESSAGE" value="1.1.5.9.1 调试界面2，剩余窗口变换的时候frame-&gt;windows出现minisize不不匹配问题" />
+    <MESSAGE value="1.3.3.3 准备修改modbus" />
+    <MESSAGE value="1.3.3.4 修改main_monitor_data" />
+    <MESSAGE value="1.3.3.4.2 添加零点标定和span标定" />
+    <MESSAGE value="1.3.3.4.4 完成ufc状态检测" />
+    <MESSAGE value="1.3.3.4.4 完成ufc状态检测 并且修改细节" />
+    <MESSAGE value="1.3.3.5 完成标定数据存储，待优化开始实验停止实验线程化" />
+    <option name="LAST_COMMIT_MESSAGE" value="1.3.3.5 完成标定数据存储，待优化开始实验停止实验线程化" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/my_abc/BaseModule.py</url>
-          <line>184</line>
-          <option name="timeStamp" value="81" />
+          <url>file://$PROJECT_DIR$/Service/UFC_UGC_ZOS_Service/index/UFC_UGC_ZOS_index.py</url>
+          <line>390</line>
+          <option name="timeStamp" value="126" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
+          <line>120</line>
+          <option name="timeStamp" value="131" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
+          <line>116</line>
+          <option name="timeStamp" value="135" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
+          <line>533</line>
+          <option name="timeStamp" value="140" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/gas_calibration/Gas_Carlibration.py</url>
+          <line>80</line>
+          <option name="timeStamp" value="173" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/public/function/Tansfer/DbTransferExcel.py</url>
+          <line>74</line>
+          <option name="timeStamp" value="182" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>
@@ -264,6 +437,7 @@
     <watches-manager>
       <configuration name="PythonConfigurationType">
         <watch expression="self" />
+        <watch expression="global_setting" language="Python" />
         <watch expression="self.open_windows" language="Python" />
         <watch expression="self.active_module_widgets" language="Python" />
       </configuration>
@@ -271,8 +445,19 @@
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Animal_Project_newly$MainWindow_index.coverage" NAME="MainWindow_index 覆盖结果" MODIFIED="1753702069150" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/index" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$animal_window.coverage" NAME="animal_window 覆盖结果" MODIFIED="1754602169200" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$experiment_setting_entity.coverage" NAME="experiment_setting_entity 覆盖结果" MODIFIED="1754696677057" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/entity" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$ScheduledTimerTaskManager.coverage" NAME="ScheduledTimerTaskManager 覆盖结果" MODIFIED="1757859882058" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$content_window.coverage" NAME="content_window 覆盖结果" MODIFIED="1754867945456" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$group_window.coverage" NAME="group_window 覆盖结果" MODIFIED="1754600767409" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$ThemeQt6.coverage" NAME="ThemeQt6 覆盖结果" MODIFIED="1753687576845" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/theme" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753996820615" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
-    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1754652173907" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$Table_select_columns_paging_bottom.coverage" NAME="Table_select_columns_paging_bottom 覆盖结果" MODIFIED="1755194407271" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_monitor_data/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$New_Mod_Bus.coverage" NAME="New_Mod_Bus 覆盖结果" MODIFIED="1757876848721" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/function/Modbus" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$LoadingMask.coverage" NAME="LoadingMask 覆盖结果" MODIFIED="1757952610713" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/component/mask" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1757964015429" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753787419017" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main__1_.coverage" NAME="main (1) 覆盖结果" MODIFIED="1756983622566" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$AsyPromise.coverage" NAME="AsyPromise 覆盖结果" MODIFIED="1756923864522" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/promise" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$table_column_check_list_view.coverage" NAME="table_column_check_list_view 覆盖结果" MODIFIED="1755189968509" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_monitor_data/ui" />
   </component>
 </project>
