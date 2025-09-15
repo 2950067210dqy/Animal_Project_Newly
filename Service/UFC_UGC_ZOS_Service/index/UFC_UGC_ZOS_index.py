@@ -52,7 +52,6 @@ class auto_run_Thread(MyQThread):
         self.run_signal = run_signal
         # 标定信號
         self.carlibration_signal = carlibration_signal
-        # 量程标定信號
 
         # 状态检测信號
         self.gas_state_check_signal =gas_state_check_signal
@@ -180,7 +179,8 @@ class UFC_UGC_ZOS_index(QObject):
 
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
-
+        # 暂停
+        self.ispause = False
 
         # 发送的数据结构
         self.send_message = {
@@ -361,6 +361,12 @@ class UFC_UGC_ZOS_index(QObject):
 
         if self.monitor_start_state_Thread is not None:
             self.monitor_start_state_Thread.stop()
+        if self.UFC_gas_path_system_obj is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread is not None:
+            self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread.stop()
+        if self.UGC_gas_path_system_obj is not None and self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread is not None:
+            self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread.stop()
+        if self.ZOS_gas_path_system_obj is not None and self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread is not None:
+            self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread.stop()
         self.close_timers()
         p=AsyPromise(self.UGC_gas_path_system_obj.stop).then(
             lambda v: AsyPromise(
@@ -426,12 +432,59 @@ class UFC_UGC_ZOS_index(QObject):
 
         )
         pass
+    def pause(self):
+        if self.UFC_gas_path_system_obj is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread is not None:
+            self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread.pause()
+        if self.UGC_gas_path_system_obj is not None and self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread is not None:
+            self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread.pause()
+        if self.ZOS_gas_path_system_obj is not None and self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread is not None:
+            self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread.pause()
+        if self.auto_run_thread is not None:
+            self.auto_run_thread.pause()
+        if self.monitor_start_state_Thread is not None:
+            self.monitor_start_state_Thread.pause()
+        self.pause_timers()
+        self.ispause=True
+    def resume(self):
+        if self.UFC_gas_path_system_obj is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread is not None:
+            self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread.resume()
+        if self.UGC_gas_path_system_obj is not None and self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread is not None:
+            self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread.resume()
+        if self.ZOS_gas_path_system_obj is not None and self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread is not None:
+            self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread.resume()
+        if self.auto_run_thread is not None:
+            self.auto_run_thread.resume()
+        if self.monitor_start_state_Thread is not None:
+            self.monitor_start_state_Thread.resume()
+        self.resume_timers()
+        self.ispause=False
     #设置启动阶段的定时器
     def set_start_timers(self,resolve, reject):
         self.set_zos_start_timer()
         self.set_ufc_start_timer()
         resolve()
-
+    def pause_timers(self):
+        if self.zos_start_timer is not None and (self.zos_start_timer.is_active()):
+            self.zos_start_timer.pause()
+        if self.ufc_start_timer is not None and (self.ufc_start_timer.is_active()):
+            self.ufc_start_timer.pause()
+        if self.calibration_start_timer is not None and (
+                self.calibration_start_timer.is_active() ):
+            self.calibration_start_timer.pause()
+        if self.gas_state_check_timer is not None and (
+                self.gas_state_check_timer.is_active() ):
+            self.gas_state_check_timer.pause()
+        pass
+    def resume_timers(self):
+        if self.zos_start_timer is not None:
+            self.zos_start_timer.resume()
+        if self.ufc_start_timer is not None :
+            self.ufc_start_timer.resume()
+        if self.calibration_start_timer is not None:
+            self.calibration_start_timer.resume()
+        if self.gas_state_check_timer is not None:
+            self.gas_state_check_timer.resume()
+        pass
     def close_timers(self):
         # 关闭timers
         # 关闭窗口时确保停止定时器

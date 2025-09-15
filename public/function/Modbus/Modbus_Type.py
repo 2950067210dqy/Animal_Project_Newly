@@ -3,22 +3,46 @@ from enum import Enum
 
 from public.entity.send_message import Send_Message
 from public.util.number_util import number_util
-
+class Others_Tables(Enum):
+    """
+    其他数据项的数据库文件
+    """
+    Zero_Carlibration_Data={
+        "data": {
+            'function_code': 0,
+            'column': [
+                ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
+                ("oxygen_calibration_zero_value", "氧浓度0点校准值", " REAL "),
+                ("time", "获取时间", " TIMESTAMP ")
+            ],
+        }
+    }
+    SPan_Carlibration_Data={
+        "data": {
+            'function_code': 0,
+            'column': [
+                ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
+                ("oxygen_calibration_span_value", "氧浓传感器span数值", " REAL "),
+                ("time", "获取时间", " TIMESTAMP ")
+            ],
+        }
+    }
 class Modbus_Slave_Tables(Enum):
     """
     数据库文件
     """
+    # 02 04
     UFC_monitor_data={
             "monitor_data": {
                     'function_code':4,
                     'column': [
                             ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
+                            ("mouse_cage","鼠笼号"," INTEGER "),
                             ("flow_num", "流量计测量值(sccm)", " INTEGER "),
-                            ("diff_pressure_num", "差压计测量值(kPa)", " REAL "),
-                            ("barometer_num_1", "气压计1测量值(kPa)", " REAL "),
-                            ("barometer_num_2", "气压计2测量值(kPa)", " REAL "),
-                            ("reserve_num_1", "备用1测量值", " REAL "),
-                            ("reserve_num_2", "备用2测量值", " REAL "),
+                            ("reserve_high_num_1", "备用1高字节", " TEXT "),
+                            ("reserve_low_num_1", "备用1低字节", " TEXT "),
+                            ("reserve_high_num_2", "备用2高字节", " TEXT "),
+                            ("reserve_low_num_2", "备用2低字节", " TEXT "),
                             ("time", "获取时间", " TIMESTAMP ")
                                 ],
             }
@@ -179,13 +203,13 @@ class Modbus_Slave_Tables(Enum):
             ]
         }
     }
+    #04 04
     ZOS_monitor_data={
         "monitor_data": {
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("oxygen_num", "氧气传感器测量值(%)", " REAL "),
-                ("oxygen2_num", "氧气传感器2测量值(%)", " REAL "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
         }
@@ -476,8 +500,24 @@ class Modbus_Slave_Tables(Enum):
         **WM_sensor_status,
         **WM_module_information
     }
-
-
+class Others(Enum):
+    """
+    其他数据项
+    """
+    Zero_Carlibration={
+        "name": "ZeroCalibration",
+        "description": "零点标定",
+        'address': 0x00,
+        'int': int(0x00),
+        'table': Others_Tables.Zero_Carlibration_Data.value
+    }
+    Span_Carlibration={
+        "name": "SpanCalibration",
+        "description": "SPan标定",
+        'address': 0x00,
+        'int': int(0x00),
+        'table': Others_Tables.SPan_Carlibration_Data.value
+    }
 class Modbus_Slave_Ids(Enum):
     """
     远程地址大全
@@ -1097,6 +1137,10 @@ class Modbus_Slave_Send_Messages_All(Enum):
 
 
 class Modbus_Slave_Type(Enum):
+    #标定数据
+    Calibrations = [
+        Others.Zero_Carlibration,Others.Span_Carlibration
+    ]
     # 将上面的分为鼠笼内的和鼠笼外的传感器
     Not_Each_Mouse_Cage = [
         Modbus_Slave_Ids.UFC, Modbus_Slave_Ids.UGC, Modbus_Slave_Ids.ZOS

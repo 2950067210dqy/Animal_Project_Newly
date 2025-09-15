@@ -1,5 +1,7 @@
 import abc
 import copy
+import queue
+import threading
 import time
 
 from PyQt6.QtCore import pyqtSignal
@@ -7,6 +9,7 @@ from loguru import logger
 
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
 from public.config_class.global_setting import global_setting
+from public.function.Modbus.Modbus_Type import Others_Tables
 
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.number_util import number_util
@@ -177,7 +180,20 @@ class Zero_Carlibration(Gas_Carlibration):
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} |  零点标定 5.氧浓传感器零点记录值{now_oxygen_value}")
         # 存储值----------------------------------------------------
-
+        return_data_struct={}
+        return_data_struct['module_name']='ZeroCalibration'
+        return_data_struct['table_name'] = next(iter(Others_Tables.Zero_Carlibration_Data.value.keys()))
+        return_data_struct['mouse_cage_number']=0
+        return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value}]
+        return_data_struct['slave_id']=0
+        return_data_struct['function_code']=0
+        #  取出全局存储queue
+        lock = global_setting.get_setting("store_Q_lock", threading.Lock())
+        storeQ = global_setting.get_setting("store_Q", queue.Queue())
+        # 加锁
+        with lock:
+            # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
+            storeQ.put(return_data_struct)  # 修改全局变量
         # 6.校零气路（Zero气）电磁阀关。
         self.send_message = {
             'port': port,
@@ -311,7 +327,20 @@ class Range_Carlibration(Gas_Carlibration):
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 5.氧浓传感器span数值记录。{now_oxygen_value}")
         # 存储值----------------------------------------------------
-
+        return_data_struct = {}
+        return_data_struct['module_name'] = 'SpanCalibration'
+        return_data_struct['table_name'] = next(iter(Others_Tables.SPan_Carlibration_Data.value.keys()))
+        return_data_struct['mouse_cage_number'] = 0
+        return_data_struct['data'] = [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value}]
+        return_data_struct['slave_id'] = 0
+        return_data_struct['function_code'] = 0
+        #  取出全局存储queue
+        lock = global_setting.get_setting("store_Q_lock", threading.Lock())
+        storeQ = global_setting.get_setting("store_Q", queue.Queue())
+        # 加锁
+        with lock:
+            # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
+            storeQ.put(return_data_struct)  # 修改全局变量
         # 6.ugc span电磁阀关闭。
         self.send_message = {
             'port': port,

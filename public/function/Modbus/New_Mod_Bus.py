@@ -310,8 +310,9 @@ class ModbusRTUMasterNew:
         if send_state:
             logger.info("开始解析报文")
             try:
+                # 为了线程安全只能去response里的数值
                 modbus_response_parser = Modbus_Response_Parser(
-                    slave_id=f"{response[0]}",
+                    slave_id=f"{response[0]:x}",
                     function_code=response[1],
                     response=response,
                     response_hex=response_hex

@@ -5,6 +5,7 @@ import threading
 import time
 from json import JSONDecodeError
 from PyQt6 import QtCore
+from PyQt6.QtCore import QThread
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget
 from loguru import logger
@@ -12,6 +13,7 @@ from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 from my_abc.BaseModule import BaseModule
 from public.component.custom_status_bar import CustomStatusBar
+from public.component.mask.LoadingMask import AnimatedLoadingMask, LoadingContext
 from public.config_class.global_setting import global_setting
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
 from public.util.custom_data_file_util import custom_data_file_util
@@ -329,301 +331,329 @@ class MainWindow_Index(ThemedWindow):
         self.setStyleSheet(global_setting.get_setting("theme_manager").get_style_sheet())
         pass
     def start_experiment(self):
-        self.setEnabled(False)
-        self.status_bar.update_tip(f"正在开启实验监测...")
-        port = global_setting.get_setting("port")
-        if port is None or port == "":
-            reply = QMessageBox.question(self, '注意',
-                                         "未设置串口，请去实验配置配置串口!",
-                                         QMessageBox.StandardButton.Cancel,
-                                         QMessageBox.StandardButton.No)
+        # 开启遮罩
+        # 在with语句中自动管理加载遮罩
+        with LoadingContext(self, "正在开启实验监测...", "animated") as mask:
+
+            # mask.updateText("即将完成...")
+
+            self.setEnabled(False)
+            self.status_bar.update_tip(f"正在开启实验监测...")
+            port = global_setting.get_setting("port")
+            if port is None or port == "":
+                reply = QMessageBox.question(self, '注意',
+                                             "未设置串口，请去实验配置配置串口!",
+                                             QMessageBox.StandardButton.Cancel,
+                                             QMessageBox.StandardButton.No)
+                self.setEnabled(True)
+                return
+            # 开始实验
+            global_setting.set_setting("app_state", AppState.MONITORING)
+            global_setting.set_setting("start_experiment_time", time.time())
+            global_setting.set_setting("pause_experiment_time", [])
+            global_setting.set_setting("relieve_pause_experiment_time", [])
+
+            try:
+                self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub,self.ufc_ugc_zos,self.ufc_ugc_zos_thread = main_monitor_data.main(
+                    port=port, q=global_setting.get_setting("queue"),
+                    send_message_q=global_setting.get_setting("send_message_queue"))
+            except Exception as e:
+                logger.error(f"开启数据监测线程错误，原因：{e}")
+                self.status_bar.update_tip(f"开启数据监测线程错误，原因：{e}")
+            try:
+                self.deep_camera_thread_sub_list, self.deep_camera_read_queue_data_thread_sub, self.deep_camera_delete_file_thread_sub = main_deep_camera.main(
+                    q=global_setting.get_setting("queue"))
+            except Exception as e:
+                logger.error(f"开启深度相机监测线程错误，原因：{e}")
+                self.status_bar.update_tip(f"开启深度相机数据监测线程错误，原因：{e}")
+            try:
+                self.infrared_camera_thread_sub_list,self.infrared_camera_read_queue_data_thread_sub,self.infrared_camera_delete_file_thread_sub = main_infrared_camera.main(q=global_setting.get_setting("queue"))
+            except Exception as e:
+                logger.error(f"开启红外相机监测线程错误，原因：{e}")
+                self.status_bar.update_tip(f"开启红外相机数据监测线程错误，原因：{e}")
+            # 更新main_gui组件显示
+            self.change_enable_component_app_state_signal.emit()
+            self.status_bar.update_status()
+            self.status_bar.update_tip(f"开启实验监测成功！")
+            for action_dict in self.tool_bar_actions:
+                if action_dict["obj_name"] == "start_experiment":
+                    action_dict["action"]: QAction
+                    action_dict["action"].setDisabled(True)
+                if action_dict["obj_name"] == "stop_experiment":
+                    action_dict["action"]: QAction
+                    action_dict["action"].setDisabled(False)
+                if action_dict["obj_name"] == "pause_experiment":
+                    action_dict["action"]: QAction
+                    action_dict["action"].setDisabled(False)
             self.setEnabled(True)
-            return
-        # 开始实验
-        global_setting.set_setting("app_state", AppState.MONITORING)
-        global_setting.set_setting("start_experiment_time", time.time())
-        global_setting.set_setting("pause_experiment_time", [])
-        global_setting.set_setting("relieve_pause_experiment_time", [])
-        try:
-            self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub,self.ufc_ugc_zos,self.ufc_ugc_zos_thread = main_monitor_data.main(
-                port=port, q=global_setting.get_setting("queue"),
-                send_message_q=global_setting.get_setting("send_message_queue"))
-        except Exception as e:
-            logger.error(f"开启数据监测线程错误，原因：{e}")
-            self.status_bar.update_tip(f"开启数据监测线程错误，原因：{e}")
-        try:
-            self.deep_camera_thread_sub_list, self.deep_camera_read_queue_data_thread_sub, self.deep_camera_delete_file_thread_sub = main_deep_camera.main(
-                q=global_setting.get_setting("queue"))
-        except Exception as e:
-            logger.error(f"开启深度相机监测线程错误，原因：{e}")
-            self.status_bar.update_tip(f"开启深度相机数据监测线程错误，原因：{e}")
-        try:
-            self.infrared_camera_thread_sub_list,self.infrared_camera_read_queue_data_thread_sub,self.infrared_camera_delete_file_thread_sub = main_infrared_camera.main(q=global_setting.get_setting("queue"))
-        except Exception as e:
-            logger.error(f"开启红外相机监测线程错误，原因：{e}")
-            self.status_bar.update_tip(f"开启红外相机数据监测线程错误，原因：{e}")
-        # 更新main_gui组件显示
-        self.change_enable_component_app_state_signal.emit()
-        self.status_bar.update_status()
-        self.status_bar.update_tip(f"开启实验监测成功！")
-        for action_dict in self.tool_bar_actions:
-            if action_dict["obj_name"] == "start_experiment":
-                action_dict["action"]: QAction
-                action_dict["action"].setDisabled(True)
-            if action_dict["obj_name"] == "stop_experiment":
-                action_dict["action"]: QAction
-                action_dict["action"].setDisabled(False)
-            if action_dict["obj_name"] == "pause_experiment":
-                action_dict["action"]: QAction
-                action_dict["action"].setDisabled(False)
-        self.setEnabled(True)
+
         pass
     def pause_experiment(self):
-        self.setEnabled(False)
-        try:
-            if self.store_thread_sub is not None and not self.store_thread_sub.isPaused():
-                self.store_thread_sub.pause()
-            else:
-                self.store_thread_sub.resume()
-        except Exception as e:
-            logger.error(f"暂停实验监测store_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        try:
-            if self.add_message_thread_sub is not None and not self.add_message_thread_sub.isPaused():
-                self.add_message_thread_sub.pause()
-            else:
-                self.add_message_thread_sub.resume()
-        except Exception as e:
-            logger.error(f"暂停实验监测add_message_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        try:
-            if self.send_thread_sub is not None and not self.send_thread_sub.isPaused():
-                self.send_thread_sub.pause()
-            else:
-                self.send_thread_sub.resume()
-        except Exception as e:
-            logger.error(f"暂停实验监测send_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        try:
-            if self.read_queue_data_thread_sub is not None and not self.read_queue_data_thread_sub.isPaused():
-                self.read_queue_data_thread_sub.pause()
-            else:
-                self.read_queue_data_thread_sub.resume()
-        except Exception as e:
-            logger.error(f"暂停实验监测read_queue_data_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        # 所有红外相机线程停止
-        for camera_struct_l in self.infrared_camera_thread_sub_list:
-            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                try:
-                    if camera_struct_l['camera'] is not None and not camera_struct_l['camera'].isPaused():
-                        camera_struct_l['camera'].pause()
-                    else:
-                        camera_struct_l['camera'].resume()
-                except Exception as e:
-                    logger.error(f"暂停实验监测infrared_camera_thread_sub_list错误，原因：{e}")
-                    self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        try:
-            if self.infrared_camera_delete_file_thread_sub is not None and not self.infrared_camera_delete_file_thread_sub.isPaused():
-                self.infrared_camera_delete_file_thread_sub.pause()
-            else:
-                self.infrared_camera_delete_file_thread_sub.resume()
-        except Exception as e:
-            logger.error(f"暂停实验监测infrared_camera_delete_file_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        try:
-            if self.infrared_camera_read_queue_data_thread_sub is not None and not self.infrared_camera_read_queue_data_thread_sub.isPaused():
-                self.infrared_camera_read_queue_data_thread_sub.pause()
-            else:
-                self.infrared_camera_read_queue_data_thread_sub.resume()
-        except Exception as e:
-            logger.error(f"暂停实验监测infrared_camera_read_queue_data_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        # 所有深度相机线程停止
-        for camera_struct_l in self.deep_camera_thread_sub_list:
-            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                try:
-                    if camera_struct_l['camera'] is not None and not camera_struct_l['camera'].isPaused():
-                        camera_struct_l['camera'].pause()
-                    else:
-                        camera_struct_l['camera'].resume()
-                except Exception as e:
-                    logger.error(f"暂停实验监测deep_camera_thread_sub_list错误，原因：{e}")
-                    self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-            if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
-                try:
-                    if camera_struct_l['img_process'] is not None and not camera_struct_l['img_process'].isPaused():
-                        camera_struct_l['img_process'].pause()
-                    else:
-                        camera_struct_l['img_process'].resume()
-                except Exception as e:
-                    logger.error(f"暂停实验监测deep_camera_thread_sub_list_img_process错误，原因：{e}")
-                    self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        try:
-            if self.deep_camera_delete_file_thread_sub is not None and not self.deep_camera_delete_file_thread_sub.isPaused():
-                self.deep_camera_delete_file_thread_sub.pause()
-            else:
-                self.deep_camera_delete_file_thread_sub.resume()
-        except Exception as e:
-            logger.error(f"暂停实验监测deep_camera_delete_file_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        try:
-            if self.deep_camera_read_queue_data_thread_sub is not None and not self.deep_camera_read_queue_data_thread_sub.isPaused():
-                self.deep_camera_read_queue_data_thread_sub.pause()
-            else:
-                self.deep_camera_read_queue_data_thread_sub.resume()
-        except Exception as e:
-            logger.error(f"暂停实验监测deep_camera_read_queue_data_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
-        pass
-
-
-        self.is_paused = not self.is_paused
-        if self.is_paused:
-            pause_experiment_time=global_setting.get_setting("pause_experiment_time",[])
-            pause_experiment_time.append(time.time())
-            global_setting.set_setting("pause_experiment_time",pause_experiment_time )
-            self.status_bar.update_tip(f"暂停实验监测成功！")
-        else:
-            relieve_pause_experiment_time = global_setting.get_setting("relieve_pause_experiment_time", [])
-            relieve_pause_experiment_time.append(time.time())
-            global_setting.set_setting("relieve_pause_experiment_time", relieve_pause_experiment_time)
-            self.status_bar.update_tip(f"解除暂停实验监测成功！")
-        self.status_bar.update_status(is_paused=self.is_paused)
-
-
-        for action_dict in self.tool_bar_actions:
-            if action_dict["obj_name"] == "pause_experiment":
-                action_dict["action"]: QAction
-                if self.is_paused:
-                    action_dict["name"]="解除暂停实验"
+        # 在with语句中自动管理加载遮罩
+        with LoadingContext(self, "正在暂停...", "animated") as mask:
+            self.setEnabled(False)
+            try:
+                if self.ufc_ugc_zos is not None and not self.ufc_ugc_zos.ispause:
+                    self.ufc_ugc_zos.pause()
                 else:
-                    action_dict["name"] = "暂停实验"
-                action_dict["action"].setToolTip(action_dict["name"])
-                action_dict["action"].setText(action_dict["name"])
-        self.setEnabled(True)
+                    self.ufc_ugc_zos.resume()
+                if self.ufc_ugc_zos_thread is not None and not self.ufc_ugc_zos_thread.isPaused():
+                    self.ufc_ugc_zos.disabled_auto_btn_handle()
+            except Exception as e:
+                logger.error(f"暂停实验监测ufc_ugc_zos错误，原因：{e}")
+            try:
+                if self.store_thread_sub is not None and not self.store_thread_sub.isPaused():
+                    self.store_thread_sub.pause()
+                else:
+                    self.store_thread_sub.resume()
+            except Exception as e:
+                logger.error(f"暂停实验监测store_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            try:
+                if self.add_message_thread_sub is not None and not self.add_message_thread_sub.isPaused():
+                    self.add_message_thread_sub.pause()
+                else:
+                    self.add_message_thread_sub.resume()
+            except Exception as e:
+                logger.error(f"暂停实验监测add_message_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            try:
+                if self.send_thread_sub is not None and not self.send_thread_sub.isPaused():
+                    self.send_thread_sub.pause()
+                else:
+                    self.send_thread_sub.resume()
+            except Exception as e:
+                logger.error(f"暂停实验监测send_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            try:
+                if self.read_queue_data_thread_sub is not None and not self.read_queue_data_thread_sub.isPaused():
+                    self.read_queue_data_thread_sub.pause()
+                else:
+                    self.read_queue_data_thread_sub.resume()
+            except Exception as e:
+                logger.error(f"暂停实验监测read_queue_data_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            # 所有红外相机线程停止
+            for camera_struct_l in self.infrared_camera_thread_sub_list:
+                if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                    try:
+                        if camera_struct_l['camera'] is not None and not camera_struct_l['camera'].isPaused():
+                            camera_struct_l['camera'].pause()
+                        else:
+                            camera_struct_l['camera'].resume()
+                    except Exception as e:
+                        logger.error(f"暂停实验监测infrared_camera_thread_sub_list错误，原因：{e}")
+                        self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            try:
+                if self.infrared_camera_delete_file_thread_sub is not None and not self.infrared_camera_delete_file_thread_sub.isPaused():
+                    self.infrared_camera_delete_file_thread_sub.pause()
+                else:
+                    self.infrared_camera_delete_file_thread_sub.resume()
+            except Exception as e:
+                logger.error(f"暂停实验监测infrared_camera_delete_file_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            try:
+                if self.infrared_camera_read_queue_data_thread_sub is not None and not self.infrared_camera_read_queue_data_thread_sub.isPaused():
+                    self.infrared_camera_read_queue_data_thread_sub.pause()
+                else:
+                    self.infrared_camera_read_queue_data_thread_sub.resume()
+            except Exception as e:
+                logger.error(f"暂停实验监测infrared_camera_read_queue_data_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            # 所有深度相机线程停止
+            for camera_struct_l in self.deep_camera_thread_sub_list:
+                if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                    try:
+                        if camera_struct_l['camera'] is not None and not camera_struct_l['camera'].isPaused():
+                            camera_struct_l['camera'].pause()
+                        else:
+                            camera_struct_l['camera'].resume()
+                    except Exception as e:
+                        logger.error(f"暂停实验监测deep_camera_thread_sub_list错误，原因：{e}")
+                        self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+                if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
+                    try:
+                        if camera_struct_l['img_process'] is not None and not camera_struct_l['img_process'].isPaused():
+                            camera_struct_l['img_process'].pause()
+                        else:
+                            camera_struct_l['img_process'].resume()
+                    except Exception as e:
+                        logger.error(f"暂停实验监测deep_camera_thread_sub_list_img_process错误，原因：{e}")
+                        self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            try:
+                if self.deep_camera_delete_file_thread_sub is not None and not self.deep_camera_delete_file_thread_sub.isPaused():
+                    self.deep_camera_delete_file_thread_sub.pause()
+                else:
+                    self.deep_camera_delete_file_thread_sub.resume()
+            except Exception as e:
+                logger.error(f"暂停实验监测deep_camera_delete_file_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            try:
+                if self.deep_camera_read_queue_data_thread_sub is not None and not self.deep_camera_read_queue_data_thread_sub.isPaused():
+                    self.deep_camera_read_queue_data_thread_sub.pause()
+                else:
+                    self.deep_camera_read_queue_data_thread_sub.resume()
+            except Exception as e:
+                logger.error(f"暂停实验监测deep_camera_read_queue_data_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
+            pass
+
+
+            self.is_paused = not self.is_paused
+            if self.is_paused:
+                pause_experiment_time=global_setting.get_setting("pause_experiment_time",[])
+                pause_experiment_time.append(time.time())
+                global_setting.set_setting("pause_experiment_time",pause_experiment_time )
+                self.status_bar.update_tip(f"暂停实验监测成功！")
+            else:
+                relieve_pause_experiment_time = global_setting.get_setting("relieve_pause_experiment_time", [])
+                relieve_pause_experiment_time.append(time.time())
+                global_setting.set_setting("relieve_pause_experiment_time", relieve_pause_experiment_time)
+                self.status_bar.update_tip(f"解除暂停实验监测成功！")
+            self.status_bar.update_status(is_paused=self.is_paused)
+
+
+            for action_dict in self.tool_bar_actions:
+                if action_dict["obj_name"] == "pause_experiment":
+                    action_dict["action"]: QAction
+                    if self.is_paused:
+                        action_dict["name"]="解除暂停实验"
+                    else:
+                        action_dict["name"] = "暂停实验"
+                    action_dict["action"].setToolTip(action_dict["name"])
+                    action_dict["action"].setText(action_dict["name"])
+            self.setEnabled(True)
         pass
     def stop_experiment(self):
-        self.setEnabled(False)
-        self.status_bar.update_tip(f"正在关闭实验监测...")
-        try:
-            if self.store_thread_sub is not None and self.store_thread_sub.isRunning():
-                self.store_thread_sub.stop()
-        except Exception as e:
-            logger.error(f"关闭实验监测store_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        try:
-            if self.add_message_thread_sub is not None and self.add_message_thread_sub.isRunning():
-                self.add_message_thread_sub.stop()
-        except Exception as e:
-            logger.error(f"关闭实验监测add_message_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        try:
-            if self.send_thread_sub is not None and self.send_thread_sub.isRunning():
-                self.send_thread_sub.stop()
-        except Exception as e:
-            logger.error(f"关闭实验监测send_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        try:
-            if self.read_queue_data_thread_sub is not None and self.read_queue_data_thread_sub.isRunning():
-                self.read_queue_data_thread_sub.stop()
-        except Exception as e:
-            logger.error(f"关闭实验监测read_queue_data_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        try:
-            if self.ufc_ugc_zos is not None and self.ufc_ugc_zos_thread is not None :
-                self.ufc_ugc_zos.disabled_auto_btn_handle()
-                self.ufc_ugc_zos_thread:threading.Thread.join()
-        except Exception as e:
-            logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
-            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        # 所有红外相机线程停止
-        for camera_struct_l in self.infrared_camera_thread_sub_list:
-            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                try:
-                    if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
-                        camera_struct_l['camera'].stop()
-                except Exception as e:
-                    logger.error(f"关闭实验监测infrared_camera_thread_sub_list错误，原因：{e}")
-                    self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        try:
-            if self.infrared_camera_delete_file_thread_sub is not None and self.infrared_camera_delete_file_thread_sub.isRunning():
-                self.infrared_camera_delete_file_thread_sub.stop()
-        except Exception as e:
-            logger.error(f"关闭实验监测infrared_camera_delete_file_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        try:
-            if self.infrared_camera_read_queue_data_thread_sub is not None and self.infrared_camera_read_queue_data_thread_sub.isRunning():
-                self.infrared_camera_read_queue_data_thread_sub.stop()
-        except Exception as e:
-            logger.error(f"关闭实验监测infrared_camera_read_queue_data_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        # 所有深度相机线程停止
-        for camera_struct_l in self.deep_camera_thread_sub_list:
-            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                try:
-                    if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
-                        camera_struct_l['camera'].stop()
-                except Exception as e:
-                    logger.error(f"关闭实验监测deep_camera_thread_sub_list错误，原因：{e}")
-                    self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-            if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
-                try:
-                    if camera_struct_l['img_process'] is not None and camera_struct_l['img_process'].isRunning():
-                        camera_struct_l['img_process'].stop()
-                except Exception as e:
-                    logger.error(f"关闭实验监测deep_camera_thread_sub_list_img_process错误，原因：{e}")
-                    self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        try:
-            if self.deep_camera_delete_file_thread_sub is not None and self.deep_camera_delete_file_thread_sub.isRunning():
-                self.deep_camera_delete_file_thread_sub.stop()
-        except Exception as e:
-            logger.error(f"关闭实验监测deep_camera_delete_file_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
-        try:
-            if self.deep_camera_read_queue_data_thread_sub is not None and self.deep_camera_read_queue_data_thread_sub.isRunning():
-                self.deep_camera_read_queue_data_thread_sub.stop()
-        except Exception as e:
-            logger.error(f"关闭实验监测deep_camera_read_queue_data_thread_sub错误，原因：{e}")
-            self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+        # 在with语句中自动管理加载遮罩
+        with LoadingContext(self, "正在停止...", "animated") as mask:
+            self.setEnabled(False)
+            self.status_bar.update_tip(f"正在关闭实验监测...")
+            try:
+                if self.ufc_ugc_zos is not None:
+                    self.ufc_ugc_zos.disabled_auto_btn_handle()
+                if self.ufc_ugc_zos_thread is not None:
+                    self.ufc_ugc_zos.disabled_auto_btn_handle()
+            except Exception as e:
+                logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
+            try:
+                if self.store_thread_sub is not None and self.store_thread_sub.isRunning():
+                    self.store_thread_sub.stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测store_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            try:
+                if self.add_message_thread_sub is not None and self.add_message_thread_sub.isRunning():
+                    self.add_message_thread_sub.stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测add_message_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            try:
+                if self.send_thread_sub is not None and self.send_thread_sub.isRunning():
+                    self.send_thread_sub.stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测send_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            try:
+                if self.read_queue_data_thread_sub is not None and self.read_queue_data_thread_sub.isRunning():
+                    self.read_queue_data_thread_sub.stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测read_queue_data_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            try:
+                if self.ufc_ugc_zos is not None and self.ufc_ugc_zos_thread is not None :
+                    self.ufc_ugc_zos.disabled_auto_btn_handle()
+                    self.ufc_ugc_zos_thread:threading.Thread.join()
+            except Exception as e:
+                logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
+                self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            # 所有红外相机线程停止
+            for camera_struct_l in self.infrared_camera_thread_sub_list:
+                if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                    try:
+                        if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                            camera_struct_l['camera'].stop()
+                    except Exception as e:
+                        logger.error(f"关闭实验监测infrared_camera_thread_sub_list错误，原因：{e}")
+                        self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            try:
+                if self.infrared_camera_delete_file_thread_sub is not None and self.infrared_camera_delete_file_thread_sub.isRunning():
+                    self.infrared_camera_delete_file_thread_sub.stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测infrared_camera_delete_file_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            try:
+                if self.infrared_camera_read_queue_data_thread_sub is not None and self.infrared_camera_read_queue_data_thread_sub.isRunning():
+                    self.infrared_camera_read_queue_data_thread_sub.stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测infrared_camera_read_queue_data_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            # 所有深度相机线程停止
+            for camera_struct_l in self.deep_camera_thread_sub_list:
+                if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                    try:
+                        if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                            camera_struct_l['camera'].stop()
+                    except Exception as e:
+                        logger.error(f"关闭实验监测deep_camera_thread_sub_list错误，原因：{e}")
+                        self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+                if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
+                    try:
+                        if camera_struct_l['img_process'] is not None and camera_struct_l['img_process'].isRunning():
+                            camera_struct_l['img_process'].stop()
+                    except Exception as e:
+                        logger.error(f"关闭实验监测deep_camera_thread_sub_list_img_process错误，原因：{e}")
+                        self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            try:
+                if self.deep_camera_delete_file_thread_sub is not None and self.deep_camera_delete_file_thread_sub.isRunning():
+                    self.deep_camera_delete_file_thread_sub.stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测deep_camera_delete_file_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
+            try:
+                if self.deep_camera_read_queue_data_thread_sub is not None and self.deep_camera_read_queue_data_thread_sub.isRunning():
+                    self.deep_camera_read_queue_data_thread_sub.stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测deep_camera_read_queue_data_thread_sub错误，原因：{e}")
+                self.status_bar.update_tip(f"关闭实验监测错误，原因：{e}")
 
-        global_setting.set_setting("app_state", AppState.CONFIGURING)
-        global_setting.set_setting("stop_experiment_time", time.time())
+            global_setting.set_setting("app_state", AppState.CONFIGURING)
+            global_setting.set_setting("stop_experiment_time", time.time())
 
-        # 停止实验 将文件夹的数据合并成一个数据文件
-        # 读取实验设置文件路径
-        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
-        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
-            # 获取文件所在的文件夹路径
-            folder_path = os.path.dirname(experiment_setting_file)
-            # 获取文件名称
-            file_name = os.path.basename(experiment_setting_file)
-            # 不带扩展名的文件名称
-            file_name_without_extension = os.path.splitext(file_name)[0]
-            # 获取文件的扩展名
-            file_name_extension = os.path.splitext(file_name)[1]
-            # 定义文件夹路径
-            folder_path_data = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE'][
-                'fold_path'] + os.path.join(
-                global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
-                f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
-            custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
+            # 停止实验 将文件夹的数据合并成一个数据文件
+            # 读取实验设置文件路径
+            experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+            if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+                # 获取文件所在的文件夹路径
+                folder_path = os.path.dirname(experiment_setting_file)
+                # 获取文件名称
+                file_name = os.path.basename(experiment_setting_file)
+                # 不带扩展名的文件名称
+                file_name_without_extension = os.path.splitext(file_name)[0]
+                # 获取文件的扩展名
+                file_name_extension = os.path.splitext(file_name)[1]
+                # 定义文件夹路径
+                folder_path_data = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE'][
+                    'fold_path'] + os.path.join(
+                    global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
+                    f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
+                custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
 
-        # 更新main_gui组件显示
-        self.change_enable_component_app_state_signal.emit()
-        self.status_bar.update_status()
-        self.status_bar.update_tip(f"关闭实验监测成功！")
-        for action_dict in self.tool_bar_actions:
-            if action_dict["obj_name"] == "start_experiment":
-                action_dict["action"]: QAction
-                action_dict["action"].setDisabled(False)
-            if action_dict["obj_name"] == "stop_experiment":
-                action_dict["action"]: QAction
-                action_dict["action"].setDisabled(True)
+            # 更新main_gui组件显示
+            self.change_enable_component_app_state_signal.emit()
+            self.status_bar.update_status()
+            self.status_bar.update_tip(f"关闭实验监测成功！")
+            for action_dict in self.tool_bar_actions:
+                if action_dict["obj_name"] == "start_experiment":
+                    action_dict["action"]: QAction
+                    action_dict["action"].setDisabled(False)
+                if action_dict["obj_name"] == "stop_experiment":
+                    action_dict["action"]: QAction
+                    action_dict["action"].setDisabled(True)
 
 
 
-        self.setEnabled(True)
+            self.setEnabled(True)
         pass
     def close_tab(self, index):
         """关闭标签页"""

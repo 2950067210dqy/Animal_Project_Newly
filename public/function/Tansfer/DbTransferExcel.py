@@ -83,10 +83,11 @@ class DbTransferExcel():
                 else:
                     cage_number=None
                 sheet_name_CN= ""
-                for modbus_type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value+Modbus_Slave_Type.Each_Mouse_Cage.value:
+                for modbus_type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value+Modbus_Slave_Type.Each_Mouse_Cage.value+Modbus_Slave_Type.Calibrations.value:
                     if module_name_str == modbus_type.value['name']:
                         sheet_name_CN+=modbus_type.value['description']
                         break
+
                 sheet_name_CN+="监控数据"
                 if cage_number is not None:
                     sheet_name_CN+=f"_通道{cage_number-1}"

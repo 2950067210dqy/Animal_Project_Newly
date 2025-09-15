@@ -1,4 +1,5 @@
 import abc
+import queue
 import re
 import threading
 import time
@@ -347,7 +348,15 @@ class UFC_gas_path_system_run_thread(MyQThread):
             self.update_status_main_signal_gui_update.emit(
                 f"{time_util.get_format_from_time(time.time())} | UFC-运行 3. 循环读取流量值（推荐每{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])}秒读取一次），当前{index}s/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])}s")
             self.send_thread.send_message = self.send_message
-            self.send_thread.Send_no_promise()
+            result_data,message = self.send_thread.Send_no_promise()
+            result_data['data'].insert(0,{'desc':'鼠笼号','value':  mouse_cages_inc[self.mouse_cage_index]})
+            #  取出全局存储queue
+            lock =global_setting.get_setting("store_Q_lock", threading.Lock())
+            storeQ = global_setting.get_setting("store_Q", queue.Queue())
+            # 加锁
+            with lock:
+                # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
+                storeQ.put(result_data)  # 修改全局变量
             index+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])
             time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
 
@@ -543,7 +552,14 @@ class UGC_gas_path_system_run_thread(MyQThread):
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取CO2浓度")
         self.send_thread.send_message = self.send_message
-        self.send_thread.Send_no_promise()
+        result_data, message = self.send_thread.Send_no_promise()
+        #  取出全局存储queue
+        lock = global_setting.get_setting("store_Q_lock", threading.Lock())
+        storeQ = global_setting.get_setting("store_Q", queue.Queue())
+        # 加锁
+        with lock:
+            # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
+            storeQ.put(result_data)  # 修改全局变量
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
         pass
 class UGC_gas_path_system(Gas_path_system):
@@ -734,8 +750,17 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
         pass
     def check_senior_state(self,resolve,reject,port,r):
+        #存储值
+        result_data = r['data']
+        #  取出全局存储queue
+        lock = global_setting.get_setting("store_Q_lock", threading.Lock())
+        storeQ = global_setting.get_setting("store_Q", queue.Queue())
+        # 加锁
+        with lock:
+            # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
+            storeQ.put(result_data)  # 修改全局变量
         """2.传感器故障监测"""
-        m = re.search(r"氧传感器测量值\(%\)\s*:\s*([0-9]+(?:\.[0-9]+)?)", r)
+        m = re.search(r"氧传感器测量值\(%\)\s*:\s*([0-9]+(?:\.[0-9]+)?)", r['message'])
         if m:
             value_str = m.group(1)
             value = float(value_str)
