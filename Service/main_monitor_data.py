@@ -353,6 +353,20 @@ def main(port,q,send_message_q):
     total_messages_processed = 1
     read_queue_data_thread.queue = send_message_q
 
+    # UFC_UGC_ZOS
+    global ufc_ugc_zos_thread, ufc_ugc_zos
+    ufc_ugc_zos_thread = None
+    ufc_ugc_zos = None
+    try:
+
+        ufc_ugc_zos = UFC_UGC_ZOS_index()
+        ufc_ugc_zos.auto_btn_handle()
+        # ufc_ugc_zos_thread = threading.Thread(target=ufc_ugc_zos.auto_btn_handle)
+        # ufc_ugc_zos_thread.start()
+
+    except Exception as ex:
+        print(ex)
+        logger.error(f"<UNK>{ex}")
 
 
     # 存储线程
@@ -369,21 +383,7 @@ def main(port,q,send_message_q):
     add_message_thread=Add_message_thread("monitor_data_add_message",send_thread, port)
     add_message_thread.start()
 
-    #UFC_UGC_ZOS
-    global ufc_ugc_zos_thread,ufc_ugc_zos
-    ufc_ugc_zos_thread=None
-    ufc_ugc_zos=None
-    try:
 
-
-        ufc_ugc_zos = UFC_UGC_ZOS_index()
-        ufc_ugc_zos.auto_btn_handle()
-        # ufc_ugc_zos_thread = threading.Thread(target=ufc_ugc_zos.auto_btn_handle)
-        # ufc_ugc_zos_thread.start()
-
-    except Exception as ex:
-        print(ex)
-        logger.error(f"<UNK>{ex}")
 
     # 将实验配置存储到该实验的文件夹中去
     copy_experiment_setting_file()

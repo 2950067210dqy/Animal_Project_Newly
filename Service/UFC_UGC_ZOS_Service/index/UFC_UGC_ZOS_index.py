@@ -254,7 +254,8 @@ class UFC_UGC_ZOS_index(QObject):
 
 
     def logger_info(self,text):
-        logger.info(text)
+        if "\n" not in text:
+            logger.info(text)
     # 实例化功能
     def _init_function(self):
         # 将更新status信号绑定更新status界面函数
@@ -470,7 +471,7 @@ class UFC_UGC_ZOS_index(QObject):
             task=None,  # 先不传，后面用 set_task 注入
             run_in_thread=True,  # 若你的任务耗时，设为 True
 
-            run_immediately=False
+            run_immediately=True
         )
         self.calibration_start_timer.set_task(self.carlibation)
         self.calibration_start_timer.start()
