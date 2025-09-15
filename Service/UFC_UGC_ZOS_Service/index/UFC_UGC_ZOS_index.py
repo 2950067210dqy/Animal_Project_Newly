@@ -91,7 +91,7 @@ class auto_run_Thread(MyQThread):
             self.before_start_flag=False
         if self.start_finish_flag:
             self.start_finish_flag = False
-
+            global auto_wait_event
             auto_wait_event.wait()
 
             self.run_signal.emit()
@@ -210,6 +210,7 @@ class UFC_UGC_ZOS_index(QObject):
         self.zos_start_timer :PeriodicTimer=None
         self.ufc_start_timer :PeriodicTimer=None
         self.calibration_start_timer: PeriodicTimer = None
+        self.gas_state_check_timer: PeriodicTimer = None
         #监测开始状态的线程
         self.monitor_start_state_Thread:MyQThread = None
         #自動運行按鈕綫程
@@ -263,7 +264,7 @@ class UFC_UGC_ZOS_index(QObject):
         self.start_signal.connect(self.start_btn_handle)
         self.run_signal.connect(self.run_btn_handle)
         self.carlibration_signal.connect(self.calibration_handle)
-        self.gas_state_check_signal.connect(self.gas_state_check)
+        self.gas_state_check_signal.connect(self.gas_state_check_handle)
         self.auto_finish_signal.connect(self.auto_finish_handle)
 
         #实例化气路
@@ -303,6 +304,7 @@ class UFC_UGC_ZOS_index(QObject):
         self.close_timers()
 
         #預熱完之後取消自動運行的阻塞
+        global auto_wait_event
         auto_wait_event.set()
         auto_wait_event.clear()
     #启动按钮事件 启动气路
@@ -327,8 +329,7 @@ class UFC_UGC_ZOS_index(QObject):
         if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
             try:
                 # 方法1：使用 QTimer 延迟发射
-                # from PyQt6.QtCore import QTimer
-                # QTimer.singleShot(200, self.auto_run_thread.start_finish_signal.emit)
+
                 self.auto_run_thread.start_finish_signal.emit()
             except Exception as e:
                 logger.error(e)
@@ -357,7 +358,8 @@ class UFC_UGC_ZOS_index(QObject):
     #停止按钮事件 停止气路
     def stop_btn_handle(self):
 
-        self.monitor_start_state_Thread.stop()
+        if self.monitor_start_state_Thread is not None:
+            self.monitor_start_state_Thread.stop()
         self.close_timers()
         p=AsyPromise(self.UGC_gas_path_system_obj.stop).then(
             lambda v: AsyPromise(
@@ -373,6 +375,9 @@ class UFC_UGC_ZOS_index(QObject):
     def calibration_handle(self):
         # 标定主函数 启动timer
         self.set_calibration_start_timer()
+        # 標定結束回調
+        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
+            self.auto_run_thread.carlibration_finish_signal.emit()
         pass
     #标定
     def carlibation(self):
@@ -381,18 +386,21 @@ class UFC_UGC_ZOS_index(QObject):
                 self.Range_carlibration_obj.calibrate
             ).then().catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
-        # 標定結束回調
-        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
-            self.auto_run_thread.carlibration_finish_signal.emit()
+
         return p
+        pass
+    # 状态检测timer
+    def gas_state_check_handle(self):
+        self.set_gas_state_check_timer()
+        # 狀態結束回調
+        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
+            self.auto_run_thread.check_finish_signal.emit()
         pass
     #状态检测
     def gas_state_check(self):
         p= AsyPromise(self.UFC_gas_state_check_obj.state_check).then(
         ).catch(lambda e: logger.error(f"{e}"))
-        # 狀態結束回調
-        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
-            self.auto_run_thread.check_finish_signal.emit()
+
         return p
         pass
 
@@ -433,8 +441,26 @@ class UFC_UGC_ZOS_index(QObject):
         if self.calibration_start_timer is not None and (
                 self.calibration_start_timer.is_active() or self.calibration_start_timer._is_paused):
             self.calibration_start_timer.stop()
+        if self.gas_state_check_timer is not None and (
+                self.gas_state_check_timer.is_active() or self.gas_state_check_timer._is_paused):
+            self.gas_state_check_timer.stop()
         pass
 
+    # 设置状态检测计时器
+    def set_gas_state_check_timer(self):
+        # logger.error(f"1:{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Gas_State_Check']['start_time_delay']) * 1000}")
+        self.gas_state_check_timer = PeriodicTimer(
+            interval_ms=float(
+                global_setting.get_setting('UFC_UGC_ZOS_config')['Gas_State_Check']['start_time_delay']) * 1000,
+            max_duration_ms=None,
+            task=None,  # 先不传，后面用 set_task 注入
+            run_in_thread=True,  # 若你的任务耗时，设为 True
+
+            run_immediately=True
+        )
+        self.gas_state_check_timer.set_task(self.gas_state_check)
+        self.gas_state_check_timer.start()
+        pass
     # 设置标定计时器
     def set_calibration_start_timer(self):
         self.calibration_start_timer = PeriodicTimer(

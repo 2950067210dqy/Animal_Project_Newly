@@ -521,6 +521,8 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         self.ports = []
         self._init_data()
         self.init_port_combox()
+    def auto_finish_handle(self):
+        pass
     def update_start_state(self):
         self.monitor_start_state_Thread.stop()
         self.close_timers()
@@ -582,7 +584,8 @@ class UFC_UGC_ZOS_index(ThemedWindow):
     def stop_btn_handle(self):
         self.state_label.setText("正在停止")
         self.state_label.setStyleSheet("QLabel { color:black; }")
-        self.monitor_start_state_Thread.stop()
+        if  self.monitor_start_state_Thread is not None :
+            self.monitor_start_state_Thread.stop()
         self.close_timers()
         p=AsyPromise(self.UGC_gas_path_system_obj.stop).then(
             lambda v: AsyPromise(
@@ -649,7 +652,8 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         pass
     #解除自动执行按钮事件
     def disabled_auto_btn_handle(self):
-        self.auto_run_thread.stop()
+        if self.auto_run_thread is not None:
+            self.auto_run_thread.stop()
         self.disabled_auto_btn.setEnabled(False)
         self.stop_btn_handle().then(
             self.auto_btn.setEnabled(True)
@@ -694,7 +698,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
                 task=None,  # 先不传，后面用 set_task 注入
                 run_in_thread=True,  # 若你的任务耗时，设为 True
 
-                run_immediately=False
+                run_immediately=True
             )
         self.calibration_start_timer.set_task(self.carlibation)
         self.calibration_start_timer.start()
@@ -708,7 +712,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
                 task=None,  # 先不传，后面用 set_task 注入
                 run_in_thread=True,  # 若你的任务耗时，设为 True
 
-                run_immediately=False
+                run_immediately=True
             )
             self.zos_start_timer.set_task(self.ZOS_gas_path_system_obj.zos_start_timer_task)
             self.zos_start_timer.start()
@@ -721,7 +725,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
                 task=None,  # 先不传，后面用 set_task 注入
                 run_in_thread=True,  # 若你的任务耗时，设为 True
 
-                run_immediately=False
+                run_immediately=True
             )
         except Exception as e:
             logger.error(e)

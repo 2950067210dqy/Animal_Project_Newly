@@ -424,9 +424,9 @@ class UFC_gas_path_system(Gas_path_system):
             else:
                 for i in range(8):
                     if i in res['selected_indices']:
-                        data += "1"
+                        data = "1"+data
                     else:
-                        data += "0"
+                        data = "0"+data
                 pass
             global_setting.set_setting("mouse_cages", res['selected_indices'])
             global_setting.set_setting("mouse_cages_2byte_str",data)

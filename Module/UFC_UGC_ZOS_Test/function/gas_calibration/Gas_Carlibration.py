@@ -58,28 +58,28 @@ class Zero_Carlibration(Gas_Carlibration):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} |  零点标定 开始{'.' * 100}")
-        resolve()
-        # # 1.ugc sample电磁阀关闭
-        # port = global_setting.get_setting("port", None)
-        # if port is None:
-        #     self.update_status_main_signal_gui_update.emit(
-        #         f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
-        #     reject()
-        # self.send_message = {
-        #     'port': port,
-        #     'data': number_util.set_int_to_4_bytes_list("0"),
-        #     'slave_id': '3',
-        #     'function_code': '5',
-        #     'timeout': 1
-        # }
-        #
-        # self.send_thread.send_message = self.send_message
-        # self.update_status_main_signal_gui_update.emit(
-        #     f"{time_util.get_format_from_time(time.time())} |  零点标定 1.ugc sample电磁阀关闭")
-        # AsyPromise(self.send_thread.Send).then(
-        #     # 2.校零气路（Zero气）电磁阀开
-        #     lambda r: AsyPromise(self.solenoid_valve_of_zero_gas_open,port=port)
-        # ).catch(lambda e: print(e))
+        # resolve()
+        # 1.ugc sample电磁阀关闭
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            self.update_status_main_signal_gui_update.emit(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+            reject()
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("0"),
+            'slave_id': '3',
+            'function_code': '5',
+            'timeout': 1
+        }
+
+        self.send_thread.send_message = self.send_message
+        self.update_status_main_signal_gui_update.emit(
+            f"{time_util.get_format_from_time(time.time())} |  零点标定 1.ugc sample电磁阀关闭")
+        AsyPromise(self.send_thread.Send).then(
+            # 2.校零气路（Zero气）电磁阀开
+            lambda r: AsyPromise(self.solenoid_valve_of_zero_gas_open,port=port),resolve()
+        ).catch(lambda e: print(e))
         pass
     #2.校零气路（Zero气）电磁阀开
     def solenoid_valve_of_zero_gas_open(self,resolve,reject,port):
@@ -96,7 +96,7 @@ class Zero_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |  零点标定 2.校零气路（Zero气）电磁阀开")
         AsyPromise(self.send_thread.Send).then(
             # 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。
-            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor_and_zos_oxygen_sensor, port=port)
+            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor_and_zos_oxygen_sensor, port=port),resolve()
         ).catch(lambda e: reject(e))
         pass
     # 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。
@@ -159,7 +159,7 @@ class Zero_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |  零点标定 4.二氧化碳零点设置")
         AsyPromise(self.send_thread.Send).then(
             # 5.氧浓传感器零点记录。
-            lambda r: AsyPromise(self.zero_point_recording_of_oxygen_sensor, port=port)
+            lambda r: AsyPromise(self.zero_point_recording_of_oxygen_sensor, port=port),resolve()
         ).catch(lambda e: reject(e))
         pass
     # 5.氧浓传感器零点记录。
@@ -195,7 +195,7 @@ class Zero_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 7 ugc sample电磁阀打开。
             lambda r: AsyPromise(self.ugc_sample_open, port=port
-                               )
+                               ),resolve()
         ).catch(lambda e: reject(e))
         pass
     # 7 ugc sample电磁阀打开
@@ -225,28 +225,28 @@ class Range_Carlibration(Gas_Carlibration):
     def calibrate(self,resolve,reject):
         """量程标定"""
         self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 开始{'.' * 100}")
-        resolve()
-        # #1.ugc sample电磁阀关闭
-        # port = global_setting.get_setting("port", None)
-        # if port is None:
-        #     self.update_status_main_signal_gui_update.emit(
-        #         f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
-        #     reject()
-        # self.send_message = {
-        #     'port': port,
-        #     'data': number_util.set_int_to_4_bytes_list("0"),
-        #     'slave_id': '3',
-        #     'function_code': '5',
-        #     'timeout': 1
-        # }
-        #
-        # self.send_thread.send_message = self.send_message
-        # self.update_status_main_signal_gui_update.emit(
-        #     f"{time_util.get_format_from_time(time.time())} |   SPan量程标定 1.ugc sample电磁阀关闭")
-        # AsyPromise(self.send_thread.Send).then(
-        #     # 2.ugc span电磁阀打开。
-        #     lambda r: AsyPromise(self.ugc_span_open,port=port)
-        # ).catch(lambda e: print(e))
+        # resolve()
+        #1.ugc sample电磁阀关闭
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            self.update_status_main_signal_gui_update.emit(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+            reject()
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("0"),
+            'slave_id': '3',
+            'function_code': '5',
+            'timeout': 1
+        }
+
+        self.send_thread.send_message = self.send_message
+        self.update_status_main_signal_gui_update.emit(
+            f"{time_util.get_format_from_time(time.time())} |   SPan量程标定 1.ugc sample电磁阀关闭")
+        AsyPromise(self.send_thread.Send).then(
+            # 2.ugc span电磁阀打开。
+            lambda r: AsyPromise(self.ugc_span_open,port=port),resolve()
+        ).catch(lambda e: print(e))
         pass
     def ugc_span_open(self,resolve,reject,port):
         # 2.ugc span电磁阀打开。
@@ -263,7 +263,7 @@ class Range_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |   SPan量程标定 2.ugc span电磁阀打开。")
         AsyPromise(self.send_thread.Send).then(
             # 3.循环采样zos氧浓度
-            lambda r: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=port)
+            lambda r: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=port),resolve()
         ).catch(lambda e: print(e))
         pass
     def cyclic_sampling_of_zos_oxygen_sensor(self,resolve,reject,port):
@@ -329,7 +329,7 @@ class Range_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 7 ugc sample电磁阀打开。
             lambda r: AsyPromise(self.ugc_sample_open, port=port
-                                 )
+                                 ),resolve()
         ).catch(lambda e: reject(e))
 
     # 7 ugc sample电磁阀打开
