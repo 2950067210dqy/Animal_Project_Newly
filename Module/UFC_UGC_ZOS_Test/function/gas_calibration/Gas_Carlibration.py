@@ -225,28 +225,28 @@ class Range_Carlibration(Gas_Carlibration):
     def calibrate(self,resolve,reject):
         """量程标定"""
         self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 开始{'.' * 100}")
-        # resolve()
-        #1.ugc sample电磁阀关闭
-        port = global_setting.get_setting("port", None)
-        if port is None:
-            self.update_status_main_signal_gui_update.emit(
-                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
-            reject()
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("0"),
-            'slave_id': '3',
-            'function_code': '5',
-            'timeout': 1
-        }
-
-        self.send_thread.send_message = self.send_message
-        self.update_status_main_signal_gui_update.emit(
-            f"{time_util.get_format_from_time(time.time())} |   SPan量程标定 1.ugc sample电磁阀关闭")
-        AsyPromise(self.send_thread.Send).then(
-            # 2.ugc span电磁阀打开。
-            lambda r: AsyPromise(self.ugc_span_open,port=port)
-        ).catch(lambda e: print(e))
+        resolve()
+        # #1.ugc sample电磁阀关闭
+        # port = global_setting.get_setting("port", None)
+        # if port is None:
+        #     self.update_status_main_signal_gui_update.emit(
+        #         f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+        #     reject()
+        # self.send_message = {
+        #     'port': port,
+        #     'data': number_util.set_int_to_4_bytes_list("0"),
+        #     'slave_id': '3',
+        #     'function_code': '5',
+        #     'timeout': 1
+        # }
+        #
+        # self.send_thread.send_message = self.send_message
+        # self.update_status_main_signal_gui_update.emit(
+        #     f"{time_util.get_format_from_time(time.time())} |   SPan量程标定 1.ugc sample电磁阀关闭")
+        # AsyPromise(self.send_thread.Send).then(
+        #     # 2.ugc span电磁阀打开。
+        #     lambda r: AsyPromise(self.ugc_span_open,port=port)
+        # ).catch(lambda e: print(e))
         pass
     def ugc_span_open(self,resolve,reject,port):
         # 2.ugc span电磁阀打开。
