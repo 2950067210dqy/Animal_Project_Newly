@@ -1331,6 +1331,8 @@ class communication(threading.Thread):
 
                     except UnicodeDecodeError:
                         logger.info(f"{self.category}串口{str(self.port)}接收原始字节: {data.hex()}")
+                    except Exception as e:
+                        logger.error(f"{self.category}串口{str(self.port)}<接收原始字节>: {data.hex()},错误原因：{e}")
                 time.sleep(1)  # 避免CPU占用过高
 
 

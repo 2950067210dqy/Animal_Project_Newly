@@ -61,7 +61,7 @@ class auto_run_Thread(MyQThread):
         self.auto_finish_signal = auto_finish_signal
 
         self.before_start_flag =True
-        self.start_finish_flag =True
+        self.start_finish_flag =False
         self.run_finish_flag =False
         self.carlibration_finish_flag =False
         self.check_finish_flag =False
@@ -91,20 +91,24 @@ class auto_run_Thread(MyQThread):
             self.before_start_flag=False
         if self.start_finish_flag:
             self.start_finish_flag = False
-            logger.error(12333333331)
+
             auto_wait_event.wait()
-            logger.error(4444444444444444444)
+
             self.run_signal.emit()
 
         if self.run_finish_flag:
+
+            self.run_finish_flag = False
             self.carlibration_signal.emit()
-            self.run_finish_flag=False
+
         if self.carlibration_finish_flag:
+            self.carlibration_finish_flag = False
             self.gas_state_check_signal.emit()
-            self.carlibration_finish_flag=False
+
         if self.check_finish_flag:
+            self.check_finish_flag = False
             self.auto_finish_signal.emit()
-            self.check_finish_flag=False
+
             self.stop()
 
         pass
@@ -205,7 +209,7 @@ class UFC_UGC_ZOS_index(QObject):
         #ZOS预热定时器
         self.zos_start_timer :PeriodicTimer=None
         self.ufc_start_timer :PeriodicTimer=None
-
+        self.calibration_start_timer: PeriodicTimer = None
         #监测开始状态的线程
         self.monitor_start_state_Thread:MyQThread = None
         #自動運行按鈕綫程
@@ -258,7 +262,7 @@ class UFC_UGC_ZOS_index(QObject):
 
         self.start_signal.connect(self.start_btn_handle)
         self.run_signal.connect(self.run_btn_handle)
-        self.carlibration_signal.connect(self.carlibation)
+        self.carlibration_signal.connect(self.calibration_handle)
         self.gas_state_check_signal.connect(self.gas_state_check)
         self.auto_finish_signal.connect(self.auto_finish_handle)
 
@@ -366,6 +370,10 @@ class UFC_UGC_ZOS_index(QObject):
         return p
         pass
 
+    def calibration_handle(self):
+        # 标定主函数 启动timer
+        self.set_calibration_start_timer()
+        pass
     #标定
     def carlibation(self):
         p=AsyPromise(self.Zero_carlibration_obj.calibrate).then(
@@ -414,6 +422,7 @@ class UFC_UGC_ZOS_index(QObject):
         self.set_zos_start_timer()
         self.set_ufc_start_timer()
         resolve()
+
     def close_timers(self):
         # 关闭timers
         # 关闭窗口时确保停止定时器
@@ -421,7 +430,24 @@ class UFC_UGC_ZOS_index(QObject):
             self.zos_start_timer.stop()
         if self.ufc_start_timer is not None and (self.ufc_start_timer.is_active() or self.ufc_start_timer._is_paused):
             self.ufc_start_timer.stop()
+        if self.calibration_start_timer is not None and (
+                self.calibration_start_timer.is_active() or self.calibration_start_timer._is_paused):
+            self.calibration_start_timer.stop()
         pass
+
+    # 设置标定计时器
+    def set_calibration_start_timer(self):
+        self.calibration_start_timer = PeriodicTimer(
+            interval_ms=float(
+                global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['start_time_delay']) * 1000,
+            max_duration_ms=None,
+            task=None,  # 先不传，后面用 set_task 注入
+            run_in_thread=True,  # 若你的任务耗时，设为 True
+
+            run_immediately=False
+        )
+        self.calibration_start_timer.set_task(self.carlibation)
+        self.calibration_start_timer.start()
     # 设置zos预热定时器
     def set_zos_start_timer(self):
             # 构造 PeriodicTimer（2秒间隔，20分钟上限）

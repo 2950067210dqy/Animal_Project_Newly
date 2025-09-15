@@ -7,7 +7,7 @@ class BaseService(ABC):
     def __init__(self):
         pass
     @abstractmethod
-    def start(self,reject,resolve):
+    def start(self,resolve,reject):
         """启动服务"""
         pass
 

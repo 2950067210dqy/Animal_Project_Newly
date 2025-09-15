@@ -19,6 +19,7 @@ from Module.UFC_UGC_ZOS_Test.function.gas_calibration.Gas_Carlibration import Ze
 from Module.UFC_UGC_ZOS_Test.function.gas_path_system.Gas_path_system import UFC_gas_path_system, UGC_gas_path_system, \
     ZOS_gas_path_system
 from Module.UFC_UGC_ZOS_Test.function.gas_state_check.Gas_State_Check import UFC_Gas_State_Check
+from Module.UFC_UGC_ZOS_Test.function.modbus.New_Mod_Bus import ModbusRTUMasterNew
 from Module.UFC_UGC_ZOS_Test.function.promise.AsyPromise import AsyPromise
 from Module.UFC_UGC_ZOS_Test.ui.UFC_UGC_ZOS_window import Ui_UFC_UGC_ZOS_window
 
@@ -29,14 +30,14 @@ from Module.UFC_UGC_ZOS_Test.ui.UFC_UGC_ZOS_window import Ui_UFC_UGC_ZOS_window
 
 from Module.UFC_UGC_ZOS_Test.function.modbus.COM_Scan import scan_serial_ports_with_id
 from Module.UFC_UGC_ZOS_Test.util.time_util import time_util
-from Service.main_monitor_data import read_queue_data_Thread
+
 from theme.ThemeQt6 import ThemedWindow
-from PyQt6 import QtGui
-from PyQt6.QtCore import QRect, Qt, pyqtSignal
+from PyQt6 import QtGui, QtCore
+from PyQt6.QtCore import QRect, Qt, pyqtSignal, pyqtBoundSignal
 from PyQt6.QtWidgets import QComboBox, QListWidget, QPushButton, QLabel
 # 过滤日志
 
-# report_logger = logger.bind(category="report_logger")
+report_logger = logger.bind(category="report_logger")
 read_queue_data_Thread_Lock = threading.Lock()
 auto_wait_event = threading.Event()
 class SimpleLRU:
@@ -60,15 +61,15 @@ def log_once_lru(message):
         return
     # report_logger.info(message)
     logger.info(message)
-class auto_run_Thread(MyQThread):
+class auto_run_Thread(MyQThread,QtCore.QObject):
     #開始回調信號
-    start_finish_signal=pyqtSignal()
+    start_finish_signal:pyqtBoundSignal=pyqtSignal()
     #運行回調信號
-    run_finish_signal = pyqtSignal()
+    run_finish_signal:pyqtBoundSignal = pyqtSignal()
     #標定回調信號
-    carlibration_finish_signal = pyqtSignal()
+    carlibration_finish_signal:pyqtBoundSignal = pyqtSignal()
     #狀態檢測回調信號
-    check_finish_signal = pyqtSignal()
+    check_finish_signal:pyqtBoundSignal = pyqtSignal()
     def __init__(self,name,start_signal,run_signal,carlibration_signal,gas_state_check_signal,auto_finish_signal):
         super().__init__(name=name)
         # 開始信號
@@ -112,6 +113,7 @@ class auto_run_Thread(MyQThread):
             self.before_start_flag=False
         if self.start_finish_flag:
             self.start_finish_flag = False
+            global auto_wait_event
             auto_wait_event.wait()
             self.run_signal.emit()
 
@@ -180,16 +182,16 @@ class UFC_UGC_ZOS_index(ThemedWindow):
     update_status_main_signal_gui_update = pyqtSignal(str)
 
     #更新开始状态的信号
-    update_start_state_signal=pyqtSignal()
+    update_start_state_signal:pyqtBoundSignal=pyqtSignal()
 
     # 開始信號
-    start_signal =pyqtSignal()
+    start_signal:pyqtBoundSignal =pyqtSignal()
     #運行信號
-    run_signal =pyqtSignal()
+    run_signal:pyqtBoundSignal =pyqtSignal()
     # 标定信號
-    carlibration_signal =pyqtSignal()
+    carlibration_signal:pyqtBoundSignal =pyqtSignal()
     #自動運行結束信號
-    auto_finish_signal =pyqtSignal()
+    auto_finish_signal:pyqtBoundSignal =pyqtSignal()
 
     # 状态检测信號
     gas_state_check_signal =pyqtSignal()
@@ -206,7 +208,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         super().hideEvent(a0)
     def closeEvent(self, event):
         logger.warning("UFC_UGC_ZOS_index--close")
-        self.close_timers()
+        self.disabled_auto_btn_handle()
         super().closeEvent(event)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
@@ -256,7 +258,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         #ZOS预热定时器
         self.zos_start_timer :PeriodicTimer=None
         self.ufc_start_timer :PeriodicTimer=None
-
+        self.calibration_start_timer :PeriodicTimer=None
         #监测开始状态的线程
         self.monitor_start_state_Thread:MyQThread = None
         #自動運行按鈕綫程
@@ -282,14 +284,14 @@ class UFC_UGC_ZOS_index(ThemedWindow):
 
         #保存状态栏信息的日志
         # logger.remove()
-        # logger.add(
-        #     "./"+"Module/UFC_UGC_ZOS_Test/"+"log/report_data/report_{time:YYYY-MM-DD}.log",
-        #     rotation="00:00",  # 日志文件转存
-        #     retention="30 days",  # 多长时间之后清理
-        #     enqueue=True,
-        #     format="{time:YYYY.MM.DD HH:mm:ss} {message}",
-        #     filter=lambda record: record["extra"].get("category") == "report_logger"
-        # )
+        logger.add(
+            "./"+"Module/UFC_UGC_ZOS_Test/"+"log/report_data/report_{time:YYYY-MM-DD}.log",
+            rotation="00:00",  # 日志文件转存
+            retention="30 days",  # 多长时间之后清理
+            enqueue=True,
+            format="{time:YYYY.MM.DD HH:mm:ss} {message}",
+            filter=lambda record: record["extra"].get("category") == "report_logger"
+        )
         #读取config ini文件
         # 加载配置 如果ini文件在最外层要去除module+
         config_file_path =os.getcwd() + "./"+"Module/UFC_UGC_ZOS_Test/"+"config/UFC_UGC_ZOS_Test.ini"
@@ -353,6 +355,16 @@ class UFC_UGC_ZOS_index(ThemedWindow):
             # 默认下拉项
             self.send_message['port'] = self.ports[0]['device']
             global_setting.set_setting("port", self.send_message['port'])
+            modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+            if modbus is None:
+                modbus = ModbusRTUMasterNew(self.send_message['port'], baudrate=115200, timeout=float(
+                    0.5), )
+                global_setting.set_setting("modbus", modbus)
+            else:
+                modbus.close()
+                modbus = ModbusRTUMasterNew(self.send_message['port'], baudrate=115200, timeout=float(
+                    0.5), )
+                global_setting.set_setting("modbus", modbus)
             self.send_response_text(
                 f"{time_util.get_format_from_time(time.time())} | 设备: {self.ports[0]['device']}" + f" #{self.ports[0]['description']}" + "  默认已被选中!")
         port_combox.disconnect()
@@ -362,7 +374,16 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         try:
             self.send_message['port'] = self.ports[index]['device']
             global_setting.set_setting("port", self.send_message['port'])
-
+            modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+            if modbus is None:
+                modbus = ModbusRTUMasterNew(self.send_message['port'], baudrate=115200, timeout=float(
+                   0.5), )
+                global_setting.set_setting("modbus", modbus)
+            else:
+                modbus.close()
+                modbus = ModbusRTUMasterNew(self.send_message['port'], baudrate=115200, timeout=float(
+                    0.5), )
+                global_setting.set_setting("modbus", modbus)
             self.send_response_text(
                 f"{time_util.get_format_from_time(time.time())} | 设备: {self.ports[index]['device']}" + f" #{self.ports[index]['description']}" + "  已被选中!")
         except Exception as e:
@@ -423,7 +444,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
 
         self.start_signal.connect(self.start_btn_handle)
         self.run_signal.connect(self.run_btn_handle)
-        self.carlibration_signal.connect(self.carlibation)
+        self.carlibration_signal.connect(self.calibration_handle)
         self.gas_state_check_signal.connect(self.gas_state_check)
         self.auto_finish_signal.connect(lambda :self.disabled_auto_btn.setEnabled(True))
 
@@ -507,6 +528,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         self.state_label.setText("已启动")
         self.state_label.setStyleSheet("QLabel { color:blue; }")
         #預熱完之後取消自動運行的阻塞
+        global auto_wait_event
         auto_wait_event.set()
         auto_wait_event.clear()
     #启动按钮事件 启动气路
@@ -576,7 +598,11 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         return p
         pass
 
-    #标定
+    def calibration_handle(self):
+        #标定主函数 启动timer
+        self.set_calibration_start_timer()
+        pass
+    #标定执行函数
     def carlibation(self):
         p=AsyPromise(self.Zero_carlibration_obj.calibrate).then(
             lambda v: AsyPromise(
@@ -631,7 +657,21 @@ class UFC_UGC_ZOS_index(ThemedWindow):
             self.zos_start_timer.stop()
         if self.ufc_start_timer is not None and (self.ufc_start_timer.is_active() or self.ufc_start_timer._is_paused):
             self.ufc_start_timer.stop()
+        if self.calibration_start_timer is not None and (self.calibration_start_timer.is_active() or self.calibration_start_timer._is_paused):
+            self.calibration_start_timer.stop()
         pass
+    # 设置标定计时器
+    def set_calibration_start_timer(self):
+        self.calibration_start_timer =  PeriodicTimer(
+                interval_ms=float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['start_time_delay']) * 1000,
+                max_duration_ms=None,
+                task=None,  # 先不传，后面用 set_task 注入
+                run_in_thread=True,  # 若你的任务耗时，设为 True
+
+                run_immediately=False
+            )
+        self.calibration_start_timer.set_task(self.carlibation)
+        self.calibration_start_timer.start()
     # 设置zos预热定时器
     def set_zos_start_timer(self):
             # 构造 PeriodicTimer（2秒间隔，20分钟上限）

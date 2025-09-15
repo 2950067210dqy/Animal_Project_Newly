@@ -40,15 +40,15 @@ class Send_Message:
                                       'from': 'UFC_UGC_ZOS_index_send_thread'}
                     global_setting.get_setting("send_message_queue").put(message_struct)
                     logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
-                    pass
-                    resolve(parser_message)
+
+
             except Exception as e:
                 self.modbus.close()
                 logger.error(e)
                 reject(e)
             finally:
                 self.modbus.close()
-                reject("1")
+                resolve({"data":return_data,"message":parser_message})
                 pass
 
             pass
@@ -85,10 +85,11 @@ class Send_Message:
             except Exception as e:
                 self.modbus.close()
                 logger.error(e)
-
+                return_data = None
+                parser_message = None
             finally:
                 self.modbus.close()
-
+                return return_data, parser_message
                 pass
 
         pass

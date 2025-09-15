@@ -776,12 +776,13 @@ class ZOS_gas_path_system(Gas_path_system):
         pass
     """start start"""
     def judge_zos_start_status(self,resolve,reject,r):
-        if "ZOS状态状态：运行" in r:
+
+        if "ZOS状态状态：运行" in r['message']:
             self.zos_start_status = True
         else:
             self.zos_start_status = False
         self.update_status_main_signal_gui_update.emit(
-            f"{time_util.get_format_from_time(time.time())} | ZOS 启动状态:{'成功' if self.zos_start_status else '停止（预热）'}{' '*100}-end.")
+            f"{time_util.get_format_from_time(time.time())} | ZOS 启动状态:{'运行' if self.zos_start_status else '停止（预热）'}{' '*100}-end.")
 
         resolve()
     def start(self,resolve,reject):

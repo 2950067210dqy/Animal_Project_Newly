@@ -5,30 +5,18 @@ from loguru import logger
 
 from Module.UFC_UGC_ZOS_Test.config_class.global_setting import global_setting
 from Module.UFC_UGC_ZOS_Test.function.modbus.Modbus import ModbusRTUMaster
-
-
+from Module.UFC_UGC_ZOS_Test.function.modbus.New_Mod_Bus import ModbusRTUMasterNew
 
 class Send_Message:
     def __init__(self,update_status_main_signal_gui_update=None,send_message=None,modbus=None):
         # 更新主线程状态栏消息信号
         self.update_status_main_signal_gui_update: pyqtSignal(str) =update_status_main_signal_gui_update
         self.send_message = send_message
-        self.modbus: ModbusRTUMaster=modbus
+        self.modbus: ModbusRTUMasterNew= global_setting.get_setting("modbus", None)
     def Send(self,resolve,reject):
         serial_lock = global_setting.get_setting('serial_lock', threading.Lock())
         with serial_lock:
-            try:
-                self.modbus = ModbusRTUMaster(
-                    port=self.send_message['port'],
-                    timeout=float(global_setting.get_setting('UFC_UGC_ZOS_config')['Serial']['timeout']),
-                    origin="UFC_UGC_ZOS_index"
-                )
-            except Exception as e:
-                if self.modbus:
-                    self.modbus.close()
-                logger.error(e)
-                reject(e)
-                pass
+
             try:
                 logger.info(self.send_message)
                 response, response_hex, send_state = self.modbus.send_command(
@@ -52,33 +40,21 @@ class Send_Message:
                                       'from': 'UFC_UGC_ZOS_index_send_thread'}
                     global_setting.get_setting("send_message_queue").put(message_struct)
                     logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
-                    pass
-                    resolve(parser_message)
+
             except Exception as e:
                 self.modbus.close()
                 logger.error(e)
                 reject(e)
             finally:
                 self.modbus.close()
-                reject("1")
+                resolve({'data':return_data,"message":parser_message})
                 pass
 
             pass
     def Send_no_promise(self):
         serial_lock = global_setting.get_setting('serial_lock', threading.Lock())
         with serial_lock:
-            try:
-                self.modbus = ModbusRTUMaster(
-                    port=self.send_message['port'],
-                    timeout=float(global_setting.get_setting('UFC_UGC_ZOS_config')['Serial']['timeout']),
-                    origin="UFC_UGC_ZOS_index"
-                )
-            except Exception as e:
-                if self.modbus:
-                    self.modbus.close()
-                logger.error(e)
 
-                pass
             try:
                 logger.info(self.send_message)
 
@@ -108,10 +84,11 @@ class Send_Message:
             except Exception as e:
                 self.modbus.close()
                 logger.error(e)
-
+                return_data=None
+                parser_message=None
             finally:
                 self.modbus.close()
-
+                return return_data, parser_message
                 pass
 
         pass

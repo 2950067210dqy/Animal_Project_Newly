@@ -31,7 +31,8 @@ store_Q_lock = threading.Lock()
 store_Q = queue.Queue()
 # 过滤日志
 logger = logger.bind(category="monitor_data_logger")
-
+ufc_ugc_zos=None
+ufc_ugc_zos_thread =None
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
         super().__init__(name)
@@ -369,14 +370,16 @@ def main(port,q,send_message_q):
     add_message_thread.start()
 
     #UFC_UGC_ZOS
+    global ufc_ugc_zos_thread,ufc_ugc_zos
     ufc_ugc_zos_thread=None
     ufc_ugc_zos=None
     try:
 
 
         ufc_ugc_zos = UFC_UGC_ZOS_index()
-        ufc_ugc_zos_thread = threading.Thread(target=ufc_ugc_zos.auto_btn_handle)
-        ufc_ugc_zos_thread.start()
+        ufc_ugc_zos.auto_btn_handle()
+        # ufc_ugc_zos_thread = threading.Thread(target=ufc_ugc_zos.auto_btn_handle)
+        # ufc_ugc_zos_thread.start()
 
     except Exception as ex:
         print(ex)

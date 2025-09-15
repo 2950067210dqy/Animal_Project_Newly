@@ -10,7 +10,10 @@ from public.config_class.global_setting import global_setting
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.number_util import number_util
 from public.util.time_util import time_util
-
+# 前面测量的氧气值
+last_oxygen_value = 0
+# 前面测量的二氧化碳值
+last_carbon_value = 0
 logger = logger.bind(category="monitor_data_logger")
 class Gas_Carlibration:
     """
@@ -53,28 +56,28 @@ class Zero_Carlibration(Gas_Carlibration):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} |  零点标定 开始{'.' * 100}")
-        resolve()
-        # # 1.ugc sample电磁阀关闭
-        # port = global_setting.get_setting("port", None)
-        # if port is None:
-        #     self.update_status_main_signal_gui_update.emit(
-        #         f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
-        #     reject()
-        # self.send_message = {
-        #     'port': port,
-        #     'data': number_util.set_int_to_4_bytes_list("0"),
-        #     'slave_id': '3',
-        #     'function_code': '5',
-        #     'timeout': 1
-        # }
-        #
-        # self.send_thread.send_message = self.send_message
-        # self.update_status_main_signal_gui_update.emit(
-        #     f"{time_util.get_format_from_time(time.time())} |  零点标定 1.ugc sample电磁阀关闭")
-        # AsyPromise(self.send_thread.Send).then(
-        #     # 2.校零气路（Zero气）电磁阀开
-        #     lambda r: AsyPromise(self.solenoid_valve_of_zero_gas_open,port=port, r=r)
-        # ).catch(lambda e: print(e))
+        # resolve()
+        # 1.ugc sample电磁阀关闭
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            self.update_status_main_signal_gui_update.emit(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+            reject()
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("0"),
+            'slave_id': '3',
+            'function_code': '5',
+            'timeout': 1
+        }
+
+        self.send_thread.send_message = self.send_message
+        self.update_status_main_signal_gui_update.emit(
+            f"{time_util.get_format_from_time(time.time())} |  零点标定 1.ugc sample电磁阀关闭")
+        AsyPromise(self.send_thread.Send).then(
+            # 2.校零气路（Zero气）电磁阀开
+            lambda r: AsyPromise(self.solenoid_valve_of_zero_gas_open,port=port)
+        ).catch(lambda e: print(e))
         pass
     #2.校零气路（Zero气）电磁阀开
     def solenoid_valve_of_zero_gas_open(self,resolve,reject,port):
@@ -91,15 +94,12 @@ class Zero_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |  零点标定 2.校零气路（Zero气）电磁阀开")
         AsyPromise(self.send_thread.Send).then(
             # 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。
-            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor_and_zos_oxygen_sensor, port=port, r=r)
+            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor_and_zos_oxygen_sensor, port=port)
         ).catch(lambda e: reject(e))
         pass
     # 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。
     def cyclic_sampling_of_ugc_carbon_sensor_and_zos_oxygen_sensor(self,resolve,reject,port):
-        #前面测量的氧气值
-        last_oxygen_value = 0
-        #前面测量的二氧化碳值
-        last_carbon_value = 0
+        global last_carbon_value, last_oxygen_value
         #现在测量的氧气值
         now_oxygen_value = None
         #现在测量的二氧化碳值

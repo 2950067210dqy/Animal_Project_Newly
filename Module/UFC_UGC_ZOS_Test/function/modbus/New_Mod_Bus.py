@@ -356,7 +356,6 @@ def worker2():
         print(f"Worker2 写入失败")
     modbus.close()
 
-
 if __name__ == "__main__":
     # 创建两个线程
     t1 = threading.Thread(target=worker1)
