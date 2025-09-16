@@ -90,27 +90,27 @@ class UFC_gas_path_system_start_thread(MyQThread):
             self.update_status_main_signal_gui_update.emit(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             return
-        mouse_cages_2byte_str: str = global_setting.get_setting("mouse_cages_2byte_str", "11111111")
+        # mouse_cages_2byte_str: str = global_setting.get_setting("mouse_cages_2byte_str", "11111111")
 
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list(str(int(mouse_cages_2byte_str, 2))),
-            'slave_id': '2',
-            'function_code': '6',
-            'timeout': 1
-        }
-        self.update_status_main_signal_gui_update.emit(
-            f"{time_util.get_format_from_time(time.time())} | UFC 启动-1.设定运行鼠笼")
-        self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            # 2UFC启动
-            lambda r: AsyPromise(self.ufc_start).then(
-                self.stop()
-            )
-        ).catch(lambda e: logger.error(e))
-        # AsyPromise(self.ufc_start).then(
-        #     self.stop()
-        # )
+        # self.send_message = {
+        #     'port': port,
+        #     'data': number_util.set_int_to_4_bytes_list(str(int(mouse_cages_2byte_str, 2))),
+        #     'slave_id': '2',
+        #     'function_code': '6',
+        #     'timeout': 1
+        # }
+        # self.update_status_main_signal_gui_update.emit(
+        #     f"{time_util.get_format_from_time(time.time())} | UFC 启动-1.设定运行鼠笼")
+        # self.send_thread.send_message = self.send_message
+        # AsyPromise(self.send_thread.Send).then(
+        #     # 2UFC启动
+        #     lambda r: AsyPromise(self.ufc_start).then(
+        #         self.stop()
+        #     )
+        # ).catch(lambda e: logger.error(e))
+        AsyPromise(self.ufc_start).then(
+            self.stop()
+        ).catch(lambda e:logger.error(e))
         pass
         pass
 
@@ -258,7 +258,7 @@ class UFC_gas_path_system_close_thread(MyQThread):
         )
     def close_UFC_valve(self,resolve,reject,port):
         """4.UFC阀门关闭"""
-        time.sleep(0.01)
+        time.sleep(60)
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list(f"000B0000"),

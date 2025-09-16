@@ -1938,7 +1938,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                     return_datas.append({
                         "desc": port_types[j],
                         'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2) / 10
+                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)
                     }
                     )
                     j += 1
@@ -1948,7 +1948,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                         "desc": port_types[j],
                         'value': int("".join(self.int_to_8bit_binary(
                             num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])),
-                            2) / 10000
+                            2) / 100000
                     }
                     )
                     j += 1
@@ -2370,7 +2370,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
                     exponent_bit = int(data_str[1:9], 2)
                     M_bit = int(data_str[9:], 2)
                     # V = (-1)^s *（1+M）* 2^(E-127)
-                    value = (-1) ^ sign_bit * (1 + M_bit) * 2 ^ (exponent_bit - 127)
+                    value = ((-1) ^ sign_bit )* (1 + M_bit) * (2 ^ (exponent_bit - 127))
                     return_datas.append({
                         "desc": port_types[j],
                         'value': value

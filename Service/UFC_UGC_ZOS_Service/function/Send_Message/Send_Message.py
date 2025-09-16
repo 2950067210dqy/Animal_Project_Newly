@@ -16,7 +16,8 @@ class Send_Message:
     def Send(self,resolve,reject):
         serial_lock = global_setting.get_setting('serial_lock', threading.Lock())
         with serial_lock:
-
+            return_data =None
+            parser_message=None
             try:
                 logger.info(self.send_message)
                 response, response_hex, send_state = self.modbus.send_command(
@@ -55,7 +56,8 @@ class Send_Message:
     def Send_no_promise(self):
         serial_lock = global_setting.get_setting('serial_lock', threading.Lock())
         with serial_lock:
-
+            return_data = None
+            parser_message = None
             try:
                 logger.info(self.send_message)
 

@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QPoint, QModelIndex, pyqtSignal
 
+from my_abc.BaseModule import BaseModule
 from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.component.dialog.custom.save_experiment_dialog import Save_Experiment_Dialog, Save_Experiment_Dialog_TYPE
 from public.config_class.global_setting import global_setting
@@ -276,7 +277,7 @@ class ContentWindow(ThemedWindow):
 
     def add_group(self):
         """添加组"""
-        group_nums, ok = QInputDialog.getInt(self, "添加分组", "请输入分组/通道个数:")
+        group_nums, ok = QInputDialog.getInt(self, "添加分组", "请输入分组/通道个数:",1)
         if ok and group_nums:
             init_index = 0
             # 取最大name的那一个
@@ -307,7 +308,7 @@ class ContentWindow(ThemedWindow):
 
     def add_animal_to_group(self, group_index: QModelIndex, animal: Animal):
         """将动物添加到组/通道"""
-        animal_nums , ok = QInputDialog.getInt(self, "添加动物数量", f"请输入动物\n序号: {animal.id},动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex ==AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}\n数量:")
+        animal_nums , ok = QInputDialog.getInt(self, "添加动物数量", f"请输入动物\n序号: {animal.id},动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex ==AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}\n数量:",1)
         if ok and animal_nums:
             group_item:QStandardItem = self.model.itemFromIndex(group_index)
             group  = group_item.data(Qt.ItemDataRole.UserRole)
@@ -413,7 +414,7 @@ class ContentWindow(ThemedWindow):
         group: Group = group_item.data(Qt.ItemDataRole.UserRole)
 
         animal_nums, ok = QInputDialog.getInt(self, "复制动物数量",
-                                              f"请输入动物\n序号: {animal.id},动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex == AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}\n数量:")
+                                              f"请输入动物\n序号: {animal.id},动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex == AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}\n数量:",1)
         if ok and animal_nums:
             init_index = 0
             # 取最大name的那一个
@@ -594,6 +595,16 @@ class ContentWindow(ThemedWindow):
             self.main_gui.status_bar.update_setting_file_name(f"当前实验文件: {self.setting_file_path}")
             msg_box = InfoDialog(title="应用实验", info="应用成功!", icon=QMessageBox.Icon.Information)
             msg_box.exec()
+            # 關閉窗口
+            self.parent().close()
+            # 跳轉窗口
+            for module in self.main_gui.modules:
+                module: BaseModule
+                if module.name =="Main_experiment_setting":
+                    module.click_method()
+                    return
+
+
         else:
             msg_box = InfoDialog(title="应用实验", info="模板不能为空!", icon=QMessageBox.Icon.Warning)
             msg_box.exec()

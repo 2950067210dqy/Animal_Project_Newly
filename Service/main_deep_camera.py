@@ -375,30 +375,30 @@ class Delete_file(MyQThread):
         total_nums = 0
         for root, dirs, files in os.walk(self.path):
             # logger.warning(f"{root} | {dirs} | {files}")
-            # 将深度信息npy文件排除 不删除
-            # if "depth" not in root:
-            for file in files:
-                file_path = os.path.join(root, file)
-                try:
-                    size = os.path.getsize(file_path)  # 获取文件大小（字节）
-                    size = float(size / 1204 / 1024 / 1024)  # 将字节B转成GB
-                    total_size += size
-                    total_nums += 1
-                    if file.split(".")[1] in ['bmp', 'npy']:
-                        # 对bmp和npy文件锁删除
-                        if file in file_locks:
-                            with file_locks[file]:
+            #  不删除
+            if "location" not in root:
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    try:
+                        size = os.path.getsize(file_path)  # 获取文件大小（字节）
+                        size = float(size / 1204 / 1024 / 1024)  # 将字节B转成GB
+                        total_size += size
+                        total_nums += 1
+                        if file.split(".")[1] in ['bmp', 'npy']:
+                            # 对bmp和npy文件锁删除
+                            if file in file_locks:
+                                with file_locks[file]:
+                                    os.remove(file_path)  # 删除文件
+                            else:
                                 os.remove(file_path)  # 删除文件
+                            # 删除文件后释放锁
+                            if file in file_locks:
+                                del file_locks[file]
                         else:
                             os.remove(file_path)  # 删除文件
-                        # 删除文件后释放锁
-                        if file in file_locks:
-                            del file_locks[file]
-                    else:
-                        os.remove(file_path)  # 删除文件
-                except Exception as e:
-                    logger.trace(
-                        f"deep_camera Failed to delete {file_path}: reason:{e} |  异常堆栈跟踪：{traceback.print_exc()}")
+                    except Exception as e:
+                        logger.trace(
+                            f"deep_camera Failed to delete {file_path}: reason:{e} |  异常堆栈跟踪：{traceback.print_exc()}")
         global frame_nums
         with lock:
             logger.warning(f"深度相机 | 删除文件总大小: {total_size} G-bytes | 删除文件总数量： {total_nums} | 此时相机拍摄的图像数量：{frame_nums}")
@@ -517,6 +517,7 @@ class RealSenseProcessor(MyQThread):
     # 启动，获取一帧
     def run(self):
         logger.warning(f"{self.name} thread has been started！")
+        self._running = True
         global frame_nums
         # 读取之前存储了多少图像
         with os.scandir(self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['color_dir']) as it:

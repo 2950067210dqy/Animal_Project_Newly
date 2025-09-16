@@ -5,10 +5,12 @@ import threading
 import time
 from json import JSONDecodeError
 from PyQt6 import QtCore
-from PyQt6.QtCore import QThread
+from PyQt6.QtCore import QThread, QTimer
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget
 from loguru import logger
+
+from Module.UFC_UGC_ZOS_Test.function.promise.AsyPromise import AsyPromise
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 from my_abc.BaseModule import BaseModule
@@ -330,63 +332,76 @@ class MainWindow_Index(ThemedWindow):
         # 更改样式
         self.setStyleSheet(global_setting.get_setting("theme_manager").get_style_sheet())
         pass
+
+    def open_monitor_data_window(self):
+        """
+        打開監控數據界面
+        :return:
+        """
+        # 打開窗口
+        for module in self.modules:
+            module: BaseModule
+            if module.name == "Main_New_Monitor_data":
+                module.click_method()
+                return
     def start_experiment(self):
         # 开启遮罩
         # 在with语句中自动管理加载遮罩
-        with LoadingContext(self, "正在开启实验监测...", "animated") as mask:
+        # with LoadingContext(self, "正在开启实验监测...", "animated") as mask:
 
             # mask.updateText("即将完成...")
 
-            self.setEnabled(False)
-            self.status_bar.update_tip(f"正在开启实验监测...")
-            port = global_setting.get_setting("port")
-            if port is None or port == "":
-                reply = QMessageBox.question(self, '注意',
-                                             "未设置串口，请去实验配置配置串口!",
-                                             QMessageBox.StandardButton.Cancel,
-                                             QMessageBox.StandardButton.No)
-                self.setEnabled(True)
-                return
-            # 开始实验
-            global_setting.set_setting("app_state", AppState.MONITORING)
-            global_setting.set_setting("start_experiment_time", time.time())
-            global_setting.set_setting("pause_experiment_time", [])
-            global_setting.set_setting("relieve_pause_experiment_time", [])
-
-            try:
-                self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub,self.ufc_ugc_zos,self.ufc_ugc_zos_thread = main_monitor_data.main(
-                    port=port, q=global_setting.get_setting("queue"),
-                    send_message_q=global_setting.get_setting("send_message_queue"))
-            except Exception as e:
-                logger.error(f"开启数据监测线程错误，原因：{e}")
-                self.status_bar.update_tip(f"开启数据监测线程错误，原因：{e}")
-            try:
-                self.deep_camera_thread_sub_list, self.deep_camera_read_queue_data_thread_sub, self.deep_camera_delete_file_thread_sub = main_deep_camera.main(
-                    q=global_setting.get_setting("queue"))
-            except Exception as e:
-                logger.error(f"开启深度相机监测线程错误，原因：{e}")
-                self.status_bar.update_tip(f"开启深度相机数据监测线程错误，原因：{e}")
-            try:
-                self.infrared_camera_thread_sub_list,self.infrared_camera_read_queue_data_thread_sub,self.infrared_camera_delete_file_thread_sub = main_infrared_camera.main(q=global_setting.get_setting("queue"))
-            except Exception as e:
-                logger.error(f"开启红外相机监测线程错误，原因：{e}")
-                self.status_bar.update_tip(f"开启红外相机数据监测线程错误，原因：{e}")
-            # 更新main_gui组件显示
-            self.change_enable_component_app_state_signal.emit()
-            self.status_bar.update_status()
-            self.status_bar.update_tip(f"开启实验监测成功！")
-            for action_dict in self.tool_bar_actions:
-                if action_dict["obj_name"] == "start_experiment":
-                    action_dict["action"]: QAction
-                    action_dict["action"].setDisabled(True)
-                if action_dict["obj_name"] == "stop_experiment":
-                    action_dict["action"]: QAction
-                    action_dict["action"].setDisabled(False)
-                if action_dict["obj_name"] == "pause_experiment":
-                    action_dict["action"]: QAction
-                    action_dict["action"].setDisabled(False)
+        self.setEnabled(False)
+        self.status_bar.update_tip(f"正在开启实验监测...")
+        port = global_setting.get_setting("port")
+        if port is None or port == "":
+            reply = QMessageBox.question(self, '注意',
+                                         "未设置串口，请去实验配置配置串口!",
+                                         QMessageBox.StandardButton.Cancel,
+                                         QMessageBox.StandardButton.No)
             self.setEnabled(True)
+            return
+        # 开始实验
+        global_setting.set_setting("app_state", AppState.MONITORING)
+        global_setting.set_setting("start_experiment_time", time.time())
+        global_setting.set_setting("pause_experiment_time", [])
+        global_setting.set_setting("relieve_pause_experiment_time", [])
 
+        # try:
+        #     self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub,self.ufc_ugc_zos,self.ufc_ugc_zos_thread = main_monitor_data.main(
+        #         port=port, q=global_setting.get_setting("queue"),
+        #         send_message_q=global_setting.get_setting("send_message_queue"))
+        # except Exception as e:
+        #     logger.error(f"开启数据监测线程错误，原因：{e}")
+        #     self.status_bar.update_tip(f"开启数据监测线程错误，原因：{e}")
+        try:
+            self.deep_camera_thread_sub_list, self.deep_camera_read_queue_data_thread_sub, self.deep_camera_delete_file_thread_sub = main_deep_camera.main(
+                q=global_setting.get_setting("queue"))
+        except Exception as e:
+            logger.error(f"开启深度相机监测线程错误，原因：{e}")
+            self.status_bar.update_tip(f"开启深度相机数据监测线程错误，原因：{e}")
+        try:
+            self.infrared_camera_thread_sub_list,self.infrared_camera_read_queue_data_thread_sub,self.infrared_camera_delete_file_thread_sub = main_infrared_camera.main(q=global_setting.get_setting("queue"))
+        except Exception as e:
+            logger.error(f"开启红外相机监测线程错误，原因：{e}")
+            self.status_bar.update_tip(f"开启红外相机数据监测线程错误，原因：{e}")
+        # 更新main_gui组件显示
+        self.change_enable_component_app_state_signal.emit()
+        self.status_bar.update_status()
+        self.status_bar.update_tip(f"开启实验监测成功！")
+        for action_dict in self.tool_bar_actions:
+            if action_dict["obj_name"] == "start_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(True)
+            if action_dict["obj_name"] == "stop_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(False)
+            if action_dict["obj_name"] == "pause_experiment":
+                action_dict["action"]: QAction
+                action_dict["action"].setDisabled(False)
+        self.setEnabled(True)
+        #   延遲打開窗口
+        # QTimer.singleShot(10*1000, self.open_monitor_data_window)
         pass
     def pause_experiment(self):
         # 在with语句中自动管理加载遮罩
