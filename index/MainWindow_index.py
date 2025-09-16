@@ -16,6 +16,7 @@ from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_inde
 from my_abc.BaseModule import BaseModule
 from public.component.custom_status_bar import CustomStatusBar
 from public.component.mask.LoadingMask import AnimatedLoadingMask, LoadingContext
+from public.component.mask_dialog.Mask_Dialog import AdaptiveMaskDialog
 from public.config_class.global_setting import global_setting
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
 from public.util.custom_data_file_util import custom_data_file_util
@@ -401,7 +402,7 @@ class MainWindow_Index(ThemedWindow):
                 action_dict["action"].setDisabled(False)
         self.setEnabled(True)
         #   延遲打開窗口
-        # QTimer.singleShot(10*1000, self.open_monitor_data_window)
+        QTimer.singleShot(10*1000, self.open_monitor_data_window)
         pass
     def pause_experiment(self):
         # 在with语句中自动管理加载遮罩
@@ -549,7 +550,7 @@ class MainWindow_Index(ThemedWindow):
                 if self.ufc_ugc_zos is not None:
                     self.ufc_ugc_zos.disabled_auto_btn_handle()
                 if self.ufc_ugc_zos_thread is not None:
-                    self.ufc_ugc_zos.disabled_auto_btn_handle()
+                    self.ufc_ugc_zos_thread.stop()
             except Exception as e:
                 logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
             try:

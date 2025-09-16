@@ -421,26 +421,28 @@ class UFC_gas_path_system(Gas_path_system):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | UFC 开始启动{'.'*100}")
 
-        dlg = RunningCagesDialog(None, total_cages=8)
-        data = ""
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            res = dlg.result_data
-            if res['all_selected']:
-                # 全部选择
-                data = "11111111"
-                pass
-            else:
-                for i in range(8):
-                    if i in res['selected_indices']:
-                        data += "1"
-                    else:
-                        data += "0"
-                pass
-            global_setting.set_setting("mouse_cages", res['selected_indices'])
-            global_setting.set_setting("mouse_cages_2byte_str",data)
+        # dlg = RunningCagesDialog(None, total_cages=8)
+        # data = ""
+        # if dlg.exec() == QDialog.DialogCode.Accepted:
+        #     res = dlg.result_data
+        #     if res['all_selected']:
+        #         # 全部选择
+        #         data = "11111111"
+        #         pass
+        #     else:
+        #         for i in range(8):
+        #             if i in res['selected_indices']:
+        #                 data += "1"
+        #             else:
+        #                 data += "0"
+        #         pass
+        # global_setting.set_setting("mouse_cages", res['selected_indices'])
+        global_setting.set_setting("mouse_cages",[7,6,5,4,3,2,1,0])
+        # global_setting.set_setting("mouse_cages_2byte_str",data)
+        global_setting.set_setting("mouse_cages_2byte_str", "11111111")
 
-            self.ufc_gas_path_system_start_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
-            self.ufc_gas_path_system_start_thread.start()
+        self.ufc_gas_path_system_start_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
+        self.ufc_gas_path_system_start_thread.start()
         resolve()
 
     def ufc_start_timer_task(self,elapsed_ms):
