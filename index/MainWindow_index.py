@@ -7,7 +7,7 @@ from json import JSONDecodeError
 from PyQt6 import QtCore
 from PyQt6.QtCore import QThread, QTimer
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget
+from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog
 from loguru import logger
 
 from Module.UFC_UGC_ZOS_Test.function.promise.AsyPromise import AsyPromise
@@ -367,13 +367,13 @@ class MainWindow_Index(ThemedWindow):
         global_setting.set_setting("pause_experiment_time", [])
         global_setting.set_setting("relieve_pause_experiment_time", [])
 
-        # try:
-        #     self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub,self.ufc_ugc_zos,self.ufc_ugc_zos_thread = main_monitor_data.main(
-        #         port=port, q=global_setting.get_setting("queue"),
-        #         send_message_q=global_setting.get_setting("send_message_queue"))
-        # except Exception as e:
-        #     logger.error(f"开启数据监测线程错误，原因：{e}")
-        #     self.status_bar.update_tip(f"开启数据监测线程错误，原因：{e}")
+        try:
+            self.store_thread_sub, self.send_thread_sub, self.read_queue_data_thread_sub, self.add_message_thread_sub,self.ufc_ugc_zos,self.ufc_ugc_zos_thread = main_monitor_data.main(
+                port=port, q=global_setting.get_setting("queue"),
+                send_message_q=global_setting.get_setting("send_message_queue"))
+        except Exception as e:
+            logger.error(f"开启数据监测线程错误，原因：{e}")
+            self.status_bar.update_tip(f"开启数据监测线程错误，原因：{e}")
         try:
             self.deep_camera_thread_sub_list, self.deep_camera_read_queue_data_thread_sub, self.deep_camera_delete_file_thread_sub = main_deep_camera.main(
                 q=global_setting.get_setting("queue"))
@@ -542,6 +542,7 @@ class MainWindow_Index(ThemedWindow):
     def stop_experiment(self):
         # 在with语句中自动管理加载遮罩
         with LoadingContext(self, "正在停止...", "animated") as mask:
+
             self.setEnabled(False)
             self.status_bar.update_tip(f"正在关闭实验监测...")
             try:
