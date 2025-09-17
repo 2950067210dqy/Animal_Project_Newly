@@ -211,13 +211,7 @@ class ThemeManager(QObject):
     def get_style_sheet(self):
         theme = self._themes[self._current_theme]
         style_sheet = f"""
-            * {{
-                qproperty-themePrimary: {theme['--primary']};
-                qproperty-themeSecondary: {theme['--secondary']};
-                qproperty-themeText: {theme['--text']};
-                qproperty-themeHighlight: {theme['--highlight']};
-                qproperty-themeBorder: {theme['--border']};
-            }}
+   
             
             
             QTabBar::tab {{

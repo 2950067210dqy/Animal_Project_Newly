@@ -37,3 +37,4 @@ pipreqs . --encoding=utf8 --ignore ./build,./dist,./entity,./log,./model,./resou
 
 2025-9-15
 location.csv tmp.csv
+就卡顿定位问题 首先是线程问题，其次是窗口变换大小的遍历问题
