@@ -4,8 +4,9 @@ from PyQt6.QtCore import pyqtSignal
 from loguru import logger
 
 from Module.UFC_UGC_ZOS_Test.config_class.global_setting import global_setting
-from Module.UFC_UGC_ZOS_Test.function.modbus.Modbus import ModbusRTUMaster
 from Module.UFC_UGC_ZOS_Test.function.modbus.New_Mod_Bus import ModbusRTUMasterNew
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
+
 
 class Send_Message:
     def __init__(self,update_status_main_signal_gui_update=None,send_message=None,modbus=None):
@@ -36,8 +37,9 @@ class Send_Message:
                                                                              self.send_message['function_code'], )
 
                     # 把返回数据返回给源头
-                    message_struct = {'to': "UFC_UGC_ZOS_index", 'data': parser_message,
-                                      'from': 'UFC_UGC_ZOS_index_send_thread'}
+                    message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index", data=parser_message,
+                                                     origin='UFC_UGC_ZOS_index_send_thread')
+
                     global_setting.get_setting("send_message_queue").put(message_struct)
                     logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
 
@@ -75,8 +77,8 @@ class Send_Message:
                                                                              self.send_message['function_code'], )
 
                     # 把返回数据返回给源头
-                    message_struct = {'to': "UFC_UGC_ZOS_index", 'data': parser_message,
-                                      'from': 'UFC_UGC_ZOS_index_send_thread'}
+                    message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index", data=parser_message,
+                                                     origin='UFC_UGC_ZOS_index_send_thread')
                     global_setting.get_setting("send_message_queue").put(message_struct)
                     logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
                     pass

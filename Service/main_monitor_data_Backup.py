@@ -14,6 +14,7 @@ from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from public.entity.experiment_setting_entity import Experiment_setting_entity
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus import ModbusRTUMaster
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
@@ -183,7 +184,7 @@ class Send_thread(MyQThread):
                                                                                  send_message['function_code'], )
 
                         # 把返回数据返回给源头
-                        message_struct = {'to': message['origin'], 'data': parser_message, 'from': 'main_monitor_data'}
+                        message_struct = ObjectQueueItem(to=message['origin'],data=parser_message,origin='main_monitor_data')
                         global_setting.get_setting("send_message_queue").put(message_struct)
                         logger.debug(f"main_monitor_data将响应报文的解析数据返回源头：{message_struct}")
                         pass

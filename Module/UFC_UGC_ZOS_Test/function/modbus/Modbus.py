@@ -6,7 +6,7 @@ from loguru import logger
 
 from Module.UFC_UGC_ZOS_Test.config_class.global_setting import global_setting
 from Module.UFC_UGC_ZOS_Test.function.modbus.Modbus_Response_Parser import Modbus_Response_Parser
-
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 
 from public.util.time_util import time_util
 
@@ -62,7 +62,8 @@ class ModbusRTUMaster:
         except Exception as e:
             if self.origin is not None:
                 # 把返回数据返回给源头
-                message_struct = {'to': self.origin, 'data': f"{time_util.get_format_from_time(time.time())} | 构造报文出错: {e}", 'from': 'main_monitor_data'}
+                message_struct = ObjectQueueItem(to=self.origin, data=f"{time_util.get_format_from_time(time.time())} | 构造报文出错: {e}",
+                                                     origin='main_monitor_data')
                 global_setting.get_setting("send_message_queue").put(message_struct)
             logger.error(f"{time_util.get_format_from_time(time.time())} | {self.sport}-构造报文出错: {e}")
             return None
@@ -86,17 +87,18 @@ class ModbusRTUMaster:
             )
             # if self.origin is not None:
             #     # 把返回数据返回给源头
-            #     message_struct = {'to': self.origin,
-            #                       'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-连接成功",
-            #                       'from': 'main_monitor_data'}
+            #     message_struct = ObjectQueueItem(to=self.origin,
+            #                                  data=f"{time_util.get_format_from_time(time.time())} | {self.sport}-连接成功",
+            #                                  origin='main_monitor_data')
             #     global_setting.get_setting("send_message_queue").put(message_struct)
             logger.info(f"{self.sport}-连接成功")
             frame = self.build_frame(slave_id, function_code, data_hex_list)
             if self.origin is not None:
                 # 把返回数据返回给源头
-                message_struct = {'to': self.origin,
-                                  'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-发送数据帧{frame.hex()}",
-                                  'from': 'main_monitor_data'}
+
+                message_struct = ObjectQueueItem(to=self.origin,
+                                                 data= f"{time_util.get_format_from_time(time.time())} | {self.sport}-发送数据帧{frame.hex()}",
+                                                 origin='main_monitor_data')
                 global_setting.get_setting("send_message_queue").put(message_struct)
             logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-发送数据帧{frame.hex()}")
             try:
@@ -116,9 +118,9 @@ class ModbusRTUMaster:
             if not response:
                 if self.origin is not None:
                     # 把返回数据返回给源头
-                    message_struct = {'to': self.origin,
-                                      'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT1-未获取到响应数据",
-                                      'from': 'main_monitor_data'}
+                    message_struct = ObjectQueueItem(to=self.origin,
+                                                     data=f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT1-未获取到响应数据",
+                                                     origin='main_monitor_data')
                     global_setting.get_setting("send_message_queue").put(message_struct)
                 logger.error(f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT1-未获取到响应数据")
                 if self.ser is not None and self.ser.is_open:  # 确保关闭连接
@@ -131,9 +133,9 @@ class ModbusRTUMaster:
             if len(response) < 5:
                 if self.origin is not None:
                     # 把返回数据返回给源头
-                    message_struct = {'to': self.origin,
-                                      'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT2-返回数据位数错误",
-                                      'from': 'main_monitor_data'}
+                    message_struct = ObjectQueueItem(to=self.origin,
+                                                     data=f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT2-返回数据位数错误",
+                                                     origin='main_monitor_data')
                     global_setting.get_setting("send_message_queue").put(message_struct)
                 logger.error(f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT2-返回数据位数错误")
                 if self.ser is not None and self.ser.is_open:  # 确保关闭连接
@@ -149,9 +151,10 @@ class ModbusRTUMaster:
             if crc_received != crc_expected:
                 if self.origin is not None:
                     # 把返回数据返回给源头
-                    message_struct = {'to': self.origin,
-                                      'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT3-数据错误，CRC验证失败",
-                                      'from': 'main_monitor_data'}
+                    message_struct = ObjectQueueItem(to=self.origin,
+                                                     data=f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT3-数据错误，CRC验证失败",
+                                                     origin='main_monitor_data')
+
                     global_setting.get_setting("send_message_queue").put(message_struct)
                 logger.error(f"{time_util.get_format_from_time(time.time())} | {self.sport}-Time OUT3-数据错误，CRC验证失败")
                 if self.ser is not None and self.ser.is_open:  # 确保关闭连接
@@ -165,9 +168,10 @@ class ModbusRTUMaster:
                 exception_code = response[2]
                 if self.origin is not None:
                     # 把返回数据返回给源头
-                    message_struct = {'to': self.origin,
-                                      'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-异常：功能码=0x{function_code:02X}, 异常码=0x{exception_code:02X}",
-                                      'from': 'main_monitor_data'}
+                    message_struct = ObjectQueueItem(to=self.origin,
+                                                     data=f"{time_util.get_format_from_time(time.time())} | {self.sport}-异常：功能码=0x{function_code:02X}, 异常码=0x{exception_code:02X}",
+                                                     origin='main_monitor_data')
+
                     global_setting.get_setting("send_message_queue").put(message_struct)
 
                 logger.error(
@@ -178,16 +182,17 @@ class ModbusRTUMaster:
                 return response, response.hex(), False
             # if self.origin is not None:
             #     # 把返回数据返回给源头
-            #     message_struct = {'to': self.origin,
-            #                       'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-CRC校验通过，正常响应",
-            #                       'from': 'main_monitor_data'}
+            #      message_struct = ObjectQueueItem(to=self.origin,
+            #                                  data=f"{time_util.get_format_from_time(time.time())} | {self.sport}-CRC校验通过，正常响应",
+            #                                  origin='main_monitor_data')
+            #
             #     global_setting.get_setting("send_message_queue").put(message_struct)
             logger.info(f"{time_util.get_format_from_time(time.time())} | {self.sport}-CRC校验通过，正常响应")
             if self.origin is not None:
                 # 把返回数据返回给源头
-                message_struct = {'to': self.origin,
-                                  'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-收到响应消息-{response.hex()}-数据部分{data_part.hex()}",
-                                  'from': 'main_monitor_data'}
+                message_struct = ObjectQueueItem(to=self.origin,
+                                                 data=f"{time_util.get_format_from_time(time.time())} | {self.sport}-收到响应消息-{response.hex()}-数据部分{data_part.hex()}",
+                                                 origin='main_monitor_data')
                 global_setting.get_setting("send_message_queue").put(message_struct)
             logger.info(
                 f"{time_util.get_format_from_time(time.time())} | {self.sport}-收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
@@ -205,9 +210,9 @@ class ModbusRTUMaster:
         except Exception as e:
             if self.origin is not None:
                 # 把返回数据返回给源头
-                message_struct = {'to': self.origin,
-                                  'data': f"{time_util.get_format_from_time(time.time())} | {self.sport}-❗ 串口通信异常: {e}",
-                                  'from': 'main_monitor_data'}
+                message_struct = ObjectQueueItem(to=self.origin,
+                                                 data= f"{time_util.get_format_from_time(time.time())} | {self.sport}-❗ 串口通信异常: {e}",
+                                                 origin='main_monitor_data')
                 global_setting.get_setting("send_message_queue").put(message_struct)
             logger.error(f"{time_util.get_format_from_time(time.time())} |  {self.sport}-❗ 串口通信异常: {e}")
             if self.ser is not None and self.ser.is_open:  # 确保关闭连接

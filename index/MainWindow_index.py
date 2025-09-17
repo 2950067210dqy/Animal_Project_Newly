@@ -1,14 +1,12 @@
 import importlib
 import json
 import os
-import threading
 import time
-from datetime import datetime
 from json import JSONDecodeError
 from PyQt6 import QtCore
-from PyQt6.QtCore import QThread, QTimer
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog
+from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget
 from loguru import logger
 
 from Module.UFC_UGC_ZOS_Test.entity.MyQThread import MyQThread
@@ -17,11 +15,10 @@ from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 from my_abc.BaseModule import BaseModule
 from public.component.custom_status_bar import CustomStatusBar
-from public.component.mask.LoadingMask import AnimatedLoadingMask, LoadingContext
-from public.component.mask_dialog.Mask_Dialog import AdaptiveMaskDialog
+from public.component.mask.LoadingMask import LoadingContext
 from public.config_class.global_setting import global_setting
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
-from public.function.Timer.ScheduledTimerTaskManager import AdvancedScheduledTaskManager, StopCondition
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
@@ -448,8 +445,22 @@ class MainWindow_Index(ThemedWindow):
         global_setting.set_setting("start_experiment_time", time.time())
         global_setting.set_setting("pause_experiment_time", [])
         global_setting.set_setting("relieve_pause_experiment_time", [])
-        self.start_thread = Start_experiment_thread(name="start_thread",window=self)
-        self.start_thread.start()
+        # self.start_thread = Start_experiment_thread(name="start_thread",window=self)
+        # self.start_thread.start()
+
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        send_message_queue.put(ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='start',
+                                               time=time_util.get_format_from_time(time.time())))
+        message_structs = [
+
+            ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='start',
+                            time=time_util.get_format_from_time(time.time())),
+            ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='start',
+                            time=time_util.get_format_from_time(time.time())),
+        ]
+        for message_struct in message_structs:
+            queue=global_setting.get_setting("queue")
+            queue.put(           message_struct)
         AsyPromise(self.start_update_gui).then(
             AsyPromise(self.start_open_window).then(
 
@@ -596,8 +607,19 @@ class MainWindow_Index(ThemedWindow):
 
         self.setEnabled(False)
         self.status_bar.update_tip(f"正在关闭实验监测...")
-        self.stop_experiment_thread = Stop_experiment_thread(name="stop_experiment_thread",window=self)
-        self.stop_experiment_thread.start()
+        # self.stop_experiment_thread = Stop_experiment_thread(name="stop_experiment_thread",window=self)
+        # self.stop_experiment_thread.start()
+        message_structs = [
+            ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='stop',
+                            time=time_util.get_format_from_time(time.time())),
+            ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='stop',
+                            time=time_util.get_format_from_time(time.time())),
+            ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='stop',
+                            time=time_util.get_format_from_time(time.time())),
+        ]
+        for message_struct in message_structs:
+            send_message_queue = global_setting.get_setting("send_message_queue")
+            send_message_queue.put(message_struct)
         self.stop_update_gui()
         pass
     def stop_ufc_ugc_zos(self,resolve,reject):

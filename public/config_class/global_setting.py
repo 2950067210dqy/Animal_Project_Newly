@@ -1,3 +1,8 @@
+
+
+
+
+
 class global_setting():
     _setting = {}
 
@@ -14,3 +19,4 @@ class global_setting():
             return cls._setting.get(key)
 
     pass
+

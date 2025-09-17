@@ -3,17 +3,22 @@ import multiprocessing
 import os
 import queue
 import shutil
+import sys
 import threading
 import time
 
+from PyQt6.QtWidgets import QApplication
 from loguru import logger
 
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
+
+from public.config_class import global_load
 from public.config_class.global_setting import global_setting
 
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
-from public.entity.MyQThread import MyQThread
+from public.entity.MyQThread import MyQThread, MyThread
 from public.entity.experiment_setting_entity import Experiment_setting_entity
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus import ModbusRTUMaster
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
@@ -25,7 +30,8 @@ MESSAGE_BATCH_SIZE = 0
 total_messages_processed = 1
 lock = threading.Lock()
 batch_complete_event = threading.Event()
-
+#使用端口
+port_use=None
 # 存储数据锁
 store_Q_lock = threading.Lock()
 store_Q = queue.Queue()
@@ -34,9 +40,8 @@ global_setting.set_setting("store_Q_lock",store_Q_lock)
 global_setting.set_setting("store_Q",store_Q)
 # 过滤日志
 logger = logger.bind(category="monitor_data_logger")
-ufc_ugc_zos=None
-ufc_ugc_zos_thread =None
-class read_queue_data_Thread(MyQThread):
+
+class read_queue_data_Thread(MyThread):
     def __init__(self, name):
         super().__init__(name)
         self.queue = None
@@ -49,16 +54,42 @@ class read_queue_data_Thread(MyQThread):
         super().stop()
     def dosomething(self):
         if not self.queue.empty():
-            message = self.queue.get()
-            # message 结构{'to'发往哪个线程，'data'数据,'from'从哪发的}
-            if message is not None and isinstance(message, dict) and len(message) > 0 and 'to' in message and message[
-                'to'] == 'main_monitor_data':
-                logger.error(f"{self.name}_get_message:{message}")
-                if 'data' in message:
-                    if self.send_thread is not None and self.send_thread.isRunning():
-                        # 发送优先级高的报文
-                        self.send_thread.add_message(message=message['data'], urgent=True, origin=message['from'])
+            logger.error(f"{self.queue.qsize()}")
+            message:ObjectQueueItem = self.queue.get()
+            logger.error(f"{self.name}_get_message:{message}|")
+            if message is not None and message.is_Empty():
+                return
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'main_monitor_data':
+                # logger.error(f"{self.name}_get_message:{message}")
+                match message.title:
+                    case '':
+                        if self.send_thread is not None and self.send_thread.isRunning():
+                            # 发送优先级高的报文
+                            self.send_thread.add_message(message=message.data, urgent=True, origin=message.origin)
+                            pass
+                    case 'set_port':
+                        global port_use
+                        port_use=message.data
+                        modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+                        if modbus is None:
+                            modbus = ModbusRTUMasterNew(port_use, baudrate=115200, timeout=float(
+                                global_setting.get_setting('monitor_data')['Serial']['timeout']), )
+                            global_setting.set_setting("modbus", modbus)
+                        else:
+                            modbus.close()
+                            modbus = ModbusRTUMasterNew(port_use, baudrate=115200, timeout=float(
+                                global_setting.get_setting('monitor_data')['Serial']['timeout']), )
+                            global_setting.set_setting("modbus", modbus)
+                    case 'start':
+                        start()
+                    case 'pause':
+                        pause()
+                    case 'stop':
+                        stop()
+                    case _:
                         pass
+
+
 
 
             else:
@@ -71,7 +102,7 @@ class read_queue_data_Thread(MyQThread):
 read_queue_data_thread = read_queue_data_Thread(name="main_monitor_data_read_queue_data_thread")
 
 
-class Store_Thread(MyQThread):
+class Store_Thread(MyThread):
     """
     存储请求线程发来的数据到sqlite中
     """
@@ -114,7 +145,7 @@ class Store_Thread(MyQThread):
         super().stop()
 
 
-class Send_thread(MyQThread):
+class Send_thread(MyThread):
     """
     请求数据线程
     """
@@ -186,7 +217,10 @@ class Send_thread(MyQThread):
                                                                                  send_message['function_code'], )
 
                         # 把返回数据返回给源头
-                        message_struct = {'to': message['origin'], 'data': parser_message, 'from': 'main_monitor_data'}
+                        message_struct = ObjectQueueItem(to=message['origin'],
+                                                         data=parser_message,
+                                                         origin='main_monitor_data')
+
                         global_setting.get_setting("send_message_queue").put(message_struct)
                         logger.debug(f"main_monitor_data将响应报文的解析数据返回源头：{message_struct}")
                         pass
@@ -242,7 +276,7 @@ class Send_thread(MyQThread):
 
 
 
-class Add_message_thread(MyQThread):
+class Add_message_thread(MyThread):
     def __init__(self,name,send_thread, port):
         super().__init__(name=name)
         self.send_thread = send_thread
@@ -334,7 +368,16 @@ def copy_experiment_setting_file():
         shutil.copy2(source_file, destination_file)
         pass
     pass
-def main(port,q,send_message_q):
+# 线程
+ufc_ugc_zos:UFC_UGC_ZOS_index=None
+ufc_ugc_zos_thread =None
+# 存储线程
+store_thread:Store_Thread = None
+# 发送报文线程
+send_thread :Send_thread= None
+add_message_thread:Add_message_thread = None
+def main(q,send_message_q):
+
     # logger.remove(0)
     # 加载日志配置
     logger.add(
@@ -347,17 +390,27 @@ def main(port,q,send_message_q):
     )
     logger.info(f"{'-' * 30}monitor_data_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
+    app = QApplication(sys.argv)
+    # 设置全局变量
+    global_load.load_global_setting_without_Qt()
+    global_setting.set_setting("queue", q)
+    global_setting.set_setting("send_message_queue", send_message_q)
 
-    # 读取共享信息线程
-    # q = global_setting.get_setting("queue")
-    # send_message_q = global_setting.get_setting("send_message_queue")
-    global read_queue_data_thread,MESSAGE_BATCH_SIZE,total_messages_processed
-    MESSAGE_BATCH_SIZE = 0
-    total_messages_processed = 1
+    global read_queue_data_thread
+
     read_queue_data_thread.queue = send_message_q
 
+    read_queue_data_thread.start()
+    # return store_thread,send_thread,read_queue_data_thread,add_message_thread,ufc_ugc_zos,ufc_ugc_zos_thread
+    # 系统退出
+    sys.exit(app.exec())
+def start():
+    logger.info(f"{'-' * 30}monitor_data_run{'-' * 30}")
+    global MESSAGE_BATCH_SIZE, total_messages_processed
+    MESSAGE_BATCH_SIZE = 0
+    total_messages_processed = 1
     # UFC_UGC_ZOS
-    global ufc_ugc_zos_thread, ufc_ugc_zos
+    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
     ufc_ugc_zos_thread = None
     ufc_ugc_zos = None
     try:
@@ -371,7 +424,6 @@ def main(port,q,send_message_q):
         print(ex)
         logger.error(f"<UNK>{ex}")
 
-
     # 存储线程
     store_thread = Store_Thread(name="monitor_data_store_message")
     store_thread.start()
@@ -379,21 +431,49 @@ def main(port,q,send_message_q):
     # 发送报文线程
     send_thread = Send_thread(name="monitor_data_send_message")
     send_thread.start()
-
     read_queue_data_thread.send_thread = send_thread
-    read_queue_data_thread.start()
 
-    add_message_thread=Add_message_thread("monitor_data_add_message",send_thread, port)
+    global port_use
+    add_message_thread = Add_message_thread("monitor_data_add_message", send_thread, port_use)
     add_message_thread.start()
-
-
 
     # 将实验配置存储到该实验的文件夹中去
     copy_experiment_setting_file()
-    return store_thread,send_thread,read_queue_data_thread,add_message_thread,ufc_ugc_zos,ufc_ugc_zos_thread
+def pause():
+    logger.info(f"{'-' * 30}monitor_data_pause{'-' * 30}")
+    pass
 
+def stop():
+    logger.info(f"{'-' * 30}monitor_data_stop{'-' * 30}")
+    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
+    try:
+        logger.error("stop_ufc_ugc_zos")
+        if ufc_ugc_zos is not None:
+            ufc_ugc_zos.disabled_auto_btn_handle()
+        if ufc_ugc_zos_thread is not None:
+            ufc_ugc_zos_thread.stop()
+    except Exception as e:
+        logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
+    pass
+    try:
+        logger.error("stop_store_thread")
+        if store_thread is not None and store_thread.isRunning():
+            store_thread.stop()
+    except Exception as e:
+        logger.error(f"关闭实验监测store_thread错误，原因：{e}")
+    try:
+        logger.error("stop_add_message_thread")
+        if add_message_thread is not None and add_message_thread.isRunning():
+            add_message_thread.stop()
+    except Exception as e:
+        logger.error(f"关闭实验监测add_message_thread错误，原因：{e}")
 
-
+    try:
+        logger.error("stop_send_thread")
+        if send_thread is not None and send_thread.isRunning():
+            send_thread.stop()
+    except Exception as e:
+        logger.error(f"关闭实验监测send_thread错误，原因：{e}")
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     send_message_q = multiprocessing.Queue()

@@ -1,3 +1,4 @@
+import time
 import typing
 
 from PyQt6 import QtGui
@@ -8,10 +9,11 @@ from loguru import logger
 from equipment.infrared_camera.senxor.utils import query_devices
 from public.component.dialog.infrared_camera_config_dialog import Ui_infrared_camera_config_dialog
 from public.config_class.global_setting import global_setting
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 
 from public.util.folder_util import folder_util
 from public.util.json_util import json_util
-
+from public.util.time_util import time_util
 
 
 class infrared_camera_config_dialog(QDialog):
@@ -21,7 +23,9 @@ class infrared_camera_config_dialog(QDialog):
 
     camera_config_finished_signal = pyqtSignal(list)
     def scan_realsense(self):  # 搜索相机
-        global_setting.get_setting("queue").put({'data': 'stop', 'to': 'main_infrared_camera'})
+        global_setting.get_setting("queue").put(
+            ObjectQueueItem(title="stop_running_cameras", origin="infrared_camera_config_dialog_index", to="main_infrared_camera",
+                            time=time_util.get_format_from_time(time.time())))
         camera_series_in_computer=[]
         devices = query_devices()
         id = 1

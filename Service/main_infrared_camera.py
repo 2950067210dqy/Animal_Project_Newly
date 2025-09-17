@@ -1,19 +1,22 @@
 # 加载日志配置
 import csv
 import multiprocessing
+import sys
 import threading
 import traceback
 from pathlib import Path
 
 import numpy as np
+from PyQt6.QtWidgets import QApplication
 from loguru import logger
 import cv2 as cv
 
 from public.component.dialog.index.infrared_camera_config_dialog_index import infrared_camera_config_dialog
+from public.config_class import global_load
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
-from public.entity.MyQThread import MyQThread
-
+from public.entity.MyQThread import MyQThread, MyThread
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 
 from public.util.folder_util import folder_util
 from public.util.json_util import json_util
@@ -62,7 +65,7 @@ lock = threading.Lock()
 
 # 过滤日志
 logger = logger.bind(category="infrared_camera_logger")
-class read_queue_data_Thread(MyQThread):
+class read_queue_data_Thread(MyThread):
     def __init__(self, name):
         super().__init__(name)
         self.queue = None
@@ -71,17 +74,28 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if not self.queue.empty():
-            message = self.queue.get()
-            if message is not None and isinstance(message, dict) and len(message) > 0 and 'to' in message and message[
-                'to'] == 'main_infrared_camera':
+            message:ObjectQueueItem = self.queue.get()
+            if message is not None and message.is_Empty():
+                return
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to=='main_infrared_camera':
                 logger.error(f"{self.name}_get_message:{message}")
-                if 'data' in message and message['data'] == 'stop':
-                    if self.camera_list is not None:
-                        for camera_struct_l in self.camera_list:
-                            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                                camera_struct_l['camera'].stop()
-                        print("main_infrared_camera stop")
+                match message.title:
+                    case 'stop_running_cameras':
+                        if self.camera_list is not None:
+                            for camera_struct_l in self.camera_list:
+                                if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                                    camera_struct_l['camera'].stop()
+
                         pass
+                    case 'start':
+                        start()
+                    case 'pause':
+                        pause()
+                    case 'stop':
+                        stop()
+                    case _:
+                        pass
+
             else:
                 # 把消息放回去
                 self.queue.put(message)
@@ -221,7 +235,7 @@ class TIP:
         return self.execute(thermal_data)
 
 
-class Thermal_process(MyQThread):
+class Thermal_process(MyThread):
     """
     温度处理线程
     """
@@ -426,7 +440,7 @@ class Thermal_process(MyQThread):
     pass
 
 
-class Delete_file(MyQThread):
+class Delete_file(MyThread):
     """
     清除文件线程
     """
@@ -485,16 +499,7 @@ class Delete_file(MyQThread):
 
 
 def load_global_setting():
-    # 加载相机配置
-    config_file_path = os.getcwd() + "./config/camera_config.ini"
-
-    # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
-    config = ini_parser(config_file_path).read()
-    if (len(config) != 0):
-        logger.info("相机配置文件读取成功。")
-    else:
-        logger.error("相机配置文件读取失败。")
-    global_setting.set_setting("camera_config", config)
+    global_load.load_global_setting_without_Qt()
     # 记录运行时间的开始时间
     start_time = time.time()
     global_setting.set_setting("start_time", start_time)
@@ -502,7 +507,7 @@ def load_global_setting():
     # 记录运行时上一次删除文件时间
     last_delete_time = time.time()
     global_setting.set_setting("last_delete_time", last_delete_time)
-    return config
+
 
 
 def check_setting_cameras_each_number():
@@ -532,7 +537,9 @@ def check_setting_cameras_each_number():
 
 def init_camera_and_image_handle_thread(serials):
     global camera_list, read_queue_data_thread
-    # global_setting.get_setting("queue").put({'data':'stop','to':'main_infrared_camera'})
+    # global_setting.get_setting("queue").put(
+    #     ObjectQueueItem(title="stop_running_cameras", origin="main_infrared_camera", to="main_infrared_camera",
+    #                     time=time_util.get_format_from_time(time.time())))
     # 初始化保存路径
     path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
            global_setting.get_setting("camera_config")['INFRARED_CAMERA']['path']
@@ -582,6 +589,7 @@ def init_camera_and_image_handle_thread(serials):
 
 
 def main(q):
+    app = QApplication(sys.argv)
     # logger.remove(0)
     logger.add(
         "./log/infrared_camera/i_camera_{time:YYYY-MM-DD}.log",
@@ -600,18 +608,43 @@ def main(q):
     read_queue_data_thread.queue = q
     read_queue_data_thread.start()
     global_setting.set_setting("queue", q)
+
+    # 系统退出
+    sys.exit(app.exec())
+    # global camera_list
+    # return camera_list, read_queue_data_thread, delete_file_thread,
+def start():
+    logger.info(f"{'-' * 30}infrared_camera_run{'-' * 30}")
     # 初始化保存路径
     path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
            global_setting.get_setting("camera_config")['INFRARED_CAMERA']['path']
+    global delete_file_thread
     # 删除文件线程
     delete_file_thread = Delete_file(path=path, start_time=global_setting.get_setting("start_time"))
     delete_file_thread.start()
 
     # 根据设置的相机数量来连接
     check_setting_cameras_each_number()
-    global camera_list
-    return camera_list, read_queue_data_thread, delete_file_thread,
-
+def pause():
+    logger.info(f"{'-' * 30}infrared_camera_pause{'-' * 30}")
+    pass
+def stop():
+    # 所有红外相机线程停止
+    logger.info(f"{'-' * 30}infrared_camera_stop{'-' * 30}")
+    logger.error("stop_infrared_camera_thread")
+    for camera_struct_l in camera_list:
+        if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+            try:
+                if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                    camera_struct_l['camera'].stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测infrared_camera_camera_list错误，原因：{e}")
+    try:
+        if delete_file_thread is not None and delete_file_thread.isRunning():
+            delete_file_thread.stop()
+    except Exception as e:
+        logger.error(f"关闭实验监测infrared_camera_delete_file_thread错误，原因：{e}")
+    pass
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     main(q)

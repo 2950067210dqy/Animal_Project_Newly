@@ -1,7 +1,3 @@
-import sys
-
-from PyQt6.QtWidgets import QMainWindow, QApplication
-
 from Module.UFC_UGC_ZOS_Test.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget

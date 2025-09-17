@@ -1,5 +1,3 @@
-import math
-import multiprocessing
 import os
 import threading
 import time
@@ -30,10 +28,12 @@ from Module.UFC_UGC_ZOS_Test.ui.UFC_UGC_ZOS_window import Ui_UFC_UGC_ZOS_window
 
 from Module.UFC_UGC_ZOS_Test.function.modbus.COM_Scan import scan_serial_ports_with_id
 from Module.UFC_UGC_ZOS_Test.util.time_util import time_util
+from public.entity.queue.ObjectQueue import ObjectQueue
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 
 from theme.ThemeQt6 import ThemedWindow
 from PyQt6 import QtGui, QtCore
-from PyQt6.QtCore import QRect, Qt, pyqtSignal, pyqtBoundSignal
+from PyQt6.QtCore import QRect, pyqtSignal, pyqtBoundSignal
 from PyQt6.QtWidgets import QComboBox, QListWidget, QPushButton, QLabel
 # 过滤日志
 
@@ -138,17 +138,21 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if not self.queue.empty():
-            message = self.queue.get()
+            message:ObjectQueueItem = self.queue.get()
             # message 结构{'to'发往哪个线程，'data'数据，‘from'从哪来}
 
-            if message is not None and isinstance(message, dict) and len(message) > 0 and 'to' in message and message[
-                'to'] == 'UFC_UGC_ZOS_index':
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to== 'UFC_UGC_ZOS_index':
                 # logger.error(f"{self.name}_get_message:{message}")
-                if 'data' in message:
-                    if self.update_status_main_signal_gui_update is not None:
-                        with read_queue_data_Thread_Lock:
-                            self.update_status_main_signal_gui_update.emit(message['data'])
+                match message.title:
+                    case '':
+                        if self.update_status_main_signal_gui_update is not None:
+                            with read_queue_data_Thread_Lock:
+                                self.update_status_main_signal_gui_update.emit(message.data)
+                            pass
+                    case _:
                         pass
+
+
             else:
                 # 把消息放回去
                 self.queue.put(message)
@@ -303,8 +307,8 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         else:
             logger.error("UFC_UGC_ZOS_config配置文件读取失败。")
         global_setting.set_setting("UFC_UGC_ZOS_config", configer)
-        q = multiprocessing.Queue()  # 创建 Queue 消息传递
-        send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
+        q = ObjectQueue()  # 创建 Queue 消息传递
+        send_message_q = ObjectQueue()  # 发送查询报文的消息传递单独一个通道
         global_setting.set_setting("queue", q)
         global_setting.set_setting("send_message_queue", send_message_q)
         # 串口的线程锁 确保同时只能一个线程访问资源

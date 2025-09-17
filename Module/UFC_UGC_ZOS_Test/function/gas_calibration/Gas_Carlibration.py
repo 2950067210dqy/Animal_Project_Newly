@@ -3,7 +3,6 @@ import copy
 import time
 
 from PyQt6.QtCore import pyqtSignal
-from loguru import logger
 
 from Module.UFC_UGC_ZOS_Test.config_class.global_setting import global_setting
 from Module.UFC_UGC_ZOS_Test.function.Send_Message.Send_Message import Send_Message

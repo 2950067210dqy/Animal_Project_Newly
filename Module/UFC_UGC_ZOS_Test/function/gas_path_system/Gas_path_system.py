@@ -1,9 +1,6 @@
 import abc
 import re
-import threading
 import time
-from threading import Event
-from tkinter.messagebox import RETRY
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDialog
@@ -13,7 +10,6 @@ from Module.UFC_UGC_ZOS_Test.component.dialog.Mouse_Cage_Choose_Dialog import Ru
 from Module.UFC_UGC_ZOS_Test.config_class.global_setting import global_setting
 from Module.UFC_UGC_ZOS_Test.entity.MyQThread import MyQThread
 from Module.UFC_UGC_ZOS_Test.function.Send_Message.Send_Message import Send_Message
-from Module.UFC_UGC_ZOS_Test.function.Timer.ProcederTimer import PeriodicTimer
 from Module.UFC_UGC_ZOS_Test.function.promise.AsyPromise import AsyPromise
 from Module.UFC_UGC_ZOS_Test.util.number_util import number_util
 from Module.UFC_UGC_ZOS_Test.util.time_util import time_util

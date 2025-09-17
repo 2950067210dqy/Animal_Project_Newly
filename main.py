@@ -6,7 +6,9 @@ import os
 import time
 import psutil
 from loguru import logger
-from Service import main_response_Modbus, main_gui
+from Service import main_response_Modbus, main_gui, main_monitor_data, main_deep_camera, main_infrared_camera
+from public.entity.queue.ObjectQueue import ObjectQueue
+
 # 过滤日志
 logger = logger.bind(category="main_logger")
 def kill_process_tree(pid, including_parent=True):
@@ -47,11 +49,16 @@ if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
 
     logger.info(f"{'-' * 40}main_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
-    q = multiprocessing.Queue()  # 创建 Queue 消息传递
-    send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
+    q =  multiprocessing.Queue() # 创建 Queue 消息传递
+    send_message_q =multiprocessing.Queue()   # 发送查询报文的消息传递单独一个通道
 
     p_response_comm = Process(target=main_response_Modbus.main, name="p_response_comm")
+
+
     p_gui = Process(target=main_gui.main, name="p_gui", args=(q, send_message_q))
+    p_monitor_data = Process(target=main_monitor_data.main, name="p_monitor_data", args=(q, send_message_q))
+    p_deep_camera = Process(target=main_deep_camera.main, name="p_deep_camera", args=(q,))
+    p_infrared_camera = Process(target=main_infrared_camera.main, name="p_infrared_camera", args=(q,))
     try:
         logger.info(f"p_response_comm子进程开始运行")
         p_response_comm.start()
@@ -60,6 +67,32 @@ if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
         if p_response_comm.is_alive():
             kill_process_tree(p_response_comm.pid)
             p_response_comm.join(timeout=5)
+
+
+    try:
+        logger.info(f"p_monitor_data子进程开始运行")
+        p_monitor_data.start()
+    except Exception as e:
+        logger.error(f"p_monitor_data子进程发生异常：{e} |  异常堆栈跟踪：{traceback.print_exc()}，准备终止该子进程")
+        if p_monitor_data.is_alive():
+            kill_process_tree(p_monitor_data.pid)
+            p_monitor_data.join(timeout=5)
+    try:
+        logger.info(f"p_deep_camera子进程开始运行")
+        p_deep_camera.start()
+    except Exception as e:
+        logger.error(f"p_deep_camera子进程发生异常：{e} |  异常堆栈跟踪：{traceback.print_exc()}，准备终止该子进程")
+        if p_deep_camera.is_alive():
+            kill_process_tree(p_deep_camera.pid)
+            p_deep_camera.join(timeout=5)
+    try:
+        logger.info(f"p_infrared_camera子进程开始运行")
+        p_infrared_camera.start()
+    except Exception as e:
+        logger.error(f"p_infrared_camera子进程发生异常：{e} |  异常堆栈跟踪：{traceback.print_exc()}，准备终止该子进程")
+        if p_infrared_camera.is_alive():
+            kill_process_tree(p_infrared_camera.pid)
+            p_infrared_camera.join(timeout=5)
     try:
         logger.info(f"p_gui子进程开始运行")
         p_gui.start()
@@ -73,18 +106,52 @@ if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
     while is_loop:
         # 检测 gui 进程是否存活
         if not p_gui.is_alive():
-            logger.error(f"p_gui子进程已停止，同步终止p_comm子进程")
+            logger.error(f"p_gui子进程已停止，同步终止子进程")
 
+            if p_deep_camera.is_alive():
+                kill_process_tree(p_deep_camera.pid)
+                logger.error(f"终止p_deep_camera子进程")
+                p_deep_camera.join(timeout=5)
+                p_deep_camera.kill()
+                pass
+            else:
+                kill_process_tree(p_deep_camera.pid)
+                logger.error(f"p_deep_camera子进程已经不存活")
+            if p_infrared_camera.is_alive():
+                kill_process_tree(p_infrared_camera.pid)
+                logger.error(f"终止p_infrared_camera子进程")
+                p_infrared_camera.join(timeout=5)
+                p_infrared_camera.kill()
+                pass
+            else:
+                kill_process_tree(p_infrared_camera.pid)
+                logger.error(f"p_infrared_camera子进程已经不存活")
             if p_response_comm.is_alive():
-                kill_process_tree(p_response_comm.pid)
+                kill_process_tree(p_infrared_camera.pid)
                 logger.error(f"终止p_response_comm子进程")
                 p_response_comm.join(timeout=5)
+                p_response_comm.kill()
                 pass
+            else:
+                kill_process_tree(p_infrared_camera.pid)
+                logger.error(f"p_response_comm子进程已经不存活")
+            if p_monitor_data.is_alive():
+                kill_process_tree(p_monitor_data.pid)
+                logger.error(f"终止p_monitor_data子进程")
+                p_monitor_data.join(timeout=5)
+                p_deep_camera.kill()
+                pass
+            else:
+                kill_process_tree(p_monitor_data.pid)
+                logger.error(f"p_monitor_data子进程已经不存活")
             is_loop = False
             break
         time.sleep(0.5)
     # 等待所有子进程退出
     p_response_comm.join()
+    p_deep_camera.join()
+    p_infrared_camera.join()
+    p_monitor_data.join()
     p_gui.join()
 else:
     pass

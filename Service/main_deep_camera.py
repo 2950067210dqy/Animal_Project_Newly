@@ -1,13 +1,18 @@
 import json
+import sys
 import threading
 import traceback
 
+from PyQt6.QtWidgets import QApplication
 from loguru import logger
+from traci.connection import switch
 
 from public.component.dialog.index.deep_camera_config_dialog_index import deep_camera_config_dialog
+from public.config_class import global_load
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
-from public.entity.MyQThread import MyQThread
+from public.entity.MyQThread import MyQThread, MyThread
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.folder_util import folder_util
 from public.util.json_util import json_util
 
@@ -46,7 +51,7 @@ intrinsics = os.getcwd() +"./config/deep_camera_intrinsics.json"
 file_locks = {}
 
 
-class read_queue_data_Thread(MyQThread):
+class read_queue_data_Thread(MyThread):
     def __init__(self, name):
         super().__init__(name)
         self.queue = None
@@ -55,21 +60,31 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if not self.queue.empty():
-            message = self.queue.get()
-
-            if message is not None and isinstance(message, dict) and len(message) > 0 and 'to' in message and message[
-                'to'] == 'main_deep_camera':
+            message:ObjectQueueItem = self.queue.get()
+            if message is not None and message.is_Empty():
+                return
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to== 'main_deep_camera':
                 logger.error(f"{self.name}_message:{message}")
-                if 'data' in message and message['data'] == 'stop':
-                    if self.camera_list is not None:
-                        for camera_struct_l in self.camera_list:
-                            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                                camera_struct_l['camera'].stop()
-                                camera_struct_l['camera'].terminal()
-                            if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
-                                camera_struct_l['img_process'].stop()
-                                camera_struct_l['img_process'].terminal()
+                match message.title:
+                    case 'stop_running_cameras':
+                        if self.camera_list is not None:
+                            for camera_struct_l in self.camera_list:
+                                if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                                    camera_struct_l['camera'].stop()
+                                    camera_struct_l['camera'].terminal()
+                                if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
+                                    camera_struct_l['img_process'].stop()
+                                    camera_struct_l['img_process'].terminal()
                         pass
+                    case 'start':
+                        start()
+                    case 'pause':
+                        pause()
+                    case 'stop':
+                        stop()
+                    case _ :
+                        pass
+
             else:
                 # 把消息放回去
                 self.queue.put(message)
@@ -227,7 +242,7 @@ class Detection:
         return image
 
 
-class Img_process(MyQThread):
+class Img_process(MyThread):
     """
     将bmp文件和npm文件进行处理 线程处理
     """
@@ -358,7 +373,7 @@ class Img_process(MyQThread):
         pass
 
 
-class Delete_file(MyQThread):
+class Delete_file(MyThread):
     """
     清除文件线程
     """
@@ -429,7 +444,7 @@ class Delete_file(MyQThread):
         pass
 
 
-class RealSenseProcessor(MyQThread):
+class RealSenseProcessor(MyThread):
     """
     相机线程
     """
@@ -612,16 +627,7 @@ class RealSenseProcessor(MyQThread):
         pass
 
 def load_global_setting():
-    # 加载相机配置
-    config_file_path = os.getcwd() + "./config/camera_config.ini"
-
-    # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
-    config = ini_parser(config_file_path).read()
-    if (len(config) != 0):
-        logger.info("相机配置文件读取成功。")
-    else:
-        logger.error("相机配置文件读取失败。")
-    global_setting.set_setting("camera_config", config)
+    global_load.load_global_setting_without_Qt()
     # 记录运行时间的开始时间
     start_time = time.time()
     global_setting.set_setting("start_time", start_time)
@@ -629,7 +635,7 @@ def load_global_setting():
     # 记录运行时上一次删除文件时间
     last_delete_time = time.time()
     global_setting.set_setting("last_delete_time", last_delete_time)
-    return config
+
 
 
 def check_setting_cameras_each_number():
@@ -660,7 +666,9 @@ def check_setting_cameras_each_number():
 
 def init_camera_and_image_handle_thread(serials):
     global camera_list, read_queue_data_thread
-    # global_setting.get_setting("queue").put({'data': 'stop', 'to': 'main_deep_camera'})
+    # global_setting.get_setting("queue").put(
+    #     ObjectQueueItem(title="stop_running_cameras", origin="main_deep_camera", to="main_infrared_camera",
+    #                     time=time_util.get_format_from_time(time.time())))
     # 初始化保存路径
     path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
            global_setting.get_setting("camera_config")['DEEP_CAMERA']['path']
@@ -764,18 +772,52 @@ def main(q):
     read_queue_data_thread.queue = q
     read_queue_data_thread.start()
     global_setting.set_setting("queue", q)
+
+    # global camera_list
+    # return camera_list,read_queue_data_thread,delete_file_thread,
+    # stop
+    # camera1.pipeline.stop()
+def start():
+    logger.info(f"{'-' * 30}deep_camera_run{'-' * 30}")
+    app = QApplication(sys.argv)
     # 初始化保存路径
     path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
            global_setting.get_setting("camera_config")['DEEP_CAMERA']['path']
+    global delete_file_thread
     # 删除文件线程
     delete_file_thread = Delete_file(path=path, start_time=global_setting.get_setting("start_time"))
     delete_file_thread.start()
     # 根据设置的相机数量来连接
     check_setting_cameras_each_number()
-    global camera_list
-    return camera_list,read_queue_data_thread,delete_file_thread,
-    # stop
-    # camera1.pipeline.stop()
+    # 系统退出
+    sys.exit(app.exec())
+    pass
+def pause():
+    logger.info(f"{'-' * 30}deep_camera_pause{'-' * 30}")
+    pass
+def stop():
+    # 所有深度相机线程停止
+    logger.info(f"{'-' * 30}deep_camera_stop{'-' * 30}")
+    logger.error("stop_deep_camera_thread")
+    for camera_struct_l in camera_list:
+        if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+            try:
+                if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                    camera_struct_l['camera'].stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测deep_camera_camera_list错误，原因：{e}")
+        if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
+            try:
+                if camera_struct_l['img_process'] is not None and camera_struct_l['img_process'].isRunning():
+                    camera_struct_l['img_process'].stop()
+            except Exception as e:
+                logger.error(f"关闭实验监测deep_camera_thread_list_img_process错误，原因：{e}")
+
+    try:
+        if delete_file_thread is not None and delete_file_thread.isRunning():
+           delete_file_thread.stop()
+    except Exception as e:
+        logger.error(f"关闭实验监测deep_camera_delete_file_thread错误，原因：{e}")
 
 
 if __name__ == "__main__":

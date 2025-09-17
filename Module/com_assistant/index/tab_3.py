@@ -8,6 +8,7 @@ from Module.com_assistant.ui.tab3_window import Ui_tab3_window
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import AppState
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
 from public.function.Modbus.Modbus import ModbusRTUMaster
 from theme.ThemeQt6 import ThemedWindow
@@ -29,15 +30,19 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if not self.queue.empty():
-            message = self.queue.get()
+            message:ObjectQueueItem = self.queue.get()
             # message 结构{'to'发往哪个线程，'data'数据，‘from'从哪来}
 
-            if message is not None and isinstance(message, dict) and len(message) > 0 and 'to' in message and message[
-                'to'] == 'tab_3':
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'tab_3':
                 logger.error(f"{self.name}_get_message:{message}")
-                if 'data' in message:
-                    self.update_status_main_signal_gui_update.emit(message['data'])
-                    pass
+                match message.title:
+                    case '':
+                        if self.update_status_main_signal_gui_update is not None:
+                            self.update_status_main_signal_gui_update.emit(message.data)
+                            pass
+                    case _:
+                        pass
+
             else:
                 # 把消息放回去
                 self.queue.put(message)
@@ -101,7 +106,10 @@ class Send_thread(MyQThread):
                                                                              self.send_message['function_code'], )
 
                     # 把返回数据返回给源头
-                    message_struct = {'to': "tab_3", 'data': parser_message, 'from': 'tab_3_send_thread'}
+
+                    message_struct = ObjectQueueItem(to="tab_3",
+                                                     data=parser_message,
+                                                     origin='tab_3_send_thread')
                     global_setting.get_setting("send_message_queue").put(message_struct)
                     logger.debug(f"tab_3_send_thread将响应报文的解析数据返回源头：{message_struct}")
                     pass
@@ -282,9 +290,11 @@ class Tab_3(ThemedWindow):
                     except Exception as e:
                         logger.error(e)
                 else:
-                    message = {'to': 'main_monitor_data', 'data': self.send_message, 'from': 'tab_3'}
-                    global_setting.get_setting("send_message_queue").put(message)
-                    logger.debug(f"tab_3开始发送消息:{message}")
+                    message_struct = ObjectQueueItem(to="main_monitor_data",
+                                                     data=self.send_message,
+                                                     origin='tab_3')
+                    global_setting.get_setting("send_message_queue").put(message_struct)
+                    logger.debug(f"tab_3开始发送消息:{message_struct}")
                 pass
         except Exception as e:
             logger.error(e)

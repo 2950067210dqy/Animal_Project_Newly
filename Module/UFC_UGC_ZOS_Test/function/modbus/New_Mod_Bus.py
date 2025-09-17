@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from loguru import logger
 
 from public.config_class.global_setting import global_setting
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser
 from public.util.time_util import time_util
 
@@ -156,11 +157,10 @@ class ModbusRTUMasterNew:
         """发送状态消息到队列（无锁版本）"""
         try:
             if self.origin is not None:
-                message_struct = {
-                    'to': self.origin,
-                    'data': f"{time_util.get_format_from_time(time.time())}-{self.sport}-{message}",
-                    'from': 'main_monitor_data'
-                }
+
+                message_struct = ObjectQueueItem(to=self.origin,
+                                                 data= f"{time_util.get_format_from_time(time.time())}-{self.sport}-{message}",
+                                                 origin='main_monitor_data')
                 global_setting.get_setting("send_message_queue").put(message_struct)
         except Exception as e:
             logger.error(f"发送状态消息失败: {e}")

@@ -4,6 +4,7 @@ from PyQt6.QtCore import pyqtSignal
 from loguru import logger
 
 from public.config_class.global_setting import global_setting
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 
 logger = logger.bind(category="monitor_data_logger")
@@ -37,8 +38,10 @@ class Send_Message:
                                                                              self.send_message['function_code'], )
 
                     # 把返回数据返回给源头
-                    message_struct = {'to': "UFC_UGC_ZOS_index", 'data': parser_message,
-                                      'from': 'UFC_UGC_ZOS_index_send_thread'}
+                    message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index",
+                                                     data=parser_message,
+                                                     origin='UFC_UGC_ZOS_index_send_thread')
+
                     global_setting.get_setting("send_message_queue").put(message_struct)
                     logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
 
@@ -78,8 +81,10 @@ class Send_Message:
                                                                              self.send_message['function_code'], )
 
                     # 把返回数据返回给源头
-                    message_struct = {'to': "UFC_UGC_ZOS_index", 'data': parser_message,
-                                      'from': 'UFC_UGC_ZOS_index_send_thread'}
+
+                    message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index",
+                                                     data=parser_message,
+                                                     origin='UFC_UGC_ZOS_index_send_thread')
                     global_setting.get_setting("send_message_queue").put(message_struct)
                     logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
                     pass

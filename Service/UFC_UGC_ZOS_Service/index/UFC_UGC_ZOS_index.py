@@ -24,6 +24,7 @@ from Service.UFC_UGC_ZOS_Service.function.gas_state_check.Gas_State_Check import
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from public.entity.MyQThread import MyQThread
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Timer.ProcederTimer import PeriodicTimer
 from public.function.promise.AsyPromise import AsyPromise
 from theme.ThemeQt6 import ThemedWindow
@@ -120,17 +121,20 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if not self.queue.empty():
-            message = self.queue.get()
+            message:ObjectQueueItem = self.queue.get()
             # message 结构{'to'发往哪个线程，'data'数据，‘from'从哪来}
 
-            if message is not None and isinstance(message, dict) and len(message) > 0 and 'to' in message and message[
-                'to'] == 'UFC_UGC_ZOS_index':
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to=='UFC_UGC_ZOS_index':
                 # logger.error(f"{self.name}_get_message:{message}")
-                if 'data' in message:
-                    if self.update_status_main_signal_gui_update is not None:
-                        with read_queue_data_Thread_Lock:
-                            self.update_status_main_signal_gui_update.emit(message['data'])
+                match message.title:
+                    case '':
+                        if self.update_status_main_signal_gui_update is not None:
+                            with read_queue_data_Thread_Lock:
+                                self.update_status_main_signal_gui_update.emit(message.data)
+                            pass
+                    case _:
                         pass
+
             else:
                 # 把消息放回去
                 self.queue.put(message)
@@ -240,10 +244,10 @@ class UFC_UGC_ZOS_index(QObject):
         else:
             logger.error("UFC_UGC_ZOS_config配置文件读取失败。")
         global_setting.set_setting("UFC_UGC_ZOS_config", configer)
-        q = multiprocessing.Queue()  # 创建 Queue 消息传递
-        send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
-        global_setting.set_setting("queue", q)
-        global_setting.set_setting("send_message_queue", send_message_q)
+        # q = multiprocessing.Queue()  # 创建 Queue 消息传递
+        # send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
+        # global_setting.set_setting("queue", q)
+        # global_setting.set_setting("send_message_queue", send_message_q)
         # 串口的线程锁 确保同时只能一个线程访问资源
         serial_lock = threading.Lock()
         global_setting.set_setting("serial_lock", serial_lock)

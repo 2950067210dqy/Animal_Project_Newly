@@ -4,12 +4,8 @@ import re
 
 from PyQt6.QtCore import pyqtSignal
 
-
-from loguru import logger
-
 from Module.UFC_UGC_ZOS_Test.config_class.global_setting import global_setting
 from Module.UFC_UGC_ZOS_Test.function.Send_Message.Send_Message import Send_Message
-from Module.UFC_UGC_ZOS_Test.function.promise.AsyPromise import AsyPromise
 from Module.UFC_UGC_ZOS_Test.util.number_util import number_util
 from Module.UFC_UGC_ZOS_Test.util.time_util import time_util
 
