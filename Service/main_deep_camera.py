@@ -766,6 +766,7 @@ def init_camera_and_image_handle_thread(serials):
 
 
 def main(q):
+    app = QApplication(sys.argv)
     # 加载日志配置
     # logger.remove(0)
     # 過濾日志
@@ -786,7 +787,7 @@ def main(q):
     read_queue_data_thread.queue = q
     read_queue_data_thread.start()
     global_setting.set_setting("queue", q)
-
+    return app.exec()
     # global camera_list
     # return camera_list,read_queue_data_thread,delete_file_thread,
     # stop

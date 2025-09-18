@@ -1,58 +1,25 @@
 """
-PeriodicTimer 可复用类（可注入任务）
+PeriodicTimer 可复用类（可注入任务）- 支持多进程版本
 - interval_ms: 间隔（毫秒）
 - max_duration_ms: 最大运行时长（毫秒），None 表示无限制
 - task: 每次触发时要执行的可调用对象，可以接收 0 或 1 个参数(elapsed_ms)
-- run_in_thread: 若 True，则把 task 提交到 QThreadPool 执行（避免阻塞 GUI）
-- task_done_callback: 当任务（无论是在主线程还是在线程池中）完成时，会在主线程调用该回调，签名为 callback(result, elapsed_ms)（如果 task 返回结果则为 result，否则 None）
+- run_in_thread: 若 True，则把 task 提交到 ThreadPoolExecutor 执行（避免阻塞主逻辑）
+- task_done_callback: 当任务完成时的回调，签名为 callback(result, elapsed_ms)
 - run_immediately: start 时是否立即执行一次 task
 """
 
+import threading
+import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Optional, Callable, Any
-
-
-from PyQt6.QtCore import QObject, QTimer, QElapsedTimer, pyqtSignal, QRunnable, QThreadPool
 from loguru import logger
 
 
-class _TaskRunnable(QRunnable):
-    """用于在线程池中执行用户任务，并在完成后通过回调通知（在工作线程中）。"""
-
-    def __init__(self, func: Callable[..., Any], elapsed_ms: int, done_callback: Optional[Callable[[Any, int], None]] = None):
-        super().__init__()
-        self.func = func
-        self.elapsed_ms = elapsed_ms
-        self.done_callback = done_callback
-        self.setAutoDelete(True)
-
-    def run(self):
-        result = None
-        try:
-            try:
-                result = self.func(self.elapsed_ms)
-            except TypeError:
-                result = self.func()
-        except Exception:
-            traceback.print_exc()
-        # done_callback 期望在主线程调用；我们不能直接在工作线程安全调用 GUI，
-        # 所以 done_callback 应该是线程安全的或将结果通过信号回到主线程。
-        if self.done_callback:
-            try:
-                self.done_callback(result, self.elapsed_ms)
-            except Exception:
-                traceback.print_exc()
-
-
-class PeriodicTimer(QObject):
+class PeriodicTimer:
     """
-    可注入任务的周期性定时器。
-    信号:
-        finished(elapsed_ms)
-        taskFinished(result, elapsed_ms)  # 任务完成（不保证在主线程，视 done_callback 实现）
+    支持多进程的周期性定时器类
     """
-    finished = pyqtSignal(int)
-    taskFinished = pyqtSignal(object, int)
 
     def __init__(
         self,
@@ -62,9 +29,8 @@ class PeriodicTimer(QObject):
         run_in_thread: bool = False,
         task_done_callback: Optional[Callable[[Any, int], None]] = None,
         run_immediately: bool = False,
-        parent: Optional[QObject] = None
+        max_workers: int =None
     ):
-        super().__init__(parent)
         self.interval_ms = int(interval_ms)
         self.max_duration_ms = None if max_duration_ms is None else int(max_duration_ms)
         self._task = task
@@ -72,108 +38,412 @@ class PeriodicTimer(QObject):
         self._task_done_callback = task_done_callback
         self.run_immediately = bool(run_immediately)
 
-        self._timer = QTimer(self)
-        self._timer.setInterval(self.interval_ms)
-        self._timer.timeout.connect(self._on_timeout)
+        # 线程控制
+        self._timer_thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+        self._pause_event = threading.Event()
+        self._pause_event.set()  # 初始为非暂停状态
 
-        self._elapsed_timer = QElapsedTimer()
-        self._paused_elapsed_ms = 0
-        self._is_paused = False
+        # 时间记录
+        self._start_time = 0
+        self._paused_duration = 0
+        self._pause_start_time = 0
 
-        self._pool = QThreadPool.globalInstance()
+        # 线程池（如果需要）
+        self._executor: Optional[ThreadPoolExecutor] = None
+        if self.run_in_thread:
+            self._executor = ThreadPoolExecutor(max_workers=max_workers)
 
-        # 将线程池任务完成通过信号回到主线程（如果用户使用 done callback）
-        self.taskFinished.connect(self._on_task_finished)
+        # 回调列表（支持多个监听器）
+        self._finished_callbacks = []
+        self._task_finished_callbacks = []
+
+        # 锁保护状态
+        self._lock = threading.Lock()
+
+    def add_finished_callback(self, callback: Callable[[int], None]):
+        """添加定时器结束回调"""
+        self._finished_callbacks.append(callback)
+
+    def add_task_finished_callback(self, callback: Callable[[Any, int], None]):
+        """添加任务完成回调"""
+        self._task_finished_callbacks.append(callback)
 
     def set_task(self, task: Callable[..., Any]):
-        """在运行前或运行时设置/替换任务 callable"""
-        self._task = task
+        """设置/替换任务函数"""
+        with self._lock:
+            self._task = task
 
     def start(self):
-        self._paused_elapsed_ms = 0
-        self._is_paused = False
-        self._elapsed_timer.restart()
-        self._timer.start()
-        if self.run_immediately:
-            self._on_timeout()
+        """启动定时器"""
+        if self._timer_thread and self._timer_thread.is_alive():
+            logger.warning("Timer is already running")
+            return
+
+        # 重置状态
+        self._stop_event.clear()
+        self._pause_event.set()
+        self._start_time = time.time()
+        self._paused_duration = 0
+
+        # 启动定时器线程
+        self._timer_thread = threading.Thread(target=self._timer_loop, daemon=True)
+        self._timer_thread.start()
+
+        logger.info(f"PeriodicTimer started with interval {self.interval_ms}ms")
 
     def stop(self):
-        if self._timer.isActive():
-            self._timer.stop()
-        self._is_paused = False
+        """停止定时器"""
+        if not self._timer_thread or not self._timer_thread.is_alive():
+            return
+
+        # 设置停止标志
+        self._stop_event.set()
+        self._pause_event.set()  # 确保不会卡在暂停状态
+
+        # 等待线程结束
+        if self._timer_thread:
+            self._timer_thread.join(timeout=1.0)
+
+        # 关闭线程池
+        if self._executor:
+            self._executor.shutdown(wait=False)
+
+        # 触发结束回调
         elapsed = self.get_elapsed_ms()
-        # 调用结束回调/信号
-        self.finished.emit(elapsed)
+        self._trigger_finished_callbacks(elapsed)
+
+        logger.info(f"PeriodicTimer stopped after {elapsed}ms")
 
     def pause(self):
-        if not self._timer.isActive() or self._is_paused:
+        """暂停定时器"""
+        if not self._timer_thread or not self._timer_thread.is_alive():
             return
-        self._paused_elapsed_ms += self._elapsed_timer.elapsed()
-        self._timer.stop()
-        self._is_paused = True
+
+        with self._lock:
+            if not self._pause_event.is_set():
+                return  # 已经暂停
+
+            self._pause_start_time = time.time()
+            self._pause_event.clear()
+
+        logger.info("PeriodicTimer paused")
 
     def resume(self):
-        if not self._is_paused:
+        """恢复定时器"""
+        if not self._timer_thread or not self._timer_thread.is_alive():
             return
-        self._elapsed_timer.restart()
-        self._timer.start()
-        self._is_paused = False
+
+        with self._lock:
+            if self._pause_event.is_set():
+                return  # 没有暂停
+
+            # 累计暂停时间
+            self._paused_duration += time.time() - self._pause_start_time
+            self._pause_event.set()
+
+        logger.info("PeriodicTimer resumed")
 
     def is_active(self) -> bool:
-        return self._timer.isActive() and not self._is_paused
+        """检查定时器是否活跃"""
+        return (self._timer_thread and
+                self._timer_thread.is_alive() and
+                not self._stop_event.is_set() and
+                self._pause_event.is_set())
+
+    def is_paused(self) -> bool:
+        """检查是否暂停"""
+        return (self._timer_thread and
+                self._timer_thread.is_alive() and
+                not self._stop_event.is_set() and
+                not self._pause_event.is_set())
 
     def get_elapsed_ms(self) -> int:
-        if self._is_paused:
-            return int(self._paused_elapsed_ms)
-        else:
-            return int(self._paused_elapsed_ms + (self._elapsed_timer.elapsed() if self._elapsed_timer.isValid() else 0))
+        """获取已运行时间（毫秒）"""
+        if not self._start_time:
+            return 0
 
-    def _on_timeout(self):
-        elapsed = self.get_elapsed_ms()
+        current_time = time.time()
+        total_elapsed = current_time - self._start_time
 
+        # 减去暂停时间
+        paused_time = self._paused_duration
+        if not self._pause_event.is_set() and self._pause_start_time:
+            paused_time += current_time - self._pause_start_time
+
+        elapsed = total_elapsed - paused_time
+        return int(elapsed * 1000)
+
+    def _timer_loop(self):
+        """定时器主循环"""
+        try:
+            # 立即执行（如果需要）
+            if self.run_immediately:
+                self._execute_task()
+
+            while not self._stop_event.is_set():
+                # 等待间隔时间或停止信号
+                if self._stop_event.wait(timeout=self.interval_ms / 1000.0):
+                    break  # 收到停止信号
+
+                # 等待恢复（如果暂停）
+                self._pause_event.wait()
+
+                # 再次检查停止信号
+                if self._stop_event.is_set():
+                    break
+
+                # 执行任务
+                self._execute_task()
+
+                # 检查最大运行时间
+                if self.max_duration_ms is not None:
+                    elapsed = self.get_elapsed_ms()
+                    if elapsed >= self.max_duration_ms:
+                        logger.info(f"Max duration {self.max_duration_ms}ms reached")
+                        break
+
+        except Exception as e:
+            logger.error(f"Timer loop error: {e}")
+            traceback.print_exc()
+        finally:
+            # 确保线程池关闭
+            if self._executor:
+                self._executor.shutdown(wait=True)
+
+    def _execute_task(self):
+        """执行用户任务"""
         if not self._task:
-            # 无任务，仅用于计时
-            pass
-        else:
-            if self.run_in_thread:
-                # 在线程池中执行任务
-                def done_cb(result, ems):
-                    # 由工作线程调用，这里转发到主线程通过信号
-                    self.taskFinished.emit(result, ems)
+            return
 
-                runnable = _TaskRunnable(self._task, elapsed, done_cb)
-                self._pool.start(runnable)
-            else:
-                # 在主线程直接执行（注意不要阻塞）
-                result = None
-                try:
-                    try:
-                        result = self._task(elapsed)
-                    except TypeError:
-                        result = self._task()
-                except Exception:
-                    traceback.print_exc()
-                    result = None
-                # 直接调用完成回调（若有），并发出信号
-                if self._task_done_callback:
-                    try:
-                        self._task_done_callback(result, elapsed)
-                    except Exception:
-                        traceback.print_exc()
-                self.taskFinished.emit(result, elapsed)
-
-        # 再次检查 elapsed（任务可能耗时）
         elapsed = self.get_elapsed_ms()
-        if self.max_duration_ms is not None and elapsed >= self.max_duration_ms:
-            self.stop()
 
-    def _on_task_finished(self, result: Any, elapsed_ms: int):
-        """
-        taskFinished 信号在主线程被调用，适合在这里调用用户传入的 task_done_callback（保证在主线程）
-        """
+        if self.run_in_thread and self._executor:
+            # 在线程池中执行
+            future = self._executor.submit(self._run_task_safe, elapsed)
+            future.add_done_callback(lambda f: self._handle_task_result(f, elapsed))
+        else:
+            # 在当前线程执行
+            result = self._run_task_safe(elapsed)
+            self._trigger_task_finished_callbacks(result, elapsed)
+
+    def _run_task_safe(self, elapsed_ms: int) -> Any:
+        """安全执行用户任务"""
+        try:
+            # 尝试传递elapsed_ms参数
+            try:
+                return self._task(elapsed_ms)
+            except TypeError:
+                # 如果函数不接受参数，则不传递
+                return self._task()
+        except Exception as e:
+            logger.error(f"Task execution error: {e}")
+            traceback.print_exc()
+            return None
+
+    def _handle_task_result(self, future: Future, elapsed_ms: int):
+        """处理线程池任务结果"""
+        try:
+            result = future.result()
+        except Exception as e:
+            logger.error(f"Task future error: {e}")
+            result = None
+
+        self._trigger_task_finished_callbacks(result, elapsed_ms)
+
+    def _trigger_finished_callbacks(self, elapsed_ms: int):
+        """触发定时器结束回调"""
+        for callback in self._finished_callbacks:
+            try:
+                callback(elapsed_ms)
+            except Exception as e:
+                logger.error(f"Finished callback error: {e}")
+                traceback.print_exc()
+
+        # 也触发原来的task_done_callback
         if self._task_done_callback:
             try:
-                logger.error("finished task_done_callback")
-                self._task_done_callback(result, elapsed_ms)
-            except Exception:
+                self._task_done_callback(None, elapsed_ms)
+            except Exception as e:
+                logger.error(f"Task done callback error: {e}")
                 traceback.print_exc()
+
+    def _trigger_task_finished_callbacks(self, result: Any, elapsed_ms: int):
+        """触发任务完成回调"""
+        for callback in self._task_finished_callbacks:
+            try:
+                callback(result, elapsed_ms)
+            except Exception as e:
+                logger.error(f"Task finished callback error: {e}")
+                traceback.print_exc()
+
+        # 也触发原来的task_done_callback
+        if self._task_done_callback:
+            try:
+                self._task_done_callback(result, elapsed_ms)
+            except Exception as e:
+                logger.error(f"Task done callback error: {e}")
+                traceback.print_exc()
+
+    def __del__(self):
+        """析构函数，确保资源清理"""
+        try:
+            self.stop()
+        except:
+            pass
+
+
+# 用法示例和测试代码
+if __name__ == "__main__":
+    import multiprocessing
+    from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget
+    from PyQt6.QtCore import QTimer as QtTimer
+
+    def test_task(elapsed_ms=0):
+        """测试任务函数"""
+        import random
+        data = random.randint(1, 100)
+        print(f"Task executed at {elapsed_ms}ms, generated data: {data}")
+        time.sleep(0.1)  # 模拟一些处理时间
+        return data
+
+    def task_done_callback(result, elapsed_ms):
+        """任务完成回调"""
+        print(f"Task completed: result={result}, elapsed={elapsed_ms}ms")
+
+    def finished_callback(elapsed_ms):
+        """定时器结束回调"""
+        print(f"Timer finished after {elapsed_ms}ms")
+
+    def subprocess_worker():
+        """子进程工作函数"""
+        print("子进程启动")
+
+        # 在子进程中创建和使用定时器
+        timer = PeriodicTimer(
+            interval_ms=500,
+            max_duration_ms=5000,
+            task=test_task,
+            run_in_thread=True,
+            task_done_callback=task_done_callback,
+            run_immediately=True
+        )
+
+        timer.add_finished_callback(finished_callback)
+        timer.start()
+
+        # 模拟一些其他工作
+        time.sleep(2)
+        print("子进程暂停定时器")
+        timer.pause()
+
+        time.sleep(1)
+        print("子进程恢复定时器")
+        timer.resume()
+
+        # 等待定时器结束
+        while timer.is_active() or timer.is_paused():
+            time.sleep(0.1)
+
+        print("子进程结束")
+
+    class MainWindow(QMainWindow):
+        """主窗口类，演示在GUI中使用定时器"""
+        def __init__(self):
+            super().__init__()
+            self.timer = None
+            self.init_ui()
+
+        def init_ui(self):
+            central_widget = QWidget()
+            self.setCentralWidget(central_widget)
+            layout = QVBoxLayout(central_widget)
+
+            self.status_label = QLabel("定时器状态: 未启动")
+            self.elapsed_label = QLabel("运行时间: 0ms")
+            self.result_label = QLabel("最新结果: 无")
+
+            self.start_button = QPushButton("启动定时器")
+            self.start_button.clicked.connect(self.start_timer)
+
+            self.pause_button = QPushButton("暂停")
+            self.pause_button.clicked.connect(self.pause_timer)
+
+            self.resume_button = QPushButton("恢复")
+            self.resume_button.clicked.connect(self.resume_timer)
+
+            self.stop_button = QPushButton("停止")
+            self.stop_button.clicked.connect(self.stop_timer)
+
+            layout.addWidget(self.status_label)
+            layout.addWidget(self.elapsed_label)
+            layout.addWidget(self.result_label)
+            layout.addWidget(self.start_button)
+            layout.addWidget(self.pause_button)
+            layout.addWidget(self.resume_button)
+            layout.addWidget(self.stop_button)
+
+            # GUI更新定时器
+            self.gui_timer = QtTimer()
+            self.gui_timer.timeout.connect(self.update_ui)
+            self.gui_timer.start(100)
+
+        def gui_task_callback(self, result, elapsed_ms):
+            """GUI线程安全的任务回调"""
+            self.result_label.setText(f"最新结果: {result} (at {elapsed_ms}ms)")
+
+        def gui_finished_callback(self, elapsed_ms):
+            """GUI线程安全的结束回调"""
+            self.status_label.setText(f"定时器已结束，总运行时间: {elapsed_ms}ms")
+
+        def start_timer(self):
+            if self.timer and (self.timer.is_active() or self.timer.is_paused()):
+                return
+
+            self.timer = PeriodicTimer(
+                interval_ms=1000,
+                max_duration_ms=10000,
+                task=test_task,
+                run_in_thread=True,
+                run_immediately=True
+            )
+
+            self.timer.add_task_finished_callback(self.gui_task_callback)
+            self.timer.add_finished_callback(self.gui_finished_callback)
+            self.timer.start()
+
+        def pause_timer(self):
+            if self.timer:
+                self.timer.pause()
+
+        def resume_timer(self):
+            if self.timer:
+                self.timer.resume()
+
+        def stop_timer(self):
+            if self.timer:
+                self.timer.stop()
+
+        def update_ui(self):
+            if self.timer:
+                if self.timer.is_active():
+                    status = "运行中"
+                elif self.timer.is_paused():
+                    status = "已暂停"
+                else:
+                    status = "已停止"
+
+                self.status_label.setText(f"定时器状态: {status}")
+                self.elapsed_label.setText(f"运行时间: {self.timer.get_elapsed_ms()}ms")
+
+    # 测试多进程
+    print("=== 测试子进程中的定时器 ===")
+    process = multiprocessing.Process(target=subprocess_worker)
+    process.start()
+    process.join()
+
+    print("\n=== 测试GUI中的定时器 ===")
+    app = QApplication([])
+    window = MainWindow()
+    window.show()
+    app.exec()

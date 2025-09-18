@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 
-from PyQt6.QtCore import QThread, QTimer
+from PyQt6.QtCore import QThread, QTimer, QCoreApplication
 from PyQt6.QtWidgets import QApplication
 from loguru import logger
 
@@ -407,7 +407,7 @@ def main(q,send_message_q):
     )
     logger.info(f"{'-' * 30}monitor_data_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
-    app = QApplication(sys.argv)
+    app = QCoreApplication(sys.argv)
     # 设置全局变量
     global_load.load_global_setting_without_Qt()
     global_setting.set_setting("queue", q)
@@ -420,7 +420,7 @@ def main(q,send_message_q):
     read_queue_data_thread.start()
     # return store_thread,send_thread,read_queue_data_thread,add_message_thread,ufc_ugc_zos,ufc_ugc_zos_thread
     # 系统退出
-    sys.exit(app.exec())
+    return app.exec()
 def start():
     logger.info(f"{'-' * 30}monitor_data_run{'-' * 30}")
     global MESSAGE_BATCH_SIZE, total_messages_processed

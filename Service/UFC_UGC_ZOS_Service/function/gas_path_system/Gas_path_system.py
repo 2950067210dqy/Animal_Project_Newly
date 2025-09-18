@@ -451,8 +451,10 @@ class UFC_gas_path_system(Gas_path_system):
 
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} | {'-'*500}")
+        logger.error( f"{time_util.get_format_from_time(time.time())} | {'-'*500}")
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms//1000}s)，等待流量控制器自动配置及运行 .")
+        logger.error(f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms//1000}s)，等待流量控制器自动配置及运行 .")
     def check_ufc_start_time_state(self):
         #定时器结束调用
         logger.error("check_ufc_start_time_state")
@@ -844,9 +846,10 @@ class ZOS_gas_path_system(Gas_path_system):
         #zos启动之后需要预热
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} | {'-'*500}")
+        logger.error(f"{time_util.get_format_from_time(time.time())} | {'-'*500}")
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} | ZOS 正在预热时间为{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_time'])}s(当前{elapsed_ms//1000}s)，循环判断zos状态是否完成，预热完成进入运行状态-start.")
-
+        logger.error( f"{time_util.get_format_from_time(time.time())} | ZOS 正在预热时间为{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_time'])}s(当前{elapsed_ms//1000}s)，循环判断zos状态是否完成，预热完成进入运行状态-start.")
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.emit(

@@ -584,7 +584,7 @@ class UFC_UGC_ZOS_index(MyQThread):
             self.ufc_start_timer = PeriodicTimer(
                 interval_ms=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time_delay']) * 1000,
                 max_duration_ms=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time']) * 1000,
-                task=None,  # 先不传，后面用 set_task 注入
+                task=self.UFC_gas_path_system_obj.ufc_start_timer_task,  # 先不传，后面用 set_task 注入
                 run_in_thread=True,  # 若你的任务耗时，设为 True
 
                 run_immediately=True
@@ -592,7 +592,6 @@ class UFC_UGC_ZOS_index(MyQThread):
         except Exception as e:
             logger.error(e)
         self.ufc_start_timer.finished.connect(self.UFC_gas_path_system_obj.check_ufc_start_time_state)
-        self.ufc_start_timer.set_task(self.UFC_gas_path_system_obj.ufc_start_timer_task)
         self.ufc_start_timer.start()
 
 

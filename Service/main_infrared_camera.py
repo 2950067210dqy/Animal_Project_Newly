@@ -626,7 +626,7 @@ def main(q):
     global_setting.set_setting("queue", q)
 
     # 系统退出
-    sys.exit(app.exec())
+    return app.exec()
     # global camera_list
     # return camera_list, read_queue_data_thread, delete_file_thread,
 def start():
