@@ -12,10 +12,11 @@ import sys
 import traceback
 from typing import Optional, Callable, Any
 
-import logger
+
 from PyQt6.QtCore import QObject, QTimer, QElapsedTimer, pyqtSignal, QRunnable, QThreadPool
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox
 from PyQt6.QtCore import Qt
+from loguru import logger
 
 
 class _TaskRunnable(QRunnable):

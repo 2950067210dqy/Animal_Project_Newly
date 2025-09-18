@@ -5,7 +5,7 @@ import traceback
 
 from PyQt6.QtWidgets import QApplication
 from loguru import logger
-from traci.connection import switch
+
 
 from public.component.dialog.index.deep_camera_config_dialog_index import deep_camera_config_dialog
 from public.config_class import global_load
