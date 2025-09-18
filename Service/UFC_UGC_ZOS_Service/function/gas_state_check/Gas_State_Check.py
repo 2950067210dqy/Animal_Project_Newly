@@ -12,7 +12,7 @@ from public.config_class.global_setting import global_setting
 from public.util.number_util import number_util
 from public.util.time_util import time_util
 
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 class Gas_State_Check:
     """
     气路状态检测

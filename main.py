@@ -1,3 +1,4 @@
+import json
 import multiprocessing
 import sys
 import traceback
@@ -8,9 +9,11 @@ import psutil
 from loguru import logger
 from Service import main_response_Modbus, main_gui, main_monitor_data, main_deep_camera, main_infrared_camera
 from public.entity.queue.ObjectQueue import ObjectQueue
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
+from public.util.time_util import time_util
 
 # 过滤日志
-logger = logger.bind(category="main_logger")
+
 def kill_process_tree(pid, including_parent=True):
     """
     确认子进程没有启动其他子进程，如果有，必须递归管理或用系统命令杀死整个进程树。
@@ -33,6 +36,7 @@ def kill_process_tree(pid, including_parent=True):
             parent.wait(5)
 if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
     freeze_support()
+    multiprocessing.set_start_method('spawn', force=True)
     # 加载日志配置
     # 移除默认处理器
     # logger.remove()
@@ -44,14 +48,16 @@ if __name__ == "__main__" and os.path.basename(__file__) == "main.py":
         retention="30 days",  # 多长时间之后清理
         enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-        filter=lambda record: record["extra"].get("category") == "main_logger"
+
     )
 
     logger.info(f"{'-' * 40}main_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
     q =  multiprocessing.Queue() # 创建 Queue 消息传递
     send_message_q =multiprocessing.Queue()   # 发送查询报文的消息传递单独一个通道
-
+    # j= json.dumps(ObjectQueueItem(to="123",
+    #                 data=f"{time_util.get_format_from_time(time.time())}",
+    #                 origin='main_monitor_data'))
     p_response_comm = Process(target=main_response_Modbus.main, name="p_response_comm")
 
 

@@ -14,7 +14,7 @@ from public.entity.enum.Public_Enum import AppState
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeManager import ThemeManager
 # 过滤日志
-logger = logger.bind(category="gui_logger")
+#logger = logger.bind(category="gui_logger")
 def quit_qt_application():
     """
     退出QT程序
@@ -79,7 +79,7 @@ def main(q, send_message_q):
         retention="30 days",  # 多长时间之后清理
         enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-        filter=lambda record: record["extra"].get("category") == "gui_logger"
+      
     )
     logger.info(f"{'-' * 40}main_gui_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")

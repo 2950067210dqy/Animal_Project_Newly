@@ -7,7 +7,7 @@ from public.config_class.global_setting import global_setting
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 class Send_Message:
     def __init__(self,update_status_main_signal_gui_update=None,send_message=None,modbus=None):
         # 更新主线程状态栏消息信号

@@ -160,6 +160,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
 
         ).catch(lambda e: reject(e))
 
+        resolve()
         pass
         pass
 class UFC_gas_path_system_close_thread(MyQThread):
@@ -257,8 +258,8 @@ class UFC_gas_path_system_close_thread(MyQThread):
             lambda r: AsyPromise(self.close_UFC_valve, port=port), resolve()
         )
     def close_UFC_valve(self,resolve,reject,port):
-        """4.UFC阀门关闭"""
-        time.sleep(60)
+        """4.UFC阀门关闭 让步骤3延迟1分钟在关闭"""
+        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time']))
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list(f"000B0000"),
@@ -454,6 +455,7 @@ class UFC_gas_path_system(Gas_path_system):
             f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms//1000}s)，等待流量控制器自动配置及运行 .")
     def check_ufc_start_time_state(self):
         #定时器结束调用
+        logger.error("check_ufc_start_time_state")
         self.ufc_start_time_state =True
 
     """start end"""

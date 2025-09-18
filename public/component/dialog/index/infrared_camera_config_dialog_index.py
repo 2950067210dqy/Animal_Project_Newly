@@ -1,3 +1,4 @@
+import json
 import time
 import typing
 
@@ -23,6 +24,7 @@ class infrared_camera_config_dialog(QDialog):
 
     camera_config_finished_signal = pyqtSignal(list)
     def scan_realsense(self):  # 搜索相机
+
         global_setting.get_setting("queue").put(
             ObjectQueueItem(title="stop_running_cameras", origin="infrared_camera_config_dialog_index", to="main_infrared_camera",
                             time=time_util.get_format_from_time(time.time())))

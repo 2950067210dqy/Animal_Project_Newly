@@ -1,7 +1,7 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QWidget, QGridLayout, QVBoxLayout, QLabel, QCheckBox, QDialogButtonBox
 from loguru import logger
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 class RunningCagesDialog(QDialog):
     """
     弹出框：设定运行的笼笼（默认 8 个鼠笼均运行）。

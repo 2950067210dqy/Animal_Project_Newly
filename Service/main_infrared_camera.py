@@ -64,7 +64,7 @@ frame_nums = 0
 lock = threading.Lock()
 
 # 过滤日志
-logger = logger.bind(category="infrared_camera_logger")
+# logger = logger.bind(category="infrared_camera_logger")
 class read_queue_data_Thread(MyThread):
     def __init__(self, name):
         super().__init__(name)
@@ -88,11 +88,25 @@ class read_queue_data_Thread(MyThread):
 
                         pass
                     case 'start':
+                        data = message.data
+                        if data is not None:
+                            global_setting.set_setting("start_experiment_time", data.get("start_experiment_time",time.time()))
+                            global_setting.set_setting("pause_experiment_time", data.get("pause_experiment_time",[]))
+                            global_setting.set_setting("relieve_pause_experiment_time", data.get("relieve_pause_experiment_time",[]))
                         start()
                     case 'pause':
                         pause()
                     case 'stop':
                         stop()
+                    case 'experiment_setting':
+                        data = message.data
+                        if data is not None:
+                            # 将实验设置存入全局变量
+                            global_setting.set_setting("experiment_setting", data.get("experiment_setting", None))
+                            global_setting.set_setting("experiment_setting_file",
+                                                       data.get("experiment_setting_file", ""))
+
+                        pass
                     case _:
                         pass
 
@@ -526,11 +540,12 @@ def check_setting_cameras_each_number():
     else:
         # 不存在配置文件
 
-
-        dialog_frame = infrared_camera_config_dialog(title="红外相机配置")
-        dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
-        dialog_frame.show_frame()
-
+        try:
+            dialog_frame = infrared_camera_config_dialog(title="红外相机配置")
+            dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
+            dialog_frame.show_frame()
+        except Exception as e:
+            logger.error(f"<UNK>{e} |  <UNK>{traceback.print_exc()}")
 
         pass
 
@@ -590,6 +605,7 @@ def init_camera_and_image_handle_thread(serials):
 
 def main(q):
     app = QApplication(sys.argv)
+
     # logger.remove(0)
     logger.add(
         "./log/infrared_camera/i_camera_{time:YYYY-MM-DD}.log",
@@ -597,7 +613,7 @@ def main(q):
         retention="30 days",
         enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-        filter = lambda record: record["extra"].get("category") == "infrared_camera_logger"
+
     )
     logger.info(f"{'-' * 30}infrared_camera_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")

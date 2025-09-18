@@ -9,7 +9,7 @@ from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser
 from public.util.time_util import time_util
 
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 class ModbusRTUMaster:
     # 初始化后代表着连接串口，只有当close以后才会释放
     def __init__(self, port='COM1', timeout=1, origin=None,

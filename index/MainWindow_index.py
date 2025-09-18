@@ -23,7 +23,7 @@ from public.util.custom_data_file_util import custom_data_file_util
 from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
 from ui.MainWindow import Ui_MainWindow
-logger = logger.bind(category="gui_logger")
+#logger = logger.bind(category="gui_logger")
 
 class Start_experiment_thread(MyQThread):
     def __init__(self,name,window):
@@ -450,12 +450,29 @@ class MainWindow_Index(ThemedWindow):
 
         send_message_queue = global_setting.get_setting("send_message_queue")
         send_message_queue.put(ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='start',
+                                               data={
+                                                   'start_experiment_time':global_setting.get_setting("start_experiment_time"),
+                                                    'pause_experiment_time':global_setting.get_setting("pause_experiment_time"),
+                                                   'relieve_pause_experiment_time':global_setting.get_setting("relieve_pause_experiment_time")
+                                                     },
                                                time=time_util.get_format_from_time(time.time())))
         message_structs = [
 
             ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='start',
+                            data={
+                                'start_experiment_time': global_setting.get_setting("start_experiment_time"),
+                                'pause_experiment_time': global_setting.get_setting("pause_experiment_time"),
+                                'relieve_pause_experiment_time': global_setting.get_setting(
+                                    "relieve_pause_experiment_time")
+                            },
                             time=time_util.get_format_from_time(time.time())),
             ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='start',
+                            data={
+                                'start_experiment_time': global_setting.get_setting("start_experiment_time"),
+                                'pause_experiment_time': global_setting.get_setting("pause_experiment_time"),
+                                'relieve_pause_experiment_time': global_setting.get_setting(
+                                    "relieve_pause_experiment_time")
+                            },
                             time=time_util.get_format_from_time(time.time())),
         ]
         for message_struct in message_structs:

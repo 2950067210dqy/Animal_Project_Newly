@@ -5,7 +5,7 @@ import traceback
 from enum import Enum
 
 from loguru import logger
-logger = logger.bind(category="gui_logger")
+#logger = logger.bind(category="gui_logger")
 
 class File_Types(Enum):
     TXT = 'txt'

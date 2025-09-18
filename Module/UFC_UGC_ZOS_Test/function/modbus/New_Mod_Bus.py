@@ -12,7 +12,7 @@ from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser
 from public.util.time_util import time_util
 
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 class ModbusRTUMasterNew:
     """
     可随时随处调用的Modbus RTU通信类

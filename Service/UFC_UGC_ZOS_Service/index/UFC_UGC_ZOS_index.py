@@ -1,10 +1,12 @@
 import math
 import multiprocessing
 import os
+import pdb
 import threading
 import time
 from typing import Any
 
+import rpdb
 from loguru import logger
 
 
@@ -31,7 +33,7 @@ from theme.ThemeQt6 import ThemedWindow
 
 # 过滤日志
 
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 read_queue_data_Thread_Lock = threading.Lock()
 auto_wait_event = threading.Event()
 
@@ -81,16 +83,29 @@ class auto_run_Thread(MyQThread):
     def check_finish(self):
         self.check_finish_flag=True
 
+    def run(self):
+        logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
+        self._running = True
+        self.before_Runing_work()
+        while self._running:
+            self.mutex.lock()
+            if self._paused:
+                self.condition.wait(self.mutex)  # 等待条件变量
+            self.mutex.unlock()
 
-
+            # 执行一些工作（替代为你需要的任务）
+            self.dosomething()
     def dosomething(self):
-
         if self.before_start_flag:
-
             self.start_signal.emit()
             self.before_start_flag=False
+
+            logger.debug(f"{'-' * 1000}")
+
         if self.start_finish_flag:
             self.start_finish_flag = False
+
+            logger.debug(f"{'.' * 1000}")
             global auto_wait_event
             auto_wait_event.wait()
 
@@ -125,7 +140,7 @@ class read_queue_data_Thread(MyQThread):
             # message 结构{'to'发往哪个线程，'data'数据，‘from'从哪来}
 
             if message is not None and isinstance(message, ObjectQueueItem) and message.to=='UFC_UGC_ZOS_index':
-                # logger.error(f"{self.name}_get_message:{message}")
+                logger.error(f"{self.name}_get_message:{message}")
                 match message.title:
                     case '':
                         if self.update_status_main_signal_gui_update is not None:
@@ -156,15 +171,16 @@ class Monitor_start_state_Thread(MyQThread):
 
         super().__init__(name)
     def dosomething(self):
-        # print(self.UFC_gas_path_system_obj.ufc_start_time_state,self.ZOS_gas_path_system_obj.zos_start_status)
+        print(self.UFC_gas_path_system_obj.ufc_start_time_state,self.ZOS_gas_path_system_obj.zos_start_status)
         if self.UFC_gas_path_system_obj.ufc_start_time_state and self.ZOS_gas_path_system_obj.zos_start_status:
+            logger.error(f"'True'*{1000}")
             self.update_start_state_signal.emit()
         time.sleep(1)
 
         pass
 
 
-class UFC_UGC_ZOS_index(QObject):
+class UFC_UGC_ZOS_index(MyQThread):
     update_status_main_signal_gui_update = pyqtSignal(str)
     #更新开始状态的信号
     update_start_state_signal=pyqtSignal()
@@ -182,7 +198,7 @@ class UFC_UGC_ZOS_index(QObject):
     gas_state_check_signal: pyqtBoundSignal =pyqtSignal()
 
     def __init__(self, parent=None, geometry: QRect = None, title=""):
-        super().__init__()
+        super().__init__(name="UFC_UGC_ZOS_index")
         # 暂停
         self.ispause = False
 
@@ -258,6 +274,7 @@ class UFC_UGC_ZOS_index(QObject):
 
 
     def logger_info(self,text):
+        logger.debug(text)
         if "\n" not in text:
             logger.info(text)
     # 实例化功能
@@ -314,7 +331,6 @@ class UFC_UGC_ZOS_index(QObject):
         auto_wait_event.clear()
     #启动按钮事件 启动气路
     def start_btn_handle(self):
-
         p= AsyPromise(self.ZOS_gas_path_system_obj.start).then(
             AsyPromise(
                 self.UFC_gas_path_system_obj.start,
@@ -330,14 +346,15 @@ class UFC_UGC_ZOS_index(QObject):
             self.monitor_start_state_Thread = Monitor_start_state_Thread(name="Monitor_start_state_Thread",UFC_gas_path_system_obj=self.UFC_gas_path_system_obj,UGC_gas_path_system_obj=self.UGC_gas_path_system_obj,ZOS_gas_path_system_obj=self.ZOS_gas_path_system_obj,update_start_state_signal=self.update_start_state_signal)
         self.monitor_start_state_Thread.start()
 
-        #開始結束回調
-        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
-            try:
-                # 方法1：使用 QTimer 延迟发射
-
-                self.auto_run_thread.start_finish_signal.emit()
-            except Exception as e:
-                logger.error(e)
+        # #開始結束回調
+        # if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
+        #     try:
+        #         # 方法1：使用 QTimer 延迟发射
+        #         auto_wait_event.set()
+        #         auto_wait_event.clear()
+        #         self.auto_run_thread.start_finish_signal.emit()
+        #     except Exception as e:
+        #         logger.error(e)
 
 
         return p
@@ -346,7 +363,10 @@ class UFC_UGC_ZOS_index(QObject):
 
     #运行按钮事件 运行气路
     def run_btn_handle(self):
-
+        logger.error("12333333333333333333333333333333333333333333333333333333333333333333333333")
+        global auto_wait_event
+        auto_wait_event.wait()
+        logger.error("444444444444444444424444444444444444444444444444444444444444444444444444")
         p=AsyPromise(self.UFC_gas_path_system_obj.run).then(
             lambda v: AsyPromise(
                 self.UGC_gas_path_system_obj.run,
@@ -428,9 +448,21 @@ class UFC_UGC_ZOS_index(QObject):
                                                    )
         self.auto_run_thread.start()
         pass
+    def dosomething(self):
+        self.start_btn_handle().then(
+            self.run_btn_handle().then(
+                self.carlibation().then(
+                    self.gas_state_check().then(
+                        self.stop()
+                    )
+                )
+            )
+        )
+        pass
     #解除自动执行按钮事件
     def disabled_auto_btn_handle(self):
-        self.auto_run_thread.stop()
+        if self.auto_run_thread is not None:
+            self.auto_run_thread.stop()
 
         self.stop_btn_handle().then(
 
@@ -464,6 +496,7 @@ class UFC_UGC_ZOS_index(QObject):
         self.ispause=False
     #设置启动阶段的定时器
     def set_start_timers(self,resolve, reject):
+        logger.error("ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt")
         self.set_zos_start_timer()
         self.set_ufc_start_timer()
         resolve()
@@ -542,7 +575,7 @@ class UFC_UGC_ZOS_index(QObject):
                 task=None,  # 先不传，后面用 set_task 注入
                 run_in_thread=True,  # 若你的任务耗时，设为 True
 
-                run_immediately=False
+                run_immediately=True
             )
             self.zos_start_timer.set_task(self.ZOS_gas_path_system_obj.zos_start_timer_task)
             self.zos_start_timer.start()
@@ -555,7 +588,7 @@ class UFC_UGC_ZOS_index(QObject):
                 task=None,  # 先不传，后面用 set_task 注入
                 run_in_thread=True,  # 若你的任务耗时，设为 True
 
-                run_immediately=False
+                run_immediately=True
             )
         except Exception as e:
             logger.error(e)

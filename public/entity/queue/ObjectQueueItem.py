@@ -13,12 +13,12 @@ class ObjectQueueItem:
         :param title: 消息标题
         :param message : 消息内容
         """
-        self.origin:str=""
-        self.to:str=""
-        self.title:str=""
-        self.message:str=""
-        self.data :Any=None
-        self.time :str=None
+        self.origin:str=origin
+        self.to:str=to
+        self.title:str=title
+        self.message:str=message
+        self.data :Any=data
+        self.time :str=time
     def __str__(self):
         return f"{{'origin':{self.origin},'to':{self.to},'title':{self.title},'message':{self.message},'data':{self.data},'time':{self.time}}}"
     def is_Empty(self) -> bool:

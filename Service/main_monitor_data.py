@@ -1,4 +1,5 @@
 import copy
+import json
 import multiprocessing
 import os
 import queue
@@ -7,6 +8,7 @@ import sys
 import threading
 import time
 
+from PyQt6.QtCore import QThread, QTimer
 from PyQt6.QtWidgets import QApplication
 from loguru import logger
 
@@ -39,9 +41,9 @@ store_Q = queue.Queue()
 global_setting.set_setting("store_Q_lock",store_Q_lock)
 global_setting.set_setting("store_Q",store_Q)
 # 过滤日志
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 
-class read_queue_data_Thread(MyThread):
+class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
         super().__init__(name)
         self.queue = None
@@ -54,9 +56,9 @@ class read_queue_data_Thread(MyThread):
         super().stop()
     def dosomething(self):
         if not self.queue.empty():
-            logger.error(f"{self.queue.qsize()}")
+            # logger.error(f"{self.queue.qsize()}")
             message:ObjectQueueItem = self.queue.get()
-            logger.error(f"{self.name}_get_message:{message}|")
+            # logger.error(f"{self.name}_get_message:{message}|")
             if message is not None and message.is_Empty():
                 return
             if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'main_monitor_data':
@@ -70,6 +72,7 @@ class read_queue_data_Thread(MyThread):
                     case 'set_port':
                         global port_use
                         port_use=message.data
+                        global_setting.set_setting("port", port_use)
                         modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
                         if modbus is None:
                             modbus = ModbusRTUMasterNew(port_use, baudrate=115200, timeout=float(
@@ -81,11 +84,25 @@ class read_queue_data_Thread(MyThread):
                                 global_setting.get_setting('monitor_data')['Serial']['timeout']), )
                             global_setting.set_setting("modbus", modbus)
                     case 'start':
+                        data = message.data
+                        if data is not None:
+                            global_setting.set_setting("start_experiment_time", data.get("start_experiment_time",time.time()))
+                            global_setting.set_setting("pause_experiment_time", data.get("pause_experiment_time",[]))
+                            global_setting.set_setting("relieve_pause_experiment_time", data.get("relieve_pause_experiment_time",[]))
                         start()
                     case 'pause':
                         pause()
                     case 'stop':
                         stop()
+                    case 'experiment_setting':
+                        data = message.data
+                        if data is not None:
+                            # 将实验设置存入全局变量
+                            global_setting.set_setting("experiment_setting", data.get("experiment_setting", None))
+                            global_setting.set_setting("experiment_setting_file",
+                                                       data.get("experiment_setting_file", ""))
+
+                        pass
                     case _:
                         pass
 
@@ -102,7 +119,7 @@ class read_queue_data_Thread(MyThread):
 read_queue_data_thread = read_queue_data_Thread(name="main_monitor_data_read_queue_data_thread")
 
 
-class Store_Thread(MyThread):
+class Store_Thread(MyQThread):
     """
     存储请求线程发来的数据到sqlite中
     """
@@ -145,7 +162,7 @@ class Store_Thread(MyThread):
         super().stop()
 
 
-class Send_thread(MyThread):
+class Send_thread(MyQThread):
     """
     请求数据线程
     """
@@ -276,7 +293,7 @@ class Send_thread(MyThread):
 
 
 
-class Add_message_thread(MyThread):
+class Add_message_thread(MyQThread):
     def __init__(self,name,send_thread, port):
         super().__init__(name=name)
         self.send_thread = send_thread
@@ -386,7 +403,7 @@ def main(q,send_message_q):
         retention="30 days",
         enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-        filter=lambda record: record["extra"].get("category") == "monitor_data_logger"
+
     )
     logger.info(f"{'-' * 30}monitor_data_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
@@ -414,11 +431,10 @@ def start():
     ufc_ugc_zos_thread = None
     ufc_ugc_zos = None
     try:
-
-        ufc_ugc_zos = UFC_UGC_ZOS_index()
-        ufc_ugc_zos.auto_btn_handle()
-        # ufc_ugc_zos_thread = threading.Thread(target=ufc_ugc_zos.auto_btn_handle)
-        # ufc_ugc_zos_thread.start()
+        # ufc_ugc_zos = UFC_UGC_ZOS_index()
+        # ufc_ugc_zos.auto_btn_handle()
+        ufc_ugc_zos_thread= UFC_UGC_ZOS_index()
+        ufc_ugc_zos_thread.start()
 
     except Exception as ex:
         print(ex)
@@ -452,6 +468,7 @@ def stop():
             ufc_ugc_zos.disabled_auto_btn_handle()
         if ufc_ugc_zos_thread is not None:
             ufc_ugc_zos_thread.stop()
+            ufc_ugc_zos_thread.disabled_auto_btn_handle()
     except Exception as e:
         logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
     pass

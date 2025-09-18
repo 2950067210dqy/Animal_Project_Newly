@@ -13,7 +13,7 @@ from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from theme.ThemeManager import ThemeManager
 from theme.ThemeQt6 import ThemedWindow, ThemedWidget
-logger = logger.bind(category="gui_logger")
+#logger = logger.bind(category="gui_logger")
 
 class DataFetcher(MyQThread):
     data_fetched = pyqtSignal(list)  # 信号传递时间和值

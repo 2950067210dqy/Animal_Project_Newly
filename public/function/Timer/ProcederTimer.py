@@ -11,6 +11,8 @@ PeriodicTimer 可复用类（可注入任务）
 import sys
 import traceback
 from typing import Optional, Callable, Any
+
+import logger
 from PyQt6.QtCore import QObject, QTimer, QElapsedTimer, pyqtSignal, QRunnable, QThreadPool
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox
 from PyQt6.QtCore import Qt
@@ -173,6 +175,7 @@ class PeriodicTimer(QObject):
         """
         if self._task_done_callback:
             try:
+                logger.error("finished task_done_callback")
                 self._task_done_callback(result, elapsed_ms)
             except Exception:
                 traceback.print_exc()

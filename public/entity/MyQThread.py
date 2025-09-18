@@ -3,7 +3,7 @@ import threading
 from PyQt6.QtCore import QThread, QMutex, QWaitCondition
 from loguru import logger
 
-logger = logger.bind(category="gui_logger")
+#logger = logger.bind(category="gui_logger")
 class MyQThread(QThread):
 
     def __init__(self, name):

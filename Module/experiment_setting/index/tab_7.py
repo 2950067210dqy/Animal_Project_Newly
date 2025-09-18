@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QGroupBox, QLabel
 
 from public.util.time_util import time_util
 
-logger = logger.bind(category="gui_logger")
+#logger = logger.bind(category="gui_logger")
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
         super().__init__(name)

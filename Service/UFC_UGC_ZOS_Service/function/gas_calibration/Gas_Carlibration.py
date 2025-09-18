@@ -18,7 +18,7 @@ from public.util.time_util import time_util
 last_oxygen_value = 0
 # 前面测量的二氧化碳值
 last_carbon_value = 0
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 class Gas_Carlibration:
     """
     气路标定 零点标定和量程标定的父类

@@ -1,6 +1,7 @@
 import copy
 import os
 import sys
+import time
 import typing
 from datetime import datetime
 
@@ -21,7 +22,9 @@ from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import AnimalGender, AppState
 from public.entity.experiment_setting_entity import Experiment_setting_entity, Group, Animal, AnimalGroupRecord, \
     AnimalGroupRecord_View
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.custom_data_file_util import custom_template_file_util
+from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
 from public.util.class_util import class_util
 
@@ -589,7 +592,22 @@ class ContentWindow(ThemedWindow):
             # 将实验设置存入全局变量
             global_setting.set_setting("experiment_setting", self.setting_data)
             global_setting.set_setting("experiment_setting_file", self.setting_file_path)
+            send_message_queue = global_setting.get_setting("send_message_queue")
+            send_message_queue.put(ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_monitor_data', title='experiment_setting',data={'experiment_setting':self.setting_data,"experiment_setting_file":self.setting_file_path},
+                                                   time=time_util.get_format_from_time(time.time())))
+            message_structs = [
+
+                ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_infrared_camera', title='experiment_setting',data={'experiment_setting':self.setting_data,"experiment_setting_file":self.setting_file_path},
+                                time=time_util.get_format_from_time(time.time())),
+                ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_deep_camera', title='experiment_setting',data={'experiment_setting':self.setting_data,"experiment_setting_file":self.setting_file_path},
+                                time=time_util.get_format_from_time(time.time())),
+            ]
+            for message_struct in message_structs:
+                queue = global_setting.get_setting("queue")
+                queue.put(message_struct)
+
             global_setting.set_setting("app_state", AppState.APPLYING)
+
             # 更新main_gui组件显示
             self.main_gui.change_enable_component_app_state_signal.emit()
             self.main_gui.status_bar.update_setting_file_name(f"当前实验文件: {self.setting_file_path}")

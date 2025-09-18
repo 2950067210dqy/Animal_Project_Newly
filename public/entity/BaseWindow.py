@@ -12,7 +12,7 @@ from loguru import logger
 from public.component.Window_Title_Bar import TitleBar
 from public.entity.enum.Public_Enum import Frame_state
 
-logger = logger.bind(category="gui_logger")
+#logger = logger.bind(category="gui_logger")
 class BaseWindow(QMainWindow):
     def changeEvent(self, event):
         # 监听状态变化事件

@@ -31,7 +31,7 @@ batch_complete_event = threading.Event()
 store_Q_lock = threading.Lock()
 store_Q = queue.Queue()
 # 过滤日志
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 ufc_ugc_zos=None
 ufc_ugc_zos_thread =None
 class read_queue_data_Thread(MyQThread):

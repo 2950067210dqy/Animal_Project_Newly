@@ -20,7 +20,7 @@ from public.util.custom_data_file_util import custom_data_file_util
 from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
 from ui.MainWindow import Ui_MainWindow
-logger = logger.bind(category="gui_logger")
+#logger = logger.bind(category="gui_logger")
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
     change_enable_component_app_state_signal = QtCore.pyqtSignal()

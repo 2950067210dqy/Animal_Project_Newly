@@ -16,7 +16,7 @@ from PyQt6.QtCore import QRect, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QPushButton, QGroupBox, QGridLayout, QHBoxLayout, QLabel, \
     QVBoxLayout, QScrollArea
 
-logger = logger.bind(category="gui_logger")
+#logger = logger.bind(category="gui_logger")
 class Tab2_tab5(ThemedWindow):
     # 更新端口选择和鼠笼选择
     update_port_and_mouse_cage = pyqtSignal()

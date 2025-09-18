@@ -30,7 +30,7 @@ import numpy as np
 修改：连接相机时间优化
 """
 # 过滤日志
-logger = logger.bind(category="deep_camera_logger")
+#logger = logger.bind(category="deep_camera_logger")
 # 错误记录标志 为了只在第一次错误时报错，避免一直重复报错
 logged_errors = set()
 # 删除文件线程
@@ -51,7 +51,7 @@ intrinsics = os.getcwd() +"./config/deep_camera_intrinsics.json"
 file_locks = {}
 
 
-class read_queue_data_Thread(MyThread):
+class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
         super().__init__(name)
         self.queue = None
@@ -77,11 +77,25 @@ class read_queue_data_Thread(MyThread):
                                     camera_struct_l['img_process'].terminal()
                         pass
                     case 'start':
+                        data = message.data
+                        if data is not None:
+                            global_setting.set_setting("start_experiment_time", data.get("start_experiment_time",time.time()))
+                            global_setting.set_setting("pause_experiment_time", data.get("pause_experiment_time",[]))
+                            global_setting.set_setting("relieve_pause_experiment_time", data.get("relieve_pause_experiment_time",[]))
+                            pass
                         start()
                     case 'pause':
                         pause()
                     case 'stop':
                         stop()
+                    case 'experiment_setting':
+                        data = message.data
+                        if data is not None:
+                            # 将实验设置存入全局变量
+                            global_setting.set_setting("experiment_setting", data.get("experiment_setting",None))
+                            global_setting.set_setting("experiment_setting_file", data.get("experiment_setting_file",""))
+
+                        pass
                     case _ :
                         pass
 
@@ -242,7 +256,7 @@ class Detection:
         return image
 
 
-class Img_process(MyThread):
+class Img_process(MyQThread):
     """
     将bmp文件和npm文件进行处理 线程处理
     """
@@ -373,7 +387,7 @@ class Img_process(MyThread):
         pass
 
 
-class Delete_file(MyThread):
+class Delete_file(MyQThread):
     """
     清除文件线程
     """
@@ -444,7 +458,7 @@ class Delete_file(MyThread):
         pass
 
 
-class RealSenseProcessor(MyThread):
+class RealSenseProcessor(MyQThread):
     """
     相机线程
     """
@@ -761,7 +775,7 @@ def main(q):
         retention="30 days",
         enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-        filter = lambda record: record["extra"].get("category") == "deep_camera_logger"
+       
     )
     logger.info(f"{'-' * 30}deep_camera_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")

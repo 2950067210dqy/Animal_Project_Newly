@@ -14,7 +14,7 @@ from public.function.DataCaculation.Data_Caculation import DataCaculation
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 # 监控数据操作类
 from public.util.time_util import time_util
-logger = logger.bind(category="monitor_data_logger")
+#logger = logger.bind(category="deep_camera_logger")
 
 class Monitor_Datas_Handle():
     def __init__(self,db_name=None):
