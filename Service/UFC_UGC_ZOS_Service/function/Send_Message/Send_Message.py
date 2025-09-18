@@ -43,7 +43,7 @@ class Send_Message:
                                                      origin='UFC_UGC_ZOS_index_send_thread')
 
                     global_setting.get_setting("send_message_queue").put(message_struct)
-                    logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
+                    # logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
 
 
             except Exception as e:
@@ -86,7 +86,7 @@ class Send_Message:
                                                      data=parser_message,
                                                      origin='UFC_UGC_ZOS_index_send_thread')
                     global_setting.get_setting("send_message_queue").put(message_struct)
-                    logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
+                    # logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
                     pass
 
             except Exception as e:

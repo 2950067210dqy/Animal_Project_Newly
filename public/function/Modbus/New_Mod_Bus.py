@@ -232,8 +232,8 @@ class ModbusRTUMasterNew:
                 self.ser.write(frame)
 
                 # 等待响应
-                # delay = float(global_setting.get_setting('monitor_data')['SEND']['get_response_delay'])
-                delay=0.5
+                delay = float(global_setting.get_setting('monitor_data')['SEND']['get_response_delay'])
+                # delay=0.5
                 time.sleep(delay)
 
                 # 读取响应

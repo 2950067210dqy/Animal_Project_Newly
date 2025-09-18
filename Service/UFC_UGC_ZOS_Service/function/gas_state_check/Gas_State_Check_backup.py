@@ -2,7 +2,9 @@ import abc
 import re
 import time
 
-from blinker.base import _PNamespaceSignal
+from PyQt6.QtCore import pyqtSignal
+
+
 from loguru import logger
 
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
@@ -18,7 +20,7 @@ class Gas_State_Check:
 
     def __init__(self):
         # 更新主线程状态栏消息信号
-        self.update_status_main_signal_gui_update: _PNamespaceSignal = None
+        self.update_status_main_signal_gui_update: pyqtSignal(str) = None
 
         # 发送的数据结构
         self.send_message = {
@@ -52,12 +54,12 @@ class UFC_Gas_State_Check(Gas_State_Check):
         UFC 状态检测
         :return:
         """
-        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 状态检测 开始{'-'*50}")
+        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | UFC 状态检测 开始{'-'*50}")
         # resolve()
         #1.端口输出状态是否正确，确认与程序逻辑是否一致，否则报错
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.send(
+            self.update_status_main_signal_gui_update.emit(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
         self.send_message = {
@@ -69,7 +71,7 @@ class UFC_Gas_State_Check(Gas_State_Check):
         }
 
         self.send_thread.send_message = self.send_message
-        self.update_status_main_signal_gui_update.send(
+        self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} |  UFC 状态检测 1.端口输出状态是否正确，确认与程序逻辑是否一致，否则报错")
         data,message = self.send_thread.Send_no_promise()
 
@@ -93,7 +95,7 @@ class UFC_Gas_State_Check(Gas_State_Check):
         pass
         # 报错
         if data_mouse_cages_2byte_str.strip() !=setting_mouse_cages_2byte_str.strip():
-            self.update_status_main_signal_gui_update.send(
+            self.update_status_main_signal_gui_update.emit(
                 f"{time_util.get_format_from_time(time.time())} |  UFC 状态检测 1.1端口输出状态与程序逻辑不一致|端口响应状态：{data_mouse_cages},{data_mouse_cages_2byte_str}|软件设置的端口状态：{setting_mouse_cages},{setting_mouse_cages_2byte_str}")
 
 
@@ -107,7 +109,7 @@ class UFC_Gas_State_Check(Gas_State_Check):
         }
 
         self.send_thread.send_message = self.send_message
-        self.update_status_main_signal_gui_update.send(
+        self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} |  UFC 状态检测 2.读取流量控制器状态，判断所运行的鼠笼的是否正常")
         flow_data, flow_message = self.send_thread.Send_no_promise()
         # print(f"flow:{flow_data},{flow_message}")
@@ -128,7 +130,7 @@ class UFC_Gas_State_Check(Gas_State_Check):
 
         # 报错
         if data_flows_2byte_str.strip() != setting_mouse_cages_2byte_str.strip():
-            self.update_status_main_signal_gui_update.send(
+            self.update_status_main_signal_gui_update.emit(
                 f"{time_util.get_format_from_time(time.time())} |  UFC 状态检测 2.1 读取流量控制器状态，判断所运行的鼠笼的是否正常：{data_flow_numbers},{data_flows_2byte_str}|软件设置的端口状态：{setting_mouse_cages},{setting_mouse_cages_2byte_str}")
 
         resolve()

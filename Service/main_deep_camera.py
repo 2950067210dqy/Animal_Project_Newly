@@ -59,6 +59,7 @@ class read_queue_data_Thread(MyQThread):
         pass
 
     def dosomething(self):
+
         if not self.queue.empty():
             message:ObjectQueueItem = self.queue.get()
             if message is not None and message.is_Empty():
@@ -761,6 +762,7 @@ def init_camera_and_image_handle_thread(serials):
         camera_struct['img_process'] = img_process
         camera_list.append(camera_struct)
         pass
+    logger.warning(f"{camera_list}")
     read_queue_data_thread.camera_list = camera_list
     pass
 
@@ -794,7 +796,7 @@ def main(q):
     # camera1.pipeline.stop()
 def start():
     logger.info(f"{'-' * 30}deep_camera_run{'-' * 30}")
-    app = QApplication(sys.argv)
+
     # 初始化保存路径
     path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
            global_setting.get_setting("camera_config")['DEEP_CAMERA']['path']
@@ -804,8 +806,7 @@ def start():
     delete_file_thread.start()
     # 根据设置的相机数量来连接
     check_setting_cameras_each_number()
-    # 系统退出
-    sys.exit(app.exec())
+
     pass
 def pause():
     logger.info(f"{'-' * 30}deep_camera_pause{'-' * 30}")
