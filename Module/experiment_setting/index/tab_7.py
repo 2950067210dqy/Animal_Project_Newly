@@ -226,7 +226,7 @@ class Tab_7(ThemedWindow):
             self.send_message['port'] = self.ports[0]['device']
             global_setting.set_setting("port", self.send_message['port'])
             send_message_queue = global_setting.get_setting("send_message_queue")
-            send_message_queue.put(ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='set_port',data= self.send_message['port'],
+            send_message_queue.put(ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_port',data= self.send_message['port'],
                                                    time=time_util.get_format_from_time(time.time())))
             modbus:ModbusRTUMasterNew =global_setting.get_setting("modbus",None)
             if modbus is None:
@@ -376,6 +376,10 @@ class Tab_7(ThemedWindow):
             if self.main_gui is not None:
                 self.main_gui.change_enable_component_app_state_signal.emit()
                 pass
+            send_message_queue = global_setting.get_setting("send_message_queue")
+            send_message_queue.put(ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_port',
+                                                   data=self.send_message['port'],
+                                                   time=time_util.get_format_from_time(time.time())))
             self.close()
             msg_box = InfoDialog(title="确定设备配置", info="确定该设备配置成功!",
                                  icon=QMessageBox.Icon.Information)

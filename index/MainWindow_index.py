@@ -479,9 +479,9 @@ class MainWindow_Index(ThemedWindow):
             queue=global_setting.get_setting("queue")
             queue.put(           message_struct)
         AsyPromise(self.start_update_gui).then(
-            AsyPromise(self.start_open_window).then(
-
-            ).catch(lambda e: logger.error(e))
+            # AsyPromise(self.start_open_window).then(
+            #
+            # ).catch(lambda e: logger.error(e))
         ).catch(lambda e: logger.error(e))
         pass
     def pause_experiment(self):

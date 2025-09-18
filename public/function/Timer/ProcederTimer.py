@@ -8,14 +8,11 @@ PeriodicTimer 可复用类（可注入任务）
 - run_immediately: start 时是否立即执行一次 task
 """
 
-import sys
 import traceback
 from typing import Optional, Callable, Any
 
 
 from PyQt6.QtCore import QObject, QTimer, QElapsedTimer, pyqtSignal, QRunnable, QThreadPool
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox
-from PyQt6.QtCore import Qt
 from loguru import logger
 
 
