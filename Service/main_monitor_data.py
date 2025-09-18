@@ -179,6 +179,7 @@ class Send_thread(MyQThread):
 
         pass
 
+#!
     def add_message(self, message, urgent=False, origin=""):
         # origin 为源头
         if urgent:
@@ -246,7 +247,7 @@ class Send_thread(MyQThread):
                 send_message=None
                 # 处理普通消息
                 try:
-
+                    #!
                     send_message = self.normal_queue.get(timeout=0.1)
 
                     response, response_hex, send_state = self.modbus.send_command(
@@ -281,6 +282,16 @@ class Send_thread(MyQThread):
                     with lock:
                         if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
 
+                            total_messages_processed = 1
+                            MESSAGE_BATCH_SIZE = 0
+                            batch_complete_event.set()  # 通知主线程当前批次完成
+                        else:
+                            total_messages_processed += 1
+                else:
+                    #如果遇到未知错误，则跳过这条报文
+                    logger.error(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束{'-' * 100}")
+                    with lock:
+                        if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
                             batch_complete_event.set()  # 通知主线程当前批次完成
