@@ -290,6 +290,7 @@ class Send_thread(MyQThread):
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
                             batch_complete_event.set()  # 通知主线程当前批次完成
+                            batch_complete_event.clear()  # 重置事件
                         else:
                             total_messages_processed += 1
                 else:
@@ -301,6 +302,7 @@ class Send_thread(MyQThread):
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
                             batch_complete_event.set()  # 通知主线程当前批次完成
+                            batch_complete_event.clear()  # 重置事件
                         else:
                             total_messages_processed += 1
 
@@ -376,7 +378,7 @@ class Add_message_thread(MyQThread):
             logger.info(f"数据请求报文：一共{len(send_messages)}条报文！")
             # print(f"send_messages:{send_messages}")
             batch_complete_event.wait()
-            batch_complete_event.clear()  # 重置事件
+
             logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
 
 def copy_experiment_setting_file():
