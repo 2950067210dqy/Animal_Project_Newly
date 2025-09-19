@@ -176,16 +176,19 @@ class Send_thread(MyQThread):
         self.normal_queue = queue.Queue()
         self.priority_queue = queue.Queue()
         self.lock = threading.Lock()
-
+        self.normal_queue_lock = threading.Lock()
+        self.priority_queue_lock = threading.Lock()
         pass
 
 #!
     def add_message(self, message, urgent=False, origin=""):
         # origin 为源头
         if urgent:
-            self.priority_queue.put({'origin': origin, 'message': message})
+            with self.priority_queue_lock:
+                self.priority_queue.put({'origin': origin, 'message': message})
         else:
-            self.normal_queue.put(message)
+            with self.normal_queue_lock:
+                self.normal_queue.put(message)
 
 
     def stop(self):
@@ -212,7 +215,8 @@ class Send_thread(MyQThread):
 
                 # 优先检查紧急队列
                 try:
-                    message = self.priority_queue.get_nowait()
+                    with self.priority_queue_lock:
+                        message = self.priority_queue.get_nowait()
                     send_message = message['message']
 
                     logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
@@ -248,7 +252,8 @@ class Send_thread(MyQThread):
                 # 处理普通消息
                 try:
                     #!
-                    send_message = self.normal_queue.get(timeout=0.1)
+                    with self.normal_queue_lock:
+                        send_message = self.normal_queue.get(timeout=0.1)
 
                     response, response_hex, send_state = self.modbus.send_command(
                         slave_id=send_message['slave_id'],
@@ -291,12 +296,14 @@ class Send_thread(MyQThread):
                     #如果遇到未知错误，则跳过这条报文
                     logger.error(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束{'-' * 100}")
                     with lock:
-                        if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
+
+                        if MESSAGE_BATCH_SIZE == 0 or total_messages_processed % MESSAGE_BATCH_SIZE == 0:
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
                             batch_complete_event.set()  # 通知主线程当前批次完成
                         else:
                             total_messages_processed += 1
+
             time.sleep(float(global_setting.get_setting('monitor_data')['SEND']['delay']))
 
 
@@ -316,13 +323,13 @@ class Add_message_thread(MyQThread):
         self._running=True
         # 发送消息
         global MESSAGE_BATCH_SIZE
-
+        self.experiment_setting = global_setting.get_setting("experiment_setting", None)
         while self._running:
             self.mutex.lock()
             if self._paused:
                 self.condition.wait(self.mutex)  # 等待条件变量
             self.mutex.unlock()
-            self.experiment_setting = global_setting.get_setting("experiment_setting", None)
+
             send_messages = []
             # # 公共传感器数据的send_messages  现在只发传感器数值查询报文DEBUGGER
             # for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Senior_Data.value:
@@ -362,6 +369,8 @@ class Add_message_thread(MyQThread):
                                 MESSAGE_BATCH_SIZE += 1
                             """测试专用 只拿一个笼子鼠笼1里的数据 DEBUGGER"""
                             break
+                    else:
+                        logger.error(f"响应报文的打包获取Add_message_thread遇到self.experiment_setting is None 错误")
                 pass
             #     # 等待从线程处理完当前批次
             logger.info(f"数据请求报文：一共{len(send_messages)}条报文！")
