@@ -178,6 +178,8 @@ class Send_thread(MyQThread):
         self.lock = threading.Lock()
         self.normal_queue_lock = threading.Lock()
         self.priority_queue_lock = threading.Lock()
+        self.normal_queue_empty=False
+        self.priority_queue_empty=False
         pass
 
 #!
@@ -202,6 +204,7 @@ class Send_thread(MyQThread):
     def run(self):
         logger.warning(f"{self.name} thread has been started！")
         self._running=True
+
         global lock, total_messages_processed, store_Q, store_Q_lock
         global MESSAGE_BATCH_SIZE
         while self._running:
@@ -209,6 +212,8 @@ class Send_thread(MyQThread):
             if self._paused:
                 self.condition.wait(self.mutex)  # 等待条件变量
             self.mutex.unlock()
+            self.priority_queue_empty = False
+            self.normal_queue_empty=False
             send_message =None
             try:
                 # logger.info(self.send_messages)
@@ -247,6 +252,7 @@ class Send_thread(MyQThread):
                         logger.debug(f"main_monitor_data将响应报文的解析数据返回源头：{message_struct}")
                         pass
                 except queue.Empty:
+                    self.priority_queue_empty=True
                     pass
                 send_message=None
                 # 处理普通消息
@@ -278,10 +284,13 @@ class Send_thread(MyQThread):
                         pass
 
                 except queue.Empty:
+                    self.normal_queue_empty=True
                     break
             except Exception as e:
                 logger.error(e)
             finally:
+                if self.normal_queue_empty:
+                    continue
                 if send_message is not None:
                     logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束{'-' * 100}")
                     with lock:
