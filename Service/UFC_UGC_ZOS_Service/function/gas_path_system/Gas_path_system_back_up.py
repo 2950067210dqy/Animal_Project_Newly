@@ -450,8 +450,8 @@ class UFC_gas_path_system(Gas_path_system):
         #ufc 气泵及设定鼠笼流量控制器开启 此过程需1分钟，等待流量控制器自动配置及运行
 
         self.update_status_main_signal_gui_update.emit(
-            f"{time_util.get_format_from_time(time.time())} | {'-'*500}")
-        logger.error( f"{time_util.get_format_from_time(time.time())} | {'-'*500}")
+            f"{time_util.get_format_from_time(time.time())} | {'-'*100}")
+        logger.error( f"{time_util.get_format_from_time(time.time())} | {'-'*100}")
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms//1000}s)，等待流量控制器自动配置及运行 .")
         logger.error(f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms//1000}s)，等待流量控制器自动配置及运行 .")
@@ -845,11 +845,11 @@ class ZOS_gas_path_system(Gas_path_system):
     def zos_start_timer_task(self,elapsed_ms):
         #zos启动之后需要预热
         self.update_status_main_signal_gui_update.emit(
-            f"{time_util.get_format_from_time(time.time())} | {'-'*500}")
-        logger.error(f"{time_util.get_format_from_time(time.time())} | {'-'*500}")
+            f"{time_util.get_format_from_time(time.time())} | {'-'*100}")
+
         self.update_status_main_signal_gui_update.emit(
             f"{time_util.get_format_from_time(time.time())} | ZOS 正在预热时间为{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_time'])}s(当前{elapsed_ms//1000}s)，循环判断zos状态是否完成，预热完成进入运行状态-start.")
-        logger.error( f"{time_util.get_format_from_time(time.time())} | ZOS 正在预热时间为{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_time'])}s(当前{elapsed_ms//1000}s)，循环判断zos状态是否完成，预热完成进入运行状态-start.")
+
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.emit(
@@ -861,7 +861,6 @@ class ZOS_gas_path_system(Gas_path_system):
             'function_code': '1',
             'timeout': 1
         }
-        self.send_thread.send_message = self.send_message
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             lambda r: AsyPromise(self.judge_zos_start_status, r=r)

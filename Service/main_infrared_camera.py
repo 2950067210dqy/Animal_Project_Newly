@@ -7,6 +7,7 @@ import traceback
 from pathlib import Path
 
 import numpy as np
+from PyQt6.QtCore import QCoreApplication
 from PyQt6.QtWidgets import QApplication
 from loguru import logger
 import cv2 as cv
@@ -106,6 +107,11 @@ class read_queue_data_Thread(MyThread):
                             global_setting.set_setting("experiment_setting_file",
                                                        data.get("experiment_setting_file", ""))
 
+                        pass
+                    case 'camera_config':
+                        data = message.data
+                        if data is not None:
+                            init_camera_and_image_handle_thread(data)
                         pass
                     case _:
                         pass
@@ -501,7 +507,7 @@ class Delete_file(MyThread):
                     # 获取删除文件内的所有文件大小
                     self.get_and_delete_files()
 
-                    logger.info(f"deep_camera 删除文件成功")
+                    logger.info(f"infrared_camera 删除文件成功")
                     self.start_time = time.time()
 
                     pass
@@ -541,9 +547,10 @@ def check_setting_cameras_each_number():
         # 不存在配置文件
 
         try:
-            dialog_frame = infrared_camera_config_dialog(title="红外相机配置")
-            dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
-            dialog_frame.show_frame()
+            logger.error("发送红外相机弹窗")
+            queue = global_setting.get_setting("queue",None)
+            if queue is not None:
+                queue.put(ObjectQueueItem(origin="main_infrared_camera",to="main_gui",title="infrared_camera_config_dialog",time=time_util.get_format_from_time(time.time())))
         except Exception as e:
             logger.error(f"<UNK>{e} |  <UNK>{traceback.print_exc()}")
 
@@ -604,8 +611,8 @@ def init_camera_and_image_handle_thread(serials):
 
 
 def main(q):
-    app = QApplication(sys.argv)
 
+    app = QCoreApplication(sys.argv)
     # logger.remove(0)
     logger.add(
         "./log/infrared_camera/i_camera_{time:YYYY-MM-DD}.log",
@@ -625,7 +632,6 @@ def main(q):
     read_queue_data_thread.start()
     global_setting.set_setting("queue", q)
 
-    # 系统退出
     return app.exec()
     # global camera_list
     # return camera_list, read_queue_data_thread, delete_file_thread,
@@ -664,3 +670,4 @@ def stop():
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     main(q)
+    start()

@@ -91,3 +91,42 @@ def load_global_setting_without_Qt():
     # 程序状态
     global_setting.set_setting("app_state", AppState.INITIALIZED)
     pass
+def load_global_setting_without_Qt_for_subprocess():
+    config_path = "/config"
+    # 加载配置
+    config_file_path = "../" + config_path + "/gui_config.ini"
+    # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
+    configer = ini_parser(config_file_path).read()
+    if (len(configer) != 0):
+        logger.info("gui配置文件读取成功。")
+    else:
+        logger.error("gui配置文件读取失败。")
+    global_setting.set_setting("configer", configer)
+    # 加载相机配置
+    config_file_path = "../"  + config_path + "/camera_config.ini"
+    # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
+    config = ini_parser(config_file_path).read()
+    if (len(config) != 0):
+        logger.info("相机配置文件读取成功。")
+    else:
+        logger.error("相机配置文件读取失败。")
+    global_setting.set_setting("camera_config", config)
+    # 加载监控数据配置
+    config_file_path = "../" + config_path + "/monitor_datas_config.ini"
+    # 配置数据{"section":{"key1":value1,"key2":value2,....}，...}
+    config = ini_parser(config_file_path).read()
+    if (len(config) != 0):
+        logger.info("监控配置文件读取成功。")
+    else:
+        logger.error("监控配置文件读取失败。")
+    global_setting.set_setting("monitor_data", config)
+    # 风格默认是dark  light
+    global_setting.set_setting("style", configer['theme']['default'])
+    # 图标风格 white black
+    global_setting.set_setting("icon_style", "white")
+    # 主题管理
+    theme_manager = ThemeManager()
+    global_setting.set_setting("theme_manager", theme_manager)
+
+    # 程序状态
+    global_setting.set_setting("app_state", AppState.INITIALIZED)

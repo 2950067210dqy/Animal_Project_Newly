@@ -1,7 +1,8 @@
+import time
 import typing
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import QRect, Qt, pyqtSignal
+from PyQt6.QtCore import QRect, Qt, pyqtSignal, QCoreApplication
 from PyQt6.QtWidgets import QDialog, QComboBox, QLabel, QPushButton, QDialogButtonBox
 from loguru import logger
 
@@ -10,9 +11,10 @@ import pyrealsense2 as rs
 
 from public.component.dialog.deep_camera_config_dialog import Ui_deep_camera_config_dialog
 from public.config_class.global_setting import global_setting
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.folder_util import folder_util
 from public.util.json_util import json_util
-
+from public.util.time_util import time_util
 
 
 class deep_camera_config_dialog(QDialog):
@@ -20,7 +22,7 @@ class deep_camera_config_dialog(QDialog):
 
     """
 
-    camera_config_finished_signal = pyqtSignal(list)
+    # camera_config_finished_signal = pyqtSignal(list)
     def scan_realsense(self):
         # 搜索相机
         ctx = rs.context()
@@ -38,10 +40,10 @@ class deep_camera_config_dialog(QDialog):
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
-        logger.warning("tab7——show")
+        logger.warning("deep_config_dialog——show")
 
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
-        logger.warning("tab7--hide")
+        logger.warning("eep_config_dialog--hide")
 
     def __init__(self, parent=None, geometry: QRect = None, title="",tip=""):
         super().__init__()
@@ -751,18 +753,21 @@ class deep_camera_config_dialog(QDialog):
         refresh按钮事件
         :return:
         """
-        self.get_data()
-        # 将原本的下拉列表值给删掉
-        # print(f"need:{self.camera_series_list_select_need}")
-        choose_list = [i['serial'] for i in self.camera_series_choose_list if i is not None]
-        # print(f"choose_list:{choose_list}")
-        camera_series_list_select_need_flag = []
-        for item in self.camera_series_list_select_need:
-            if item['serial'] not in choose_list:
-                camera_series_list_select_need_flag.append(item)
-        self.camera_series_list_select_need = camera_series_list_select_need_flag
-        # print(f"after:{self.camera_series_list_select_need}")
-        self.init_combox()
+        try:
+            self.get_data()
+            # 将原本的下拉列表值给删掉
+            # print(f"need:{self.camera_series_list_select_need}")
+            choose_list = [i['serial'] for i in self.camera_series_choose_list if i is not None]
+            # print(f"choose_list:{choose_list}")
+            camera_series_list_select_need_flag = []
+            for item in self.camera_series_list_select_need:
+                if item['serial'] not in choose_list:
+                    camera_series_list_select_need_flag.append(item)
+            self.camera_series_list_select_need = camera_series_list_select_need_flag
+            # print(f"after:{self.camera_series_list_select_need}")
+            self.init_combox()
+        except Exception as e:
+            logger.error(e)
 
     def ok_func(self):
         """
@@ -780,5 +785,10 @@ class deep_camera_config_dialog(QDialog):
         config_file_path = f"./{global_setting.get_setting('camera_config')['DEEP_CAMERA']['camera_to_mouse_cage_number_file_name']}"
         json_util.store_json_from_dict_list(filename=config_file_path, data=choose_data)
         # 2.激活外面主函数的信号 实例化相机线程
-        self.camera_config_finished_signal.emit(choose_data)
+        queue = global_setting.get_setting("queue", None)
+        if queue is not None:
+            queue.put(ObjectQueueItem(origin="deep_camera_config_dialog_index", to='main_deep_camera',data=choose_data,
+                                      title="camera_config", time=time_util.get_format_from_time(time.time())))
+
+        # self.camera_config_finished_signal.emit(choose_data)
         pass

@@ -373,7 +373,7 @@ class Tab_4(ThemedWindow):
         :return:
         """
         self.deep_camera_config_dialog_frame = deep_camera_config_dialog(title="深度相机配置",tip="\n设置好后要重新启动程序！！！！！！")
-        self.deep_camera_config_dialog_frame.camera_config_finished_signal.connect(main_deep_camera.init_camera_and_image_handle_thread)
+        # self.deep_camera_config_dialog_frame.camera_config_finished_signal.connect(main_deep_camera.init_camera_and_image_handle_thread)
         self.deep_camera_config_dialog_frame.show_frame()
 
         pass
@@ -384,7 +384,7 @@ class Tab_4(ThemedWindow):
         :return:
         """
         self.infrared_camera_config_dialog_frame = infrared_camera_config_dialog(title="红外相机配置",tip="\n设置好后要重新启动程序！！！！！！")
-        self.infrared_camera_config_dialog_frame.camera_config_finished_signal.connect(main_infrared_camera.init_camera_and_image_handle_thread)
+        # self.infrared_camera_config_dialog_frame.camera_config_finished_signal.connect(main_infrared_camera.init_camera_and_image_handle_thread)
         self.infrared_camera_config_dialog_frame.show_frame()
 
         pass

@@ -2,19 +2,76 @@ import os
 import sys
 import time
 from multiprocessing import freeze_support
-from PyQt6.QtCore import QThreadPool, QRect
+from PyQt6.QtCore import QThreadPool, QRect, QTimer
 from PyQt6.QtWidgets import QApplication, QDialog
+from blinker import signal
 from loguru import logger
 from index.MainWindow_index import MainWindow_Index
 from index.Program_self_check import Program_self_check_index
+from public.component.dialog.index.deep_camera_config_dialog_index import deep_camera_config_dialog
+from public.component.dialog.index.infrared_camera_config_dialog_index import infrared_camera_config_dialog
+
 from public.config_class import global_load
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
+from public.entity.MyQThread import MyThread, MyQThread
 from public.entity.enum.Public_Enum import AppState
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeManager import ThemeManager
 # 过滤日志
 #logger = logger.bind(category="gui_logger")
+
+
+infrared_camera_config_dialog_obj =None
+deep_camera_config_dialog_obj =None
+class read_queue_data_Thread(MyQThread):
+    def __init__(self, name):
+        super().__init__(name)
+        self.queue = None
+        self.camera_list = None
+        pass
+
+    def dosomething(self):
+        if not self.queue.empty():
+            message:ObjectQueueItem = self.queue.get()
+            if message is not None and message.is_Empty():
+                return
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to=='main_gui':
+                logger.error(f"{self.name}_get_message:{message}")
+                match message.title:
+                    case "deep_camera_config_dialog":
+                        QTimer.singleShot(200,self.show_deep_camera_config_dialog)
+
+                        pass
+                    case "infrared_camera_config_dialog":
+                        QTimer.singleShot(100, self.show_infrared_camera_config_dialog)
+                        pass
+                    case _:
+                        pass
+
+            else:
+                # 把消息放回去
+                self.queue.put(message)
+
+    def show_infrared_camera_config_dialog(self):
+        global infrared_camera_config_dialog_obj
+        infrared_camera_config_dialog_obj = infrared_camera_config_dialog(title="红外相机配置")
+        # dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
+        infrared_camera_config_dialog_obj.show_frame()
+        pass
+
+    def show_deep_camera_config_dialog(self):
+        global deep_camera_config_dialog_obj
+        deep_camera_config_dialog_obj = deep_camera_config_dialog(title="深度相机配置")
+        # dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
+        deep_camera_config_dialog_obj.show_frame()
+        pass
+
+        pass
+
+
+read_queue_data_thread = read_queue_data_Thread(name="main_gui_read_queue_data_thread")
 def quit_qt_application():
     """
     退出QT程序
@@ -86,6 +143,9 @@ def main(q, send_message_q):
     global_load.load_global_setting()
     global_setting.set_setting("queue", q)
     global_setting.set_setting("send_message_queue", send_message_q)
+    global read_queue_data_thread
+    read_queue_data_thread.queue = q
+    read_queue_data_thread.start()
     try:
         # qt程序开始
         start_qt_application()

@@ -3,7 +3,7 @@ import time
 import typing
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import QRect, Qt, pyqtSignal
+from PyQt6.QtCore import QRect, Qt, pyqtSignal, QCoreApplication
 from PyQt6.QtWidgets import QDialog, QComboBox, QLabel, QPushButton, QDialogButtonBox
 from loguru import logger
 
@@ -22,7 +22,7 @@ class infrared_camera_config_dialog(QDialog):
 
     """
 
-    camera_config_finished_signal = pyqtSignal(list)
+    # camera_config_finished_signal = pyqtSignal(list)
     def scan_realsense(self):  # 搜索相机
 
         global_setting.get_setting("queue").put(
@@ -38,10 +38,10 @@ class infrared_camera_config_dialog(QDialog):
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
-        logger.warning("tab7——show")
+        logger.warning("infrared_config_dialog——show")
 
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
-        logger.warning("tab7--hide")
+        logger.warning("infrared_config_dialog--hide")
 
     def __init__(self, parent=None, geometry: QRect = None, title="",tip=""):
         super().__init__()
@@ -207,7 +207,7 @@ class infrared_camera_config_dialog(QDialog):
     def show_frame(self):
 
         self.exec()
-
+        # self.show()
     def init_label(self):
         # 实例化label
         self.mouse_cage_1_checked_label: QLabel = self.findChild(QLabel, "d_mouse_cage_1_checked_value")
@@ -751,18 +751,21 @@ class infrared_camera_config_dialog(QDialog):
         refresh按钮事件
         :return:
         """
-        self.get_data()
-        # 将原本的下拉列表值给删掉
-        # print(f"need:{self.camera_series_list_select_need}")
-        choose_list = [i['serial'] for i in self.camera_series_choose_list if i is not None]
-        # print(f"choose_list:{choose_list}")
-        camera_series_list_select_need_flag = []
-        for item in self.camera_series_list_select_need:
-            if item['serial'] not in choose_list:
-                camera_series_list_select_need_flag.append(item)
-        self.camera_series_list_select_need = camera_series_list_select_need_flag
-        # print(f"after:{self.camera_series_list_select_need}")
-        self.init_combox()
+        try:
+            self.get_data()
+            # 将原本的下拉列表值给删掉
+            # print(f"need:{self.camera_series_list_select_need}")
+            choose_list = [i['serial'] for i in self.camera_series_choose_list if i is not None]
+            # print(f"choose_list:{choose_list}")
+            camera_series_list_select_need_flag = []
+            for item in self.camera_series_list_select_need:
+                if item['serial'] not in choose_list:
+                    camera_series_list_select_need_flag.append(item)
+            self.camera_series_list_select_need = camera_series_list_select_need_flag
+            # print(f"after:{self.camera_series_list_select_need}")
+            self.init_combox()
+        except Exception as e:
+            logger.error(e)
 
     def ok_func(self):
         """
@@ -779,6 +782,13 @@ class infrared_camera_config_dialog(QDialog):
         # 1.把选择的数据存到json中
         config_file_path = f"./{global_setting.get_setting('camera_config')['INFRARED_CAMERA']['camera_to_mouse_cage_number_file_name']}"
         json_util.store_json_from_dict_list(filename=config_file_path, data=choose_data)
-        # 2.激活外面主函数的信号 实例化相机线程
-        self.camera_config_finished_signal.emit(choose_data)
+        # 2.给主线程传输信号 实例化相机线程
+        queue =global_setting.get_setting("queue",None)
+        if queue is not None:
+            queue.put(ObjectQueueItem(origin="infrared_camera_config_dialog_index",to='main_infrared_camera',title="camera_config",
+                                      data=choose_data,
+                                      time=time_util.get_format_from_time(time.time())))
+            pass
+        # self.camera_config_finished_signal.emit(choose_data)
+
         pass

@@ -3,6 +3,7 @@ import sys
 import threading
 import traceback
 
+from PyQt6.QtCore import QCoreApplication
 from PyQt6.QtWidgets import QApplication
 from loguru import logger
 
@@ -96,6 +97,11 @@ class read_queue_data_Thread(MyQThread):
                             global_setting.set_setting("experiment_setting", data.get("experiment_setting",None))
                             global_setting.set_setting("experiment_setting_file", data.get("experiment_setting_file",""))
 
+                        pass
+                    case 'camera_config':
+                        data = message.data
+                        if data is not None:
+                            init_camera_and_image_handle_thread(data)
                         pass
                     case _ :
                         pass
@@ -670,9 +676,11 @@ def check_setting_cameras_each_number():
         # 不存在配置文件
 
         try:
-            dialog_frame = deep_camera_config_dialog(title="深度相机配置")
-            dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
-            dialog_frame.show_frame()
+            logger.error("发送深度相机弹窗")
+            queue = global_setting.get_setting("queue", None)
+            if queue is not None:
+                queue.put(ObjectQueueItem(origin="main_deep_camera", to="main_gui", title="deep_camera_config_dialog",
+                                          time=time_util.get_format_from_time(time.time())))
         except Exception as e:
             logger.error(e)
 
@@ -768,7 +776,7 @@ def init_camera_and_image_handle_thread(serials):
 
 
 def main(q):
-    app = QApplication(sys.argv)
+    app = QCoreApplication(sys.argv)
     # 加载日志配置
     # logger.remove(0)
     # 過濾日志
@@ -778,7 +786,7 @@ def main(q):
         retention="30 days",
         enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-       
+
     )
     logger.info(f"{'-' * 30}deep_camera_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")

@@ -9,16 +9,17 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget
 from loguru import logger
 
-from Module.UFC_UGC_ZOS_Test.entity.MyQThread import MyQThread
-from Module.UFC_UGC_ZOS_Test.function.promise.AsyPromise import AsyPromise
+
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 from my_abc.BaseModule import BaseModule
 from public.component.custom_status_bar import CustomStatusBar
 from public.component.mask.LoadingMask import LoadingContext
 from public.config_class.global_setting import global_setting
+from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
+from public.function.promise.AsyPromise import AsyPromise
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
@@ -375,7 +376,7 @@ class MainWindow_Index(ThemedWindow):
                 action_dict["action"].setDisabled(False)
             if action_dict["obj_name"] == "pause_experiment":
                 action_dict["action"]: QAction
-                action_dict["action"].setDisabled(False)
+                # action_dict["action"].setDisabled(False)
         self.setEnabled(True)
         resolve()
         #   延遲打開窗口

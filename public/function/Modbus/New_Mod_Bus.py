@@ -155,6 +155,7 @@ class ModbusRTUMasterNew:
 
     def _send_status_message(self, message: str):
         """发送状态消息到队列（无锁版本）"""
+        return
         try:
             if self.origin is not None:
 
@@ -194,7 +195,7 @@ class ModbusRTUMasterNew:
             frame = struct.pack('>B B B B B B', slave_id, function_code, *data_bytes)
             crc = self.calculate_crc(frame)
 
-            logger.info(f"frame: {frame.hex()}|crc: {crc.hex()}")
+            logger.info(f"构造发送报文frame: {frame.hex()}|crc: {crc.hex()}")
             return frame + crc
 
         except Exception as e:
@@ -240,7 +241,7 @@ class ModbusRTUMasterNew:
                 response = self.ser.read(256)
 
                 # 验证响应
-                return self._validate_response(response, slave_id, function_code, is_parse_response)
+                return self._validate_response(response, slave_id, function_code, is_parse_response,frame)
 
         except TimeoutError as e:
             logger.error(f"{self.sport}-操作超时: {e}")
@@ -255,19 +256,19 @@ class ModbusRTUMasterNew:
             return None, None, False
 
     def _validate_response(self, response: bytes, slave_id: Union[str, int],
-                           function_code: Union[str, int], is_parse_response: bool) -> Tuple[
+                           function_code: Union[str, int], is_parse_response: bool,send_frame) -> Tuple[
         Optional[bytes], Optional[str], bool]:
         """验证响应数据"""
         # 超时判断
         if not response:
             self._send_status_message("Time OUT1-未获取到响应数据")
-            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-Time OUT1-未获取到响应数据")
+            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT1-未获取到响应数据")
             return None, None, False
 
         # 数据长度检查
         if len(response) < 5:
             self._send_status_message("Time OUT2-返回数据位数错误")
-            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-Time OUT2-返回数据位数错误")
+            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT2-返回数据位数错误")
             return response, response.hex(), False
 
         # CRC校验
@@ -277,7 +278,7 @@ class ModbusRTUMasterNew:
 
         if crc_received != crc_expected:
             self._send_status_message("Time OUT3-数据错误，CRC验证失败")
-            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-Time OUT3-数据错误，CRC验证失败")
+            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT3-数据错误，CRC验证失败")
             return response, response.hex(), False
 
         # 检查异常响应
@@ -286,16 +287,16 @@ class ModbusRTUMasterNew:
             exception_code = response[2]
             error_msg = f"异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"
             self._send_status_message(error_msg)
-            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-{error_msg}")
+            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-{error_msg}")
             return response, response.hex(), False
 
         # 响应正常
         self._send_status_message("CRC校验通过，正常响应")
-        logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-CRC校验通过，正常响应")
+        logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-CRC校验通过，正常响应")
 
         self._send_status_message(f"收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
         logger.info(
-            f"{time_util.get_format_from_time(time.time())}-{self.sport}-收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
+            f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
 
         # 解析响应
         if is_parse_response:
