@@ -335,49 +335,53 @@ class Thermal_process(MyThread):
         else:
             logger.info(f'infrared camera_{self.id} | {self.mi48.sn} connected to {connected_port}')
         logger.info(f'infrared camera_{self.id} | camera_info: {self.mi48.camera_info}')
+        try:
+            self.mi48.set_fps(args.fps)
+            self.mi48.regwrite(0xD0, 0x00)
+            self.mi48.disable_filter(f1=True, f2=True, f3=True)
+            self.mi48.enable_filter(f1=True, f2=True, f3=True)
+            self.mi48.regwrite(0xC2, 0x64)
+            self.mi48.set_emissivity(args.emissivity)
+            self.mi48.set_offset_corr(3)
+            self.mi48.start(stream=True, with_header=True)
 
-        self.mi48.set_fps(args.fps)
-        self.mi48.regwrite(0xD0, 0x00)
-        self.mi48.disable_filter(f1=True, f2=True, f3=True)
-        self.mi48.enable_filter(f1=True, f2=True, f3=True)
-        self.mi48.regwrite(0xC2, 0x64)
-        self.mi48.set_emissivity(args.emissivity)
-        self.mi48.set_offset_corr(3)
-        self.mi48.start(stream=True, with_header=True)
+            self.RA_Tmin = RollingAverageFilter(N=10)
+            self.RA_Tmax = RollingAverageFilter(N=10)
 
-        self.RA_Tmin = RollingAverageFilter(N=10)
-        self.RA_Tmax = RollingAverageFilter(N=10)
+            tip_param = {
+                'colormap': args.colormap,
+                'fpa_ncol_nrow': (self.mi48.cols, self.mi48.rows),
+                'image_scale': args.img_scale,
+            }
 
-        tip_param = {
-            'colormap': args.colormap,
-            'fpa_ncol_nrow': (self.mi48.cols, self.mi48.rows),
-            'image_scale': args.img_scale,
-        }
-        tip_param.update(TIP_SEGM_PARAM)
-        self.tip = TIP(tip_param)
+            tip_param.update(TIP_SEGM_PARAM)
+            self.tip = TIP(tip_param)
 
-        if args.cis_id is not None:
-            self.vs = VideoStream(src=args.cis_id).start()
-            self.test_frame = self.vs.read()
-        else:
-            self.vs = None
-            self.test_frame = None
+            if args.cis_id is not None:
+                self.vs = VideoStream(src=args.cis_id).start()
+                self.test_frame = self.vs.read()
+            else:
+                self.vs = None
+                self.test_frame = None
 
-        if self.test_frame is None:
-            self.vs = None
+            if self.test_frame is None:
+                self.vs = None
 
-        display_options = {
-            'window_coord': (0, 0),
-            'window_title': f'{self.mi48.camera_id} ({self.mi48.name}), {args.cis_id}',
-            'directory': r'data'
-        }
-        self.display = Display(display_options)
+            display_options = {
+                'window_coord': (0, 0),
+                'window_title': f'{self.mi48.camera_id} ({self.mi48.name}), {args.cis_id}',
+                'directory': r'data'
+            }
+            self.display = Display(display_options)
 
-        self.images = {'thermal': {}}
-        self.struct = {'thermal': {}}
+            self.images = {'thermal': {}}
+            self.struct = {'thermal': {}}
 
-        self.datasave = coordinate_writing(path=self.path, camera_id=self.id)
-        self.datasave.csv_create()
+            self.datasave = coordinate_writing(path=self.path, camera_id=self.id)
+            self.datasave.csv_create()
+        except Exception as e:
+            logger.error(f"红外相机{self.id}初始化错误！：原因：{e}")
+            return False
         return True
 
     def stop(self):
@@ -429,32 +433,35 @@ class Thermal_process(MyThread):
             if raw_data is None:
                 logger.error(f"红外相机_{self.id} | raw_data is None")
                 return
-            frame = data_to_frame(raw_data, (self.mi48.cols, self.mi48.rows),
-                                  hflip=False)  # hflip与USB正反有关，朝上要翻转为true
+            try:
+                frame = data_to_frame(raw_data, (self.mi48.cols, self.mi48.rows),
+                                      hflip=False)  # hflip与USB正反有关，朝上要翻转为true
 
-            #
-            Tmin, Tmax = self.RA_Tmin(frame.min()), self.RA_Tmax(frame.max())
-            frame = np.clip(frame, Tmin, Tmax)
-            _imgs, _struct = self.tip(frame)
-            self.images['thermal'].update(_imgs)
-            self.struct['thermal'].update(_struct)
-            self.display.img = self.display.composer([self.images['thermal']['raw']])
+                #
+                Tmin, Tmax = self.RA_Tmin(frame.min()), self.RA_Tmax(frame.max())
+                frame = np.clip(frame, Tmin, Tmax)
+                _imgs, _struct = self.tip(frame)
+                self.images['thermal'].update(_imgs)
+                self.struct['thermal'].update(_struct)
+                self.display.img = self.display.composer([self.images['thermal']['raw']])
 
-            # self.display(self.display.img)  # 显示，可删除
-            self.display.dir = Path(pic_save_path)
-            file_base_name = time_util.get_format_file_from_time(time.time())
-            self.display.save('{0}.bmp'.format(file_base_name))
-            with lock:
-                frame_nums += 1
-            self.datasave.csv_write(file_base_name, self.struct['thermal']['hs_mean'])  # 数据保存
+                # self.display(self.display.img)  # 显示，可删除
+                self.display.dir = Path(pic_save_path)
+                file_base_name = time_util.get_format_file_from_time(time.time())
+                self.display.save('{0}.bmp'.format(file_base_name))
+                with lock:
+                    frame_nums += 1
+                self.datasave.csv_write(file_base_name, self.struct['thermal']['hs_mean'])  # 数据保存
 
-            key = cv.waitKey(1) & 0xFF
-            if key != -1:
-                if key == ord("q") or key == 27:
-                    self.stop()
-            end_time = time.time()
-            logger.debug(
-                f"infrared_camera_{self.id}| image_process  | 图像处理线程一次处理时间：{end_time - start_time}秒 | 此时总图像帧数量:{frame_nums}")
+                key = cv.waitKey(1) & 0xFF
+                if key != -1:
+                    if key == ord("q") or key == 27:
+                        self.stop()
+                end_time = time.time()
+                logger.debug(
+                    f"infrared_camera_{self.id}| image_process  | 图像处理线程一次处理时间：{end_time - start_time}秒 | 此时总图像帧数量:{frame_nums}")
+            except Exception as e:
+                logger.error(f"红外相机_{self.id} |运行出现错误:{e}")
         time.sleep(float(global_setting.get_setting("camera_config")['INFRARED_CAMERA']['delay']))
 
     pass
@@ -507,7 +514,7 @@ class Delete_file(MyThread):
                     # 获取删除文件内的所有文件大小
                     self.get_and_delete_files()
 
-                    logger.info(f"infrared_camera 删除文件成功")
+                    logger.warning(f"infrared_camera 删除文件成功")
                     self.start_time = time.time()
 
                     pass
@@ -592,6 +599,7 @@ def init_camera_and_image_handle_thread(serials):
             camera = Thermal_process(
                 path=path + f"{global_setting.get_setting('camera_config')['INFRARED_CAMERA']['mouse_cage_prefix']}{serials[num]['mouse_cage_number']}/",
                 id=serials[num]['mouse_cage_number'], serial_number=serials[num]['serial'])
+            logger.debug(f"红外相机{num + 1}初始化成功 |  异常堆栈跟踪：{traceback.print_exc()}")
         except Exception as e:
             logger.error(f"红外相机{num + 1}初始化失败，失败原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
             # 所有线程停止
