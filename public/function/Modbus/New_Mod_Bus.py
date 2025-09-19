@@ -232,10 +232,7 @@ class ModbusRTUMasterNew:
                 self.ser.reset_output_buffer()
                 self.ser.write(frame)
 
-                # 等待响应
-                delay = float(global_setting.get_setting('monitor_data')['SEND']['get_response_delay'])
-                # delay=0.5
-                time.sleep(delay)
+
 
                 # 读取响应
                 response = self.ser.read(256)
@@ -301,7 +298,10 @@ class ModbusRTUMasterNew:
         # 解析响应
         if is_parse_response:
             self.parse_response(response, response.hex(), True, slave_id, function_code)
-
+        # 等待响应
+        delay = float(global_setting.get_setting('monitor_data')['SEND']['get_response_delay'])
+        # delay=0.5
+        time.sleep(delay)
         return response, response.hex(), True
 
     def parse_response(self, response: bytes, response_hex: str, send_state: bool,
