@@ -93,7 +93,7 @@ def _heartbeat_worker(health_queue, process_id):
 
 
 class IntegratedProcessMonitor:
-    def __init__(self, log_file="process_monitor.log"):
+    def __init__(self):
         # 基本监控数据
         self.processes: Dict[str, Dict] = {}
         self.monitoring = True

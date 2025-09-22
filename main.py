@@ -34,7 +34,7 @@ def on_process_crash(process_id, **kwargs):
 
 def on_process_complete(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
-    logger.info(f"✅ 进程完成: {process_id} {critical_info} (运行时间: {kwargs.get('runtime', 0):.1f}秒)")
+    logger.info(f"✅ 进程完成: {process_id} {critical_info} (运行时间: {kwargs.get('runtime', 0)})")
 
 def on_process_restart(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
