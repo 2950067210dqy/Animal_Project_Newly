@@ -42,9 +42,10 @@ class Store_thread_for_tab_frame(MyQThread):
         pass
 
     def dosomething(self):
-        if self.handle is not None:
-            self.handle.stop()
-        self.handle = Monitor_Datas_Handle()  # # 创建数据库
+        # if self.handle is not None:
+        #     self.handle.stop()
+        if self.handle is None:
+            self.handle = Monitor_Datas_Handle()  # # 创建数据库
         self.query_data()
         monitor_data_tab_page_config = global_setting.get_setting("configer")['monitoring_data']
         try:
@@ -71,6 +72,11 @@ class Store_thread_for_tab_frame(MyQThread):
             # logger.info(f"{table_name_full}数据查询成功！")
             self.show_data_signal.emit(emit_data)
         pass
+    def stop(self):
+        if self.handle is not None:
+            self.handle.stop()
+            self.handle=None
+        super().stop()
 
 
 class Tab2_tab0(ThemedWindow):

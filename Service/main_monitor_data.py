@@ -148,9 +148,10 @@ class Store_Thread(MyQThread):
     def store_to_data_base(self, data):
         try:
             # 存储到数据库中
-            if self.handle is not None:
-                self.handle.stop()
-            self.handle = Monitor_Datas_Handle()  # # 创建数据库
+            # if self.handle is not None:
+            #     self.handle.stop()
+            if self.handle is None:
+                self.handle = Monitor_Datas_Handle()  # # 创建数据库
             self.handle.insert_data(data)
         except Exception as e:
             logger.error(f"{self.name}错误：{e}")
@@ -159,6 +160,7 @@ class Store_Thread(MyQThread):
     def stop(self):
         if self.handle is not None:
             self.handle.stop()
+            self.handle=None
         super().stop()
 
 
@@ -486,6 +488,9 @@ def start():
 
     # 将实验配置存储到该实验的文件夹中去
     copy_experiment_setting_file()
+def restart(q,send_message_q):
+    main(q,send_message_q)
+    start()
 def pause():
     logger.info(f"{'-' * 30}monitor_data_pause{'-' * 30}")
     pass

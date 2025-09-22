@@ -816,6 +816,9 @@ def start():
     check_setting_cameras_each_number()
 
     pass
+def restart(q):
+    main(q)
+    start()
 def pause():
     logger.info(f"{'-' * 30}deep_camera_pause{'-' * 30}")
     pass

@@ -274,10 +274,11 @@ def test_integrated_monitor():
         target_func=main_response_Modbus.main,
         args=(),
         name="p_response_comm",
-        auto_restart=True
+        auto_restart=False
     )
     monitor.start_worker(
         target_func=main_monitor_data.main,
+        restart_target_func=main_deep_camera.restart,
         args=(q,send_message_q),
         name="p_monitor_data",
         auto_restart=True,
@@ -285,12 +286,14 @@ def test_integrated_monitor():
 
     monitor.start_worker(
         target_func=main_deep_camera.main,
+        restart_target_func=main_deep_camera.restart,
         args=(q,),
         name="p_deep_camera",
         auto_restart=True,
     )
     monitor.start_worker(
         target_func=main_deep_camera.main,
+        restart_target_func=main_deep_camera.restart,
         args=(q,),
         name="p_infrared_camera",
         auto_restart=True,

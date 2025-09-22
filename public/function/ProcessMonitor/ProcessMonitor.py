@@ -236,7 +236,7 @@ class IntegratedProcessMonitor:
 
         self.logger.warning("所有进程关闭完成")
 
-    def start_worker(self, target_func, args=(), name=None, auto_restart=True,
+    def start_worker(self, target_func,restart_target_func=None, args=(), name=None, auto_restart=True,
                      max_restarts=3, timeout=None, health_check=True, is_critical=False):
         """启动工作进程"""
         process_id = name or f"Process-{len(self.processes)}"
@@ -261,6 +261,7 @@ class IntegratedProcessMonitor:
         self.processes[process_id] = {
             'process': process,
             'target_func': target_func,
+            'restart_target_func': restart_target_func,
             'args': args,
             'start_time': datetime.now(),
             'restart_count': 0,
@@ -415,11 +416,13 @@ class IntegratedProcessMonitor:
         # 创建新进程
         new_process = multiprocessing.Process(
             target=monitored_target,
-            args=(proc_info['target_func'], proc_info['args'], proc_info['health_queue'], process_id),
+            args=(proc_info['restart_target_func'], proc_info['args'], proc_info['health_queue'], process_id),
             name=process_id
         )
 
         new_process.start()
+
+
 
         # 更新进程信息
         proc_info['process'] = new_process

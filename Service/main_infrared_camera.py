@@ -655,6 +655,9 @@ def start():
 
     # 根据设置的相机数量来连接
     check_setting_cameras_each_number()
+def restart(q):
+    main(q)
+    start()
 def pause():
     logger.info(f"{'-' * 30}infrared_camera_pause{'-' * 30}")
     pass

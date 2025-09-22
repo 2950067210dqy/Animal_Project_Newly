@@ -36,6 +36,9 @@ class DataFetcher(MyQThread):
         self.handle: Monitor_Datas_Handle = None
 
     def stop(self):
+        if self.handle is not None:
+            self.handle.stop()
+            self.handle=None
         super().stop()
         # if self.handle is not None:
         #     self.handle.stop()
@@ -46,9 +49,10 @@ class DataFetcher(MyQThread):
         #     self.handle.stop()
 
     def dosomething(self):
-        if self.handle is not None:
-            self.handle.stop()
-        self.handle = Monitor_Datas_Handle()  # # 创建数据库
+        # if self.handle is not None:
+        #     self.handle.stop()
+        if self.handle is None:
+            self.handle = Monitor_Datas_Handle()  # # 创建数据库
         data =[]
         # 可能会有多个数据源
         """[

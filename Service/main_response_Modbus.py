@@ -1353,3 +1353,4 @@ def main():
     except Exception as e:
         logger.error(f"模拟响应串口出错！:{e}")
     pass
+
