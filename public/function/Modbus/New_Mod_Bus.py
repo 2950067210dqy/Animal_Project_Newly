@@ -258,14 +258,14 @@ class ModbusRTUMasterNew:
         """验证响应数据"""
         # 超时判断
         if not response:
-            self._send_status_message("Time OUT1-未获取到响应数据")
+            self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT1-未获取到响应数据")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT1-未获取到响应数据")
             return None, None, False
 
         # 数据长度检查
         if len(response) < 5:
-            self._send_status_message("Time OUT2-返回数据位数错误")
-            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT2-返回数据位数错误")
+            self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT2-返回数据位数错误")
+            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT2-返回数据位数错误")
             return response, response.hex(), False
 
         # CRC校验
@@ -274,24 +274,24 @@ class ModbusRTUMasterNew:
         crc_expected = self.calculate_crc(data_part)
 
         if crc_received != crc_expected:
-            self._send_status_message("Time OUT3-数据错误，CRC验证失败")
-            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT3-数据错误，CRC验证失败")
+            self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败")
+            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败")
             return response, response.hex(), False
 
         # 检查异常响应
         function_code_response = response[1]
         if function_code_response & 0x80:
             exception_code = response[2]
-            error_msg = f"异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"
+            error_msg = f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"
             self._send_status_message(error_msg)
-            logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-{error_msg}")
+            logger.error(f"{error_msg}")
             return response, response.hex(), False
 
         # 响应正常
-        self._send_status_message("CRC校验通过，正常响应")
-        logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-CRC校验通过，正常响应")
+        self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-CRC校验通过，正常响应")
+        logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-CRC校验通过，正常响应")
 
-        self._send_status_message(f"收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
+        self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
         logger.info(
             f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
 
