@@ -292,8 +292,8 @@ def test_integrated_monitor():
         auto_restart=True,
     )
     monitor.start_worker(
-        target_func=main_deep_camera.main,
-        restart_target_func=main_deep_camera.restart,
+        target_func=main_infrared_camera.main,
+        restart_target_func=main_infrared_camera.restart,
         args=(q,),
         name="p_infrared_camera",
         auto_restart=True,
