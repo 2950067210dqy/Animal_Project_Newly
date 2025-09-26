@@ -39,3 +39,10 @@ pipreqs . --encoding=utf8 --ignore ./build,./dist,./entity,./log,./model,./resou
 location.csv tmp.csv
 就卡顿定位问题 首先是线程问题，其次是窗口变换大小的遍历问题
 实验室版本 1.3.3.4.4
+
+
+2025-09-26
+1.首先标定和检测ufc状态未启动
+2.查看一轮周期
+3.更改数据库查询方式
+4.更改数据监控页面的scroll

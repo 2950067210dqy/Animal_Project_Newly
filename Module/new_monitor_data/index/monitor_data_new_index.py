@@ -115,8 +115,11 @@ class Monitor_data_new_index(ThemedWindow):
         self.right_top_dock_widget_content.set_table_column_signal.connect(self.create_table)
 
 
-        self.right_bottom_dock_widget: QDockWidget = self.findChild(QDockWidget, "right_bottom_dock_widget")
 
+
+        # 这部分挪到数据处理区域
+        self.right_bottom_dock_widget: QDockWidget = self.findChild(QDockWidget, "right_bottom_dock_widget")
+        # self.right_bottom_dock_widget.hide()
         self.right_bottom_dock_widget_content = Table_Column_check_list_view(ok_btn_text="生成图表",datas_type=0)
         self.right_bottom_dock_widget.setWidget(self.right_bottom_dock_widget_content)
 
