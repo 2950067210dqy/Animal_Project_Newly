@@ -28,7 +28,7 @@ def on_process_crash(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
     logger.error(f"💥 进程崩溃: {process_id} {critical_info}")
     logger.error(f"   退出码: {kwargs.get('exitcode')}")
-    logger.error(f"   运行时间: {kwargs.get('runtime', 0):.1f}秒")
+    logger.error(f"   运行时间: {kwargs.get('runtime', 0)}")
     if kwargs.get('error_info'):
         logger.error(f"   错误信息: {kwargs.get('error_info')}")
 
@@ -46,7 +46,7 @@ def on_process_timeout(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
     logger.warning(f"⏰ 进程超时: {process_id} {critical_info}")
     logger.warning(f"   超时限制: {kwargs.get('timeout')}秒")
-    logger.warning(f"   实际运行: {kwargs.get('runtime', 0):.1f}秒")
+    logger.warning(f"   实际运行: {kwargs.get('runtime', 0)}")
 
 def on_process_unresponsive(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
@@ -278,7 +278,7 @@ def test_integrated_monitor():
     )
     monitor.start_worker(
         target_func=main_monitor_data.main,
-        restart_target_func=main_deep_camera.restart,
+        restart_target_func=main_monitor_data.restart,
         args=(q,send_message_q),
         name="p_monitor_data",
         auto_restart=True,

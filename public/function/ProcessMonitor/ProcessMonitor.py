@@ -63,6 +63,10 @@ def monitored_target(target_func, args, health_queue, process_id):
             heartbeat_thread.start()
 
         # 执行实际任务
+        logger.error(f"{process_id},target_func 是: {target_func}")
+        logger.error(f"{process_id},target_func 参数个数: {target_func.__code__.co_argcount}")
+        logger.error(f"{process_id},args 内容: {args}")
+        logger.error(f"{process_id},args 长度: {len(args)}")
         return target_func(*args)
 
     except Exception as e:

@@ -26,85 +26,6 @@ read_queue_data_Thread_Lock = threading.Lock()
 auto_wait_event = threading.Event()
 
 
-class auto_run_Thread(MyQThread):
-    def __init__(self, name, start_signal, run_signal, carlibration_signal, gas_state_check_signal, auto_finish_signal):
-        super().__init__(name=name)
-
-        # 使用 blinker 创建信号
-        self.start_finish_signal = signal('start_finish')
-        self.run_finish_signal = signal('run_finish')
-        self.carlibration_finish_signal = signal('carlibration_finish')
-        self.check_finish_signal = signal('check_finish')
-
-        self.start_signal = start_signal
-        self.run_signal = run_signal
-        self.carlibration_signal = carlibration_signal
-        self.gas_state_check_signal = gas_state_check_signal
-        self.auto_finish_signal = auto_finish_signal
-
-        # 连接信号与处理函数
-        self.start_finish_signal.connect(self.start_finish)
-        self.run_finish_signal.connect(self.run_finish)
-        self.carlibration_finish_signal.connect(self.carlibration_finish)
-        self.check_finish_signal.connect(self.check_finish)
-
-        self.before_start_flag = True
-        self.start_finish_flag = False
-        self.run_finish_flag = False
-        self.carlibration_finish_flag = False
-        self.check_finish_flag = False
-
-    def start_finish(self, sender, **kwargs):
-        self.start_finish_flag = True
-
-    def run_finish(self, sender, **kwargs):
-        self.run_finish_flag = True
-
-    def carlibration_finish(self, sender, **kwargs):
-        self.carlibration_finish_flag = True
-
-    def check_finish(self, sender, **kwargs):
-        self.check_finish_flag = True
-
-    def run(self):
-        logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
-        self._running = True
-        self.before_Runing_work()
-        while self._running:
-            self.mutex.lock()
-            if self._paused:
-                self.condition.wait(self.mutex)  # 等待条件变量
-            self.mutex.unlock()
-
-            # 执行一些工作（替代为你需要的任务）
-            self.dosomething()
-
-    def dosomething(self):
-        if self.before_start_flag:
-            self.start_signal.send(self)
-            self.before_start_flag = False
-            logger.debug(f"{'-' * 1000}")
-
-        if self.start_finish_flag:
-            self.start_finish_flag = False
-            logger.debug(f"{'.' * 1000}")
-            global auto_wait_event
-            auto_wait_event.wait()
-            self.run_signal.send(self)
-
-        if self.run_finish_flag:
-            self.run_finish_flag = False
-            self.carlibration_signal.send(self)
-
-        if self.carlibration_finish_flag:
-            self.carlibration_finish_flag = False
-            self.gas_state_check_signal.send(self)
-
-        if self.check_finish_flag:
-            self.check_finish_flag = False
-            self.auto_finish_signal.send(self)
-            self.stop()
-
 
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
@@ -183,7 +104,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.calibration_start_timer: PeriodicTimer = None
         self.gas_state_check_timer: PeriodicTimer = None
         self.monitor_start_state_Thread: MyQThread = None
-        self.auto_run_thread: auto_run_Thread = None
+
 
         self._init_data()
         self._init_function()
@@ -275,11 +196,7 @@ class UFC_UGC_ZOS_index(MyQThread):
             )
         self.monitor_start_state_Thread.start()
 
-        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
-            try:
-                self.auto_run_thread.start_finish_signal.send(self.auto_run_thread)
-            except Exception as e:
-                logger.error(e)
+
 
         return p
 
@@ -296,8 +213,7 @@ class UFC_UGC_ZOS_index(MyQThread):
             ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
 
-        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
-            self.auto_run_thread.run_finish_signal.send(self.auto_run_thread)
+
         return p
 
     def stop_btn_handle(self):
@@ -321,9 +237,8 @@ class UFC_UGC_ZOS_index(MyQThread):
 
     def calibration_handle(self):
         self.set_calibration_start_timer()
-        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
-            self.auto_run_thread.carlibration_finish_signal.send(self.auto_run_thread)
-
+        p = AsyPromise(lambda r:r()).then().catch(lambda e: logger.error(f"{e}"))
+        return p
     def carlibation(self):
         p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
             lambda v: AsyPromise(
@@ -334,41 +249,27 @@ class UFC_UGC_ZOS_index(MyQThread):
 
     def gas_state_check_handle(self):
         self.set_gas_state_check_timer()
-        if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
-            self.auto_run_thread.check_finish_signal.send(self.auto_run_thread)
-
+        p = AsyPromise(lambda r:r()).then().catch(lambda e: logger.error(f"{e}"))
+        return p
     def gas_state_check(self):
         p = AsyPromise(self.UFC_gas_state_check_obj.state_check).then(
         ).catch(lambda e: logger.error(f"{e}"))
         return p
 
-    def auto_btn_handle(self):
-        if self.auto_run_thread is None:
-            self.auto_run_thread = auto_run_Thread(
-                name="auto_run_thread",
-                start_signal=self.start_signal,
-                run_signal=self.run_signal,
-                carlibration_signal=self.carlibration_signal,
-                gas_state_check_signal=self.gas_state_check_signal,
-                auto_finish_signal=self.auto_finish_signal
-            )
-        self.auto_run_thread.start()
+
 
     def dosomething(self):
         self.start_btn_handle().then(
             self.run_btn_handle().then(
-                self.carlibation().then(
-                    self.gas_state_check().then(
+                self.calibration_handle().then(
+                    self.gas_state_check_handle().then(
                         self.stop()
                     )
                 )
             )
         )
 
-    def disabled_auto_btn_handle(self):
-        if self.auto_run_thread is not None:
-            self.auto_run_thread.stop()
-        self.stop_btn_handle().then()
+
 
     def pause(self):
         if self.UFC_gas_path_system_obj is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread is not None:
@@ -377,8 +278,7 @@ class UFC_UGC_ZOS_index(MyQThread):
             self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread.pause()
         if self.ZOS_gas_path_system_obj is not None and self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread is not None:
             self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread.pause()
-        if self.auto_run_thread is not None:
-            self.auto_run_thread.pause()
+
         if self.monitor_start_state_Thread is not None:
             self.monitor_start_state_Thread.pause()
         self.pause_timers()
@@ -391,8 +291,7 @@ class UFC_UGC_ZOS_index(MyQThread):
             self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread.resume()
         if self.ZOS_gas_path_system_obj is not None and self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread is not None:
             self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread.resume()
-        if self.auto_run_thread is not None:
-            self.auto_run_thread.resume()
+
         if self.monitor_start_state_Thread is not None:
             self.monitor_start_state_Thread.resume()
         self.resume_timers()
