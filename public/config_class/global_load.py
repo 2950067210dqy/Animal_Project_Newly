@@ -38,6 +38,13 @@ def load_global_setting():
     else:
         logger.error("监控配置文件读取失败。")
     global_setting.set_setting("monitor_data", config)
+    config_file_path = os.getcwd() + config_path+"/UFC_UGC_ZOS_Test.ini"
+    config = ini_parser(config_file_path).read()
+    if len(config) != 0:
+        logger.info("UFC_UGC_ZOS_config配置文件读取成功。")
+    else:
+        logger.error("UFC_UGC_ZOS_config配置文件读取失败。")
+    global_setting.set_setting("UFC_UGC_ZOS_config", config)
     # 风格默认是dark  light
     global_setting.set_setting("style", configer['theme']['default'])
     # 图标风格 white black
@@ -80,6 +87,13 @@ def load_global_setting_without_Qt():
     else:
         logger.error("监控配置文件读取失败。")
     global_setting.set_setting("monitor_data", config)
+    config_file_path = os.getcwd() + config_path + "/UFC_UGC_ZOS_Test.ini"
+    config = ini_parser(config_file_path).read()
+    if len(config) != 0:
+        logger.info("UFC_UGC_ZOS_config配置文件读取成功。")
+    else:
+        logger.error("UFC_UGC_ZOS_config配置文件读取失败。")
+    global_setting.set_setting("UFC_UGC_ZOS_config", config)
     # 风格默认是dark  light
     global_setting.set_setting("style", configer['theme']['default'])
     # 图标风格 white black

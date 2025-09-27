@@ -506,7 +506,7 @@ class Monitor_Datas_Handle():
         # print("示例行（最多 10 行）:")
         # for i, row in enumerate(result["rows"][:10]):
         #     print(i + 1, row)
-
+        # logger.critical(result)
         if len(result) == 0:
             return {}
         # caculation_handle = DataCaculation(sqlite_manager = self.sqlite_manager)
@@ -519,36 +519,16 @@ class Monitor_Datas_Handle():
     def query_monitor_data_all_tables(self, all_column_datas=[]) -> dict:
         pass
 
-    def format_and_display_results(self,results, column_names, max_rows=10):
-        """格式化并显示查询结果"""
-        if not results:
-            logger.critical("没有找到数据")
-            return
 
-        logger.critical(f"\n查询结果 (共 {len(results)} 行):")
-        logger.critical("=" * 100)
-
-        # 打印列名
-        header = " | ".join(f"{col[:15]:15}" for col in column_names)
-        logger.critical(header)
-        logger.critical("-" * 100)
-
-        # 打印数据行（限制显示行数）
-        display_rows = min(max_rows, len(results))
-        for i in range(display_rows):
-            row = results[i]
-            formatted_row = " | ".join(f"{str(val)[:15]:15}" for val in row)
-            logger.critical(formatted_row)
-
-        if len(results) > max_rows:
-            logger.critical(f"... 还有 {len(results) - max_rows} 行数据未显示")
     def query_data_in_line_with_epoch_data(self,start_time,end_time):
         tables = self.sqlite_manager.get_non_meta_tables_with_time(exclude_substr="meta", columns=['time'])
-        logger.critical(tables)
+        # logger.critical(tables)
         # 执行查询
         results, columns = self.sqlite_manager.get_multi_table_data(tables,
             start_time, end_time, join_type="separate"
         )
+        # logger.critical(results)
+        # logger.critical(columns)
         return results, columns
 
         pass

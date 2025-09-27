@@ -64,7 +64,7 @@ class Table_select_columns_paging_bottom(BaseWindow):
         super().__init__()
         self.gid = gid
         # 获取数据线程
-        self.data_fetcher_thread = None
+        self.data_fetcher_thread:DataFetcher = None
         self._init_ui()
 
         self._init_function()
@@ -241,6 +241,8 @@ class Table_select_columns_paging_bottom(BaseWindow):
         old_first_item_index = (self.current_page - 1) * old_page_size  # 0-based index of first item on current page
 
         self.page_size = new_page_size
+        if self.data_fetcher_thread is not None :
+            self.data_fetcher_thread.page_size = self.page_size
         # 计算新的页数并更新 page_spin 的范围
         new_total_pages = self.total_pages
         self.page_spin.setMaximum(max(1, new_total_pages))
@@ -249,6 +251,8 @@ class Table_select_columns_paging_bottom(BaseWindow):
         new_current_page = (old_first_item_index // self.page_size) + 1
         new_current_page = max(1, min(new_current_page, new_total_pages))
         self.current_page = new_current_page
+        if self.data_fetcher_thread is not None :
+            self.data_fetcher_thread.page = self.current_page
         self.page_spin.setValue(self.current_page)
 
         self.info_label.setText(self._info_text())
@@ -260,6 +264,8 @@ class Table_select_columns_paging_bottom(BaseWindow):
             QMessageBox.warning(self, "页码错误", f"请输入有效页码：1 到 {max(1, self.total_pages)}")
             return
         self.current_page = page
+        if self.data_fetcher_thread is not None :
+            self.data_fetcher_thread.page = self.current_page
         # 保证 page_spin 与 info_label 同步
         self.page_spin.setValue(self.current_page)
         self.info_label.setText(self._info_text())
@@ -302,12 +308,12 @@ class Table_select_columns_paging_bottom(BaseWindow):
                 self.table.setItem(row_idx, index, item)
                 index+=1
 
-        self.current_page=result['page']
+        # self.current_page=result['page']
         self.total_items=result['total_items']
         # 更新分页信息与按钮状态
         self.info_label.setText(self._info_text())
         self.page_spin.setMaximum(max(1, self.total_pages))
-        self.page_spin.setValue(self.current_page)
+        # self.page_spin.setValue(self.current_page)
         self._update_nav_buttons()
 
         # 如果页内行较少导致表格高度不足以出现滚动，可以选择调整最低高度或不做处理（这里不强制加载更多）

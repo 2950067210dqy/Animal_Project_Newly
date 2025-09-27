@@ -382,7 +382,7 @@ class MainWindow_Index(ThemedWindow):
         resolve()
         #   延遲打開窗口
     def start_open_window(self,resolve,reject):
-        QTimer.singleShot(3 * 1000, self.open_monitor_data_window)
+        QTimer.singleShot(1 * 1000, self.open_monitor_data_window)
         resolve()
 
     def start_experiment(self):
@@ -442,7 +442,7 @@ class MainWindow_Index(ThemedWindow):
         ).catch(lambda e: logger.error(e))
         pass
     def show_dialog(self,resolve,reject):
-        dialog = AnimatedLoadingDialog(countdown_seconds=60,message="正在启动气路...")
+        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])+10,message="正在启动气路...")
         result = dialog.exec()
         resolve()
     def pause_experiment(self):

@@ -79,6 +79,7 @@ class SQLiteManager():
             # 构造 all_times SQL
 
         # 统计总条数
+        # logger.critical(f"page{page}|page_size{page_size}")
         total_items = self.query_counts_conditions(table)
         total_pages = max(1, math.ceil(total_items / page_size)) if total_items > 0 else 0
 
