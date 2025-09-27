@@ -451,6 +451,7 @@ def barrier_action():
 
     handle = Monitor_Datas_Handle()  # # 创建数据库操作器
     results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time)
+    handle.stop()
     mouse_cage_number,_,_= number_util.extract_numbers_with_patterns(string_list=columns+[f"{results.get('UFC_monitor_data__mouse_cage')}"])
     mouse_cage_number=int(mouse_cage_number)
     store_Datas =[]
