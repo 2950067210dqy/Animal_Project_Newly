@@ -7,6 +7,7 @@ import shutil
 import sys
 import threading
 import time
+from datetime import datetime
 
 from PyQt6.QtCore import QThread, QTimer, QCoreApplication
 from PyQt6.QtWidgets import QApplication
@@ -22,8 +23,9 @@ from public.entity.MyQThread import MyQThread, MyThread
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus import ModbusRTUMaster
-from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data
+from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data, Others_Tables
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
+from public.util.number_util import number_util
 from public.util.time_util import time_util
 
 # 全局变量
@@ -32,6 +34,9 @@ MESSAGE_BATCH_SIZE = 0
 total_messages_processed = 1
 lock = threading.Lock()
 batch_complete_event = threading.Event()
+#等待气路启动之后在一起运行发送
+wait_UFC_UGC_ZOS_start_event = threading.Event()
+global_setting.set_setting("wait_UFC_UGC_ZOS_start_event",wait_UFC_UGC_ZOS_start_event)
 #使用端口
 port_use=None
 # 存储数据锁
@@ -151,7 +156,9 @@ class Store_Thread(MyQThread):
             # if self.handle is not None:
             #     self.handle.stop()
             if self.handle is None:
+
                 self.handle = Monitor_Datas_Handle()  # # 创建数据库
+
             self.handle.insert_data(data)
         except Exception as e:
             logger.error(f"{self.name}错误：{e}")
@@ -227,7 +234,7 @@ class Send_thread(MyQThread):
                     send_message = message['message']
 
                     logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
-                    response, response_hex, send_state = self.modbus.send_command(
+                    response, response_hex, send_state, return_data= self.modbus.send_command(
                         slave_id=send_message['slave_id'],
                         function_code=send_message['function_code'],
                         data_hex_list=send_message['data'],
@@ -263,7 +270,7 @@ class Send_thread(MyQThread):
                     with self.normal_queue_lock:
                         send_message = self.normal_queue.get(timeout=0.1)
 
-                    response, response_hex, send_state = self.modbus.send_command(
+                    response, response_hex, send_state,return_data = self.modbus.send_command(
                         slave_id=send_message['slave_id'],
                         function_code=send_message['function_code'],
                         data_hex_list=send_message['data'],
@@ -278,6 +285,8 @@ class Send_thread(MyQThread):
                                                                                  send_message['slave_id'],
                                                                                  function_code=
                                                                                  send_message['function_code'], )
+
+                        return_data['time']= datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         # 加锁
                         with store_Q_lock:
                             # 放入队列给存储线程进行存储
@@ -297,7 +306,9 @@ class Send_thread(MyQThread):
                     logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束{'-' * 100}")
                     with lock:
                         if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
-
+                            barrier: threading.Barrier = global_setting.get_setting("barrier")
+                            if barrier is not None:
+                                barrier.wait()
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
                             batch_complete_event.set()  # 通知主线程当前批次完成
@@ -310,6 +321,9 @@ class Send_thread(MyQThread):
                     with lock:
 
                         if MESSAGE_BATCH_SIZE == 0 or total_messages_processed % MESSAGE_BATCH_SIZE == 0:
+                            barrier: threading.Barrier = global_setting.get_setting("barrier")
+                            if barrier is not None:
+                                barrier.wait()
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
                             batch_complete_event.set()  # 通知主线程当前批次完成
@@ -337,6 +351,8 @@ class Add_message_thread(MyQThread):
         # 发送消息
         global MESSAGE_BATCH_SIZE
         self.experiment_setting = global_setting.get_setting("experiment_setting", None)
+        # 等待气路启动
+        wait_UFC_UGC_ZOS_start_event.wait()
         while self._running:
             self.mutex.lock()
             if self._paused:
@@ -426,6 +442,58 @@ store_thread:Store_Thread = None
 # 发送报文线程
 send_thread :Send_thread= None
 add_message_thread:Add_message_thread = None
+#一轮模块发送报文结束
+def barrier_action():
+    end_time = time.time()
+    start_time = global_setting.get_setting("start_time_messages_sent_epoch_for_running", time.time())
+
+    logger.warning(f"{'-'*100}|结束时间：{time_util.get_format_from_time(end_time)}|开始时间：{time_util.get_format_from_time(start_time)}|用时：{time_util.format_timedelta(a= datetime.fromtimestamp(end_time),b= datetime.fromtimestamp(start_time),signed=True,zero_pad=True)}|一轮传感器发送报文结束|期间一共发送{ global_setting.get_setting('messages_sent_epoch_for_running', 0)}条报文。")
+
+    handle = Monitor_Datas_Handle()  # # 创建数据库操作器
+    results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time)
+    mouse_cage_number,_,_= number_util.extract_numbers_with_patterns(string_list=columns+[f"{results['UFC_monitor_data__mouse_cage']}"])
+    mouse_cage_number=int(mouse_cage_number)
+    store_Datas =[]
+    # store_Datas.append({'desc':'序号','value':None})
+    store_Datas.append({'desc':'鼠笼号','value':mouse_cage_number})
+    store_Datas.append({'desc':'氧浓度0点校准值','value':results['ZeroCalibration_data__oxygen_calibration_zero_value'] if results['ZeroCalibration_data__oxygen_calibration_zero_value'] else None})
+    store_Datas.append({'desc':'氧浓传感器span数值','value':results['SpanCalibration_data__oxygen_calibration_span_value'] if results['SpanCalibration_data__oxygen_calibration_span_value'] else None })
+    store_Datas.append({'desc':'ufc_流量计测量值(sccm)','value':results['UFC_monitor_data__flow_num']})
+    store_Datas.append({'desc':'ugc_流量计1','value':results['UGC_monitor_data__flow_num_1']})
+    store_Datas.append({'desc':'CO2(%)','value':results[ 'UGC_monitor_data__CO2_num']})
+    store_Datas.append({'desc':'氧气传感器测量值(%)','value':results['ZOS_monitor_data__oxygen_num']})
+    store_Datas.append({'desc':'温度测量值(°C)','value':results[f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num']})
+    store_Datas.append({'desc':'湿度测量值(%RH)','value':results[ f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num']})
+    store_Datas.append({'desc':'噪声测量值(dB)','value':results[ f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num']})
+    store_Datas.append({'desc':'大气压测量值(KPa)','value':results[ f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num']})
+    store_Datas.append({'desc':'当前计量周期内跑轮圈数测量值','value':results[f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num']})
+    store_Datas.append({'desc':'饮水重量测量值(g)','value':results[f'EM_monitor_data_cage_{mouse_cage_number}__weight_num']})
+    store_Datas.append({'desc':'食物重量测量值(g)','value':results[ f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num']})
+    store_Datas.append({'desc':'称重重量测量值(g)','value':results[f'WM_monitor_data_cage_{mouse_cage_number}__weight_num']})
+    store_Datas.append({'desc':'轮次开始时间','value':datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
+    store_Datas.append({'desc':'轮次结束时间','value':datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S')})
+    # store_Datas.append({'desc':'获取时间','value':datetime.now().fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
+    # 装载数据
+    # 存储值----------------------------------------------------
+    # 去数据库里查询 所有的在这个时间段的数据
+    return_data_struct = {}
+    return_data_struct['module_name'] = 'Epoch'
+    return_data_struct['table_name'] = next(iter(Others_Tables.Epoch_Data.value.keys()))
+    return_data_struct['mouse_cage_number'] = 0
+    return_data_struct['data'] = store_Datas
+    return_data_struct['slave_id'] = 0
+    return_data_struct['time']=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    return_data_struct['function_code'] = 0
+    #  取出全局存储queue
+    lock = global_setting.get_setting("store_Q_lock", threading.Lock())
+    storeQ = global_setting.get_setting("store_Q", queue.Queue())
+    # 加锁
+    with lock:
+        # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
+        storeQ.put(return_data_struct)  # 修改全局变量
+    global_setting.set_setting("start_time_messages_sent_epoch_for_running", end_time+0.1)
+    global_setting.set_setting("messages_sent_epoch_for_running",
+                               0)
 def main(q,send_message_q):
 
     # logger.remove(0)
@@ -445,7 +513,15 @@ def main(q,send_message_q):
     global_load.load_global_setting_without_Qt()
     global_setting.set_setting("queue", q)
     global_setting.set_setting("send_message_queue", send_message_q)
-
+    #设置线程屏障，等待4个线程
+    # barrier专门用于多个线程需要在某个点同步等待的场景。每个线程执行完自己的工作后调用
+    # barrier.wait()，当所有线程都到达这个同步点时，它们会同时继续执行下一轮循环。
+    barrier = threading.Barrier(4,action=barrier_action)
+    global_setting.set_setting("barrier", barrier)
+    #每轮运行发送报文数量 总的 在气路启动后和一轮结束后会重新赋值0
+    global_setting.set_setting("messages_sent_epoch_for_running",0)
+    #每轮运行开始的时间 在气路启动后和一轮结束后会重新赋值
+    global_setting.set_setting("start_time_messages_sent_epoch_for_running",time.time())
     global read_queue_data_thread
 
     read_queue_data_thread.queue = send_message_q
@@ -500,11 +576,10 @@ def stop():
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
     try:
         logger.error("stop_ufc_ugc_zos")
-        if ufc_ugc_zos is not None:
-            ufc_ugc_zos.disabled_auto_btn_handle()
+
         if ufc_ugc_zos_thread is not None:
             ufc_ugc_zos_thread.stop()
-            ufc_ugc_zos_thread.disabled_auto_btn_handle()
+
     except Exception as e:
         logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
     pass

@@ -3,6 +3,7 @@ import copy
 import queue
 import threading
 import time
+from datetime import datetime
 
 from blinker.base import _PNamespaceSignal
 from loguru import logger
@@ -182,6 +183,7 @@ class Zero_Carlibration(Gas_Carlibration):
         # 存储值----------------------------------------------------
         return_data_struct={}
         return_data_struct['module_name']='ZeroCalibration'
+        return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         return_data_struct['table_name'] = next(iter(Others_Tables.Zero_Carlibration_Data.value.keys()))
         return_data_struct['mouse_cage_number']=0
         return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value}]
@@ -329,6 +331,7 @@ class Range_Carlibration(Gas_Carlibration):
         # 存储值----------------------------------------------------
         return_data_struct = {}
         return_data_struct['module_name'] = 'SpanCalibration'
+        return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         return_data_struct['table_name'] = next(iter(Others_Tables.SPan_Carlibration_Data.value.keys()))
         return_data_struct['mouse_cage_number'] = 0
         return_data_struct['data'] = [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value}]

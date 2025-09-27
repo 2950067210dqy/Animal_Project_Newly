@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import serial
 import struct
 import time
@@ -10,6 +12,7 @@ from loguru import logger
 from public.config_class.global_setting import global_setting
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser
+from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 from public.util.time_util import time_util
 
 #logger = logger.bind(category="deep_camera_logger")
@@ -203,26 +206,54 @@ class ModbusRTUMasterNew:
             self._send_status_message(error_msg)
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-{error_msg}")
             return None
-
+    def get_table_name(self,slave_id):
+        slave_id_int = int(slave_id, 16)
+        # print(f"slave_id_int:{slave_id_int}")
+        if slave_id_int > 16:
+            mouse_cage_number = slave_id_int // 16
+            # 鼠笼内传感器
+            for type in Modbus_Slave_Type.Each_Mouse_Cage.value:
+                if type.value['int'] == (slave_id_int % 16):
+                    return next(iter(type.value['table'].keys()))
+        else:
+            # 非鼠笼内传感器
+            for type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value:
+                if type.value['int'] == (slave_id_int % 16):
+                    # logger.info(f"type.value['name'] Not_Each:{type.value['name']}")
+                    return next(iter(type.value['table'].keys()))
+                    break
+        return ""
+        pass
     def send_command(self, slave_id: Union[str, int], function_code: Union[str, int],
                      data_hex_list: List[str], is_parse_response: bool = True) -> Tuple[
-        Optional[bytes], Optional[str], bool]:
+        Optional[bytes], Optional[str], bool,dict]:
         """
         发送Modbus RTU命令并获取响应（主要方法）
         """
+        return_data = {}
+        return_data['module_name'] = 'ZeroCalibration'
+        return_data['table_name'] = self.get_table_name(slave_id)
+        return_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        return_data['ufc_mouse_cage_number'] = 0
+        return_data['mouse_cage_number'] = int(slave_id, 16) if int(slave_id, 16) > 16 else 0
+        return_data['data'] = []
+        return_data['slave_id'] = slave_id
+        return_data['function_code'] = function_code
         try:
             with self._safe_lock():
-                # logger.info(f"开始发送命令到 {self.sport}")
 
+                # logger.info(f"开始发送命令到 {self.sport}")
+                # 每轮运行报文加1
+                global_setting.set_setting("messages_sent_epoch_for_running", global_setting.get_setting("messages_sent_epoch_for_running", 0)+1)
                 # 确保连接可用
                 if not self._ensure_connection():
                     logger.error(f"{self.sport}-无法建立连接")
-                    return None, None, False
+                    return None, None, False,return_data
 
                 # 构造报文
                 frame = self.build_frame(slave_id, function_code, data_hex_list)
                 if frame is None:
-                    return None, None, False
+                    return None, None, False,return_data
 
                 # 发送数据
                 self._send_status_message(f"发送数据帧{frame.hex()}")
@@ -231,18 +262,15 @@ class ModbusRTUMasterNew:
                 self.ser.reset_input_buffer()
                 self.ser.reset_output_buffer()
                 self.ser.write(frame)
-
-
-
                 # 读取响应
                 response = self.ser.read(256)
 
                 # 验证响应
-                return self._validate_response(response, slave_id, function_code, is_parse_response,frame)
+                return self._validate_response(response, slave_id, function_code, is_parse_response,frame,return_data)
 
         except TimeoutError as e:
             logger.error(f"{self.sport}-操作超时: {e}")
-            return None, None, False
+            return None, None, False,return_data
         except Exception as e:
             error_msg = f"串口通信异常: {e}"
             self._send_status_message(f"❗ {error_msg}")
@@ -250,23 +278,23 @@ class ModbusRTUMasterNew:
 
             # 通信异常时断开连接
             self.is_connected = False
-            return None, None, False
+            return None, None, False,return_data
 
     def _validate_response(self, response: bytes, slave_id: Union[str, int],
-                           function_code: Union[str, int], is_parse_response: bool,send_frame) -> Tuple[
-        Optional[bytes], Optional[str], bool]:
+                           function_code: Union[str, int], is_parse_response: bool,send_frame,return_data) -> Tuple[
+        Optional[bytes], Optional[str], bool,dict]:
         """验证响应数据"""
         # 超时判断
         if not response:
             self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT1-未获取到响应数据")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT1-未获取到响应数据")
-            return None, None, False
+            return None, None, False,return_data
 
         # 数据长度检查
         if len(response) < 5:
             self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT2-返回数据位数错误")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT2-返回数据位数错误")
-            return response, response.hex(), False
+            return response, response.hex(), False,return_data
 
         # CRC校验
         data_part = response[:-2]
@@ -276,7 +304,7 @@ class ModbusRTUMasterNew:
         if crc_received != crc_expected:
             self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败")
-            return response, response.hex(), False
+            return response, response.hex(), False,return_data
 
         # 检查异常响应
         function_code_response = response[1]
@@ -285,7 +313,7 @@ class ModbusRTUMasterNew:
             error_msg = f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"
             self._send_status_message(error_msg)
             logger.error(f"{error_msg}")
-            return response, response.hex(), False
+            return response, response.hex(), False,return_data
 
         # 响应正常
         self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-CRC校验通过，正常响应")
@@ -302,7 +330,7 @@ class ModbusRTUMasterNew:
         delay = float(global_setting.get_setting('monitor_data')['SEND']['get_response_delay'])
         # delay=0.5
         time.sleep(delay)
-        return response, response.hex(), True
+        return response, response.hex(), True,return_data
 
     def parse_response(self, response: bytes, response_hex: str, send_state: bool,
                        slave_id: Union[str, int], function_code: Union[str, int]):

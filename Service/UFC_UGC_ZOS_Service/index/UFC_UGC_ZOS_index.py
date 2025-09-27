@@ -204,7 +204,13 @@ class UFC_UGC_ZOS_index(MyQThread):
 
         global auto_wait_event
         auto_wait_event.wait()
-
+        #每轮运行发送报文数量 赋值0
+        global_setting.set_setting("messages_sent_epoch_for_running", 0)
+        global_setting.set_setting("start_time_messages_sent_epoch_for_running", time.time())
+        #通知鼠笼传感器解除阻塞开始运行
+        wait_UFC_UGC_ZOS_start_event=global_setting.get_setting("wait_UFC_UGC_ZOS_start_event")
+        wait_UFC_UGC_ZOS_start_event.set()
+        wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
         p = AsyPromise(self.UFC_gas_path_system_obj.run).then(
             lambda v: AsyPromise(
                 self.UGC_gas_path_system_obj.run,
@@ -237,7 +243,7 @@ class UFC_UGC_ZOS_index(MyQThread):
 
     def calibration_handle(self):
         self.set_calibration_start_timer()
-        p = AsyPromise(lambda r:r()).then().catch(lambda e: logger.error(f"{e}"))
+        p = AsyPromise(lambda r,e:r()).then().catch(lambda e: logger.error(f"{e}"))
         return p
     def carlibation(self):
         p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
@@ -249,7 +255,7 @@ class UFC_UGC_ZOS_index(MyQThread):
 
     def gas_state_check_handle(self):
         self.set_gas_state_check_timer()
-        p = AsyPromise(lambda r:r()).then().catch(lambda e: logger.error(f"{e}"))
+        p = AsyPromise(lambda r,e:r()).then().catch(lambda e: logger.error(f"{e}"))
         return p
     def gas_state_check(self):
         p = AsyPromise(self.UFC_gas_state_check_obj.state_check).then(

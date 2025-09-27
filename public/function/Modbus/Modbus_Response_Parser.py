@@ -2365,12 +2365,14 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
                     data_str = "".join(self.int_to_8bit_binary(
                         num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
                                   self.response_struct['data'][i - 1], self.response_struct['data'][i]]))
+
                     # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
                     sign_bit = int(data_str[0], 2)
                     exponent_bit = int(data_str[1:9], 2)
                     M_bit = int(data_str[9:], 2)
                     # V = (-1)^s *（1+M）* 2^(E-127)
-                    value = ((-1) ^ sign_bit )* (1 + M_bit) * (2 ^ (exponent_bit - 127))
+                    logger.critical(f"{data_str},{data_str[0]},{sign_bit},{data_str[1:9]},{exponent_bit},{data_str[9:]},{M_bit}")
+                    value = ((-1) ** sign_bit )* (1 + M_bit) * (2 ** (exponent_bit - 127))
                     return_datas.append({
                         "desc": port_types[j],
                         'value': value

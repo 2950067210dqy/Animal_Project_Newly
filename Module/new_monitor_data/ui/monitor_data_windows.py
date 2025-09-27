@@ -56,7 +56,11 @@ class MonitorDataWindows(ThemedWindow):
                         | QDockWidget.DockWidgetFeature.DockWidgetClosable
                         | QDockWidget.DockWidgetFeature.DockWidgetFloatable
                     )
+
                     widget =Table_select_columns_paging_bottom(gid=gids[(row)*columns+i])
+                    # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
+                    widget.on_replace_headers([1])
+                    # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
                     dock.setWidget(widget)
                     self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
                     row0.append(dock)

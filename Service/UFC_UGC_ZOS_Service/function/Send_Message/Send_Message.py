@@ -5,6 +5,7 @@ from loguru import logger
 
 from public.config_class.global_setting import global_setting
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
+from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 
 #logger = logger.bind(category="deep_camera_logger")
@@ -14,14 +15,17 @@ class Send_Message:
         self.update_status_main_signal_gui_update: pyqtSignal(str) =update_status_main_signal_gui_update
         self.send_message = send_message
         self.modbus: ModbusRTUMasterNew= global_setting.get_setting("modbus", None)
+
+
     def Send(self,resolve,reject):
         serial_lock = global_setting.get_setting('serial_lock', threading.Lock())
         with serial_lock:
-            return_data =None
+            return_data = None
+
             parser_message=None
             try:
                 logger.info(self.send_message)
-                response, response_hex, send_state = self.modbus.send_command(
+                response, response_hex, send_state,return_data = self.modbus.send_command(
                     slave_id=self.send_message['slave_id'],
                     function_code=self.send_message['function_code'],
                     data_hex_list=self.send_message['data']
@@ -64,7 +68,7 @@ class Send_Message:
             try:
                 logger.info(self.send_message)
 
-                response, response_hex, send_state = self.modbus.send_command(
+                response, response_hex, send_state ,return_data = self.modbus.send_command(
                     slave_id=self.send_message['slave_id'],
                     function_code=self.send_message['function_code'],
                     data_hex_list=self.send_message['data']

@@ -86,6 +86,28 @@ class Monitor_Datas_Handle():
         return db_file_path
 
     def create_tables(self):
+        # 实例化每轮次数据表
+        for data_type in Modbus_Slave_Type.Epochs.value:
+            for table_name_short in data_type.value['table']:
+                # 列
+                columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}
+                # 表名称
+                table_name = f"{data_type.value['name']}_{table_name_short}"
+                # 创建表
+                if not self.sqlite_manager.is_exist_table(table_name):
+                    self.sqlite_manager.create_table(table_name,
+                                                     columns)
+                    # logger.info(f"数据库{self.db_name}创建数据表{table_name}成功！")
+                # 创建该表描述的表
+                table_meta_name = f"{table_name}_meta"
+                # 不存在则创建和插入
+                if not self.sqlite_manager.is_exist_table(table_meta_name):
+                    self.sqlite_manager.create_meta_table(table_meta_name)
+                    # logger.info(f"数据库{self.db_name}创建表结构描述数据表{table_meta_name}成功！")
+                    # 插入描述信息
+                    for item in data_type.value['table'][table_name_short]['column']:
+                        self.sqlite_manager.insert(table_meta_name, item_name=item[0], item_struct=item[2],
+                                                   description=item[1])
         # 实例化其他数据项的数据表
         for data_type in Modbus_Slave_Type.Calibrations.value:
             for table_name_short in data_type.value['table']:
@@ -160,6 +182,7 @@ class Monitor_Datas_Handle():
     def insert_data(self, data):
         # 添加数据到表里
         if data is not None:
+
             # 公共传感器：
             if data['mouse_cage_number'] == 0:
                 # 获取该表名称
@@ -167,31 +190,86 @@ class Monitor_Datas_Handle():
                 # # 获取该表的column项
                 table_name_meta = f"{table_name}_meta"
                 columns_query = self.sqlite_manager.query(table_name_meta)
-                columns = [i[0] for i in columns_query if i[0] != 'id']
-                datas = [i['value'] for i in data['data']]
-                current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # 本地时间格式
-                datas.append(current_time)
-                result = self.sqlite_manager.insert_2(table_name, columns, datas)
-                if result == 1:
-                    logger.info(f"数据插入表{table_name}成功！")
+
+                # 如果数据空 或者为UFC的 空
+                if len(data['data']) ==0 or (len(data['data']) == 1 and data['data'][0]['desc']=='鼠笼号'):
+                    columns = [i[0] for i in columns_query if i[0] != 'id' and i[0] != 'time']
+                    if columns:
+                        # 因为UFC也分鼠笼 所以单独处理
+                        if "UFC" in table_name and len(data['data']) == 1:
+                            # 去除首列mouse_cage_num
+                            columns.pop(0)
+                            #data['data'][0]['value']为mouse_cage_num
+                            datas = [None, data['data'][0]['value']]
+                            for i in range(len(columns)):
+                                datas.append(None)
+                            datas.append(data['time'])
+                            result = self.sqlite_manager.insert_not_columns(table_name, datas)
+                            if result == 1:
+                                logger.info(f"数据插入表{table_name}成功！")
+                            else:
+                                logger.info(f"数据插入表{table_name}失败！")
+                            pass
+                        else:
+                            datas = [None]
+                            for i in range(len(columns)):
+                                datas.append(None)
+
+                            datas.append(data['time'])
+                            result = self.sqlite_manager.insert_not_columns(table_name, datas)
+                            if result == 1:
+                                logger.info(f"数据插入表{table_name}成功！")
+                            else:
+                                logger.info(f"数据插入表{table_name}失败！")
+                            pass
+
+                            pass
+                    else:
+                        logger.info(f"数据插入表{table_name}失败！列为空")
+
                 else:
-                    logger.info(f"数据插入表{table_name}失败！")
+                    columns = [i[0] for i in columns_query if i[0] != 'id']
+                    datas = [i['value'] for i in data['data']]
+
+                    datas.append(data['time'])
+                    # logger.error(f"{columns} | {datas}")
+                    result = self.sqlite_manager.insert_2(table_name, columns, datas)
+                    if result == 1:
+                        logger.info(f"数据插入表{table_name}成功！")
+                    else:
+                        logger.info(f"数据插入表{table_name}失败！")
             else:  # 每个鼠笼传感器：
                 # 获取该表名称
                 table_name = f"{data['module_name']}_{data['table_name']}_cage_{data['mouse_cage_number']}"
                 # # 获取该表的column项
                 table_name_meta = f"{table_name}_meta"
                 columns_query = self.sqlite_manager.query(table_name_meta)
-                columns = [i[0] for i in columns_query if i[0] != 'id']
-                datas = [i['value'] for i in data['data']]
-                current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # 本地时间格式
-                datas.append(current_time)
-                result = self.sqlite_manager.insert_2(table_name, columns, datas)
-                if result == 1:
-                    logger.info(f"数据插入表{table_name}成功！")
+                # 如果数据非空
+                if len(data['data']) != 0:
+                    columns = [i[0] for i in columns_query if i[0] != 'id']
+                    datas = [i['value'] for i in data['data']]
+
+                    datas.append(data['time'])
+                    result = self.sqlite_manager.insert_2(table_name, columns, datas)
+                    if result == 1:
+                        logger.info(f"数据插入表{table_name}成功！")
+                    else:
+                        logger.info(f"数据插入表{table_name}失败！")
+                    pass
                 else:
-                    logger.info(f"数据插入表{table_name}失败！")
-                pass
+                    columns = [i[0] for i in columns_query if i[0] != 'id' and i[0] != 'time']
+                    datas = [None]
+                    for i in range(len(columns)):
+                        datas.append(None)
+
+                    datas.append(data['time'])
+                    result = self.sqlite_manager.insert_not_columns(table_name, datas)
+                    if result == 1:
+                        logger.info(f"数据插入表{table_name}成功！")
+                    else:
+                        logger.info(f"数据插入表{table_name}失败！")
+                    pass
+                    pass
             pass
 
     def query_data(self, table_name):
@@ -353,7 +431,7 @@ class Monitor_Datas_Handle():
 
         """
         if len(all_column_datas) == 0:
-            return []
+            return {}
         tables = self.sqlite_manager.get_non_meta_tables_with_time(exclude_substr="meta",columns=['time'])
         result = self.sqlite_manager.query_joined_by_time( tables, page=page, page_size=page_size, order_asc=True)
 
@@ -377,7 +455,7 @@ class Monitor_Datas_Handle():
         #     print(i + 1, row)
 
         if len(result) == 0:
-            return []
+            return {}
         # caculation_handle = DataCaculation(sqlite_manager = self.sqlite_manager)
         #
         # return_results = caculation_handle.caculate_data(columns=all_column_datas,datas=result)
@@ -385,6 +463,92 @@ class Monitor_Datas_Handle():
 
         return result
         pass
+    def query_epoch_data_all_tables_paging(self, page: int = 1,
+            page_size: int = 100,all_column_datas=[])-> dict:
+        """
+        :param page 第几页
+        :param page_size 每页多少
+        :param all_column_datas 用户选择的列数据
+        :return:把传入的表按 time 字段联立并分页返回结果，返回字典包含:
+          - total_items: 总行数（time 的并集大小）
+          - total_pages
+          - page (实际返回页，1-based)
+          - page_size
+          - columns: 列名列表（与 rows 中 dict 的 key 对应）
+          - rows: 列表，每行为 dict（key=列名, value=值）
 
+        从 SQLite 数据库中找出epoch_Data；
+
+        支持分页（page 1-based，page_size），并返回总条数、总页数、当前页数据等分页信息。
+        注意事项：
+
+            SQLite 没有 FULL OUTER JOIN，所以用 UNION 把各表的 time 合并成一个派生表 all_times，然后 LEFT JOIN 每个表；
+            为防止 SQL 注入与标识符冲突，对表名与列名使用双引号转义（quote_ident）；
+            统计总条数时使用 SELECT COUNT(*) FROM ( ... UNION ... )；
+            LIMIT / OFFSET 用于分页（page 从 1 开始）。如果数据量很大，COUNT 与 UNION 可能较慢，建议为 time 列建索引或在后端分片
+
+        """
+        if len(all_column_datas) == 0:
+            return {}
+        result = self.sqlite_manager.query_Epoch_datas( "Epoch_data", page=page, page_size=page_size, order_asc=True )
+        result_title = []
+
+        # 找到中文列名
+        for columns in result["columns"]:
+
+            columns_query =self.sqlite_manager.query_conditions(table_name=f"Epoch_data_meta", conditions=f" where item_name='{columns}'")
+            result_title.append(columns_query[0][2])
+        result["columns_title"]=result_title
+        # print("参与联立的表:", tables)
+        # print(
+        #     f"总条数: {result['total_items']}, 总页数: {result['total_pages']}, 当前页: {result['page']}, 每页: {result['page_size']}")
+        # print("列:", result["columns"])
+        # print("示例行（最多 10 行）:")
+        # for i, row in enumerate(result["rows"][:10]):
+        #     print(i + 1, row)
+
+        if len(result) == 0:
+            return {}
+        # caculation_handle = DataCaculation(sqlite_manager = self.sqlite_manager)
+        #
+        # return_results = caculation_handle.caculate_data(columns=all_column_datas,datas=result)
+
+        return result
+
+        pass
     def query_monitor_data_all_tables(self, all_column_datas=[]) -> dict:
+        pass
+
+    def format_and_display_results(self,results, column_names, max_rows=10):
+        """格式化并显示查询结果"""
+        if not results:
+            logger.critical("没有找到数据")
+            return
+
+        logger.critical(f"\n查询结果 (共 {len(results)} 行):")
+        logger.critical("=" * 100)
+
+        # 打印列名
+        header = " | ".join(f"{col[:15]:15}" for col in column_names)
+        logger.critical(header)
+        logger.critical("-" * 100)
+
+        # 打印数据行（限制显示行数）
+        display_rows = min(max_rows, len(results))
+        for i in range(display_rows):
+            row = results[i]
+            formatted_row = " | ".join(f"{str(val)[:15]:15}" for val in row)
+            logger.critical(formatted_row)
+
+        if len(results) > max_rows:
+            logger.critical(f"... 还有 {len(results) - max_rows} 行数据未显示")
+    def query_data_in_line_with_epoch_data(self,start_time,end_time):
+        tables = self.sqlite_manager.get_non_meta_tables_with_time(exclude_substr="meta", columns=['time'])
+        logger.critical(tables)
+        # 执行查询
+        results, columns = self.sqlite_manager.get_multi_table_data(tables,
+            start_time, end_time, join_type="separate"
+        )
+        return results, columns
+
         pass

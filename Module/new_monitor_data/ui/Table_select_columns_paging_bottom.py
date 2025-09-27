@@ -51,7 +51,7 @@ class DataFetcher(MyQThread):
         data =[]
 
 
-        datas = self.handle.query_monitor_data_all_tables_paging(page=self.page,page_size=self.page_size,all_column_datas=self.all_column_datas)
+        datas = self.handle.query_epoch_data_all_tables_paging(page=self.page,page_size=self.page_size,all_column_datas=self.all_column_datas)
         if datas is None:
             datas = []
         # logger.error(f"get_data:{datas}")

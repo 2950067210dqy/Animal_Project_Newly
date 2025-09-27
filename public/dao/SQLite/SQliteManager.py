@@ -1,3 +1,4 @@
+import datetime
 import math
 import sqlite3
 from typing import List, Dict, Any
@@ -32,7 +33,7 @@ class SQLiteManager():
             ("% %meta%".replace(" ", ""),)  # just to keep placeholder style; simplified below
         )
         # Above is awkward with placeholder; do simpler:
-        cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND lower(name) NOT LIKE '%{exclude_substr}%'")
+        cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND lower(name) NOT LIKE '%{exclude_substr}%' And lower(name) NOT LIKE '%Epoch_data%'  ")
         rows = cur.fetchall()
         tables = [r[0] for r in rows]
 
@@ -46,6 +47,7 @@ class SQLiteManager():
                 good.append(t)
         return good
 
+    """query_monitor_data_all_tables_paging start"""
     def build_all_times_sql(self,tables: List[str]) -> str:
         """
         构造用于 all_times 的子查询 SQL（UNION 去重）。
@@ -59,7 +61,64 @@ class SQLiteManager():
         count_sql = f"SELECT COUNT(*) FROM ({all_times_sql}) AS _all_times_count"
         self.cursor.execute(count_sql)
         return  self.cursor.fetchone()[0] or 0
+    def query_Epoch_datas(self,table,   page: int = 1,
+            page_size: int = 100,
+            order_asc: bool = True)-> Dict[str, Any]:
+        if page_size <= 0:
+            raise ValueError("page_size must be > 0")
+        if not table:
+            return {
+                "total_items": 0,
+                "total_pages": 0,
+                "page": 1,
+                "page_size": page_size,
+                "columns": [],
+                "rows": []
+            }
 
+            # 构造 all_times SQL
+
+        # 统计总条数
+        total_items = self.query_counts_conditions(table)
+        total_pages = max(1, math.ceil(total_items / page_size)) if total_items > 0 else 0
+
+        # 修正 page 边界（1-based）
+        if total_pages == 0:
+            page = 1
+        else:
+            page = max(1, min(page, total_pages))
+
+        offset = (page - 1) * page_size
+
+
+
+
+        order = "DESC" if order_asc else "ASC"
+
+        # 最终 SQL，带 LIMIT/OFFSET 用于分页
+        final_sql = f"""
+           SELECT
+             *
+           FROM
+             {table}
+           ORDER BY time {order}
+           LIMIT ? OFFSET ?
+           """
+
+        self.cursor.execute(final_sql, (page_size, offset))
+        rows = self.cursor.fetchall()
+        colnames = [desc[0] for desc in self.cursor.description]
+
+        result_rows = [dict(zip(colnames, r)) for r in rows]
+
+        return {
+            "total_items": total_items,
+            "total_pages": total_pages,
+            "page": page,
+            "page_size": page_size,
+            "columns": colnames,
+            "rows": result_rows
+        }
     def query_joined_by_time(self,
             tables: List[str],
             page: int = 1,
@@ -185,6 +244,256 @@ class SQLiteManager():
 
         # 连接所有的外键语句，用逗号分隔
         return ",\n".join(foreign_keys)
+    """query_monitor_data_all_tables_paging end"""
+
+    """query_epoch_data start"""
+    def get_multi_table_data(self, table_names, start_time, end_time, join_type="union"):
+        """
+        从多个SQLite表中获取指定时间范围的数据
+
+        Args:
+            table_names: 表名列表
+            start_time: 开始时间 (格式: 'YYYY-MM-DD HH:MM:SS')
+            end_time: 结束时间 (格式: 'YYYY-MM-DD HH:MM:SS')
+            join_type: 合并方式 ("union" 或 "join")
+
+        Returns:
+            (results, column_names): 查询结果和列名
+        """
+        try:
+            # 验证表是否存在且包含time字段
+            valid_tables = []
+            table_columns = {}
+
+            for table in table_names:
+                try:
+                    # 检查表是否存在
+                    self.cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+                    if not self.cursor.fetchone():
+                        #logger.critical(f"警告: 表 {table} 不存在，跳过")
+                        continue
+
+                    # 获取表的列信息
+                    self.cursor.execute(f"PRAGMA table_info({table})")
+                    columns_info = self.cursor.fetchall()
+                    columns = [col[1] for col in columns_info]
+
+                    # 检查是否包含time字段
+                    if self.TIME_COLUMN_NAME not in columns:
+                        #logger.critical(f"警告: 表 {table} 不包含time字段，跳过")
+                        continue
+
+                    # 排除id和time字段
+                    other_columns = [col for col in columns if col not in ['id', 'time']]
+
+                    if other_columns:
+                        valid_tables.append(table)
+                        table_columns[table] = other_columns
+                        #logger.critical(f"表 {table} 的可用字段: {other_columns}")
+                    else:
+                        #logger.critical(f"警告: 表 {table} 除了id和time外没有其他字段，跳过")
+                        pass
+
+                except sqlite3.OperationalError as e:
+                    #logger.critical(f"检查表 {table} 时出错: {e}")
+                    continue
+
+            if not valid_tables:
+                #logger.critical("没有找到有效的表")
+                return [], []
+
+            #logger.critical(f"有效的表: {valid_tables}")
+
+            if join_type.lower() == "union":
+                return self._union_query(valid_tables, table_columns, start_time, end_time)
+
+            elif join_type.lower() == "separate":
+                return self._separate_queries( valid_tables, table_columns, start_time, end_time)
+            else:
+                return self._join_query( valid_tables, table_columns, start_time, end_time)
+
+        except Exception as e:
+            #logger.critical(f"查询过程中出现错误: {e}")
+            return [], []
+
+    def _separate_queries(self, tables, table_columns, start_time, end_time):
+        """
+        分别查询每个表，返回字典格式的结果
+        """
+        results_dict = {}
+        all_columns = ['time']
+        start_time_f =datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')
+        end_time_f =datetime.datetime.fromtimestamp(end_time+0.1).strftime('%Y-%m-%d %H:%M:%S')
+        #logger.critical(f"<UNK>{start_time_f}<UNK>{end_time_f}<UNK>")
+        for table in tables:
+            table_cols = table_columns[table]
+
+            # 构建查询
+            column_selects = ['time'] + [f"{col} AS {table}__{col}" for col in table_cols]
+            query = f"""
+            SELECT {', '.join(column_selects)}
+            FROM {table}
+            WHERE time BETWEEN ? AND ?
+            ORDER BY time
+            """
+
+            self.cursor.execute(query, (start_time_f, end_time_f))
+            table_results = self.cursor.fetchall()
+            table_column_names = [desc[0] for desc in self.cursor.description]
+
+            # 没数据的表不放上来，
+            if len(table_results)!=0 or table =='ZeroCalibration_data' or table == 'SpanCalibration_data':
+                results_dict[table] = {
+                    'data': table_results,
+                    'columns': table_column_names
+                }
+
+                # 收集所有列名（除了time，避免重复）
+                for col in table_column_names:
+                    if col not in all_columns:
+                        all_columns.append(col)
+
+            #logger.critical(f"表 {table}: {len(table_results)} 行数据")
+
+        # 将分别的查询结果合并为统一格式
+        merged_results = self.process_data_to_dict(results_dict)
+
+        all_columns.pop(0)
+        #logger.critical(f"<UNK> {merged_results} <UNK> | {all_columns}")
+
+
+
+
+
+        return merged_results, all_columns
+
+    def process_data_to_dict(self,data_dict):
+        """
+        将数据转换为 {'column': data} 的字典格式
+
+        Args:
+            data_dict: 原始数据字典
+
+        Returns:
+            result_dict: 处理后的字典，格式为 {'column': data}
+        """
+        result_dict = {}
+
+        for table_name, table_info in data_dict.items():
+            # 获取列名（去除 'time'）
+            columns = [col for col in table_info['columns'] if col != 'time']
+
+            # 获取数据（去除第一列时间数据）
+            data_rows = table_info['data']
+
+            # 为每一列提取对应的数据
+            for i, column in enumerate(columns):
+                # i+1 是因为要跳过第一列（时间列）
+                column_data = [row[i + 1] for row in data_rows]
+
+                # 如果只有一个数据，直接取值而不是列表
+                if len(column_data) == 1:
+                    result_dict[column] = column_data[0]
+                else:
+                    result_dict[column] = column_data
+
+        return result_dict
+
+
+    def _union_query(self, tables, table_columns, start_time, end_time):
+        """使用UNION ALL合并多个表的数据"""
+        select_parts = []
+
+        for table in tables:
+            columns = table_columns[table]
+
+            # 为每个字段添加表名前缀作为别名
+            column_selects = [f"{col} AS {table}__{col}" for col in columns]
+
+            select_part = f"""
+            SELECT 
+                '{table}' AS source_table,
+                time,
+                {', '.join(column_selects)}
+            FROM {table}
+            WHERE time BETWEEN ? AND ?
+            """
+            select_parts.append(select_part)
+
+        # 合并所有SELECT语句
+        final_query = " UNION ALL ".join(select_parts) + " ORDER BY time"
+
+        #logger.critical(f"执行UNION查询:\n{final_query}")
+
+        # 准备参数（每个子查询需要start_time和end_time）
+        params = []
+        for _ in tables:
+            params.extend([start_time, end_time])
+
+        self.cursor.execute(final_query, params)
+        results =self.cursor.fetchall()
+        column_names = [desc[0] for desc in self.cursor.description]
+
+        return results, column_names
+
+    def _join_query(self, tables, table_columns, start_time, end_time):
+        """使用JOIN合并多个表的数据（基于time字段）"""
+        if len(tables) == 1:
+            # 只有一个表时，直接查询
+            table = tables[0]
+            columns = table_columns[table]
+            column_selects = [f"{table}.{col} AS {table}__{col}" for col in columns]
+
+            query = f"""
+            SELECT 
+                {table}.time,
+                {', '.join(column_selects)}
+            FROM {table}
+            WHERE {table}.time BETWEEN ? AND ?
+            ORDER BY {table}.time
+            """
+
+            self.cursor.execute(query, (start_time, end_time))
+            results = self.cursor.fetchall()
+            column_names = [desc[0] for desc in self.cursor.description]
+            return results, column_names
+
+        # 多个表时使用JOIN
+        base_table = tables[0]
+        select_columns = [f"{base_table}.time"]
+
+        # 添加所有表的字段
+        for table in tables:
+            columns = table_columns[table]
+            for col in columns:
+                select_columns.append(f"{table}.{col} AS {table}__{col}")
+
+        # 构建FROM和JOIN子句
+        from_clause = base_table
+        join_clauses = []
+
+        for table in tables[1:]:
+            join_clauses.append(f"FULL OUTER JOIN {table} ON {base_table}.time = {table}.time")
+
+        query = f"""
+        SELECT {', '.join(select_columns)}
+        FROM {from_clause}
+        {' '.join(join_clauses)}
+        WHERE {base_table}.time BETWEEN ? AND ?
+        ORDER BY {base_table}.time
+        """
+
+        #logger.critical(f"执行JOIN查询:\n{query}")
+
+        self.cursor.execute(query, (start_time, end_time))
+        results = self.cursor.fetchall()
+        column_names = [desc[0] for desc in self.cursor.description]
+
+        return results, column_names
+    """query_epoch_data end"""
+
+
+
     def is_exist_table(self, table_name):
         """查询数据表是否存在"""
         sql = f"""

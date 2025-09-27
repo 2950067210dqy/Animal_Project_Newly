@@ -27,6 +27,33 @@ class Others_Tables(Enum):
             ],
         }
     }
+    # 每一轮的数据表
+    Epoch_Data={
+        "data": {
+            'function_code': 0,
+            'column': [
+                ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
+                ("mouse_cage", "鼠笼号", " INTEGER "),
+                ("oxygen_calibration_zero_value", "氧浓度0点校准值", " REAL "),
+                ("oxygen_calibration_span_value", "氧浓传感器span数值", " REAL "),
+                ("UFC_flow_num", "ufc_流量计测量值(sccm)", " INTEGER "),
+                ("UGC_flow_num_1", "ugc_流量计1", " INTEGER "),
+                ("UGC_CO2_num", "CO2(%)", " REAL "),
+                ("ZOS_oxygen_num", "氧气传感器测量值(%)", " REAL "),
+                ("ENM_temperature_num", "温度测量值(°C)", " REAL "),
+                ("ENM_humidity_num", "湿度测量值(%RH)", " REAL "),
+                ("ENM_noise_num", "噪声测量值(dB)", " REAL "),
+                ("ENM_barometer_num", "大气压测量值(KPa)", " REAL "),
+                ("ENM_running_wheel_num", "当前计量周期内跑轮圈数测量值", " REAL "),
+                ("DWM_weight_num", "饮水重量测量值(g)", " REAL "),
+                ("EM_weight_num", "食物重量测量值(g)", " REAL "),
+                ("WM_weight_num", "称重重量测量值(g)", " REAL "),
+                ("epoch_start_time", "轮次开始时间", " TIMESTAMP "),
+                ("epoch_end_time", "轮次结束时间", " TIMESTAMP "),
+                ("time", "获取时间", " TIMESTAMP ")
+            ]
+        }
+    }
 class Modbus_Slave_Tables(Enum):
     """
     数据库文件
@@ -517,6 +544,13 @@ class Others(Enum):
         'address': 0x00,
         'int': int(0x00),
         'table': Others_Tables.SPan_Carlibration_Data.value
+    }
+    Epoch={
+        "name": "Epoch",
+        "description": "每轮数据",
+        'address': 0x00,
+        'int': int(0x00),
+        'table': Others_Tables.Epoch_Data.value
     }
 class Modbus_Slave_Ids(Enum):
     """
@@ -1137,6 +1171,10 @@ class Modbus_Slave_Send_Messages_All(Enum):
 
 
 class Modbus_Slave_Type(Enum):
+    #每轮次数据
+    Epochs = [
+        Others.Epoch
+    ]
     #标定数据
     Calibrations = [
         Others.Zero_Carlibration,Others.Span_Carlibration

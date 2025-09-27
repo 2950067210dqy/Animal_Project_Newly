@@ -3,7 +3,8 @@ import queue
 import re
 import threading
 import time
-from threading import Event
+from datetime import datetime
+from threading import Event, Barrier
 from tkinter.messagebox import RETRY
 
 
@@ -329,7 +330,9 @@ class UFC_gas_path_system_run_thread(MyQThread):
                 # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
                 lambda r:AsyPromise(self.read_flow_rate_value_circulation,port=port,mouse_cages_inc=mouse_cages_inc)
             ).catch(lambda e: logger.error(e))
-
+            barrier:Barrier=global_setting.get_setting("barrier")
+            if barrier is not None:
+                barrier.wait()
             pass
         pass
     def read_flow_rate_value_circulation(self,resolve,reject,port,mouse_cages_inc):
@@ -339,28 +342,29 @@ class UFC_gas_path_system_run_thread(MyQThread):
         time.sleep(0.01)
         # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
         index = 0
-        while (index< int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])):
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list(f"00000006"),
-                'slave_id': '2',
-                'function_code': '4',
-                'timeout': 1
-            }
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | UFC-运行 3. 循环读取流量值（推荐每{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])}秒读取一次），当前{index}s/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])}s")
-            self.send_thread.send_message = self.send_message
-            result_data,message = self.send_thread.Send_no_promise()
-            result_data['data'].insert(0,{'desc':'鼠笼号','value':  mouse_cages_inc[self.mouse_cage_index]})
-            #  取出全局存储queue
-            lock =global_setting.get_setting("store_Q_lock", threading.Lock())
-            storeQ = global_setting.get_setting("store_Q", queue.Queue())
-            # 加锁
-            with lock:
-                # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
-                storeQ.put(result_data)  # 修改全局变量
-            index+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])
-            time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
+        # while (index< int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])):
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list(f"00000006"),
+            'slave_id': '2',
+            'function_code': '4',
+            'timeout': 1
+        }
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UFC-运行 3. 循环读取流量值（推荐每{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])}秒读取一次），当前{index}s/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])}s")
+        self.send_thread.send_message = self.send_message
+        result_data,message = self.send_thread.Send_no_promise()
+        result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        result_data['data'].insert(0,{'desc':'鼠笼号','value':  mouse_cages_inc[self.mouse_cage_index]+1})
+        #  取出全局存储queue
+        lock =global_setting.get_setting("store_Q_lock", threading.Lock())
+        storeQ = global_setting.get_setting("store_Q", queue.Queue())
+        # 加锁
+        with lock:
+            # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
+            storeQ.put(result_data)  # 修改全局变量
+            # index+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])
+            # time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
 
         #4.关闭x号鼠笼
         AsyPromise(self.close_ufc_mouse_cage_gas, port=port, mouse_cages_inc=mouse_cages_inc).then().catch(lambda e: logger.error(e))
@@ -439,7 +443,7 @@ class UFC_gas_path_system(Gas_path_system):
         #                 data += "0"
         #         pass
         # global_setting.set_setting("mouse_cages", res['selected_indices'])
-        global_setting.set_setting("mouse_cages",[7,6,5,4,3,2,1,0])
+        global_setting.set_setting("mouse_cages",[0,1,2,3,4,5,6,7])
         # global_setting.set_setting("mouse_cages_2byte_str",data)
         global_setting.set_setting("mouse_cages_2byte_str", "11111111")
 
@@ -560,6 +564,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取CO2浓度")
         self.send_thread.send_message = self.send_message
         result_data, message = self.send_thread.Send_no_promise()
+        result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         #  取出全局存储queue
         lock = global_setting.get_setting("store_Q_lock", threading.Lock())
         storeQ = global_setting.get_setting("store_Q", queue.Queue())
@@ -568,6 +573,9 @@ class UGC_gas_path_system_run_thread(MyQThread):
             # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
             storeQ.put(result_data)  # 修改全局变量
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
+        barrier: Barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            barrier.wait()
         pass
 class UGC_gas_path_system(Gas_path_system):
     """
@@ -755,10 +763,14 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             lambda r:AsyPromise(self.check_senior_state,port=port,r=r)
         ).catch(lambda e: logger.error(e))
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
+        barrier: Barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            barrier.wait()
         pass
     def check_senior_state(self,resolve,reject,port,r):
         #存储值
         result_data = r['data']
+        result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         #  取出全局存储queue
         lock = global_setting.get_setting("store_Q_lock", threading.Lock())
         storeQ = global_setting.get_setting("store_Q", queue.Queue())

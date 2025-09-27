@@ -14,6 +14,7 @@ from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 from my_abc.BaseModule import BaseModule
 from public.component.custom_status_bar import CustomStatusBar
+from public.component.dialog.custom.loading_dialog_seconds import AnimatedLoadingDialog
 from public.component.mask.LoadingMask import LoadingContext
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
@@ -381,10 +382,11 @@ class MainWindow_Index(ThemedWindow):
         resolve()
         #   延遲打開窗口
     def start_open_window(self,resolve,reject):
-        QTimer.singleShot(10 * 1000, self.open_monitor_data_window)
+        QTimer.singleShot(3 * 1000, self.open_monitor_data_window)
         resolve()
 
     def start_experiment(self):
+
         self.setEnabled(False)
         self.status_bar.update_tip(f"正在开启实验监测...")
         port = global_setting.get_setting("port")
@@ -434,11 +436,15 @@ class MainWindow_Index(ThemedWindow):
             queue=global_setting.get_setting("queue")
             queue.put(           message_struct)
         AsyPromise(self.start_update_gui).then(
-            # AsyPromise(self.start_open_window).then(
-            #
-            # ).catch(lambda e: logger.error(e))
+            AsyPromise(self.show_dialog).then(
+                AsyPromise(self.start_open_window).then().catch(lambda e: logger.error(e))
+            ).catch(lambda e: logger.error(e))
         ).catch(lambda e: logger.error(e))
         pass
+    def show_dialog(self,resolve,reject):
+        dialog = AnimatedLoadingDialog(countdown_seconds=60,message="正在启动气路...")
+        result = dialog.exec()
+        resolve()
     def pause_experiment(self):
         # 在with语句中自动管理加载遮罩
         with LoadingContext(self, "正在暂停...", "animated") as mask:
