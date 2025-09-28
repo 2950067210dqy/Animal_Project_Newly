@@ -110,10 +110,13 @@ class Zero_Carlibration(Gas_Carlibration):
 
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。")
-        #小于阈值稳定
-        while (now_oxygen_value is  None and now_carbon_value is  None) or(last_carbon_value is None and last_oxygen_value is None) or (
+        start_time = time.time()
+        end_time = None
+        #小于阈值稳定 至少循环60秒
+        while ((now_oxygen_value is  None and now_carbon_value is  None) or(last_carbon_value is None and last_oxygen_value is None) or (
                 now_oxygen_value-last_oxygen_value)>float(global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']['zero_calibration_oxygen_threshold'] and
-                now_carbon_value - last_carbon_value) > float(global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']['zero_calibration_carbon_threshold']):
+                now_carbon_value - last_carbon_value) > float(global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']['zero_calibration_carbon_threshold']))\
+                and (end_time is None or int(end_time-start_time)<= float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['circular_times'])):
             # 循环开始
             self.send_message = {
                 'port': port,
@@ -144,9 +147,12 @@ class Zero_Carlibration(Gas_Carlibration):
             now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧传感器测量值" in item['desc']]
             last_oxygen_value = copy.deepcopy(now_oxygen_value)
             now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
+            end_time = time.time()
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度（{now_oxygen_value}）之前氧气浓度（{last_oxygen_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}）")
+                f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度（{now_oxygen_value}）之前氧气浓度（{last_oxygen_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time),b=datetime.fromtimestamp(start_time),zero_pad=True,signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['circular_times'])}秒")
+            time.sleep(1)
             pass
+
         #4.二氧化碳零点设置。
         self.send_message = {
             'port': port,

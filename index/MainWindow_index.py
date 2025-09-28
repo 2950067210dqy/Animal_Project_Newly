@@ -442,7 +442,7 @@ class MainWindow_Index(ThemedWindow):
         ).catch(lambda e: logger.error(e))
         pass
     def show_dialog(self,resolve,reject):
-        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])+10,message="正在启动气路...")
+        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])+15,message="正在启动气路...")
         result = dialog.exec()
         resolve()
     def pause_experiment(self):
