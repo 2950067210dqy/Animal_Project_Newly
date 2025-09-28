@@ -81,7 +81,7 @@ class Table_select_columns_paging_bottom(BaseWindow):
         self.data = []
 
         # 分页参数（默认）
-        self.page_size = 10
+        self.page_size = 1000
         self.current_page = 1  # 1-based page index
 
         # ---- 主界面布局 ----
