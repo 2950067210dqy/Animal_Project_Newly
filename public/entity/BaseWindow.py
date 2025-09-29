@@ -3,7 +3,7 @@ import sys
 import typing
 
 from PyQt6 import QtCore, QtGui
-from PyQt6.QtCore import QRect, Qt, QSize, QPoint, QEvent
+from PyQt6.QtCore import QRect, Qt, QSize, QPoint, QEvent, QTimer
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QLayout, \
     QScrollArea, QSizePolicy, QMessageBox, QTabWidget, QGroupBox, QTableWidget, QToolBar, QApplication, QDockWidget
@@ -182,6 +182,105 @@ class BaseWindow(QMainWindow):
         # 用于记录鼠标状态
         self.is_pressed = False
         self.start_pos = QPoint()
+        # 先初始化tutorial 提示指示器为None
+        self.tutorial = None
+        self.setup_tutorial()
+        # 自动启动提示教程 如果有提示页面的话
+        QTimer.singleShot(1000, self.start_tutorial_if_exists)
+    # 开始提示引导
+    def start_tutorial_if_exists(self):
+        if self.tutorial:
+            self.tutorial.start_tutorial()
+
+    def setup_tutorial(self):
+        #实例化提示引导器 下面式实例化模板
+        # if self.tutorial:
+        #     self.tutorial.end_tutorial()
+        #
+        # self.tutorial = TutorialManager(self, "main_page", self.current_guide_type, self.settings)
+        #
+        # # 连接教程完成信号
+        # self.tutorial.tutorial_completed.connect(self.on_tutorial_completed)
+        #
+        # # 添加更详细的引导步骤
+        # save_widgets = self.save_action.associatedObjects()
+        # if save_widgets:
+        #     self.tutorial.add_step(save_widgets[0],
+        #                            "欢迎使用本应用！\n这是保存功能，可以保存您的工作进度和项目文件。\n建议定期保存以防数据丢失。")
+        #
+        # self.tutorial.add_step(self.start_btn,
+        #                        "开始您的创作之旅\n点击此按钮可以启动新项目。\n系统会为您创建一个全新的工作环境。")
+        #
+        # self.tutorial.add_step(self.project_list,
+        #                        "项目管理中心\n这里显示您的所有项目。\n您可以选择现有项目进行编辑，或查看项目详情。\n支持多项目并行开发。")
+        #
+        # self.tutorial.add_step(self.export_btn,
+        #                        "数据导出功能\n使用此功能可以将项目数据导出为多种格式。\n支持 JSON、CSV、XML 等格式。")
+        #
+        # self.tutorial.add_step(self.text_editor,
+        #                        "主编辑区域\n这是您的创作空间。\n支持富文本编辑、语法高亮、自动补全等功能。\n您可以在这里编写文档、代码或其他内容。")
+        #
+        # self.tutorial.add_step(self.restart_tutorial_btn,
+        #                        "🎉 恭喜！教程完成！\n您已经了解了应用的主要功能。\n随时可以点击此按钮重新查看教程。\n\n开始您的创作之旅吧！")
+
+        pass
+
+    def on_tutorial_completed(self):
+        """教程完成处理"""
+        self.statusBar().showMessage("🎉 教程已完成！感谢您的耐心学习。", 3000)
+
+    def restart_tutorial(self):
+        """重新开始教程"""
+        if self.tutorial:
+            self.tutorial.start_tutorial()
+
+    def reset_first_run_status(self):
+        """重置首次运行状态（仅用于测试）"""
+        reply = QMessageBox.question(
+            self,
+            "确认重置",
+            "这将重置所有页面的首次访问状态，下次进入各个页面时会再次显示引导教程。\n\n确定要继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # 重置程序首次运行状态
+            self.settings.settings["first_run"] = True
+            self.settings.settings["tutorial_completed"] = False
+
+            # 获取所有以 "first_visit_" 开头的设置项并重置为 True
+            keys_to_reset = []
+            for key in self.settings.settings.keys():
+                if key.startswith("first_visit_"):
+                    keys_to_reset.append(key)
+
+            # 重置所有页面的首次访问状态
+            for key in keys_to_reset:
+                self.settings.settings[key] = True
+
+            # 也可以直接重置特定页面（如果已知页面名称）
+            page_names = ["main_page", "project_page", "settings_page", "help_page"]  # 可根据实际页面名称调整
+            for page_name in page_names:
+                self.settings.settings[f"first_visit_{page_name}"] = True
+
+            self.settings.save_settings()
+
+            # 显示重置的页面信息
+            reset_pages = [key.replace("first_visit_", "") for key in keys_to_reset]
+            if reset_pages:
+                pages_info = "、".join(reset_pages)
+                message = f"所有状态已重置。\n\n已重置的页面: {pages_info}\n\n重新进入这些页面时将显示引导教程。"
+            else:
+                message = "首次运行状态已重置。\n重新启动程序或进入页面时将显示引导教程。"
+
+            QMessageBox.information(
+                self,
+                "重置完成",
+                message
+            )
+
+            self.statusBar().showMessage("✅ 所有页面的首次访问状态已重置", 3000)
 
     @abc.abstractmethod
     def _init_ui(self):

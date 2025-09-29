@@ -3,6 +3,7 @@ import os
 from PyQt6.QtCore import QThreadPool
 from loguru import logger
 
+from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from public.entity.enum.Public_Enum import AppState
@@ -10,6 +11,9 @@ from theme.ThemeManager import ThemeManager
 
 
 def load_global_setting():
+    # """应用程序设置管理器"""
+    app_setting = AppSettings()
+    global_setting.set_setting("app_setting", app_setting)
     config_path = "/config"
     # 加载配置
     config_file_path = os.getcwd() + config_path + "/gui_config.ini"
@@ -59,6 +63,9 @@ def load_global_setting():
     global_setting.set_setting("app_state", AppState.INITIALIZED)
     pass
 def load_global_setting_without_Qt():
+    # """应用程序设置管理器"""
+    app_setting = AppSettings()
+    global_setting.set_setting("app_setting", app_setting)
     config_path = "/config"
     # 加载配置
     config_file_path = os.getcwd() + config_path + "/gui_config.ini"
@@ -106,6 +113,9 @@ def load_global_setting_without_Qt():
     global_setting.set_setting("app_state", AppState.INITIALIZED)
     pass
 def load_global_setting_without_Qt_for_subprocess():
+    # """应用程序设置管理器"""
+    app_setting = AppSettings()
+    global_setting.set_setting("app_setting", app_setting)
     config_path = "/config"
     # 加载配置
     config_file_path = "../" + config_path + "/gui_config.ini"
