@@ -50,6 +50,16 @@ class Table_Column_check_list_view(BaseWindow):
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QVBoxLayout(central)
+        #提示信息区域
+        tip_layout = QHBoxLayout()
+        main_layout.addLayout(tip_layout)
+        self.tip_label = QLabel("1.先选择通道几的数据查看.\n2.在单击<确定选择通道>按钮.")
+        self.tip_label.setStyleSheet("""
+        QLabel {
+            font-size: 15px;
+        }
+        """)
+        tip_layout.addWidget(self.tip_label)
         # 顶部操作按钮
         top_layout = QHBoxLayout()
         main_layout.addLayout(top_layout)

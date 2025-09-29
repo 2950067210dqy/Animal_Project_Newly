@@ -6,17 +6,18 @@ from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen
 
 
 class AnimatedLoadingDialog(QDialog):
-    def __init__(self, countdown_seconds=10, message="正在加载数据..."):
+    def __init__(self, countdown_seconds=10, message="正在加载数据...",title="系统加载中"):
         super().__init__()
         self.countdown_seconds = countdown_seconds
         self.current_seconds = countdown_seconds
         self.message = message
+        self.title = title
         self.init_ui()
         self.start_countdown()
         self.start_progress_animation()
 
     def init_ui(self):
-        self.setWindowTitle("加载中...")
+        self.setWindowTitle(self.title)
         self.setFixedSize(400, 200)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
         self.setStyleSheet("""
@@ -44,7 +45,7 @@ class AnimatedLoadingDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         # 标题
-        self.title_label = QLabel("系统加载中")
+        self.title_label = QLabel(self.title)
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_font = QFont()
         title_font.setPointSize(16)

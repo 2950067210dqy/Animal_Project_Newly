@@ -1,6 +1,6 @@
 import typing
 
-from PyQt6 import QtGui
+from PyQt6 import QtGui, QtWidgets
 from PyQt6.QtCore import QRect, QSize, Qt
 from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel
 
@@ -107,6 +107,7 @@ class Monitor_data_new_index(ThemedWindow):
 
         self.left_bottom_dock_widget:QDockWidget = self.findChild(QDockWidget, "left_bottom_dock_widget")
         self.left_bottom_dock_widget.hide()
+
         self.right_top_dock_widget:QDockWidget = self.findChild(QDockWidget, "right_top_dock_widget")
 
         self.right_top_dock_widget_content = Table_Column_check_list_view(ok_btn_text="确定选择通道",datas_type=1)

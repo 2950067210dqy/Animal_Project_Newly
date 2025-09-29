@@ -385,6 +385,12 @@ class Tab_7(ThemedWindow):
                                  icon=QMessageBox.Icon.Information)
             msg_box.exec()
 
+            reply_start_experiment = QMessageBox.question(self, '开始实验',
+                                         "是否直接开始实验？",
+                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                         QMessageBox.StandardButton.No)
+            if reply_start_experiment == QMessageBox.StandardButton.Yes:
+                self.main_gui.start_experiment()
 
 
 

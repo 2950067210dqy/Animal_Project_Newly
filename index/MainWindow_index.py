@@ -6,7 +6,7 @@ from json import JSONDecodeError
 from PyQt6 import QtCore
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget
+from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog
 from loguru import logger
 
 
@@ -56,10 +56,15 @@ class MainWindow_Index(ThemedWindow):
             # 停止实验
             self.stop_experiment()
     def closeEvent(self, event):
+        app_state = global_setting.get_setting("app_state", AppState.INITIALIZED)
         if len(self.open_windows)!=0:
             # 可选择使用 QMessageBox 来确认是否关闭
+            if app_state == AppState.MONITORING:
+                message="当前正在实验中，且还有其他子窗口未关闭,退出程序将停止实验，你确定要退出程序吗？"
+            else:
+                message ="当前还有其他子窗口未关闭，你确定要退出程序吗？"
             reply = QMessageBox.question(self, '关闭窗口',
-                                         "当前还有其他子窗口未关闭，你确定要退出程序吗？",
+                                         message,
                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                          QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
@@ -71,8 +76,12 @@ class MainWindow_Index(ThemedWindow):
                 event.ignore()  # 忽略关闭事件
         else:
             # 可选择使用 QMessageBox 来确认是否关闭
+            if app_state == AppState.MONITORING:
+                message = "当前正在实验中,退出程序将停止实验，你确定要退出程序吗？"
+            else:
+                message = "你确定要退出程序吗？"
             reply = QMessageBox.question(self, '关闭窗口',
-                                         "你确定要退出程序吗？",
+                                         message,
                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                          QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
@@ -442,9 +451,13 @@ class MainWindow_Index(ThemedWindow):
         ).catch(lambda e: logger.error(e))
         pass
     def show_dialog(self,resolve,reject):
-        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])+15,message="正在启动气路...")
+        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])+15,title="开始实验",message="正在启动气路...")
         result = dialog.exec()
-        resolve()
+        if result == QDialog.DialogCode.Accepted:
+            resolve()
+        else:
+            self.stop_experiment()
+            reject()
     def pause_experiment(self):
         # 在with语句中自动管理加载遮罩
         with LoadingContext(self, "正在暂停...", "animated") as mask:
