@@ -355,6 +355,35 @@ class Modbus_Response_Parents():
             binary_str = bin(num & 0xFF)[2:].zfill(8)
             binary_str_list.append(binary_str)
         return binary_str_list
+    def ieee754_single_to_float(self,binary_str):
+
+        if len(binary_str) != 32:
+            raise ValueError(f"{len(binary_str)}输入必须是 32 位二进制字符串")
+
+        sign_bit = int(binary_str[0])
+        exponent_bits = binary_str[1:9]
+
+        mantissa_bits = binary_str[9:]
+
+
+        exponent = int(exponent_bits, 2)
+
+        if exponent == 0:
+            if mantissa_bits == '0' * 23:
+                return 0.0 if sign_bit == 0 else -0.0
+            else:
+                exponent = -126
+                mantissa = int(mantissa_bits, 2) / (2 ** 23)
+        elif exponent == 255:
+            if mantissa_bits == '0' * 23:
+                return float('inf') if sign_bit == 0 else float('-inf')
+            else:
+                return float('nan')
+        else:
+            exponent -= 127
+            mantissa = 1 + int(mantissa_bits, 2) / (2 ** 23)
+        value = (-1) ** sign_bit * (2 ** exponent) * mantissa
+        return value
 
     def function_code_parser(self):
         pass
@@ -2366,13 +2395,14 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
                         num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
                                   self.response_struct['data'][i - 1], self.response_struct['data'][i]]))
 
-                    # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
-                    sign_bit = int(data_str[0], 2)
-                    exponent_bit = int(data_str[1:9], 2)
-                    M_bit = int(data_str[9:], 2)
-                    # V = (-1)^s *（1+M）* 2^(E-127)
-                    logger.critical(f"{data_str},{data_str[0]},{sign_bit},{data_str[1:9]},{exponent_bit},{data_str[9:]},{M_bit}")
-                    value = ((-1) ** sign_bit )* (1 + M_bit) * (2 ** (exponent_bit - 127))
+                    # # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
+                    # sign_bit = int(data_str[0], 2)
+                    # exponent_bit = int(data_str[1:9], 2)
+                    # M_bit = int(data_str[9:], 2)
+                    # # V = (-1)^s *（1+M）* 2^(E-127)
+                    # logger.critical(f"{data_str},{data_str[0]},{sign_bit},{data_str[1:9]},{exponent_bit},{data_str[9:]},{M_bit}")
+                    # value = ((-1) ** sign_bit )* (1 + M_bit) * (2 ** (exponent_bit - 127))
+                    value = self.ieee754_single_to_float(data_str)
                     return_datas.append({
                         "desc": port_types[j],
                         'value': value
