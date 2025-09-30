@@ -614,11 +614,17 @@ class MainWindow_Index(ThemedWindow):
         for message_struct in message_structs:
             queue = global_setting.get_setting("queue")
             queue.put(message_struct)
-        self.stop_update_gui()
-        QTimer.singleShot(100,  self.stop_store_info)
+        AsyPromise(self.stop_update_gui).then(
+            AsyPromise(self.stop_store_info_Qtimer).then(
+
+            ).catch(lambda e:logger.error(e))
+        ).catch(
+            lambda e:logger.error(e)
+        )
+
         # self.stop_store_info()
         pass
-    def stop_update_gui(self):
+    def stop_update_gui(self,resolve,reject):
         logger.error("stop_update_gui")
         global_setting.set_setting("app_state", AppState.CONFIGURING)
         global_setting.set_setting("stop_experiment_time", time.time())
@@ -640,6 +646,9 @@ class MainWindow_Index(ThemedWindow):
         self.setEnabled(True)
 
         pass
+    def stop_store_info_Qtimer(self,resolve,reject):
+        QTimer.singleShot(1000, self.stop_store_info)
+        resolve()
     def stop_store_info(self):
 
         # 停止实验 将文件夹的数据合并成一个数据文件
