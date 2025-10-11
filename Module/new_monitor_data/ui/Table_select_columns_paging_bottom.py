@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QTableWidget, QTableWidgetItem, QMessageBox, QLabel, QSpinBox, QHBoxLayout
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from loguru import logger
 
 from public.config.Data_Column import Data_column_list
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle

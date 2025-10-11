@@ -1,21 +1,21 @@
+import logger
 from PyQt6.QtCore import QObject, QEvent, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QMainWindow
 
 from public.component.Guide_tutorial_interface.Arrow_guidance import ArrowOverlayWidget
 from public.component.Guide_tutorial_interface.Bubble_guidance import ResponsiveBubbleTooltip
 from public.component.Guide_tutorial_interface.Mask_guidance import OverlayWidget
+from public.entity.enum.Public_Enum import Tutorial_Type
 
 
 class TutorialManager(QObject):
     """教程管理器 - 支持首次运行检测"""
-    OVERLAY_GUIDE = 0
-    BUBBLE_GUIDE = 1
-    ARROW_GUIDE = 2
+
 
     # 定义信号
-    tutorial_completed = pyqtSignal()  # 教程完成信号
+    tutorial_completed = pyqtSignal(str)  # 教程完成信号
 
-    def __init__(self, main_window,page_name, guide_type=OVERLAY_GUIDE, settings_manager=None):
+    def __init__(self, main_window,page_name, guide_type=Tutorial_Type.OVERLAY_GUIDE, settings_manager=None):
         super().__init__()
         self.main_window:QMainWindow = main_window
         self.page_name = page_name
@@ -38,7 +38,7 @@ class TutorialManager(QObject):
     def update_overlay_geometry(self):
         """更新遮罩层的几何属性"""
         if self.overlay and self.main_window:
-            if self.guide_type == self.BUBBLE_GUIDE:
+            if self.guide_type == Tutorial_Type.BUBBLE_GUIDE:
                 # 气泡提示需要重新定位
                 if hasattr(self.overlay, 'position_tooltip'):
                     QTimer.singleShot(10, self.overlay.position_tooltip)
@@ -59,7 +59,17 @@ class TutorialManager(QObject):
         """开始教程"""
         self.current_step = 0
         self.show_current_step()
+    def clear(self):
+        """
+        清空
+        :return:
+        """
+        self.current_step = 0
+        self.steps = []
 
+        if self.overlay:
+            self.overlay.close()
+            self.overlay=None
     def show_current_step(self):
         if self.current_step >= len(self.steps):
             self.end_tutorial()
@@ -71,9 +81,9 @@ class TutorialManager(QObject):
             self.overlay.close()
 
         try:
-            if self.guide_type == self.OVERLAY_GUIDE:
+            if self.guide_type == Tutorial_Type.OVERLAY_GUIDE:
                 self.overlay = OverlayWidget(widget, text, self.main_window)
-            elif self.guide_type == self.BUBBLE_GUIDE:
+            elif self.guide_type == Tutorial_Type.BUBBLE_GUIDE:
                 self.overlay = ResponsiveBubbleTooltip(widget, text, self.main_window)
                 # 为气泡提示设置点击事件
                 self.overlay.mousePressEvent = self.next_step
@@ -82,7 +92,7 @@ class TutorialManager(QObject):
                     self.overlay.next_btn.clicked.connect(lambda: self.next_step(None))
                 if hasattr(self.overlay, 'skip_btn'):
                     self.overlay.skip_btn.clicked.connect(self.end_tutorial)
-            elif self.guide_type == self.ARROW_GUIDE:
+            elif self.guide_type == Tutorial_Type.ARROW_GUIDE:
                 self.overlay = ArrowOverlayWidget(widget, text, self.main_window)
 
             # 设置初始大小和位置
@@ -90,11 +100,11 @@ class TutorialManager(QObject):
             self.overlay.show()
 
             # 为非气泡类型添加点击事件
-            if self.guide_type != self.BUBBLE_GUIDE:
+            if self.guide_type != Tutorial_Type.BUBBLE_GUIDE:
                 self.overlay.mousePressEvent = self.next_step
 
         except Exception as e:
-            print(f"显示引导步骤错误: {e}")
+            logger.error(f"显示引导步骤错误: {e}")
             self.end_tutorial()
 
     def next_step(self, event):
@@ -107,7 +117,7 @@ class TutorialManager(QObject):
             try:
                 self.overlay.close()
             except Exception as e:
-                print(f"关闭引导错误: {e}")
+                logger.error(f"关闭引导错误: {e}")
             finally:
                 self.overlay = None
 
@@ -116,4 +126,4 @@ class TutorialManager(QObject):
             self.settings_manager.mark_page_visited(self.page_name)
 
         # 发出教程完成信号
-        self.tutorial_completed.emit()
+        self.tutorial_completed.emit(self.page_name)

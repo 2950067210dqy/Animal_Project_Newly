@@ -4,6 +4,7 @@ from pathlib import Path
 from loguru import logger
 
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
+from public.entity.enum.Public_Enum import Tutorial_Type
 
 
 class AppSettings:
@@ -27,14 +28,13 @@ class AppSettings:
                 with open(self.settings_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
         except Exception as e:
-            print(f"加载设置失败: {e}")
+            logger.error(f"加载app_settings设置失败: {e}，返回默认配置")
 
         # 返回默认设置
         return {
             "first_run": True,
             "tutorial_completed": False,
-            "guide_type": TutorialManager.ARROW_GUIDE,  # 默认引导类型
-            "window_geometry": None
+            "guide_type": Tutorial_Type.ARROW_GUIDE,  # 默认引导类型
         }
 
     def save_settings(self):
@@ -43,7 +43,7 @@ class AppSettings:
             with open(self.settings_file, 'w', encoding='utf-8') as f:
                 json.dump(self.settings, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"保存设置失败: {e}")
+            logger.error(f"保存设置失败: {e}|{self.settings}")
 
     def is_first_run(self):
         """检查是否是第一次运行"""
@@ -53,7 +53,9 @@ class AppSettings:
         """标记首次运行已完成"""
         self.settings["first_run"] = False
         self.save_settings()
-
+    def reback_first_visit(self,page_name):
+        self.settings[f"first_visit_{page_name}"] = True
+        self.save_settings()
     def is_first_visit(self, page_name):
         """检查是否是第一次访问指定页面"""
         return self.settings.get(f"first_visit_{page_name}", True)
@@ -74,7 +76,7 @@ class AppSettings:
 
     def get_guide_type(self):
         """获取引导类型"""
-        return self.settings.get("guide_type", TutorialManager.ARROW_GUIDE)
+        return self.settings.get("guide_type", Tutorial_Type.ARROW_GUIDE)
 
     def set_guide_type(self, guide_type):
         """设置引导类型"""

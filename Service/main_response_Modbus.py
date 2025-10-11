@@ -650,7 +650,7 @@ class communication(threading.Thread):
                                                                                 "0x00",
                                                                                 "0x00",
                                                                                 "0x00",
-                                                                                "0xAC",
+                                                                                "0xBD",
 
                                                                             ],
                                                                             struct_type="B"
@@ -743,7 +743,7 @@ class communication(threading.Thread):
                                                                                 "0x00",
                                                                                 "0x00",
                                                                                 "0x00",
-                                                                                "0xBD",
+                                                                                "0xCE",
 
                                                                             ],
                                                                             struct_type="B"

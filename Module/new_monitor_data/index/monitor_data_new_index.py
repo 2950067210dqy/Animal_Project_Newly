@@ -1,7 +1,7 @@
 import typing
 
 from PyQt6 import QtGui, QtWidgets
-from PyQt6.QtCore import QRect, QSize, Qt
+from PyQt6.QtCore import QRect, QSize, Qt, QTimer
 from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel
 
 from Module.new_experiment.ui.group_window import GroupWindow
@@ -9,8 +9,11 @@ from Module.new_monitor_data.ui.Table_select_columns_paging_bottom import Table_
 from Module.new_monitor_data.ui.monitor_data_new import Ui_monitor_data_new
 from Module.new_monitor_data.ui.monitor_data_windows import MonitorDataWindows
 from Module.new_monitor_data.ui.table_column_check_list_view import Table_Column_check_list_view
+from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.component.paging_exportcsv_table_widget import TableWidgetPaging
+from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
+from public.entity.enum.Public_Enum import Tutorial_Type
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
 from theme.ThemeQt6 import ThemedWindow
@@ -58,7 +61,25 @@ class Monitor_data_new_index(ThemedWindow):
             self.right_bottom_dock_widget.resize(int(new_size.width() * 0.2), int(new_size.height()*0.6))
 
         self.setMinimumSize(0, 0)
+    def setup_tutorial(self):
+        # 实例化提示引导器 下面式实例化模板
+        if self.tutorial:
+            self.tutorial.end_tutorial()
 
+        self.tutorial = TutorialManager(self, "monitor_data_new_index", Tutorial_Type.ARROW_GUIDE,
+                                        global_setting.get_setting("app_setting", AppSettings()))
+
+        # 连接教程完成信号
+        self.tutorial.tutorial_completed.connect(self.on_tutorial_completed)
+
+        self.tutorial.add_step(self.right_top_dock_widget_content.list_view,
+                               f"步骤1：\n勾选通道x的数据项。")
+        self.tutorial.add_step(self.right_top_dock_widget_content.show_selected_btn,
+                               f"步骤2：\n单击该按钮。")
+        self.tutorial.add_step(self.left_top_dock_widget,
+                               f"步骤3：\n你可以在这边查看监控数据。")
+        self.tutorial.add_step(self.status_bar.tip_btn,
+                               f"Tips：\n如果还不会操作，可再次单击该按钮查看教程。")
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
         self.setMinimumSize(0,0)
@@ -78,6 +99,10 @@ class Monitor_data_new_index(ThemedWindow):
         self._init_function()
         # 加载qss样式表
         self._init_style_sheet()
+        # 实例化提示器
+        self.setup_tutorial()
+        # 自动启动提示教程 如果有提示页面的话
+        QTimer.singleShot(400, self.start_tutorial_if_exists)
         pass
 
         # 实例化ui
@@ -126,7 +151,7 @@ class Monitor_data_new_index(ThemedWindow):
         #
         # self.right_bottom_dock_widget_content.set_table_column_signal.connect(
         #     self.create_table)
-
+        super()._init_customize_ui()
         pass
     def create_table(self,dict_ids:dict):
         if dict_ids is not None:

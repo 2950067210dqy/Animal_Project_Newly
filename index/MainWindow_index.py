@@ -4,21 +4,23 @@ import os
 import time
 from json import JSONDecodeError
 from PyQt6 import QtCore
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QObject
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog
+from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog, QMenu, QMenuBar, QWidget
 from loguru import logger
 
 
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 from my_abc.BaseModule import BaseModule
+from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.component.custom_status_bar import CustomStatusBar
 from public.component.dialog.custom.loading_dialog_seconds import AnimatedLoadingDialog
 from public.component.mask.LoadingMask import LoadingContext
+from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
-from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
+from public.entity.enum.Public_Enum import BaseInterfaceType, AppState, Tutorial_Type
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.custom_data_file_util import custom_data_file_util
@@ -90,6 +92,81 @@ class MainWindow_Index(ThemedWindow):
             else:
                 event.ignore()  # 忽略关闭事件
         pass
+    def setup_tutorial(self):
+        #实例化提示引导器 下面式实例化模板
+        if self.tutorial:
+            self.tutorial.end_tutorial()
+
+        self.tutorial = TutorialManager(self, "MainWindow_index", Tutorial_Type.ARROW_GUIDE, global_setting.get_setting("app_setting", AppSettings()))
+
+        # 连接教程完成信号
+        self.tutorial.tutorial_completed.connect(self.on_tutorial_completed)
+
+        # 添加更详细的引导步骤
+        actions = self.menuBar().actions()
+        widgets = self.findChildren(QObject, "temp_deleted_widget")
+        for action in actions:
+            action:QAction
+            menu:QMenu = action.menu()
+            if menu:
+                # 获取菜单栏中的按钮控件
+                geometry = self.menuBar().actionGeometry(action)
+                if not widgets:
+                    widget =QWidget()
+                    widget.setParent(self)
+                    widget.setGeometry(geometry)
+                    widget.setObjectName("temp_deleted_widget")
+
+                    # 对 file_menu 进行操作
+                    self.tutorial.add_step(widget,
+                                           f"单击此按钮是{action.text()}\n{menu.toolTip()}")
+                else:
+                    widget =widgets.pop(0)
+                    widget.show()
+                    self.tutorial.add_step(widget,
+                                           f"单击此按钮是{action.text()}\n{menu.toolTip()}")
+        for tool_bar_action in self.tool_bar_actions:
+            self.tutorial.add_step(tool_bar_action['action'].associatedObjects()[1],
+                               f"单击此按钮是{tool_bar_action['name']}\n{tool_bar_action['tip']}")
+        # 状态栏提示
+        self.tutorial.add_step(self.status_bar.time_label,
+                               f"显示当前时间。")
+        self.tutorial.add_step(self.status_bar.app_status_label,
+                               f"显示当前程序状态 。\n 1.INITIALIZED: 初始化状态\n 2.APPLYING: 应用实验状态\n 3.CONFIGURING: 设备配置状态\n 4.MONITORING: 开始监测数据状态")
+        self.tutorial.add_step(self.status_bar.status_label,
+                               f"显示当前实验状态。\n1.未开始实验。2.开始实验。3.暂停实验。4.停止实验")
+        self.tutorial.add_step(self.status_bar.tip_label,
+                               f"显示当前帮助消息。")
+        self.tutorial.add_step(self.status_bar.setting_file_name_label,
+                               f"显示当前实验设置文件路径。")
+
+        self.tutorial.add_step(self.status_bar.progress_bar,
+                               f"显示进度条。")
+        #步骤提示
+        widgets = self.findChildren(QObject, "temp_deleted_widget")
+        for action in actions:
+            action: QAction
+            menu: QMenu = action.menu()
+            if menu:
+                # 获取菜单栏中的按钮控件
+                geometry = self.menuBar().actionGeometry(action)
+                if not widgets:
+                    widget = QWidget()
+                    widget.setParent(self)
+                    widget.setGeometry(geometry)
+                    widget.setObjectName("temp_deleted_widget")
+
+                    # 对 file_menu 进行操作
+                    self.tutorial.add_step(widget,
+                                           f"不知道怎么操作？请跟着步骤指引\n1.单击{action.text()}菜单\n2.在单击打开或导入")
+                else:
+                    widget = widgets.pop(0)
+                    widget.show()
+                    self.tutorial.add_step(widget,
+                                           f"不知道怎么操作？请跟着步骤指引\n1.单击{action.text()}菜单\n2.在单击打开或导入")
+            break
+        self.tutorial.add_step(self.status_bar.tip_btn,
+                               f"Tips：\n如果还不会操作，可再次单击该按钮查看教程。")
     def __init__(self):
         super().__init__()
         #暂停实验标志位
@@ -109,7 +186,7 @@ class MainWindow_Index(ThemedWindow):
         self.infrared_camera_thread_sub_list = []
         self.infrared_camera_read_queue_data_thread_sub = None
         self.infrared_camera_delete_file_thread_sub = None
-        # tool——bar-action 工具栏的action [{'obj_name':'','name';",'action':QAction}]
+        # tool——bar-action 工具栏的action [{'obj_name':'','name';",'action':QAction,'tip':''}]
         self.tool_bar_actions = []
         self.menu_bar_actions = []
         # 模块
@@ -135,6 +212,10 @@ class MainWindow_Index(ThemedWindow):
         # 加载qss样式表
         self._init_custom_style_sheet()
         self._retranslateUi()
+        # 实例化提示器
+        self.setup_tutorial()
+        # 自动启动提示教程 如果有提示页面的话
+        QTimer.singleShot(400, self.start_tutorial_if_exists)
         pass
     # 实例化ui
     def _init_ui(self, title=""):
@@ -176,8 +257,9 @@ class MainWindow_Index(ThemedWindow):
         # 创建工具栏
         self.create_tool_bar()
         # 初始化自定义状态栏
-        self.status_bar = CustomStatusBar()
+        self.status_bar = CustomStatusBar(self)
         self.setStatusBar(self.status_bar)
+        super()._init_customize_ui()
         pass
     def _init_function(self):
         # 改变组件是否被点击
@@ -197,21 +279,21 @@ class MainWindow_Index(ThemedWindow):
         action_one.setObjectName(obj_name)
         action_one.setToolTip(name)
         action_one.triggered.connect(self.exchange_widget_and_window)
-        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_one,"app_state":AppState.INITIALIZED})
+        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_one,"app_state":AppState.INITIALIZED,'tip':"单击此按钮会将打开的窗口变成内嵌抽屉页。"})
         name = "更改主题颜色"
         obj_name = "toggle_mode"
         action_two= QAction(name, self)
         action_two.setObjectName(obj_name)
         action_two.setToolTip(name)
         action_two.triggered.connect(self.toggle_theme)
-        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_two,"app_state":AppState.INITIALIZED})
+        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_two,"app_state":AppState.INITIALIZED,'tip':"单击此按钮会将程序的主题颜色变换黑色和白色"})
         name = "开始实验"
         obj_name = "start_experiment"
         action_three = QAction(name, self)
         action_three.setObjectName(obj_name)
         action_three.setToolTip(name)
         action_three.triggered.connect(self.start_experiment)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_three,"app_state":AppState.CONFIGURING})
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_three,"app_state":AppState.CONFIGURING,'tip':"单击此按钮会将开始实验，但是必须等待配置完成才能单击该按钮。"})
         name = "暂停实验"
         obj_name = "pause_experiment"
         action_four = QAction(name, self)
@@ -219,7 +301,7 @@ class MainWindow_Index(ThemedWindow):
         action_four.setToolTip(name)
         action_four.setDisabled(True)
         action_four.triggered.connect(self.pause_experiment)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four,"app_state":AppState.CONFIGURING})
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four,"app_state":AppState.CONFIGURING,'tip':"单击此按钮会将暂停实验，必须在实验中才能单击该按钮。"})
 
         name = "停止实验"
         obj_name = "stop_experiment"
@@ -228,7 +310,19 @@ class MainWindow_Index(ThemedWindow):
         action_five.setToolTip(name)
         action_five.triggered.connect(self.stop_experiment)
         action_five.setDisabled(True)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_five,"app_state":AppState.CONFIGURING})
+        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_five,"app_state":AppState.CONFIGURING,'tip':"单击此按钮会将停止实验，并将实验数据保存。"})
+
+        name = "重置教程页"
+        obj_name = "reset_guidance"
+        action_six = QAction(name, self)
+        action_six.setObjectName(obj_name)
+        action_six.setToolTip(name)
+        action_six.triggered.connect(self.reset_guidance)
+        action_six.setDisabled(True)
+        self.tool_bar_actions.append(
+            {"name": name, "obj_name": obj_name, "action": action_six, "app_state": AppState.INITIALIZED,
+             'tip': "单击此按钮会将重置教程。"})
+
         # 将动作添加到工具栏
         self.toolbar.addAction(action_one)
         self.toolbar.addSeparator()
@@ -238,11 +332,14 @@ class MainWindow_Index(ThemedWindow):
         self.toolbar.addAction(action_four)
         self.toolbar.addAction(action_five)
         self.toolbar.addSeparator()
+        self.toolbar.addAction(action_six)
+        self.toolbar.addSeparator()
     def create_menu_bar(self):
     # 创建菜单
         for menu_dict in self.menu_name:
             # 创建文件菜单
             menu = self.menuBar().addMenu(menu_dict['text'])
+            menu.setToolTip(menu_dict.get('tip',""))
             # 从module加载组件...
             for module in self.modules:
                 module:BaseModule
@@ -697,3 +794,50 @@ class MainWindow_Index(ThemedWindow):
 
 
         pass
+    def reset_guidance(self):
+        """重置教程"""
+        reply = QMessageBox.question(
+            self,
+            "确认重置",
+            "这将重置所有页面的首次访问状态，下次进入各个页面时会再次显示引导教程。\n\n确定要继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # 重置程序首次运行状态
+            self.tutorial.settings_manager.settings["first_run"] = True
+            self.tutorial.settings_manager.settings["tutorial_completed"] = False
+
+            # 获取所有以 "first_visit_" 开头的设置项并重置为 True
+            keys_to_reset = []
+            for key in self.tutorial.settings_manager.settings.keys():
+                if key.startswith("first_visit_"):
+                    keys_to_reset.append(key)
+
+            # 重置所有页面的首次访问状态
+            for key in keys_to_reset:
+                self.tutorial.settings_manager.settings[key] = True
+
+            # 也可以直接重置特定页面（如果已知页面名称）
+            page_names = ["main_page", "project_page", "settings_page", "help_page"]  # 可根据实际页面名称调整
+            for page_name in page_names:
+                self.tutorial.settings_manager.settings[f"first_visit_{page_name}"] = True
+
+            self.tutorial.settings_manager.save_settings()
+
+            # 显示重置的页面信息
+            reset_pages = [key.replace("first_visit_", "") for key in keys_to_reset]
+            if reset_pages:
+                pages_info = "、".join(reset_pages)
+                message = f"所有状态已重置。\n\n已重置的页面: {pages_info}\n\n重新进入这些页面时将显示引导教程。"
+            else:
+                message = "首次运行状态已重置。\n重新启动程序或进入页面时将显示引导教程。"
+
+            QMessageBox.information(
+                self,
+                "重置完成",
+                message
+            )
+
+            self.status_bar.update_tip("✅ 所有页面的首次访问状态已重置")

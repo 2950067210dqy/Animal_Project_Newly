@@ -246,6 +246,13 @@ def test_integrated_monitor():
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  |{process.name} | {thread.name} |  {name} : {module}:{line} | {message} </level>",
 
     )
+
+    logger.info(f"{'-' * 40}main_start{'-' * 40}")
+    logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
+    q = multiprocessing.Queue()  # 创建 Queue 消息传递
+    send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
+
+
     # 创建自定义的主进程日志配置
     main_config = LogConfig(
         log_dir="./log/main",
@@ -262,12 +269,6 @@ def test_integrated_monitor():
         enable_console=True,
         console_level="ERROR"
     )
-    logger.info(f"{'-' * 40}main_start{'-' * 40}")
-    logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
-    q = multiprocessing.Queue()  # 创建 Queue 消息传递
-    send_message_q = multiprocessing.Queue()  # 发送查询报文的消息传递单独一个通道
-
-
     # 创建监控器
     global monitor
     # 创建监控器

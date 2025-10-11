@@ -7,12 +7,14 @@ from loguru import logger
 from Module.experiment_setting.config.experiment_default_config import get_default_config
 
 from Module.experiment_setting.ui.tab7_window import Ui_tab7_window
+from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.component.dialog.custom.InfoDialog import InfoDialog
+from public.config_class.App_Setting import AppSettings
 
 from public.config_class.global_setting import global_setting
 
 from public.entity.MyQThread import MyQThread
-from public.entity.enum.Public_Enum import AppState
+from public.entity.enum.Public_Enum import AppState, Tutorial_Type
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus import Modbus_Type
@@ -22,7 +24,7 @@ from public.function.Modbus.Modbus import ModbusRTUMaster
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeQt6 import ThemedWindow
 from PyQt6 import QtGui
-from PyQt6.QtCore import QRect, Qt, pyqtSignal
+from PyQt6.QtCore import QRect, Qt, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QGroupBox, QLabel, QSlider, QRadioButton, \
     QGridLayout, QButtonGroup, QComboBox, QListWidget, QPushButton, QMessageBox
 
@@ -149,8 +151,32 @@ class Tab_7(ThemedWindow):
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.pause()
         super().hideEvent(a0)
+    def setup_tutorial(self):
+        # 实例化提示引导器 下面式实例化模板
+        if self.tutorial:
+            self.tutorial.end_tutorial()
+
+        self.tutorial = TutorialManager(self, "experiment_setting", Tutorial_Type.ARROW_GUIDE,
+                                        global_setting.get_setting("app_setting", AppSettings()))
+
+        # 连接教程完成信号
+        self.tutorial.tutorial_completed.connect(self.on_tutorial_completed)
+
+        self.tutorial.add_step(self.port_combox,
+                               f"步骤1：\n选择正确的串口，这步非常的重要，不然无法联系到传感器。")
+        self.tutorial.add_step(self.group_box if self.group_box else self.config_layout,
+                               f"步骤2：\n可以对相关传感器进行实验前的相关配置。")
+        self.tutorial.add_step(self.response_text,
+                               f"Tips1：\n你可以查看传感器的响应信息。")
+        self.tutorial.add_step(self.start_btn,
+                               f"步骤3：\n最后单击该按钮完成配置。")
+        self.tutorial.add_step(self.status_bar.tip_btn,
+                               f"Tips2：\n如果还不会操作，可再次单击该按钮查看教程。")
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
+        self.group_box = None
+        self.port_combox=None
+        self.response_text=None
         self.experiment_setting: Experiment_setting_entity =None
         # 发送报文线程
         self.send_thread:Send_thread = None
@@ -180,6 +206,10 @@ class Tab_7(ThemedWindow):
         self._init_function()
         # 加载qss样式表
         self._init_style_sheet()
+        # 实例化提示器
+        self.setup_tutorial()
+        # 自动启动提示教程 如果有提示页面的话
+        QTimer.singleShot(400, self.start_tutorial_if_exists)
         pass
 
         # 实例化ui
@@ -209,17 +239,18 @@ class Tab_7(ThemedWindow):
         self.config = get_default_config()
         # logger.error(self.config)
         self.init_config_ui()
+        super()._init_customize_ui()
         pass
 
     # 实例化下拉框
     def init_port_combox(self):
-        port_combox: QComboBox = self.findChild(QComboBox, "tab_7_port_combox")
-        if port_combox == None:
+        self.port_combox: QComboBox = self.findChild(QComboBox, "tab_7_port_combox")
+        if self.port_combox == None:
             logger.error("实例化端口下拉框失败！")
             return
-        port_combox.clear()
+        self.port_combox.clear()
         for port_obj in self.ports:
-            port_combox.addItem(f"- 设备: {port_obj['device']}" + f" #{port_obj['description']}")
+            self.port_combox.addItem(f"- 设备: {port_obj['device']}" + f" #{port_obj['description']}")
             pass
         if len(self.ports) != 0:
             # 默认下拉项
@@ -240,8 +271,8 @@ class Tab_7(ThemedWindow):
                 global_setting.set_setting("modbus", modbus)
             self.send_response_text(
                 f"{time_util.get_format_from_time(time.time())}- 设备: {self.ports[0]['device']}" + f" #{self.ports[0]['description']}" + "  默认已被选中!")
-        port_combox.disconnect()
-        port_combox.currentIndexChanged.connect(self.selectionchange)
+        self.port_combox.disconnect()
+        self.port_combox.currentIndexChanged.connect(self.selectionchange)
 
     def selectionchange(self, index):
         try:
@@ -268,15 +299,15 @@ class Tab_7(ThemedWindow):
         pass
     def send_response_text(self, text):
         # 往状态栏发消息
-        response_text: QListWidget = self.findChild(QListWidget, "tab_7_responselist")
-        if response_text == None:
+        self.response_text: QListWidget = self.findChild(QListWidget, "tab_7_responselist")
+        if self.response_text == None:
             logger.error("response_text状态栏未找到！")
             return
-        response_text.addItem(text)
+        self.response_text.addItem(text)
         if self.main_gui is not None:
             self.main_gui.status_bar.update_tip(text)
         # 滑动滚动条到最底下
-        scroll_bar = response_text.verticalScrollBar()
+        scroll_bar = self.response_text.verticalScrollBar()
         if scroll_bar != None:
             scroll_bar.setValue(scroll_bar.maximum())
         pass
@@ -520,14 +551,14 @@ class Tab_7(ThemedWindow):
         pass
     def init_enm_config_ui(self, module_key, module_value,scroll_area_layout):
         # 创建 GroupBox
-        group_box = QGroupBox(f"{module_value['desc']}-{module_value['config'][0]['value'][0]['desc']}")
-        group_box.setContentsMargins(10,10,10,10)
-        scroll_area_layout.addWidget(group_box)
+        self.group_box = QGroupBox(f"{module_value['desc']}-{module_value['config'][0]['value'][0]['desc']}")
+        self.group_box.setContentsMargins(10,10,10,10)
+        scroll_area_layout.addWidget(self.group_box)
 
         # 创建第一个 GridLayout
         grid_layout1 = QGridLayout()
         grid_layout1.setContentsMargins(10,30,10,10)
-        group_box.setLayout(grid_layout1)
+        self.group_box.setLayout(grid_layout1)
 
         group_nums = len(self.experiment_setting.groups) if self.experiment_setting.groups is not None else 0
         columns = 2

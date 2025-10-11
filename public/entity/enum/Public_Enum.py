@@ -28,8 +28,10 @@ class AnimalGender(Enum):
     FEMALE = True
     # 雄性
     MALE = False
-
-
+class Tutorial_Type:
+    OVERLAY_GUIDE = 0
+    BUBBLE_GUIDE = 1
+    ARROW_GUIDE = 2
 class BaseInterfaceType(Enum):
     WINDOW=0
     FRAME=1

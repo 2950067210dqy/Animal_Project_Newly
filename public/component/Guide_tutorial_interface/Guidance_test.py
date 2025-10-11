@@ -7,6 +7,7 @@ from PyQt6.QtGui import *
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.component.dialog.custom.welcome_dialog import WelcomeDialog
 from public.config_class.App_Setting import AppSettings
+from public.entity.enum.Public_Enum import Tutorial_Type
 
 
 # 这里放入上面的所有类定义...
@@ -63,9 +64,9 @@ class DemoMainWindow(QMainWindow):
         self.bubble_btn = QPushButton("💬 气泡提示引导")
         self.arrow_btn = QPushButton("➤ 箭头指向引导")
 
-        self.overlay_btn.clicked.connect(lambda: self.switch_guide_type(TutorialManager.OVERLAY_GUIDE))
-        self.bubble_btn.clicked.connect(lambda: self.switch_guide_type(TutorialManager.BUBBLE_GUIDE))
-        self.arrow_btn.clicked.connect(lambda: self.switch_guide_type(TutorialManager.ARROW_GUIDE))
+        self.overlay_btn.clicked.connect(lambda: self.switch_guide_type(Tutorial_Type.OVERLAY_GUIDE))
+        self.bubble_btn.clicked.connect(lambda: self.switch_guide_type(Tutorial_Type.BUBBLE_GUIDE))
+        self.arrow_btn.clicked.connect(lambda: self.switch_guide_type(Tutorial_Type.ARROW_GUIDE))
 
         # 设置按钮样式
         for btn in [self.overlay_btn, self.bubble_btn, self.arrow_btn]:
@@ -97,9 +98,9 @@ class DemoMainWindow(QMainWindow):
             btn.setCheckable(True)
 
         # 根据设置选中对应按钮
-        if self.current_guide_type == TutorialManager.OVERLAY_GUIDE:
+        if self.current_guide_type == Tutorial_Type.OVERLAY_GUIDE:
             self.overlay_btn.setChecked(True)
-        elif self.current_guide_type == TutorialManager.BUBBLE_GUIDE:
+        elif self.current_guide_type == Tutorial_Type.BUBBLE_GUIDE:
             self.bubble_btn.setChecked(True)
         else:
             self.arrow_btn.setChecked(True)
@@ -238,18 +239,18 @@ class DemoMainWindow(QMainWindow):
         self.settings.set_guide_type(guide_type)
 
         # 更新按钮状态
-        self.overlay_btn.setChecked(guide_type == TutorialManager.OVERLAY_GUIDE)
-        self.bubble_btn.setChecked(guide_type == TutorialManager.BUBBLE_GUIDE)
-        self.arrow_btn.setChecked(guide_type == TutorialManager.ARROW_GUIDE)
+        self.overlay_btn.setChecked(guide_type == Tutorial_Type.OVERLAY_GUIDE)
+        self.bubble_btn.setChecked(guide_type == Tutorial_Type.BUBBLE_GUIDE)
+        self.arrow_btn.setChecked(guide_type == Tutorial_Type.ARROW_GUIDE)
 
         # 重新设置教程
         self.setup_tutorial()
 
         # 显示切换成功的消息
         guide_names = {
-            TutorialManager.OVERLAY_GUIDE: "🔍 高亮遮罩引导",
-            TutorialManager.BUBBLE_GUIDE: "💬 气泡提示引导",
-            TutorialManager.ARROW_GUIDE: "➤ 箭头指向引导"
+            Tutorial_Type.OVERLAY_GUIDE: "🔍 高亮遮罩引导",
+            Tutorial_Type.BUBBLE_GUIDE: "💬 气泡提示引导",
+            Tutorial_Type.ARROW_GUIDE: "➤ 箭头指向引导"
         }
 
         # 使用状态栏显示切换信息
@@ -268,7 +269,7 @@ class DemoMainWindow(QMainWindow):
         # 添加更详细的引导步骤
         save_widgets = self.save_action.associatedObjects()
         if save_widgets:
-            self.tutorial.add_step(save_widgets[0],
+            self.tutorial.add_step(save_widgets[1],
                                    "欢迎使用本应用！\n这是保存功能，可以保存您的工作进度和项目文件。\n建议定期保存以防数据丢失。")
 
         self.tutorial.add_step(self.start_btn,

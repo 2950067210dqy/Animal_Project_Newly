@@ -3,14 +3,19 @@ import sys
 import typing
 
 from PyQt6 import QtCore, QtGui
-from PyQt6.QtCore import QRect, Qt, QSize, QPoint, QEvent, QTimer
+from PyQt6.QtCore import QRect, Qt, QSize, QPoint, QEvent, QTimer, QObject
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QLayout, \
     QScrollArea, QSizePolicy, QMessageBox, QTabWidget, QGroupBox, QTableWidget, QToolBar, QApplication, QDockWidget
 from loguru import logger
 
 from public.component.Window_Title_Bar import TitleBar
+from public.component.custom_status_bar import CustomStatusBar
+from public.config_class import App_Setting
+from public.config_class.global_setting import global_setting
 from public.entity.enum.Public_Enum import Frame_state
+from wrapper.After_execution import after_execution
+
 
 #logger = logger.bind(category="gui_logger")
 class BaseWindow(QMainWindow):
@@ -171,9 +176,10 @@ class BaseWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()  # 隐藏系统标题栏
-
+        # 主窗口 特指代MainWindow_index
         self.main_gui:BaseWindow=None
-
+        # 状态栏
+        self.status_bar=None
         # 设置窗口标志，
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
         # 创建文件菜单
@@ -182,22 +188,33 @@ class BaseWindow(QMainWindow):
         # 用于记录鼠标状态
         self.is_pressed = False
         self.start_pos = QPoint()
+
         # 先初始化tutorial 提示指示器为None
         self.tutorial = None
+        """
+        如果需要添加页面指示帮助的话 请在子类的初始化函数末尾添加两句代码，
+        # 实例化提示器
         self.setup_tutorial()
         # 自动启动提示教程 如果有提示页面的话
-        QTimer.singleShot(1000, self.start_tutorial_if_exists)
+        QTimer.singleShot(400, self.start_tutorial_if_exists)
+        """
     # 开始提示引导
     def start_tutorial_if_exists(self):
         if self.tutorial:
-            self.tutorial.start_tutorial()
+            settings:App_Setting = self.tutorial.settings_manager
+            if settings and settings.is_first_visit(page_name=self.tutorial.page_name):
+                self.tutorial.start_tutorial()
+            else:
+                widgets = self.findChildren(QObject, "temp_deleted_widget")
+                for widget in widgets:
+                    widget.hide()
 
     def setup_tutorial(self):
         #实例化提示引导器 下面式实例化模板
         # if self.tutorial:
         #     self.tutorial.end_tutorial()
         #
-        # self.tutorial = TutorialManager(self, "main_page", self.current_guide_type, self.settings)
+        # self.tutorial = TutorialManager(self, "main_page", Tutorial_Type.ARROW_GUIDE,global_setting.get_setting("app_setting", AppSettings()))
         #
         # # 连接教程完成信号
         # self.tutorial.tutorial_completed.connect(self.on_tutorial_completed)
@@ -225,14 +242,40 @@ class BaseWindow(QMainWindow):
 
         pass
 
-    def on_tutorial_completed(self):
+    def on_tutorial_completed(self,page_name):
         """教程完成处理"""
-        self.statusBar().showMessage("🎉 教程已完成！感谢您的耐心学习。", 3000)
+        self.status_bar.update_tip(f"🎉 {page_name}教程已完成！感谢您的耐心学习。")
+        widgets = self.findChildren(QObject, "temp_deleted_widget")
+        for widget in widgets:
+            widget.hide()
+    def delete_widgets_by_name(self, object_name):
+        """删除所有同名控件"""
+        widgets = self.findChildren(QObject, object_name)
 
+        for widget in widgets:
+            try:
+                # 从父控件中移除
+
+                widget.setParent(None)
+
+                # 释放资源
+                widget.deleteLater()
+                widget=None
+            except Exception as e:
+                logger.error(f"删除控件 {widget} 时出错: {e}")
     def restart_tutorial(self):
         """重新开始教程"""
         if self.tutorial:
+            self.tutorial.clear()
+            self.setup_tutorial()
             self.tutorial.start_tutorial()
+        else:
+            reply = QMessageBox.question(
+                self,
+                "注意",
+                "当前页面暂无教程",
+                QMessageBox.StandardButton.No
+            )
 
     def reset_first_run_status(self):
         """重置首次运行状态（仅用于测试）"""
@@ -281,15 +324,35 @@ class BaseWindow(QMainWindow):
             )
 
             self.statusBar().showMessage("✅ 所有页面的首次访问状态已重置", 3000)
+    def insert_status_bar_button(self,self2):
+        """
+        对状态栏进行插入自定义按钮操作
+        :return:
+        """
+        # 状态栏
+        if self.status_bar is None:
+            self.status_bar = CustomStatusBar(self,is_main=False)
+            self.setStatusBar(self.status_bar)
+
+            pass
+        else:
+
+            pass
 
     @abc.abstractmethod
     def _init_ui(self):
         # 实例化ui
         pass
 
+    @after_execution(insert_status_bar_button)
     @abc.abstractmethod
     def _init_customize_ui(self):
+
         # 实例化自定义ui
+        """
+        ！！！！！！！！！！在子类的该函数末尾调用父类该函数 super()._init_customize_ui(),否则装饰器不会起作用
+        :return:
+        """
         pass
 
     @abc.abstractmethod
