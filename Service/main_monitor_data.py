@@ -478,9 +478,9 @@ def barrier_action():
     store_Datas.append({'desc': '当前计量周期内跑轮圈数测量值',
                         'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num')})
     store_Datas.append(
-        {'desc': '饮水重量测量值(g)', 'value': results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num')})
+        {'desc': '饮水重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num') })
     store_Datas.append(
-        {'desc': '食物重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num')})
+        {'desc': '食物重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num')  })
     store_Datas.append(
         {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')})
     store_Datas.append({'desc':'轮次开始时间','value':datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
