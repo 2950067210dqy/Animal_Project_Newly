@@ -7,9 +7,24 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.3.3.5 完成标定数据存储，待优化开始实验停止实验线程化">
-      <change afterPath="$PROJECT_DIR$/public/function/Timer/task_manager.log" afterDir="false" />
+    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.3.3.9.6 更新02 04解析">
+      <change afterPath="$PROJECT_DIR$/public/config_class/Exception_Info.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/config_class/Log_Config.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/function/ProcessMonitor/ProcessMonitor_backup.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test/error_test.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Service/main_deep_camera.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_deep_camera.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Service/main_gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_gui.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Service/main_infrared_camera.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_infrared_camera.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Service/main_monitor_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_monitor_data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Service/main_response_Modbus.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_response_Modbus.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/monitor_data/2_2025_09_16_03_21_03_502.Mdata" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/monitor_data/2_2025_09_16_03_21_03_502.xlsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/other/db_to_excel_util.py" beforeDir="false" afterPath="$PROJECT_DIR$/other/db_to_excel_util.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/function/Modbus/Modbus_Response_Parser.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/function/Modbus/Modbus_Response_Parser.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/function/ProcessMonitor/ProcessMonitor.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/function/ProcessMonitor/ProcessMonitor.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -26,20 +41,10 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
-    <option name="RESET_MODE" value="HARD" />
   </component>
-  <component name="GitHubPullRequestSearchHistory">{
-  &quot;lastFilter&quot;: {
-    &quot;state&quot;: &quot;OPEN&quot;,
-    &quot;assignee&quot;: &quot;2950067210dqy&quot;
-  }
-}</component>
-  <component name="GithubPullRequestsUISettings">{
-  &quot;selectedUrlAndAccountId&quot;: {
-    &quot;url&quot;: &quot;git@github.com:2950067210dqy/Animal_Project_Newly.git&quot;,
-    &quot;accountId&quot;: &quot;e254beac-5d97-4626-8080-61c824286e30&quot;
-  }
-}</component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/Service/UFC_UGC_ZOS_Service/index/UFC_UGC_ZOS_index.py" root0="FORCE_HIGHLIGHTING" />
+  </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 7
 }</component>
@@ -51,45 +56,52 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.LoadingMask.executor": "Run",
+    "Python.Guidance_test.executor": "Run",
     "Python.MainWindow_index.executor": "Run",
-    "Python.New_Mod_Bus.executor": "Run",
+    "Python.ProcessMonitor.executor": "Run",
     "Python.ScheduledTimerTaskManager.executor": "Run",
+    "Python.ScheduledTimerTaskManager_backup.executor": "Run",
     "Python.ThemeQt6.executor": "Run",
+    "Python.db_to_excel_util.executor": "Run",
+    "Python.doc.executor": "Run",
+    "Python.error_test.executor": "Run",
     "Python.main.executor": "Run",
+    "Python.main_infrared_camera.executor": "Debug",
+    "Python.manager.executor": "Run",
+    "Python.table_column_check_list_view.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "data.grip.promo.notification.shown": "true",
     "git-widget-placeholder": "master",
-    "last_opened_file_path": "D:/WorkSpace/Animal_Project_Newly/index",
+    "last_opened_file_path": "D:/WorkSpace/PythonProject/Animal_Project_newly/public/function/ProcessMonitor",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
     "run.code.analysis.last.selected.profile": "aDefault",
-    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
+    "settings.editor.selected.configurable": "com.intellij.platform.ide.impl.presentationAssistant.PresentationAssistantConfigurable",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
-      <recent name="D:\WorkSpace\Animal_Project_Newly\index" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\UFC_UGC_ZOS_Test\function\modbus" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\config" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\Service\UFC_UGC_ZOS_Service" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\Service" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\public\function\ProcessMonitor" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\other" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Service\UFC_UGC_ZOS_Service\function\gas_state_check" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Service\UFC_UGC_ZOS_Service\function\gas_calibration" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Service\UFC_UGC_ZOS_Service\function\gas_path_system" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="D:\WorkSpace\Animal_Project_Newly\public\function" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\public\function\ProcessMonitor" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\deleted_moudle" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\other" />
+      <recent name="D:\WorkSpace\PythonProject\Animal_Project_newly\Module\new_monitor_data\ui" />
       <recent name="D:\WorkSpace\Animal_Project_Newly\public\component" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\Service" />
-      <recent name="D:\WorkSpace\Animal_Project_Newly\Module\monitor_camera\ui" />
     </key>
   </component>
   <component name="RunManager" selected="Python.main">
-    <configuration name="LoadingMask" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+    <configuration name="Guidance_test" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Animal_Project_newly" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -98,12 +110,12 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/public/component/mask" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/public/component/Guide_tutorial_interface" />
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/public/component/mask/LoadingMask.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/public/component/Guide_tutorial_interface/Guidance_test.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -112,7 +124,7 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
-    <configuration name="New_Mod_Bus" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+    <configuration name="ProcessMonitor" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Animal_Project_newly" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -121,12 +133,12 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/public/function/Modbus" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/public/function/ProcessMonitor" />
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/public/function/Modbus/New_Mod_Bus.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/public/function/ProcessMonitor/ProcessMonitor.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -135,7 +147,7 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
-    <configuration name="ScheduledTimerTaskManager" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+    <configuration name="db_to_excel_util" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Animal_Project_newly" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -144,12 +156,35 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/other" />
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer/ScheduledTimerTaskManager.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/other/db_to_excel_util.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="error_test" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Animal_Project_newly" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/test" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/test/error_test.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -167,6 +202,7 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="Python 3.11 (Animal_Project_newly)" />
       <option name="WORKING_DIRECTORY" value="" />
       <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
@@ -175,25 +211,58 @@
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="true" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="main_infrared_camera" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Animal_Project_newly" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/Service" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Service/main_infrared_camera.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
       <option name="MODULE_MODE" value="false" />
       <option name="REDIRECT_INPUT" value="false" />
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <list>
+      <item itemvalue="Python.main" />
+      <item itemvalue="Python.ProcessMonitor" />
+      <item itemvalue="Python.error_test" />
+      <item itemvalue="Python.db_to_excel_util" />
+      <item itemvalue="Python.Guidance_test" />
+      <item itemvalue="Python.main_infrared_camera" />
+    </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.LoadingMask" />
-        <item itemvalue="Python.New_Mod_Bus" />
-        <item itemvalue="Python.ScheduledTimerTaskManager" />
+        <item itemvalue="Python.ProcessMonitor" />
+        <item itemvalue="Python.error_test" />
+        <item itemvalue="Python.db_to_excel_util" />
+        <item itemvalue="Python.Guidance_test" />
+        <item itemvalue="Python.main_infrared_camera" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-6a121458b545-JavaScript-PY-251.25410.159" />
-        <option value="bundled-python-sdk-e0ed3721d81e-36ea0e71a18c-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.25410.159" />
+        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-PY-251.26927.90" />
+        <option value="bundled-python-sdk-41e8cd69c857-64d779b69b7a-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.26927.90" />
       </set>
     </attachedChunks>
   </component>
@@ -215,147 +284,440 @@
       <workItem from="1754354476784" duration="15354000" />
       <workItem from="1754439403725" duration="5925000" />
       <workItem from="1754498758565" duration="19073000" />
-      <workItem from="1754650774372" duration="1577000" />
-      <workItem from="1757859541606" duration="20316000" />
-      <workItem from="1757879965181" duration="50801000" />
+      <workItem from="1754650774372" duration="2229000" />
+      <workItem from="1754698566317" duration="8299000" />
+      <workItem from="1754871319164" duration="18552000" />
+      <workItem from="1754957936468" duration="15970000" />
+      <workItem from="1755045638734" duration="11322000" />
+      <workItem from="1755130570400" duration="5105000" />
+      <workItem from="1755135707491" duration="18461000" />
+      <workItem from="1755221125926" duration="16026000" />
+      <workItem from="1755305011828" duration="968000" />
+      <workItem from="1755308927168" duration="1198000" />
+      <workItem from="1755477534392" duration="6613000" />
+      <workItem from="1755563980319" duration="10094000" />
+      <workItem from="1755650747805" duration="5529000" />
+      <workItem from="1755737602935" duration="13758000" />
+      <workItem from="1755821604884" duration="8784000" />
+      <workItem from="1757405641987" duration="353000" />
+      <workItem from="1757406040542" duration="2881000" />
+      <workItem from="1757484250578" duration="6917000" />
+      <workItem from="1757551884932" duration="12290000" />
+      <workItem from="1757639526050" duration="594000" />
+      <workItem from="1757723658257" duration="14439000" />
+      <workItem from="1757935543020" duration="5000000" />
+      <workItem from="1758001598741" duration="18679000" />
+      <workItem from="1758154663803" duration="5501000" />
+      <workItem from="1758160982692" duration="1855000" />
+      <workItem from="1758163184973" duration="8722000" />
+      <workItem from="1758182432119" duration="2891000" />
+      <workItem from="1758185510792" duration="8178000" />
+      <workItem from="1758241308999" duration="24340000" />
+      <workItem from="1758327478332" duration="10257000" />
+      <workItem from="1758440758207" duration="247000" />
+      <workItem from="1758845853845" duration="11343000" />
+      <workItem from="1758872848255" duration="1241000" />
+      <workItem from="1759106862667" duration="23843000" />
+      <workItem from="1759196454759" duration="5996000" />
+      <workItem from="1759968902144" duration="5295000" />
+      <workItem from="1759977847460" duration="549000" />
+      <workItem from="1759978560886" duration="8086000" />
+      <workItem from="1760058348684" duration="1830000" />
+      <workItem from="1760141974831" duration="13175000" />
     </task>
-    <task id="LOCAL-00001" summary="1.0 创建基本项目 模块化筹备">
+    <task id="LOCAL-00016" summary="1.1.6.1 新建实验新增更能复制组和动物">
       <option name="closed" value="true" />
-      <created>1753706594930</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1753706594930</updated>
-    </task>
-    <task id="LOCAL-00002" summary="1.1.2 修改bug2">
-      <option name="closed" value="true" />
-      <created>1753870485237</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1753870485237</updated>
-    </task>
-    <task id="LOCAL-00003" summary="1.1.4 修改bug tab2的bug 调试没问题，运行报错">
-      <option name="closed" value="true" />
-      <created>1753912884120</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1753912884120</updated>
-    </task>
-    <task id="LOCAL-00004" summary="1.1.4.1 修改bug tab2的bug 调试没问题，运行报错,添加未添加文件">
-      <option name="closed" value="true" />
-      <created>1753912918099</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1753912918099</updated>
-    </task>
-    <task id="LOCAL-00005" summary="1.1.5.1 未解决bug相机监控 新bug日志bug">
-      <option name="closed" value="true" />
-      <created>1754013862165</created>
-      <option name="number" value="00005" />
-      <option name="presentableId" value="LOCAL-00005" />
-      <option name="project" value="LOCAL" />
-      <updated>1754013862165</updated>
-    </task>
-    <task id="LOCAL-00006" summary="1.1.5.2 解决bug相机监控 未解决新bug日志bug，未解决相机监控窗口关闭bug">
-      <option name="closed" value="true" />
-      <created>1754050224717</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1754050224717</updated>
-    </task>
-    <task id="LOCAL-00007" summary="1.1.5.3 解决新bug日志bug，解决相机监控窗口关闭bug,未解决日志bug引发的开始实验bug，将布局更改未left\middle\right\bottom">
-      <option name="closed" value="true" />
-      <created>1754310697583</created>
-      <option name="number" value="00007" />
-      <option name="presentableId" value="LOCAL-00007" />
-      <option name="project" value="LOCAL" />
-      <updated>1754310697583</updated>
-    </task>
-    <task id="LOCAL-00008" summary="1.1.5.4 未解决日志bug引发的开始实验bug，正在显示窗口和frame的类型从QMainwindow改成了BaseModule，正在BaseWindow里面的show和closeEvent还未适配！">
-      <option name="closed" value="true" />
-      <created>1754398661530</created>
-      <option name="number" value="00008" />
-      <option name="presentableId" value="LOCAL-00008" />
-      <option name="project" value="LOCAL" />
-      <updated>1754398661530</updated>
-    </task>
-    <task id="LOCAL-00009" summary="1.1.5.5 未解决日志bug引发的开始实验bug，正在显示窗口和frame的类型从QMainwindow改成了BaseModule，正在BaseWindow里面的show和closeEvent还未适配！2">
-      <option name="closed" value="true" />
-      <created>1754498843548</created>
-      <option name="number" value="00009" />
-      <option name="presentableId" value="LOCAL-00009" />
-      <option name="project" value="LOCAL" />
-      <updated>1754498843548</updated>
-    </task>
-    <task id="LOCAL-00010" summary="1.1.5.8 调试界面">
-      <option name="closed" value="true" />
-      <created>1754532049961</created>
-      <option name="number" value="00010" />
-      <option name="presentableId" value="LOCAL-00010" />
-      <option name="project" value="LOCAL" />
-      <updated>1754532049961</updated>
-    </task>
-    <task id="LOCAL-00011" summary="1.1.5.9.1 调试界面2，剩余窗口变换的时候frame-&gt;windows出现minisize不不匹配问题">
-      <option name="closed" value="true" />
-      <created>1754620918903</created>
-      <option name="number" value="00011" />
-      <option name="presentableId" value="LOCAL-00011" />
-      <option name="project" value="LOCAL" />
-      <updated>1754620918903</updated>
-    </task>
-    <task id="LOCAL-00012" summary="1.3.3.3 准备修改modbus">
-      <option name="closed" value="true" />
-      <created>1757876429363</created>
-      <option name="number" value="00012" />
-      <option name="presentableId" value="LOCAL-00012" />
-      <option name="project" value="LOCAL" />
-      <updated>1757876429363</updated>
-    </task>
-    <task id="LOCAL-00013" summary="1.3.3.4 修改main_monitor_data">
-      <option name="closed" value="true" />
-      <created>1757894099934</created>
-      <option name="number" value="00013" />
-      <option name="presentableId" value="LOCAL-00013" />
-      <option name="project" value="LOCAL" />
-      <updated>1757894099934</updated>
-    </task>
-    <task id="LOCAL-00014" summary="1.3.3.4.2 添加零点标定和span标定">
-      <option name="closed" value="true" />
-      <created>1757933020623</created>
-      <option name="number" value="00014" />
-      <option name="presentableId" value="LOCAL-00014" />
-      <option name="project" value="LOCAL" />
-      <updated>1757933020623</updated>
-    </task>
-    <task id="LOCAL-00015" summary="1.3.3.4.4 完成ufc状态检测">
-      <option name="closed" value="true" />
-      <created>1757949051340</created>
-      <option name="number" value="00015" />
-      <option name="presentableId" value="LOCAL-00015" />
-      <option name="project" value="LOCAL" />
-      <updated>1757949051340</updated>
-    </task>
-    <task id="LOCAL-00016" summary="1.3.3.4.4 完成ufc状态检测 并且修改细节">
-      <option name="closed" value="true" />
-      <created>1757950461145</created>
+      <created>1754964356025</created>
       <option name="number" value="00016" />
       <option name="presentableId" value="LOCAL-00016" />
       <option name="project" value="LOCAL" />
-      <updated>1757950461145</updated>
+      <updated>1754964356025</updated>
     </task>
-    <task id="LOCAL-00017" summary="1.3.3.5 完成标定数据存储，待优化开始实验停止实验线程化">
+    <task id="LOCAL-00017" summary="1.1.6.2 将gui.ini文件里的mouse_cage项去除掉，并更新界面包括Message等，目前存在问题Main_Monitor——Data监控数据线程还存在问题">
       <option name="closed" value="true" />
-      <created>1757963435073</created>
+      <created>1754987631957</created>
       <option name="number" value="00017" />
       <option name="presentableId" value="LOCAL-00017" />
       <option name="project" value="LOCAL" />
-      <updated>1757963435073</updated>
+      <updated>1754987631957</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="1.1.6.3 解决问题Main_Monitor——Data监控数据线程还存在问题">
+      <option name="closed" value="true" />
+      <created>1755048426577</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1755048426577</updated>
+    </task>
+    <task id="LOCAL-00019" summary="1.1.6.4 增加串口调试模块">
+      <option name="closed" value="true" />
+      <created>1755051303288</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1755051303288</updated>
+    </task>
+    <task id="LOCAL-00020" summary="1.1.6.5 数据存储的sqlite数据库取消wal模式，并且将创建表只创建数据相关的表">
+      <option name="closed" value="true" />
+      <created>1755072426028</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1755072426028</updated>
+    </task>
+    <task id="LOCAL-00021" summary="1.1.6.8 将模板文件扩展名由.db改为.template">
+      <option name="closed" value="true" />
+      <created>1755136278581</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1755136278581</updated>
+    </task>
+    <task id="LOCAL-00022" summary="1.1.6.9 新建新的数据监控页面">
+      <option name="closed" value="true" />
+      <created>1755139334611</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1755139334611</updated>
+    </task>
+    <task id="LOCAL-00023" summary="1.1.6.9.1 添加UI文件">
+      <option name="closed" value="true" />
+      <created>1755144608915</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1755144608915</updated>
+    </task>
+    <task id="LOCAL-00024" summary="1.1.6.9.2 添加表格列项出现多选框没反应">
+      <option name="closed" value="true" />
+      <created>1755161606982</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1755161606982</updated>
+    </task>
+    <task id="LOCAL-00025" summary="1.1.6.9.2.1 添加表格列项出现多选框没反应,未解决">
+      <option name="closed" value="true" />
+      <created>1755169981952</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1755169981952</updated>
+    </task>
+    <task id="LOCAL-00026" summary="1.1.6.9.4 数据监控页面暂时把所有表放到一个页面上">
+      <option name="closed" value="true" />
+      <created>1755222242694</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1755222242694</updated>
+    </task>
+    <task id="LOCAL-00027" summary="1.1.6.9.5 更新一些小细节">
+      <option name="closed" value="true" />
+      <created>1755223682029</created>
+      <option name="number" value="00027" />
+      <option name="presentableId" value="LOCAL-00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1755223682029</updated>
+    </task>
+    <task id="LOCAL-00028" summary="1.1.6.9.5.1 更新一些小细节2">
+      <option name="closed" value="true" />
+      <created>1755223799772</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1755223799772</updated>
+    </task>
+    <task id="LOCAL-00029" summary="1.1.6.9.5.2 更新开始实验时间显示">
+      <option name="closed" value="true" />
+      <created>1755229645224</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1755229645224</updated>
+    </task>
+    <task id="LOCAL-00030" summary="1.1.7 修改&#10;1.开始实验时 配置文件experiment..db 有两个点 done&#10;2.跑轮数据 小数部分除以36  done&#10;3.04 04 最后两个字节也是氧传感器 done">
+      <option name="closed" value="true" />
+      <created>1755482902627</created>
+      <option name="number" value="00030" />
+      <option name="presentableId" value="LOCAL-00030" />
+      <option name="project" value="LOCAL" />
+      <updated>1755482902627</updated>
+    </task>
+    <task id="LOCAL-00031" summary="1.1.7.1 修改样式">
+      <option name="closed" value="true" />
+      <created>1755651116263</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1755651116263</updated>
+    </task>
+    <task id="LOCAL-00032" summary="1.1.7.2 修改串口响应数据03 04的数据 流量计1的数据除以10，去除流量计2、温度12、湿度12、气压12数据项">
+      <option name="closed" value="true" />
+      <created>1755687992110</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1755687992110</updated>
+    </task>
+    <task id="LOCAL-00033" summary="1.1.7.3 当deep_camera_to_mouse_cage_number_file_name.json和另一个相机配置文件存在相机SN号时但是相机没插上，就会无响应！ be done">
+      <option name="closed" value="true" />
+      <created>1755764622603</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1755764622603</updated>
+    </task>
+    <task id="LOCAL-00034" summary="1.1.7.4 更新暂停实验">
+      <option name="closed" value="true" />
+      <created>1755779192822</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1755779192822</updated>
+    </task>
+    <task id="LOCAL-00035" summary="1.1.7.6 修改设备配置相关bug">
+      <option name="closed" value="true" />
+      <created>1755823566981</created>
+      <option name="number" value="00035" />
+      <option name="presentableId" value="LOCAL-00035" />
+      <option name="project" value="LOCAL" />
+      <updated>1755823566981</updated>
+    </task>
+    <task id="LOCAL-00036" summary="1.1.7.6.1 修改样式">
+      <option name="closed" value="true" />
+      <created>1755829296006</created>
+      <option name="number" value="00036" />
+      <option name="presentableId" value="LOCAL-00036" />
+      <option name="project" value="LOCAL" />
+      <updated>1755829296006</updated>
+    </task>
+    <task id="LOCAL-00037" summary="1.1.7.6.2 修改bug">
+      <option name="closed" value="true" />
+      <created>1755829861551</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1755829861551</updated>
+    </task>
+    <task id="LOCAL-00038" summary="1.3.2 修改自动开始的bug，修复解析串口响应报文中UFC\UGC\ZOS的D几位的理解错误，D0位为最低位，还有其他响应报文的未修复">
+      <option name="closed" value="true" />
+      <created>1757490887308</created>
+      <option name="number" value="00038" />
+      <option name="presentableId" value="LOCAL-00038" />
+      <option name="project" value="LOCAL" />
+      <updated>1757490887308</updated>
+    </task>
+    <task id="LOCAL-00039" summary="1.3.3 添加全局定时器">
+      <option name="closed" value="true" />
+      <created>1757576142920</created>
+      <option name="number" value="00039" />
+      <option name="presentableId" value="LOCAL-00039" />
+      <option name="project" value="LOCAL" />
+      <updated>1757576142920</updated>
+    </task>
+    <task id="LOCAL-00040" summary="1.3.3.1 修改全局定时器">
+      <option name="closed" value="true" />
+      <created>1757577792236</created>
+      <option name="number" value="00040" />
+      <option name="presentableId" value="LOCAL-00040" />
+      <option name="project" value="LOCAL" />
+      <updated>1757577792236</updated>
+    </task>
+    <task id="LOCAL-00041" summary="1.3.3.2 修改全局定时器2">
+      <option name="closed" value="true" />
+      <created>1757593462493</created>
+      <option name="number" value="00041" />
+      <option name="presentableId" value="LOCAL-00041" />
+      <option name="project" value="LOCAL" />
+      <updated>1757593462493</updated>
+    </task>
+    <task id="LOCAL-00042" summary="1.3.3.4.1 修改ufc_ugz_zos_index">
+      <option name="closed" value="true" />
+      <created>1757902601931</created>
+      <option name="number" value="00042" />
+      <option name="presentableId" value="LOCAL-00042" />
+      <option name="project" value="LOCAL" />
+      <updated>1757902601931</updated>
+    </task>
+    <task id="LOCAL-00043" summary="1.3.3.4.3 修改3">
+      <option name="closed" value="true" />
+      <created>1757940625696</created>
+      <option name="number" value="00043" />
+      <option name="presentableId" value="LOCAL-00043" />
+      <option name="project" value="LOCAL" />
+      <updated>1757940625697</updated>
+    </task>
+    <task id="LOCAL-00044" summary="1.3.3.4.4 修改4">
+      <option name="closed" value="true" />
+      <created>1758004172220</created>
+      <option name="number" value="00044" />
+      <option name="presentableId" value="LOCAL-00044" />
+      <option name="project" value="LOCAL" />
+      <updated>1758004172220</updated>
+    </task>
+    <task id="LOCAL-00045" summary="1.3.3.4.5 公司做的修改">
+      <option name="closed" value="true" />
+      <created>1758107003789</created>
+      <option name="number" value="00045" />
+      <option name="presentableId" value="LOCAL-00045" />
+      <option name="project" value="LOCAL" />
+      <updated>1758107003789</updated>
+    </task>
+    <task id="LOCAL-00046" summary="1.3.3.4.5.1 将theme的错误参数修改">
+      <option name="closed" value="true" />
+      <created>1758112308006</created>
+      <option name="number" value="00046" />
+      <option name="presentableId" value="LOCAL-00046" />
+      <option name="project" value="LOCAL" />
+      <updated>1758112308006</updated>
+    </task>
+    <task id="LOCAL-00047" summary="1.3.3.7.1 修改错误导包">
+      <option name="closed" value="true" />
+      <created>1758155278540</created>
+      <option name="number" value="00047" />
+      <option name="presentableId" value="LOCAL-00047" />
+      <option name="project" value="LOCAL" />
+      <updated>1758155278540</updated>
+    </task>
+    <task id="LOCAL-00048" summary="1.3.3.7.2 修改错误选择端口">
+      <option name="closed" value="true" />
+      <created>1758156167785</created>
+      <option name="number" value="00048" />
+      <option name="presentableId" value="LOCAL-00048" />
+      <option name="project" value="LOCAL" />
+      <updated>1758156167785</updated>
+    </task>
+    <task id="LOCAL-00049" summary="1.3.3.7.3 更新子进程使用qt事件的方式">
+      <option name="closed" value="true" />
+      <created>1758162888009</created>
+      <option name="number" value="00049" />
+      <option name="presentableId" value="LOCAL-00049" />
+      <option name="project" value="LOCAL" />
+      <updated>1758162888009</updated>
+    </task>
+    <task id="LOCAL-00050" summary="1.3.3.7.4 更换子进程开始实验，停止实验，还差相机弹窗和暂停实验">
+      <option name="closed" value="true" />
+      <created>1758186999608</created>
+      <option name="number" value="00050" />
+      <option name="presentableId" value="LOCAL-00050" />
+      <option name="project" value="LOCAL" />
+      <updated>1758186999609</updated>
+    </task>
+    <task id="LOCAL-00051" summary="1.3.3.7.5 解决鼠笼报文未知原因阻塞情况">
+      <option name="closed" value="true" />
+      <created>1758197357941</created>
+      <option name="number" value="00051" />
+      <option name="presentableId" value="LOCAL-00051" />
+      <option name="project" value="LOCAL" />
+      <updated>1758197357941</updated>
+    </task>
+    <task id="LOCAL-00052" summary="1.3.3.8 更换子进程开始实验停止实验完成，还差暂停实验未完成">
+      <option name="closed" value="true" />
+      <created>1758251176365</created>
+      <option name="number" value="00052" />
+      <option name="presentableId" value="LOCAL-00052" />
+      <option name="project" value="LOCAL" />
+      <updated>1758251176365</updated>
+    </task>
+    <task id="LOCAL-00053" summary="1.3.3.8.1 修复鼠笼获取响应报文数据线程阻塞bug">
+      <option name="closed" value="true" />
+      <created>1758264069576</created>
+      <option name="number" value="00053" />
+      <option name="presentableId" value="LOCAL-00053" />
+      <option name="project" value="LOCAL" />
+      <updated>1758264069576</updated>
+    </task>
+    <task id="LOCAL-00054" summary="1.3.3.8.2 修复鼠笼获取响应报文数据线程阻塞bug2">
+      <option name="closed" value="true" />
+      <created>1758264867570</created>
+      <option name="number" value="00054" />
+      <option name="presentableId" value="LOCAL-00054" />
+      <option name="project" value="LOCAL" />
+      <updated>1758264867570</updated>
+    </task>
+    <task id="LOCAL-00055" summary="1.3.3.8.3 修复鼠笼获取响应报文数据线程阻塞bug3">
+      <option name="closed" value="true" />
+      <created>1758266015492</created>
+      <option name="number" value="00055" />
+      <option name="presentableId" value="LOCAL-00055" />
+      <option name="project" value="LOCAL" />
+      <updated>1758266015492</updated>
+    </task>
+    <task id="LOCAL-00056" summary="1.3.3.8.4 修复鼠笼获取响应报文数据线程阻塞bug4">
+      <option name="closed" value="true" />
+      <created>1758267779819</created>
+      <option name="number" value="00056" />
+      <option name="presentableId" value="LOCAL-00056" />
+      <option name="project" value="LOCAL" />
+      <updated>1758267779819</updated>
+    </task>
+    <task id="LOCAL-00057" summary="1.3.3.8.5 修复红外相机运行掉线">
+      <option name="closed" value="true" />
+      <created>1758282114489</created>
+      <option name="number" value="00057" />
+      <option name="presentableId" value="LOCAL-00057" />
+      <option name="project" value="LOCAL" />
+      <updated>1758282114489</updated>
+    </task>
+    <task id="LOCAL-00058" summary="1.3.3.8.6 更改modbus数据发送之间的delay">
+      <option name="closed" value="true" />
+      <created>1758283060704</created>
+      <option name="number" value="00058" />
+      <option name="presentableId" value="LOCAL-00058" />
+      <option name="project" value="LOCAL" />
+      <updated>1758283060704</updated>
+    </task>
+    <task id="LOCAL-00059" summary="1.3.3.8.7 更新子进程监控">
+      <option name="closed" value="true" />
+      <created>1758337595678</created>
+      <option name="number" value="00059" />
+      <option name="presentableId" value="LOCAL-00059" />
+      <option name="project" value="LOCAL" />
+      <updated>1758337595678</updated>
+    </task>
+    <task id="LOCAL-00060" summary="1.3.3.8.12 调试新数据监控页面">
+      <option name="closed" value="true" />
+      <created>1758854282693</created>
+      <option name="number" value="00060" />
+      <option name="presentableId" value="LOCAL-00060" />
+      <option name="project" value="LOCAL" />
+      <updated>1758854282694</updated>
+    </task>
+    <task id="LOCAL-00061" summary="1.3.3.9.3.2 更新逻辑页面">
+      <option name="closed" value="true" />
+      <created>1759125247303</created>
+      <option name="number" value="00061" />
+      <option name="presentableId" value="LOCAL-00061" />
+      <option name="project" value="LOCAL" />
+      <updated>1759125247303</updated>
+    </task>
+    <task id="LOCAL-00062" summary="1.3.3.9.4 初始化提示页面测试，还未嵌入进项目程序">
+      <option name="closed" value="true" />
+      <created>1759148984484</created>
+      <option name="number" value="00062" />
+      <option name="presentableId" value="LOCAL-00062" />
+      <option name="project" value="LOCAL" />
+      <updated>1759148984484</updated>
+    </task>
+    <task id="LOCAL-00063" summary="1.3.3.9.5 更新停止实验导出数据逻辑">
+      <option name="closed" value="true" />
+      <created>1759197256622</created>
+      <option name="number" value="00063" />
+      <option name="presentableId" value="LOCAL-00063" />
+      <option name="project" value="LOCAL" />
+      <updated>1759197256622</updated>
+    </task>
+    <task id="LOCAL-00064" summary="1.3.3.9.6 更新02 04解析">
+      <option name="closed" value="true" />
+      <created>1759203336325</created>
+      <option name="number" value="00064" />
+      <option name="presentableId" value="LOCAL-00064" />
+      <option name="project" value="LOCAL" />
+      <updated>1759203336325</updated>
+    </task>
+    <option name="localTasksCounter" value="65" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -366,64 +728,155 @@
       <map>
         <entry key="MAIN">
           <value>
-            <State />
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="origin/master" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+              <option name="LONG_EDGES_VISIBLE" value="true" />
+            </State>
           </value>
         </entry>
       </map>
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="1.0 创建基本项目 模块化筹备" />
-    <MESSAGE value="1.1.2 修改bug2" />
-    <MESSAGE value="1.1.4 修改bug tab2的bug 调试没问题，运行报错" />
-    <MESSAGE value="1.1.4.1 修改bug tab2的bug 调试没问题，运行报错,添加未添加文件" />
-    <MESSAGE value="1.1.5.1 未解决bug相机监控 新bug日志bug" />
-    <MESSAGE value="1.1.5.2 解决bug相机监控 未解决新bug日志bug，未解决相机监控窗口关闭bug" />
-    <MESSAGE value="1.1.5.3 解决新bug日志bug，解决相机监控窗口关闭bug,未解决日志bug引发的开始实验bug，将布局更改未left\middle\right\bottom" />
-    <MESSAGE value="1.1.5.4 未解决日志bug引发的开始实验bug，正在显示窗口和frame的类型从QMainwindow改成了BaseModule，正在BaseWindow里面的show和closeEvent还未适配！" />
-    <MESSAGE value="1.1.5.5 未解决日志bug引发的开始实验bug，正在显示窗口和frame的类型从QMainwindow改成了BaseModule，正在BaseWindow里面的show和closeEvent还未适配！2" />
-    <MESSAGE value="1.1.5.8 调试界面" />
-    <MESSAGE value="1.1.5.9.1 调试界面2，剩余窗口变换的时候frame-&gt;windows出现minisize不不匹配问题" />
-    <MESSAGE value="1.3.3.3 准备修改modbus" />
-    <MESSAGE value="1.3.3.4 修改main_monitor_data" />
-    <MESSAGE value="1.3.3.4.2 添加零点标定和span标定" />
-    <MESSAGE value="1.3.3.4.4 完成ufc状态检测" />
-    <MESSAGE value="1.3.3.4.4 完成ufc状态检测 并且修改细节" />
-    <MESSAGE value="1.3.3.5 完成标定数据存储，待优化开始实验停止实验线程化" />
-    <option name="LAST_COMMIT_MESSAGE" value="1.3.3.5 完成标定数据存储，待优化开始实验停止实验线程化" />
+    <MESSAGE value="1.3.3.1 修改全局定时器" />
+    <MESSAGE value="1.3.3.2 修改全局定时器2" />
+    <MESSAGE value="1.3.3.4.1 修改ufc_ugz_zos_index" />
+    <MESSAGE value="1.3.3.4.3 修改3" />
+    <MESSAGE value="1.3.3.4.4 修改4" />
+    <MESSAGE value="1.3.3.4.5 公司做的修改" />
+    <MESSAGE value="1.3.3.4.5.1 将theme的错误参数修改" />
+    <MESSAGE value="1.3.3.7.1 修改错误导包" />
+    <MESSAGE value="1.3.3.7.2 修改错误选择端口" />
+    <MESSAGE value="1.3.3.7.3 更新子进程使用qt事件的方式" />
+    <MESSAGE value="1.3.3.7.4 更换子进程开始实验，停止实验，还差相机弹窗和暂停实验" />
+    <MESSAGE value="1.3.3.7.5 解决鼠笼报文未知原因阻塞情况" />
+    <MESSAGE value="1.3.3.8 更换子进程开始实验停止实验完成，还差暂停实验未完成" />
+    <MESSAGE value="1.3.3.8.1 修复鼠笼获取响应报文数据线程阻塞bug" />
+    <MESSAGE value="1.3.3.8.2 修复鼠笼获取响应报文数据线程阻塞bug2" />
+    <MESSAGE value="1.3.3.8.3 修复鼠笼获取响应报文数据线程阻塞bug3" />
+    <MESSAGE value="1.3.3.8.4 修复鼠笼获取响应报文数据线程阻塞bug4" />
+    <MESSAGE value="1.3.3.8.5 修复红外相机运行掉线" />
+    <MESSAGE value="1.3.3.8.6 更改modbus数据发送之间的delay" />
+    <MESSAGE value="1.3.3.8.7 更新子进程监控" />
+    <MESSAGE value="1.3.3.8.12 调试新数据监控页面" />
+    <MESSAGE value="1.3.3.9.3.2 更新逻辑页面" />
+    <MESSAGE value="1.3.3.9.4 初始化提示页面测试，还未嵌入进项目程序" />
+    <MESSAGE value="1.3.3.9.5 更新停止实验导出数据逻辑" />
+    <MESSAGE value="1.3.3.9.6 更新02 04解析" />
+    <option name="LAST_COMMIT_MESSAGE" value="1.3.3.9.6 更新02 04解析" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/Service/UFC_UGC_ZOS_Service/index/UFC_UGC_ZOS_index.py</url>
-          <line>390</line>
-          <option name="timeStamp" value="126" />
+          <url>file://$PROJECT_DIR$/Module/new_experiment/ui/group_window.py</url>
+          <line>127</line>
+          <option name="timeStamp" value="82" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
-          <line>120</line>
-          <option name="timeStamp" value="131" />
+          <url>file://$PROJECT_DIR$/public/component/paging_exportcsv_table_widget.py</url>
+          <line>272</line>
+          <option name="timeStamp" value="101" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
-          <line>116</line>
-          <option name="timeStamp" value="135" />
+          <url>file://$PROJECT_DIR$/public/component/selection_line_charts.py</url>
+          <line>154</line>
+          <option name="timeStamp" value="109" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
-          <line>533</line>
-          <option name="timeStamp" value="140" />
+          <url>file://$PROJECT_DIR$/Module/monitor_data/index/tab_2.py</url>
+          <line>50</line>
+          <option name="timeStamp" value="110" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/gas_calibration/Gas_Carlibration.py</url>
-          <line>80</line>
-          <option name="timeStamp" value="173" />
+          <url>file://$PROJECT_DIR$/Service/main_monitor_data.py</url>
+          <line>395</line>
+          <option name="timeStamp" value="113" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/public/function/Tansfer/DbTransferExcel.py</url>
-          <line>74</line>
+          <url>file://$PROJECT_DIR$/Module/new_experiment/ui/content_window.py</url>
+          <line>508</line>
+          <option name="timeStamp" value="117" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/util/doc.py</url>
+          <line>21</line>
+          <option name="timeStamp" value="127" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Service/main_monitor_data.py</url>
+          <line>219</line>
+          <option name="timeStamp" value="134" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/deleted_moudle/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
+          <line>124</line>
+          <option name="timeStamp" value="158" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/deleted_moudle/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
+          <line>123</line>
+          <option name="timeStamp" value="161" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/index/MainWindow_index.py</url>
+          <line>42</line>
+          <option name="timeStamp" value="174" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/public/component/dialog/index/deep_camera_config_dialog_index.py</url>
+          <line>777</line>
+          <option name="timeStamp" value="177" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Service/main_deep_camera.py</url>
+          <line>690</line>
+          <option name="timeStamp" value="180" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/public/component/dialog/index/deep_camera_config_dialog_index.py</url>
+          <line>756</line>
+          <option name="timeStamp" value="181" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Service/main_deep_camera.py</url>
+          <line>667</line>
           <option name="timeStamp" value="182" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/public/component/dialog/index/infrared_camera_config_dialog_index.py</url>
+          <line>786</line>
+          <option name="timeStamp" value="190" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Service/main_infrared_camera.py</url>
+          <line>558</line>
+          <option name="timeStamp" value="199" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/public/component/Guide_tutorial_interface/Arrow_guidance.py</url>
+          <line>53</line>
+          <option name="timeStamp" value="203" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/public/config_class/global_load.py</url>
+          <line>14</line>
+          <option name="timeStamp" value="205" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/public/component/Guide_tutorial_interface/Tutorial_Manager.py</url>
+          <line>28</line>
+          <option name="timeStamp" value="206" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>
@@ -437,27 +890,28 @@
     <watches-manager>
       <configuration name="PythonConfigurationType">
         <watch expression="self" />
-        <watch expression="global_setting" language="Python" />
         <watch expression="self.open_windows" language="Python" />
         <watch expression="self.active_module_widgets" language="Python" />
+        <watch expression="self.setting_data" />
+        <watch expression="__py_debug_temp_var_1323840149.animals[0]" />
+        <watch expression="page_records[0]" />
       </configuration>
     </watches-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Animal_Project_newly$MainWindow_index.coverage" NAME="MainWindow_index 覆盖结果" MODIFIED="1753702069150" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/index" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$animal_window.coverage" NAME="animal_window 覆盖结果" MODIFIED="1754602169200" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$experiment_setting_entity.coverage" NAME="experiment_setting_entity 覆盖结果" MODIFIED="1754696677057" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/entity" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$ScheduledTimerTaskManager.coverage" NAME="ScheduledTimerTaskManager 覆盖结果" MODIFIED="1757859882058" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$content_window.coverage" NAME="content_window 覆盖结果" MODIFIED="1754867945456" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$group_window.coverage" NAME="group_window 覆盖结果" MODIFIED="1754600767409" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$ProcessMonitor.coverage" NAME="ProcessMonitor 覆盖结果" MODIFIED="1760169159096" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/function/ProcessMonitor" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$Guidance_test.coverage" NAME="Guidance_test 覆盖结果" MODIFIED="1759148603730" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/component/Guide_tutorial_interface" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$doc.coverage" NAME="doc 覆盖结果" MODIFIED="1755687169359" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/util" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$table_column_check_list_view.coverage" NAME="table_column_check_list_view 覆盖结果" MODIFIED="1755161519792" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_monitor_data/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$manager.coverage" NAME="manager 覆盖结果" MODIFIED="1758154788903" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Service" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$ScheduledTimerTaskManager.coverage" NAME="ScheduledTimerTaskManager 覆盖结果" MODIFIED="1757592441605" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$error_test.coverage" NAME="error_test 覆盖结果" MODIFIED="1760008401973" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$ThemeQt6.coverage" NAME="ThemeQt6 覆盖结果" MODIFIED="1753687576845" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/theme" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$Table_select_columns_paging_bottom.coverage" NAME="Table_select_columns_paging_bottom 覆盖结果" MODIFIED="1755194407271" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_monitor_data/ui" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$New_Mod_Bus.coverage" NAME="New_Mod_Bus 覆盖结果" MODIFIED="1757876848721" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/function/Modbus" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$LoadingMask.coverage" NAME="LoadingMask 覆盖结果" MODIFIED="1757952610713" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/component/mask" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1757964015429" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
-    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753787419017" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main__1_.coverage" NAME="main (1) 覆盖结果" MODIFIED="1756983622566" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$AsyPromise.coverage" NAME="AsyPromise 覆盖结果" MODIFIED="1756923864522" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/promise" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$table_column_check_list_view.coverage" NAME="table_column_check_list_view 覆盖结果" MODIFIED="1755189968509" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_monitor_data/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753996820615" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$ScheduledTimerTaskManager_backup.coverage" NAME="ScheduledTimerTaskManager_backup 覆盖结果" MODIFIED="1757593262545" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1760171212286" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$db_to_excel_util.coverage" NAME="db_to_excel_util 覆盖结果" MODIFIED="1759975064161" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/other" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$main_infrared_camera.coverage" NAME="main_infrared_camera 覆盖结果" MODIFIED="1758244431246" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Service" />
   </component>
 </project>

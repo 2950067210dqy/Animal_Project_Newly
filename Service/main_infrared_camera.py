@@ -622,14 +622,14 @@ def main(q):
 
     app = QCoreApplication(sys.argv)
     # logger.remove(0)
-    logger.add(
-        "./log/infrared_camera/i_camera_{time:YYYY-MM-DD}.log",
-        rotation="00:00",
-        retention="30 days",
-        enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-
-    )
+    # logger.add(
+    #     "./log/infrared_camera/i_camera_{time:YYYY-MM-DD}.log",
+    #     rotation="00:00",
+    #     retention="30 days",
+    #     enqueue=True,
+    #     format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+    #
+    # )
     logger.info(f"{'-' * 30}infrared_camera_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
     # 设置全局变量

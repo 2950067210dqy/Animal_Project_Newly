@@ -9,6 +9,7 @@ import time
 import psutil
 from loguru import logger
 from Service import main_response_Modbus, main_gui, main_monitor_data, main_deep_camera, main_infrared_camera
+from public.config_class.Log_Config import LogConfig
 from public.entity.queue.ObjectQueue import ObjectQueue
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.ProcessMonitor.ProcessMonitor import IntegratedProcessMonitor
@@ -72,7 +73,9 @@ def on_shutdown_triggered(process_id, **kwargs):
     failed_processes = kwargs.get('failed_processes', [])
     logger.critical(f"🛑 触发系统关闭，原因: 关键进程失败 {failed_processes}")
     logger.critical("   正在关闭所有进程...")
-
+ # 注册异常回调
+def on_any_exception(exception_info):
+    logger.error(f"检测到异常: {exception_info.process_id} - {exception_info.exception_type}")
 # 过滤日志
 
 def kill_process_tree(pid, including_parent=True):
@@ -240,10 +243,25 @@ def test_integrated_monitor():
         rotation="00:00",  # 日志文件转存
         retention="30 days",  # 多长时间之后清理
         enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  |{process.name} | {thread.name} |  {name} : {module}:{line} | {message} </level>",
 
     )
-
+    # 创建自定义的主进程日志配置
+    main_config = LogConfig(
+        log_dir="./log/main",
+        log_level="INFO",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | MAIN | {module}:{function}:{line} | {message} </level>",
+        enable_console=True,
+        console_level="INFO"
+    )
+    # 创建自定义的异常日志配置
+    exception_config = LogConfig(
+        log_dir="./log/exceptions",
+        log_level="ERROR",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | EXCEPTION | {module}:{function}:{line} | {message} </level>",
+        enable_console=True,
+        console_level="ERROR"
+    )
     logger.info(f"{'-' * 40}main_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
     q = multiprocessing.Queue()  # 创建 Queue 消息传递
@@ -252,7 +270,11 @@ def test_integrated_monitor():
 
     # 创建监控器
     global monitor
-    monitor = IntegratedProcessMonitor()
+    # 创建监控器
+    monitor = IntegratedProcessMonitor(
+        main_log_config=main_config,
+        exception_log_config=exception_config
+    )
 
     # 设置自定义阈值
     monitor.thresholds['cpu_percent'] = 70.0
@@ -268,13 +290,28 @@ def test_integrated_monitor():
     monitor.register_callback('on_unresponsive', on_process_unresponsive)
     monitor.register_callback('on_high_cpu', on_high_cpu)
     monitor.register_callback('on_high_memory', on_high_memory)
+    monitor.register_exception_callback(on_any_exception)
 
-
+    # 创建工作进程的日志配置
+    p_response_comm_config = monitor.create_process_log_config(
+        "p_response_comm",
+        # log_level="DEBUG",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_response_comm | {module}:{function}:{line} | {message} </level>",
+        enable_console=True
+    )
     monitor.start_worker(
         target_func=main_response_Modbus.main,
         args=(),
         name="p_response_comm",
-        auto_restart=False
+        auto_restart=False,
+        log_config=p_response_comm_config
+    )
+
+    p_monitor_data_config = monitor.create_process_log_config(
+        "p_monitor_data",
+        log_level="DEBUG",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_monitor_data | {module}:{function}:{line} | {message} </level> ",
+        enable_console=True
     )
     monitor.start_worker(
         target_func=main_monitor_data.main,
@@ -282,14 +319,28 @@ def test_integrated_monitor():
         args=(q,send_message_q),
         name="p_monitor_data",
         auto_restart=True,
+        log_config=p_monitor_data_config
     )
-
+    p_deep_camera_config = monitor.create_process_log_config(
+        "p_deep_camera",
+        log_level="DEBUG",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | p_deep_camera | {module}:{function}:{line} | {message} </level>",
+        enable_console=True
+    )
     monitor.start_worker(
         target_func=main_deep_camera.main,
         restart_target_func=main_deep_camera.restart,
         args=(q,),
         name="p_deep_camera",
         auto_restart=True,
+        log_config=p_deep_camera_config
+    )
+
+    p_infrared_camera_config = monitor.create_process_log_config(
+        "p_infrared_camera",
+        log_level="DEBUG",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_infrared_camera | {module}:{function}:{line} | {message} </level> ",
+        enable_console=True
     )
     monitor.start_worker(
         target_func=main_infrared_camera.main,
@@ -297,14 +348,21 @@ def test_integrated_monitor():
         args=(q,),
         name="p_infrared_camera",
         auto_restart=True,
+        log_config=p_infrared_camera_config
     )
-
+    p_main_gui_config = monitor.create_process_log_config(
+        "p_main_gui",
+        log_level="DEBUG",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | p_main_gui | {module}:{function}:{line} | {message}  </level>",
+        enable_console=True
+    )
     monitor.start_worker(
         target_func=main_gui.main,
         args=(q,send_message_q),
         name="p_main_gui",
         auto_restart=False,
-        is_critical=True  # 标记为关键进程
+        is_critical=True,  # 标记为关键进程
+        log_config = p_main_gui_config
     )
 
 

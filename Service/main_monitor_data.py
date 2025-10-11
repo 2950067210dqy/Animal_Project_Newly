@@ -511,14 +511,14 @@ def main(q,send_message_q):
 
     # logger.remove(0)
     # 加载日志配置
-    logger.add(
-        "./log/monitor_data/monitor_{time:YYYY-MM-DD}.log",
-        rotation="00:00",
-        retention="30 days",
-        enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-
-    )
+    # logger.add(
+    #     "./log/monitor_data/monitor_{time:YYYY-MM-DD}.log",
+    #     rotation="00:00",
+    #     retention="30 days",
+    #     enqueue=True,
+    #     format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+    #
+    # )
     logger.info(f"{'-' * 30}monitor_data_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
     app = QCoreApplication(sys.argv)

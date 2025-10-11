@@ -383,7 +383,7 @@ class Modbus_Response_Parents():
             exponent -= 127
             mantissa = 1 + int(mantissa_bits, 2) / (2 ** 23)
         value = (-1) ** sign_bit * (2 ** exponent) * mantissa
-        return value
+        return round(value,3)
 
     def function_code_parser(self):
         pass

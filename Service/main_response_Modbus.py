@@ -1338,14 +1338,14 @@ class communication(threading.Thread):
 
 def main():
     # 加载日志配置
-    logger.add(
-        "./log/comm/COM_{time:YYYY-MM-DD}.log",
-        rotation="00:00",
-        retention="30 days",
-        enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-    filter = lambda record: record["extra"].get("category") == "response_modbus_logger"
-    )
+    # logger.add(
+    #     "./log/comm/COM_{time:YYYY-MM-DD}.log",
+    #     rotation="00:00",
+    #     retention="30 days",
+    #     enqueue=True,
+    #     format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+    # filter = lambda record: record["extra"].get("category") == "response_modbus_logger"
+    # )
     logger.info(f"{'-' * 30}response_start{'-' * 30}")
     try:
         communication_received_thread = communication(category="receive", index=0)

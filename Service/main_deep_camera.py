@@ -780,14 +780,14 @@ def main(q):
     # 加载日志配置
     # logger.remove(0)
     # 過濾日志
-    logger.add(
-        "./log/deep_camera/d_camera_{time:YYYY-MM-DD}.log",
-        rotation="00:00",
-        retention="30 days",
-        enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-
-    )
+    # logger.add(
+    #     "./log/deep_camera/d_camera_{time:YYYY-MM-DD}.log",
+    #     rotation="00:00",
+    #     retention="30 days",
+    #     enqueue=True,
+    #     format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+    #
+    # )
     logger.info(f"{'-' * 30}deep_camera_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
     # 设置全局变量
@@ -795,6 +795,8 @@ def main(q):
     # 读取共享信息线程
     global read_queue_data_thread
     read_queue_data_thread.queue = q
+    if read_queue_data_thread.isRunning():
+        read_queue_data_thread.stop()
     read_queue_data_thread.start()
     global_setting.set_setting("queue", q)
     return app.exec()
@@ -803,17 +805,25 @@ def main(q):
     # stop
     # camera1.pipeline.stop()
 def start():
-    logger.info(f"{'-' * 30}deep_camera_run{'-' * 30}")
+    try:
+        logger.info(f"{'-' * 30}deep_camera_run{'-' * 30}")
 
-    # 初始化保存路径
-    path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
-           global_setting.get_setting("camera_config")['DEEP_CAMERA']['path']
-    global delete_file_thread
-    # 删除文件线程
-    delete_file_thread = Delete_file(path=path, start_time=global_setting.get_setting("start_time"))
-    delete_file_thread.start()
-    # 根据设置的相机数量来连接
-    check_setting_cameras_each_number()
+        # 初始化保存路径
+        path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
+               global_setting.get_setting("camera_config")['DEEP_CAMERA']['path']
+        global delete_file_thread
+        # 删除文件线程
+        try:
+            if delete_file_thread is not None and delete_file_thread.isRunning():
+                delete_file_thread.stop()
+        except Exception as e:
+            logger.error(f"关闭实验监测deep_camera_delete_file_thread错误，原因：{e}")
+        delete_file_thread = Delete_file(path=path, start_time=global_setting.get_setting("start_time"))
+        delete_file_thread.start()
+        # 根据设置的相机数量来连接
+        check_setting_cameras_each_number()
+    except Exception as e:
+        logger.error(e)
 
     pass
 def restart(q):
@@ -826,6 +836,7 @@ def stop():
     # 所有深度相机线程停止
     logger.info(f"{'-' * 30}deep_camera_stop{'-' * 30}")
     logger.error("stop_deep_camera_thread")
+    global delete_file_thread,camera_list
     for camera_struct_l in camera_list:
         if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
             try:
@@ -839,6 +850,7 @@ def stop():
                     camera_struct_l['img_process'].stop()
             except Exception as e:
                 logger.error(f"关闭实验监测deep_camera_thread_list_img_process错误，原因：{e}")
+
 
     try:
         if delete_file_thread is not None and delete_file_thread.isRunning():

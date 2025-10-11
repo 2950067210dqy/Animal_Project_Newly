@@ -130,14 +130,14 @@ def main(q, send_message_q):
     freeze_support()
 
     # logger.remove(0)
-    logger.add(
-        "./log/gui/gui_{time:YYYY-MM-DD}.log",
-        rotation="00:00",  # 日志文件转存
-        retention="30 days",  # 多长时间之后清理
-        enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
-      
-    )
+    # logger.add(
+    #     "./log/gui/gui_{time:YYYY-MM-DD}.log",
+    #     rotation="00:00",  # 日志文件转存
+    #     retention="30 days",  # 多长时间之后清理
+    #     enqueue=True,
+    #     format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+    #
+    # )
     logger.info(f"{'-' * 40}main_gui_start{'-' * 40}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
     global_load.load_global_setting()
