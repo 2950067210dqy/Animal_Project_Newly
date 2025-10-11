@@ -412,7 +412,7 @@ class Delete_file(MyQThread):
         for root, dirs, files in os.walk(self.path):
             # logger.warning(f"{root} | {dirs} | {files}")
             #  不删除
-            if "location" not in root:
+            if "location.csv" not in root:
                 for file in files:
                     file_path = os.path.join(root, file)
                     try:

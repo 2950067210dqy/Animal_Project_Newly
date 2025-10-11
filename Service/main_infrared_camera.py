@@ -484,7 +484,7 @@ class Delete_file(MyThread):
         total_nums = 0
         for root, dirs, files in os.walk(self.path):
             # logger.warning(f"{root} | {dirs} | {files}")
-            if "tmp" not in root:
+            if "tmp.csv" not in root:
                 for file in files:
                     file_path = os.path.join(root, file)
                     try:

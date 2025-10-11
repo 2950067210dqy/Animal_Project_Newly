@@ -1,6 +1,7 @@
-import logger
+
 from PyQt6.QtCore import QObject, QEvent, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QMainWindow
+from loguru import logger
 
 from public.component.Guide_tutorial_interface.Arrow_guidance import ArrowOverlayWidget
 from public.component.Guide_tutorial_interface.Bubble_guidance import ResponsiveBubbleTooltip
