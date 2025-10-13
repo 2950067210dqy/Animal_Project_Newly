@@ -453,7 +453,7 @@ def barrier_action():
     results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time)
     handle.stop()
     mouse_cage_number,_,_= number_util.extract_numbers_with_patterns(string_list=columns+[f"{results.get('UFC_monitor_data__mouse_cage')}"])
-    mouse_cage_number=int(mouse_cage_number)
+    mouse_cage_number=int(mouse_cage_number) if mouse_cage_number else 1
     store_Datas =[]
     # store_Datas.append({'desc':'序号','value':None})
     store_Datas.append({'desc':'鼠笼号','value':mouse_cage_number})
