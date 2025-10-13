@@ -80,7 +80,7 @@ class custom_data_file_util:
     encoding = "utf-8-sig"
     extension_name = "Mdata"
     @classmethod
-    def save_folder_contents_as_custom_file(cls,folder_path):
+    def save_folder_contents_as_custom_file(cls,folder_path,is_delete_original_data_file=True):
         contents = {}
 
         # 遍历文件夹
@@ -111,7 +111,45 @@ class custom_data_file_util:
         except Exception as e:
             logger.error(e)
         #删除该文件夹
-        folder_util.remove_non_empty_folder(folder_path)
+        if is_delete_original_data_file:
+            folder_util.remove_non_empty_folder(folder_path)
+
+    @classmethod
+    def save_folder_contents_as_custom_file_for_user_choose(cls, folder_path, is_delete_original_data_file=True):
+        contents = {}
+
+        # 遍历文件夹
+        for root, _, files in os.walk(folder_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                # 读取文件内容
+                with open(file_path, 'rb') as f:
+                    # 将二进制内容编码为 Base64 的字符串
+                    contents[os.path.relpath(file_path, folder_path)] = base64.b64encode(f.read()).decode(
+                        cls.encoding)  # 转成base64字符串格式
+
+        # 获取上层路径
+        parent_directory = os.path.dirname(folder_path)
+        folder_name = os.path.basename(folder_path)
+        custom_file_path = os.path.join(parent_directory, f'{folder_name}.{cls.extension_name}')
+        # 将内容写入自定义格式文件
+        with open(custom_file_path, 'w', encoding=cls.encoding) as custom_file:
+            json.dump(contents, custom_file, ensure_ascii=False, indent=4)
+
+        # 将数据db文件转成excel文件
+        transfer_handle = DbTransferExcel()
+        excel_file_path = os.path.join(parent_directory, f'{folder_name}.xlsx')
+        used_sheet_names = set()
+        try:
+            import openpyxl
+            with pd.ExcelWriter(excel_file_path, engine="openpyxl") as writer:
+                transfer_handle.export_db_to_excel(writer, combine_mode=True, sheet_used=used_sheet_names,
+                                                   chunksize=(5000 or None))
+        except Exception as e:
+            logger.error(e)
+        # 删除该文件夹
+        if is_delete_original_data_file:
+            folder_util.remove_non_empty_folder(folder_path)
     def load_folder_contents_from_custom_file(cls,custom_file_path):
         # 读取自定义格式文件
         with open(custom_file_path, 'r', encoding=cls.encoding) as custom_file:

@@ -1,4 +1,8 @@
+import os
+import sys
+
 from PyQt6.QtWidgets import QMainWindow
+
 
 from Module.com_assistant.index.tab_3 import Tab_3
 from Module.experiment_setting.index.tab_7 import Tab_7

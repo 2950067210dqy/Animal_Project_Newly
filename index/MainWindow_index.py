@@ -312,15 +312,26 @@ class MainWindow_Index(ThemedWindow):
         action_five.setDisabled(True)
         self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_five,"app_state":AppState.CONFIGURING,'tip':"单击此按钮会将停止实验，并将实验数据保存。"})
 
-        name = "重置教程页"
-        obj_name = "reset_guidance"
+        name = "导出实验数据"
+        obj_name = "export_experiment_datas"
         action_six = QAction(name, self)
         action_six.setObjectName(obj_name)
         action_six.setToolTip(name)
-        action_six.triggered.connect(self.reset_guidance)
+        action_six.triggered.connect(self.export_experiment_datas)
         action_six.setDisabled(True)
         self.tool_bar_actions.append(
-            {"name": name, "obj_name": obj_name, "action": action_six, "app_state": AppState.INITIALIZED,
+            {"name": name, "obj_name": obj_name, "action": action_six, "app_state": AppState.CONFIGURING,
+             'tip': "单击此按钮会将将实验数据保存。"})
+
+        name = "重置教程页"
+        obj_name = "reset_guidance"
+        action_final = QAction(name, self)
+        action_final.setObjectName(obj_name)
+        action_final.setToolTip(name)
+        action_final.triggered.connect(self.reset_guidance)
+        action_final.setDisabled(True)
+        self.tool_bar_actions.append(
+            {"name": name, "obj_name": obj_name, "action": action_final, "app_state": AppState.INITIALIZED,
              'tip': "单击此按钮会将重置教程。"})
 
         # 将动作添加到工具栏
@@ -333,6 +344,8 @@ class MainWindow_Index(ThemedWindow):
         self.toolbar.addAction(action_five)
         self.toolbar.addSeparator()
         self.toolbar.addAction(action_six)
+        self.toolbar.addSeparator()
+        self.toolbar.addAction(action_final)
         self.toolbar.addSeparator()
     def create_menu_bar(self):
     # 创建菜单
@@ -766,6 +779,32 @@ class MainWindow_Index(ThemedWindow):
                 global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
                 f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
             custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
+    def export_experiment_datas(self):
+        """
+        导出实验数据按钮函数
+        :return:
+        """
+
+        def stop_store_info_Qtimer():
+            # 读取实验设置文件路径
+            experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+            if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+                # 获取文件所在的文件夹路径
+                folder_path = os.path.dirname(experiment_setting_file)
+                # 获取文件名称
+                file_name = os.path.basename(experiment_setting_file)
+                # 不带扩展名的文件名称
+                file_name_without_extension = os.path.splitext(file_name)[0]
+                # 获取文件的扩展名
+                file_name_extension = os.path.splitext(file_name)[1]
+                # 定义文件夹路径
+                folder_path_data = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE'][
+                    'fold_path'] + os.path.join(
+                    global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
+                    f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
+                custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data,is_delete_original_data_file=False)
+
+        QTimer.singleShot(1000, stop_store_info_Qtimer)
     def close_tab(self, index):
         """关闭标签页"""
         self.tab_widget.widget(index).hide()

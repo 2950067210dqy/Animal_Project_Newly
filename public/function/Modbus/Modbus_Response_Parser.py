@@ -1975,9 +1975,9 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                 case 17:
                     return_datas.append({
                         "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
+                        'value': round((int("".join(self.int_to_8bit_binary(
                             num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])),
-                            2) / 100000
+                            2) / 1000000)*100,5)
                     }
                     )
                     j += 1
