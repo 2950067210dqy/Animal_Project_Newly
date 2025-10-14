@@ -69,7 +69,7 @@ class LoggerManager:
     def create_logger_config(self,
                              process_id: str = "default",
                              log_dir: str = "./log",
-                             log_level: str = "INFO",
+                             log_level: str = "DEBUG",
                              rotation: str = "00:00",
                              retention: str = "30 days",
                              custom_format: str = None,
@@ -77,7 +77,7 @@ class LoggerManager:
                              backtrace: bool = True,
                              diagnose: bool = True,
                              enable_console: bool = True,
-                             console_level: str = "INFO") -> LogConfig:
+                             console_level: str = "DEBUG") -> LogConfig:
         """创建日志配置"""
         if custom_format is None:
             custom_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | {process.name} | {thread.name} | {name}:{module}:{line} | {message} </level>"
@@ -156,10 +156,10 @@ class LoggerManager:
             config = self.create_logger_config(
                 "main_process",
                 log_dir="./log/main",
-                log_level="INFO",
+                log_level="DEBUG",
                 custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | MAIN | {module}:{function}:{line} | {message} </level>",
                 enable_console=True,
-                console_level="INFO"
+                console_level="DEBUG"
             )
 
         return self.setup_logger("main_process", config, remove_default=True)
@@ -559,7 +559,7 @@ class IntegratedProcessMonitor:
                                        log_level: str = "INFO",
                                        custom_format: str = None,
                                        enable_console: bool = True,
-                                       console_level: str = "INFO") -> LogConfig:
+                                       console_level: str = "DEBUG") -> LogConfig:
         """创建主进程日志配置"""
         if custom_format is None:
             custom_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | MAIN | {module}:{function}:{line} | {message}"
@@ -597,7 +597,7 @@ class IntegratedProcessMonitor:
                                   log_level: str = "INFO",
                                   custom_format: str = None,
                                   enable_console: bool = False,
-                                  console_level: str = "INFO") -> LogConfig:
+                                  console_level: str = "DEBUG") -> LogConfig:
         """为指定进程创建日志配置"""
         return self.logger_manager.create_logger_config(
             process_id=process_id,
@@ -1279,7 +1279,7 @@ if __name__ == "__main__":
         log_level="INFO",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | MAIN | {module}:{function}:{line} | {message}",
         enable_console=True,
-        console_level="INFO"
+        console_level="DEBUG"
     )
 
     # 创建自定义的异常日志配置

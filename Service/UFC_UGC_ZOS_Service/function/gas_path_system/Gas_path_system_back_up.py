@@ -3,11 +3,13 @@ import queue
 import re
 import threading
 import time
-from threading import Event
+from datetime import datetime
+from threading import Event, Barrier
 from tkinter.messagebox import RETRY
 
-from PyQt6.QtCore import pyqtSignal
+
 from PyQt6.QtWidgets import QDialog
+from blinker.base import _PNamespaceSignal
 from loguru import logger
 
 from Service.UFC_UGC_ZOS_Service.component.dialog.Mouse_Cage_Choose_Dialog import RunningCagesDialog
@@ -25,7 +27,7 @@ class Gas_path_system:
     """
     def __init__(self):
         # 更新主线程状态栏消息信号
-        self.update_status_main_signal_gui_update: pyqtSignal(str) = None
+        self.update_status_main_signal_gui_update: _PNamespaceSignal = None
 
         # 发送的数据结构
         self.send_message = {
@@ -67,7 +69,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
     """
     def __init__(self,name,update_status_main_signal_gui_update):
         # 更新主线程状态栏消息信号
-        self.update_status_main_signal_gui_update: pyqtSignal(str) = update_status_main_signal_gui_update
+        self.update_status_main_signal_gui_update: _PNamespaceSignal = update_status_main_signal_gui_update
         # 发送的数据结构
         self.send_message = {
             'port': '',
@@ -87,7 +89,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         # 1.设定运行鼠笼（默认8个鼠笼都运行）
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             return
         # mouse_cages_2byte_str: str = global_setting.get_setting("mouse_cages_2byte_str", "11111111")
@@ -99,7 +101,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         #     'function_code': '6',
         #     'timeout': 1
         # }
-        # self.update_status_main_signal_gui_update.emit(
+        # self.update_status_main_signal_gui_update.send(
         #     f"{time_util.get_format_from_time(time.time())} | UFC 启动-1.设定运行鼠笼")
         # self.send_thread.send_message = self.send_message
         # AsyPromise(self.send_thread.Send).then(
@@ -116,11 +118,11 @@ class UFC_gas_path_system_start_thread(MyQThread):
 
     def ufc_start(self, resolve, reject):
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 启动-2.UFC启动")
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
         # 2 UFC 启动
@@ -141,11 +143,11 @@ class UFC_gas_path_system_start_thread(MyQThread):
     def gas_and_flow_rate_start(self, resolve, reject):
         time.sleep(0.01)
         # 3气泵和流量控制器开启
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 启动-3.气泵和流量控制器开启")
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
         self.send_message = {
@@ -169,7 +171,7 @@ class UFC_gas_path_system_close_thread(MyQThread):
     """
     def __init__(self,name,update_status_main_signal_gui_update):
         # 更新主线程状态栏消息信号
-        self.update_status_main_signal_gui_update: pyqtSignal(str) = update_status_main_signal_gui_update
+        self.update_status_main_signal_gui_update: _PNamespaceSignal = update_status_main_signal_gui_update
         # 发送的数据结构
         self.send_message = {
             'port': '',
@@ -189,7 +191,7 @@ class UFC_gas_path_system_close_thread(MyQThread):
         # 1.关闭正在运行的鼠笼
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             return
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
@@ -202,7 +204,7 @@ class UFC_gas_path_system_close_thread(MyQThread):
                     'function_code': '5',
                     'timeout': 1
                 }
-                self.update_status_main_signal_gui_update.emit(
+                self.update_status_main_signal_gui_update.send(
                     f"{time_util.get_format_from_time(time.time())} | UFC-停止 1.关闭{addr + 1}号鼠笼气路")
                 self.send_thread.send_message = self.send_message
                 AsyPromise(self.send_thread.Send).then()
@@ -216,7 +218,7 @@ class UFC_gas_path_system_close_thread(MyQThread):
                     'function_code': '5',
                     'timeout': 1
                 }
-                self.update_status_main_signal_gui_update.emit(
+                self.update_status_main_signal_gui_update.send(
                     f"{time_util.get_format_from_time(time.time())} | UFC-停止 1.关闭参考气")
                 self.send_thread.send_message = self.send_message
                 AsyPromise(self.send_thread.Send).then(
@@ -235,7 +237,7 @@ class UFC_gas_path_system_close_thread(MyQThread):
             'function_code': '5',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-停止 2.关闭zos采样阀门")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
@@ -251,7 +253,7 @@ class UFC_gas_path_system_close_thread(MyQThread):
             'function_code': '5',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-停止 3.气泵及设定鼠笼流量控制器关闭")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
@@ -267,13 +269,13 @@ class UFC_gas_path_system_close_thread(MyQThread):
             'function_code': '5',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-停止 4.UFC阀门关闭")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             lambda r:  resolve()
         )
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 已关闭")
 class UFC_gas_path_system_run_thread(MyQThread):
     """
@@ -281,7 +283,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
     """
     def __init__(self,name,update_status_main_signal_gui_update):
         # 更新主线程状态栏消息信号
-        self.update_status_main_signal_gui_update: pyqtSignal(str) = update_status_main_signal_gui_update
+        self.update_status_main_signal_gui_update: _PNamespaceSignal = update_status_main_signal_gui_update
         # 发送的数据结构
         self.send_message = {
             'port': '',
@@ -308,7 +310,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             #2 切换x号鼠笼
             port = global_setting.get_setting("port", None)
             if port is None:
-                self.update_status_main_signal_gui_update.emit(
+                self.update_status_main_signal_gui_update.send(
                     f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
                 return
             time.sleep(0.01)
@@ -319,16 +321,18 @@ class UFC_gas_path_system_run_thread(MyQThread):
                 'function_code': '5',
                 'timeout': 1
             }
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | UFC-运行 2. 切换{mouse_cage_number_addr_single+1}号鼠笼")
             self.send_thread.send_message = self.send_message
             AsyPromise(self.send_thread.Send).then(
                 # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
                 lambda r:AsyPromise(self.read_flow_rate_value_circulation,port=port,mouse_cages_inc=mouse_cages_inc)
             ).catch(lambda e: logger.error(e))
-
+            barrier:Barrier=global_setting.get_setting("barrier")
+            if barrier is not None:
+                barrier.wait()
             pass
         pass
     def read_flow_rate_value_circulation(self,resolve,reject,port,mouse_cages_inc):
@@ -338,28 +342,29 @@ class UFC_gas_path_system_run_thread(MyQThread):
         time.sleep(0.01)
         # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
         index = 0
-        while (index< int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])):
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list(f"00000006"),
-                'slave_id': '2',
-                'function_code': '4',
-                'timeout': 1
-            }
-            self.update_status_main_signal_gui_update.emit(
-                f"{time_util.get_format_from_time(time.time())} | UFC-运行 3. 循环读取流量值（推荐每{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])}秒读取一次），当前{index}s/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])}s")
-            self.send_thread.send_message = self.send_message
-            result_data,message = self.send_thread.Send_no_promise()
-            result_data['data'].insert(0,{'desc':'鼠笼号','value':  mouse_cages_inc[self.mouse_cage_index]})
-            #  取出全局存储queue
-            lock =global_setting.get_setting("store_Q_lock", threading.Lock())
-            storeQ = global_setting.get_setting("store_Q", queue.Queue())
-            # 加锁
-            with lock:
-                # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
-                storeQ.put(result_data)  # 修改全局变量
-            index+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])
-            time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
+        # while (index< int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])):
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list(f"00000006"),
+            'slave_id': '2',
+            'function_code': '4',
+            'timeout': 1
+        }
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UFC-运行 3. 循环读取流量值（推荐每{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])}秒读取一次），当前{index}s/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])}s")
+        self.send_thread.send_message = self.send_message
+        result_data,message = self.send_thread.Send_no_promise()
+        result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        result_data['data'].insert(0,{'desc':'鼠笼号','value':  mouse_cages_inc[self.mouse_cage_index]+1})
+        #  取出全局存储queue
+        lock =global_setting.get_setting("store_Q_lock", threading.Lock())
+        storeQ = global_setting.get_setting("store_Q", queue.Queue())
+        # 加锁
+        with lock:
+            # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
+            storeQ.put(result_data)  # 修改全局变量
+            # index+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])
+            # time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
 
         #4.关闭x号鼠笼
         AsyPromise(self.close_ufc_mouse_cage_gas, port=port, mouse_cages_inc=mouse_cages_inc).then().catch(lambda e: logger.error(e))
@@ -377,7 +382,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             'function_code': '5',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-运行 4. 关闭{mouse_cage_number_addr_single + 1}号鼠笼")
         self.send_thread.send_message = self.send_message
         self.send_thread.Send_no_promise()
@@ -420,7 +425,7 @@ class UFC_gas_path_system(Gas_path_system):
         :return:
         """
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | UFC 开始启动{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 开始启动{'.'*100}")
 
         # dlg = RunningCagesDialog(None, total_cages=8)
         # data = ""
@@ -438,7 +443,7 @@ class UFC_gas_path_system(Gas_path_system):
         #                 data += "0"
         #         pass
         # global_setting.set_setting("mouse_cages", res['selected_indices'])
-        global_setting.set_setting("mouse_cages",[7,6,5,4,3,2,1,0])
+        global_setting.set_setting("mouse_cages",[0,1,2,3,4,5,6,7])
         # global_setting.set_setting("mouse_cages_2byte_str",data)
         global_setting.set_setting("mouse_cages_2byte_str", "11111111")
 
@@ -449,15 +454,15 @@ class UFC_gas_path_system(Gas_path_system):
     def ufc_start_timer_task(self,elapsed_ms):
         #ufc 气泵及设定鼠笼流量控制器开启 此过程需1分钟，等待流量控制器自动配置及运行
 
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {'-'*100}")
-        logger.error( f"{time_util.get_format_from_time(time.time())} | {'-'*100}")
-        self.update_status_main_signal_gui_update.emit(
+
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms//1000}s)，等待流量控制器自动配置及运行 .")
-        logger.error(f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms//1000}s)，等待流量控制器自动配置及运行 .")
+
     def check_ufc_start_time_state(self):
         #定时器结束调用
-        logger.error("check_ufc_start_time_state")
+        # logger.error("check_ufc_start_time_state")
         self.ufc_start_time_state =True
 
     """start end"""
@@ -469,11 +474,11 @@ class UFC_gas_path_system(Gas_path_system):
         :return:
         """
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | UFC 开始运行{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 开始运行{'.'*100}")
         #1. 打开zos采样阀
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
         self.send_message = {
@@ -483,7 +488,7 @@ class UFC_gas_path_system(Gas_path_system):
             'function_code': '5',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-运行 1.打开ZOS采样阀")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
@@ -507,7 +512,7 @@ class UFC_gas_path_system(Gas_path_system):
         :return:
         """
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | UFC 正在停止{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 正在停止{'.'*100}")
         self.ufc_gas_path_system_run_thread.stop()
 
         self.ufc_gas_path_system_close_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
@@ -522,7 +527,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
 
     def __init__(self, name, update_status_main_signal_gui_update):
         # 更新主线程状态栏消息信号
-        self.update_status_main_signal_gui_update: pyqtSignal(str) = update_status_main_signal_gui_update
+        self.update_status_main_signal_gui_update: _PNamespaceSignal = update_status_main_signal_gui_update
 
         # 发送的数据结构
         self.send_message = {
@@ -542,7 +547,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
     def dosomething(self):
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             return
         #3.循环读取CO2浓度
@@ -553,12 +558,13 @@ class UGC_gas_path_system_run_thread(MyQThread):
             'function_code': '4',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取CO2浓度")
         self.send_thread.send_message = self.send_message
         result_data, message = self.send_thread.Send_no_promise()
+        result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         #  取出全局存储queue
         lock = global_setting.get_setting("store_Q_lock", threading.Lock())
         storeQ = global_setting.get_setting("store_Q", queue.Queue())
@@ -567,6 +573,9 @@ class UGC_gas_path_system_run_thread(MyQThread):
             # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
             storeQ.put(result_data)  # 修改全局变量
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
+        barrier: Barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            barrier.wait()
         pass
 class UGC_gas_path_system(Gas_path_system):
     """
@@ -589,12 +598,12 @@ class UGC_gas_path_system(Gas_path_system):
         :return:
         """
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | UGC 正在启动{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UGC 正在启动{'.'*100}")
 
         # 1.读取系统状态
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
         self.send_message = {
@@ -619,11 +628,11 @@ class UGC_gas_path_system(Gas_path_system):
         气路运行
         :return:
         """
-        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | UGC 开始运行{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UGC 开始运行{'.'*100}")
         # 1.鼠笼气电磁阀开(sample 气)(开机默认打开)
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
         self.send_message = {
@@ -634,7 +643,7 @@ class UGC_gas_path_system(Gas_path_system):
             'timeout': 1
         }
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 1.鼠笼气电磁阀开(sample 气)(开机默认打开)")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
@@ -654,7 +663,7 @@ class UGC_gas_path_system(Gas_path_system):
     #         'function_code': '5',
     #         'timeout': 1
     #     }
-    #     self.update_status_main_signal_gui_update.emit(
+    #     self.update_status_main_signal_gui_update.send(
     #         f"{time_util.get_format_from_time(time.time())} | UGC-运行 2.鼠笼气电磁阀关(sample 气)(开机默认打开)")
     #     self.send_thread.send_message = self.send_message
     #     AsyPromise(self.send_thread.Send).then(
@@ -679,12 +688,12 @@ class UGC_gas_path_system(Gas_path_system):
         停止气路
         :return:
         """
-        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | UGC 正在停止{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UGC 正在停止{'.'*100}")
         self.ugc_gas_path_system_run_thread.stop()
 
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
         self.send_message = {
@@ -695,12 +704,12 @@ class UGC_gas_path_system(Gas_path_system):
             'timeout': 1
         }
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC-停止 1.停止UGC閥門")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2.鼠笼气电磁阀关(sample 气)
-            lambda r:self.update_status_main_signal_gui_update.emit(
+            lambda r:self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC 已停止{'.' * 100}"), resolve()
         ).catch(lambda e: reject(e))
         pass
@@ -713,7 +722,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
     def __init__(self, name, update_status_main_signal_gui_update):
         # 更新主线程状态栏消息信号
-        self.update_status_main_signal_gui_update: pyqtSignal(str) = update_status_main_signal_gui_update
+        self.update_status_main_signal_gui_update: _PNamespaceSignal = update_status_main_signal_gui_update
 
         # 发送的数据结构
         self.send_message = {
@@ -733,7 +742,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
     def dosomething(self):
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             return
         # 3.循环读取CO2浓度
@@ -744,9 +753,9 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             'function_code': '4',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取氧浓度")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
@@ -754,10 +763,14 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             lambda r:AsyPromise(self.check_senior_state,port=port,r=r)
         ).catch(lambda e: logger.error(e))
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
+        barrier: Barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            barrier.wait()
         pass
     def check_senior_state(self,resolve,reject,port,r):
         #存储值
         result_data = r['data']
+        result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         #  取出全局存储queue
         lock = global_setting.get_setting("store_Q_lock", threading.Lock())
         storeQ = global_setting.get_setting("store_Q", queue.Queue())
@@ -780,7 +793,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
                     'function_code': '2',
                     'timeout': 1
                 }
-                self.update_status_main_signal_gui_update.emit(
+                self.update_status_main_signal_gui_update.send(
                     f"{time_util.get_format_from_time(time.time())} | ZOS-运行 2. 氧浓度({value}%)异常，小于阈值（{float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['threshold'])}%），检查传感器状态")
                 self.send_thread.send_message = self.send_message
                 self.send_thread.Send_no_promise()
@@ -811,7 +824,7 @@ class ZOS_gas_path_system(Gas_path_system):
             self.zos_start_status = True
         else:
             self.zos_start_status = False
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS 启动状态:{'运行' if self.zos_start_status else '停止（预热）'}{r}{'-'*100}-end.")
 
         resolve()
@@ -821,11 +834,11 @@ class ZOS_gas_path_system(Gas_path_system):
         :return:
         """
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | ZOS 正在启动{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在启动{'.'*100}")
         #1.读取系统状态
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+            self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
         self.send_message = {
             'port': port,
@@ -844,15 +857,15 @@ class ZOS_gas_path_system(Gas_path_system):
 
     def zos_start_timer_task(self,elapsed_ms):
         #zos启动之后需要预热
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {'-'*100}")
 
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS 正在预热时间为{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_time'])}s(当前{elapsed_ms//1000}s)，循环判断zos状态是否完成，预热完成进入运行状态-start.")
 
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.emit(
+            self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
         self.send_message = {
             'port': port,
@@ -861,6 +874,7 @@ class ZOS_gas_path_system(Gas_path_system):
             'function_code': '1',
             'timeout': 1
         }
+        self.send_thread.send_message = self.send_message
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             lambda r: AsyPromise(self.judge_zos_start_status, r=r)
@@ -873,7 +887,7 @@ class ZOS_gas_path_system(Gas_path_system):
         :return:
         """
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | ZOS 开始运行{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 开始运行{'.'*100}")
         #1.循环读取氧浓度
         self.zos_gas_path_system_run_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         self.zos_gas_path_system_run_thread.start()
@@ -886,9 +900,9 @@ class ZOS_gas_path_system(Gas_path_system):
         停止气路
         :return:
         """
-        self.update_status_main_signal_gui_update.emit(f"{time_util.get_format_from_time(time.time())} | ZOS 正在停止{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在停止{'.'*100}")
         self.zos_gas_path_system_run_thread.stop()
-        self.update_status_main_signal_gui_update.emit(
+        self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS 已停止{'.' * 100}")
         resolve()
         pass

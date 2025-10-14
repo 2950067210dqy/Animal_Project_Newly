@@ -256,10 +256,10 @@ def test_integrated_monitor():
     # 创建自定义的主进程日志配置
     main_config = LogConfig(
         log_dir="./log/main",
-        log_level="INFO",
+        log_level="DEBUG",
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | MAIN | {module}:{function}:{line} | {message} </level>",
         enable_console=True,
-        console_level="INFO"
+        console_level="DEBUG"
     )
     # 创建自定义的异常日志配置
     exception_config = LogConfig(
@@ -296,7 +296,7 @@ def test_integrated_monitor():
     # 创建工作进程的日志配置
     p_response_comm_config = monitor.create_process_log_config(
         "p_response_comm",
-        # log_level="DEBUG",
+        log_level="DEBUG",
         custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_response_comm | {module}:{function}:{line} | {message} </level>",
         enable_console=True
     )

@@ -159,12 +159,34 @@ class UFC_gas_path_system_start_thread(MyQThread):
         }
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-
+            lambda r:AsyPromise(self.open_zos_valve).then(
+                lambda r:resolve(r)
+            ).catch(lambda e: reject(e))
         ).catch(lambda e: reject(e))
 
-        resolve()
+
         pass
         pass
+    def open_zos_valve(self,resolve, reject):
+        # 4. 打开zos采样阀
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UFC-启动 4.打开ZOS采样阀")
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+            reject()
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("000900ff"),
+            'slave_id': '2',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            lambda r:resolve(r)
+        ).catch(lambda e:logger.error(e))
 class UFC_gas_path_system_close_thread(MyQThread):
     """
     UFC 气路系统关闭线程
@@ -443,9 +465,9 @@ class UFC_gas_path_system(Gas_path_system):
         #                 data += "0"
         #         pass
         # global_setting.set_setting("mouse_cages", res['selected_indices'])
-        global_setting.set_setting("mouse_cages",[0,1,2,3,4,5,6,7])
+        global_setting.set_setting("mouse_cages",[0,1,2,3,4,5,6,7,8])
         # global_setting.set_setting("mouse_cages_2byte_str",data)
-        global_setting.set_setting("mouse_cages_2byte_str", "11111111")
+        global_setting.set_setting("mouse_cages_2byte_str", "111111111")
 
         self.ufc_gas_path_system_start_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         self.ufc_gas_path_system_start_thread.start()
@@ -475,25 +497,9 @@ class UFC_gas_path_system(Gas_path_system):
         """
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 开始运行{'.'*100}")
-        #1. 打开zos采样阀
-        port = global_setting.get_setting("port", None)
-        if port is None:
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
-            reject()
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("000900ff"),
-            'slave_id': '2',
-            'function_code': '5',
-            'timeout': 1
-        }
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC-运行 1.打开ZOS采样阀")
-        self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            lambda r: AsyPromise(self.circular_running),resolve()
-        ).catch(lambda e: reject(e))
+
+        AsyPromise(self.circular_running).then(lambda r:resolve(r)).catch(lambda e:logger.error(e))
+
 
         pass
     def circular_running(self,resolve,reject):
