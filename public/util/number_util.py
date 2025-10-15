@@ -40,7 +40,7 @@ class number_util():
         Returns:
             tuple: (最频繁的数字, 出现次数, 所有数字列表)
         """
-        logger.debug(string_list)
+        # logger.debug(string_list)
         all_numbers = []
 
         for string in string_list:

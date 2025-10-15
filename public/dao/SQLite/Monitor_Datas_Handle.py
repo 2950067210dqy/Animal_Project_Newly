@@ -180,6 +180,11 @@ class Monitor_Datas_Handle():
         pass
 
     def insert_data(self, data):
+        """
+
+        :param data:
+        :return: success ：是否成功, error 错误信息
+        """
         # 添加数据到表里
         if data is not None:
 
@@ -207,8 +212,10 @@ class Monitor_Datas_Handle():
                             result = self.sqlite_manager.insert_not_columns(table_name, datas)
                             if result == 1:
                                 logger.info(f"数据插入表{table_name}成功！")
+                                return True,None
                             else:
                                 logger.info(f"数据插入表{table_name}失败！")
+                                return False,f"数据插入表{table_name}失败！"
                             pass
                         else:
                             datas = [None]
@@ -219,13 +226,16 @@ class Monitor_Datas_Handle():
                             result = self.sqlite_manager.insert_not_columns(table_name, datas)
                             if result == 1:
                                 logger.info(f"数据插入表{table_name}成功！")
+                                return True,None
                             else:
                                 logger.info(f"数据插入表{table_name}失败！")
+                                return False,f"数据插入表{table_name}失败！"
                             pass
 
                             pass
                     else:
                         logger.info(f"数据插入表{table_name}失败！列为空")
+                        return False,f"数据插入表{table_name}失败！列为空"
 
                 else:
                     columns = [i[0] for i in columns_query if i[0] != 'id']
@@ -236,8 +246,10 @@ class Monitor_Datas_Handle():
                     result = self.sqlite_manager.insert_2(table_name, columns, datas)
                     if result == 1:
                         logger.info(f"数据插入表{table_name}成功！")
+                        return True,None
                     else:
                         logger.info(f"数据插入表{table_name}失败！")
+                        return False,f"数据插入表{table_name}失败！"
             else:  # 每个鼠笼传感器：
                 # 获取该表名称
                 table_name = f"{data['module_name']}_{data['table_name']}_cage_{data['mouse_cage_number']}"
@@ -253,8 +265,10 @@ class Monitor_Datas_Handle():
                     result = self.sqlite_manager.insert_2(table_name, columns, datas)
                     if result == 1:
                         logger.info(f"数据插入表{table_name}成功！")
+                        return True,None
                     else:
                         logger.info(f"数据插入表{table_name}失败！")
+                        return False,f"数据插入表{table_name}失败！"
                     pass
                 else:
                     columns = [i[0] for i in columns_query if i[0] != 'id' and i[0] != 'time']
@@ -266,10 +280,14 @@ class Monitor_Datas_Handle():
                     result = self.sqlite_manager.insert_not_columns(table_name, datas)
                     if result == 1:
                         logger.info(f"数据插入表{table_name}成功！")
+                        return True,None
                     else:
                         logger.info(f"数据插入表{table_name}失败！")
+                        return False,f"数据插入表{table_name}失败！"
                     pass
                     pass
+        else:
+            return False
             pass
 
     def query_data(self, table_name):

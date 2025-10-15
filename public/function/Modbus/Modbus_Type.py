@@ -37,6 +37,7 @@ class Others_Tables(Enum):
                 ("oxygen_calibration_zero_value", "氧浓度0点校准值", " REAL "),
                 ("oxygen_calibration_span_value", "氧浓传感器span数值", " REAL "),
                 ("UFC_flow_num", "ufc_流量计测量值(sccm)", " INTEGER "),
+                ("UFC_reference_flow_num", "ufc_参考气路流量计测量值(sccm)", " INTEGER "),
                 ("UGC_flow_num_1", "ugc_流量计1", " INTEGER "),
                 ("UGC_CO2_num", "CO2(%)", " REAL "),
                 ("ZOS_oxygen_num", "氧气传感器测量值(%)", " REAL "),
@@ -70,6 +71,7 @@ class Modbus_Slave_Tables(Enum):
                             ("reserve_low_num_1", "备用1低字节", " TEXT "),
                             ("reserve_high_num_2", "备用2高字节", " TEXT "),
                             ("reserve_low_num_2", "备用2低字节", " TEXT "),
+                            ("reference_flow_num","参考气路流量计测量值(sccm)", " INTEGER "),
                             ("time", "获取时间", " TIMESTAMP ")
                                 ],
             }

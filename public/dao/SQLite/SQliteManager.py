@@ -1,6 +1,7 @@
 import datetime
 import math
 import sqlite3
+import time
 from typing import List, Dict, Any
 
 from loguru import logger
@@ -323,9 +324,10 @@ class SQLiteManager():
         """
         results_dict = {}
         all_columns = ['time']
-        start_time_f =datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')
-        end_time_f =datetime.datetime.fromtimestamp(end_time+0.1).strftime('%Y-%m-%d %H:%M:%S')
-        #logger.critical(f"<UNK>{start_time_f}<UNK>{end_time_f}<UNK>")
+        start_time_f =datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        # 加100毫秒防止数据延迟存储导致获取不到
+        end_time_f =datetime.datetime.fromtimestamp(end_time+100).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        # logger.critical(f"epoch data 开始查询 {datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
         for table in tables:
             table_cols = table_columns[table]
 
@@ -545,6 +547,8 @@ class SQLiteManager():
         sql = f"""INSERT INTO "{table_name}" ({columns}) VALUES ({placeholders});"""
         self.cursor.execute(sql, tuple(kwargs.values()))  # 使用参数化查询
         self.connection.commit()
+        # logger.critical(
+        #     f"insert 完成| {table_name}| {datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
         return self.cursor.rowcount
 
     def insert_2(self, table_name, columns_flag, datas):
@@ -554,6 +558,8 @@ class SQLiteManager():
         sql = f"""INSERT INTO "{table_name}" ({columns}) VALUES ({placeholders});"""
         self.cursor.execute(sql, tuple(datas))  # 使用参数化查询
         self.connection.commit()
+        # logger.critical(
+        #     f"insert_2 完成 | {table_name}|{datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
         return self.cursor.rowcount
 
     def insert_not_columns(self, table_name, datas):
@@ -561,6 +567,8 @@ class SQLiteManager():
         sql = f"""INSERT INTO "{table_name}"  VALUES ({placeholders});"""
         self.cursor.execute(sql, tuple(datas))  # 使用参数化查询
         self.connection.commit()
+        # logger.critical(
+        #     f"insert_not_columns 完成| {table_name}|{datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
         return self.cursor.rowcount
         pass
 

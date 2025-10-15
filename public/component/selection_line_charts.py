@@ -287,7 +287,7 @@ class LineChartWidget(QWidget):
                     #                                     )
 
                     date_data = int(datetime.strptime(data[i][SQLiteManager.TIME_COLUMN_NAME]['value'],
-                                              "%Y-%m-%d %H:%M:%S").timestamp()* 1000)
+                                              "%Y-%m-%d %H:%M:%S.%f")[:-3].timestamp()* 1000)
                     point =QPointF(
                             date_data,
                             data[i][self.columns_desc_combobox_selected['name']]['value']

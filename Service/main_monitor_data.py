@@ -1,5 +1,5 @@
 import copy
-import json
+
 import multiprocessing
 import os
 import queue
@@ -7,10 +7,12 @@ import shutil
 import sys
 import threading
 import time
+
 from datetime import datetime
 
+
 from PyQt6.QtCore import QThread, QTimer, QCoreApplication
-from PyQt6.QtWidgets import QApplication
+
 from loguru import logger
 
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
@@ -22,9 +24,10 @@ from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread, MyThread
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
-from public.function.Modbus.Modbus import ModbusRTUMaster
+
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data, Others_Tables
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
+from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
 from public.util.number_util import number_util
 from public.util.time_util import time_util
 
@@ -39,12 +42,7 @@ wait_UFC_UGC_ZOS_start_event = threading.Event()
 global_setting.set_setting("wait_UFC_UGC_ZOS_start_event",wait_UFC_UGC_ZOS_start_event)
 #使用端口
 port_use=None
-# 存储数据锁
-store_Q_lock = threading.Lock()
-store_Q = queue.Queue()
-#  放进全局变量中
-global_setting.set_setting("store_Q_lock",store_Q_lock)
-global_setting.set_setting("store_Q",store_Q)
+
 # 过滤日志
 #logger = logger.bind(category="deep_camera_logger")
 
@@ -123,6 +121,21 @@ class read_queue_data_Thread(MyQThread):
 
 read_queue_data_thread = read_queue_data_Thread(name="main_monitor_data_read_queue_data_thread")
 
+"""
+数据存储区域 start
+"""
+# 存储数据锁
+store_Q_lock = threading.Lock()
+store_Q = queue.Queue()
+result_queues = {}  # 存储各个数据项的结果队列 {queue,queue...}
+result_queues_lock = threading.Lock()
+#  放进全局变量中
+global_setting.set_setting("store_Q_lock",store_Q_lock)
+global_setting.set_setting("store_Q",store_Q)
+global_setting.set_setting("result_queues", result_queues)
+global_setting.set_setting("result_queues_lock", result_queues_lock)
+
+
 
 class Store_Thread(MyQThread):
     """
@@ -137,39 +150,78 @@ class Store_Thread(MyQThread):
         global store_Q, store_Q_lock
         # 队列中有数据在存储 且接收数据线程存活 才存数据
         if not store_Q.empty():
+            data_item:DataItem = None
             try:
                 # 加锁
                 with store_Q_lock:
-                    data = store_Q.get()  # 修改全局变量
+                    data_item:DataItem  = store_Q.get()  # 获取DataItem对象
                 # 解锁会在with块结束后自动处理
             except queue.Empty:
                 logger.error(f"数据队列Q为空，获取数据失败！")
-            logger.info(f"存储数据线程开始存储数据: {data}")
-            # 存储到文件里
-            self.store_to_data_base(data)
+                return
+
+            # logger.info(f"存储数据线程开始存储数据: {data_item.data}")
+
+            # 存储到文件里并获取结果
+            success, error = self.store_to_data_base(data_item.data)
+
+            # 发送存储结果
+            self._send_storage_result(data_item, success, error)
+
         time.sleep(float(global_setting.get_setting('monitor_data')['STORAGE']['delay']))
-        pass
 
     def store_to_data_base(self, data):
+        """
+        存储数据到数据库
+        返回: (success: bool, error: str)
+        """
+        success = True
+        error = None
+
         try:
-            # 存储到数据库中
-            # if self.handle is not None:
-            #     self.handle.stop()
             if self.handle is None:
+                self.handle = Monitor_Datas_Handle()  # 创建数据库
 
-                self.handle = Monitor_Datas_Handle()  # # 创建数据库
+            success,error = self.handle.insert_data(data)
 
-            self.handle.insert_data(data)
+
         except Exception as e:
-            logger.error(f"{self.name}错误：{e}")
-        pass
+            success = False
+            error = str(e)
+            logger.error(f"{self.name}存储错误：{e}")
+
+        return success, error
+
+    def _send_storage_result(self, data_item, success, error):
+        """发送存储结果到对应的结果队列"""
+        if data_item.result_queue is not None:
+            try:
+                result = StorageResult(
+                    item_id=data_item.id,
+                    success=success,
+                    error=error,
+                    timestamp=time.time()
+                )
+                data_item.result_queue.put(result)
+
+                # 清理结果队列引用
+                result_queues_lock_q = global_setting.get_setting("result_queues_lock")
+                result_queues_q = global_setting.get_setting("result_queues")
+                with result_queues_lock_q:
+                    if data_item.id in result_queues_q:
+                        del result_queues_q[data_item.id]
+
+            except Exception as e:
+                logger.error(f"发送存储结果失败: {e}")
 
     def stop(self):
         if self.handle is not None:
             self.handle.stop()
-            self.handle=None
+            self.handle = None
         super().stop()
-
+"""
+数据存储区域 end
+"""
 
 class Send_thread(MyQThread):
     """
@@ -286,11 +338,13 @@ class Send_thread(MyQThread):
                                                                                  function_code=
                                                                                  send_message['function_code'], )
 
-                        return_data['time']= datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        # 加锁
-                        with store_Q_lock:
-                            # 放入队列给存储线程进行存储
-                            store_Q.put(return_data)  # 修改全局变量
+                        return_data['time']= datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
+                        result = store_data_with_result(return_data, need_result=True, timeout=5)
+                        if result and result.success:
+                            logger.info(f"数据存储成功，ID: {result.item_id}")
+                        else:
+                            logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
                         # logger.info(f"{total_messages_processed}|{return_data}")
                         pass
 
@@ -308,6 +362,7 @@ class Send_thread(MyQThread):
                         if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
                             barrier: threading.Barrier = global_setting.get_setting("barrier")
                             if barrier is not None:
+                                logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
                                 barrier.wait()
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
@@ -323,6 +378,7 @@ class Send_thread(MyQThread):
                         if MESSAGE_BATCH_SIZE == 0 or total_messages_processed % MESSAGE_BATCH_SIZE == 0:
                             barrier: threading.Barrier = global_setting.get_setting("barrier")
                             if barrier is not None:
+                                logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
                                 barrier.wait()
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
@@ -452,6 +508,7 @@ def barrier_action():
     handle = Monitor_Datas_Handle()  # # 创建数据库操作器
     results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time)
     handle.stop()
+    # logger.critical(f"{results}")
     mouse_cage_number,_,_= number_util.extract_numbers_with_patterns(string_list=columns+[f"{results.get('UFC_monitor_data__mouse_cage')}"])
     mouse_cage_number=int(mouse_cage_number) if mouse_cage_number else 1
     store_Datas =[]
@@ -464,6 +521,7 @@ def barrier_action():
                         'value': results.get('SpanCalibration_data__oxygen_calibration_span_value') if results.get(
                             'SpanCalibration_data__oxygen_calibration_span_value') else None})
     store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get('UFC_monitor_data__flow_num')})
+    store_Datas.append({'desc': 'ufc_参考气路流量计测量值(sccm)', 'value': results.get('UFC_monitor_data__reference_flow_num')})
     store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get('UGC_monitor_data__flow_num_1')})
     store_Datas.append({'desc': 'CO2(%)', 'value': results.get('UGC_monitor_data__CO2_num')})
     store_Datas.append({'desc': '氧气传感器测量值(%)', 'value': results.get('ZOS_monitor_data__oxygen_num')})
@@ -483,8 +541,8 @@ def barrier_action():
         {'desc': '食物重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num')  })
     store_Datas.append(
         {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')})
-    store_Datas.append({'desc':'轮次开始时间','value':datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
-    store_Datas.append({'desc':'轮次结束时间','value':datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S')})
+    store_Datas.append({'desc':'轮次开始时间','value':datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
+    store_Datas.append({'desc':'轮次结束时间','value':datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
     # store_Datas.append({'desc':'获取时间','value':datetime.now().fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
     # 装载数据
     # 存储值----------------------------------------------------
@@ -495,15 +553,13 @@ def barrier_action():
     return_data_struct['mouse_cage_number'] = 0
     return_data_struct['data'] = store_Datas
     return_data_struct['slave_id'] = 0
-    return_data_struct['time']=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    return_data_struct['time']=datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     return_data_struct['function_code'] = 0
-    #  取出全局存储queue
-    lock = global_setting.get_setting("store_Q_lock", threading.Lock())
-    storeQ = global_setting.get_setting("store_Q", queue.Queue())
-    # 加锁
-    with lock:
-        # 放入队列给存储线程进行存储 这个存储线程时main_monitor_data的存储线程
-        storeQ.put(return_data_struct)  # 修改全局变量
+    result = store_data_with_result(return_data_struct, need_result=True, timeout=5)
+    if result and result.success:
+        logger.info(f"数据存储成功，ID: {result.item_id}")
+    else:
+        logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
     global_setting.set_setting("start_time_messages_sent_epoch_for_running", end_time+0.1)
     global_setting.set_setting("messages_sent_epoch_for_running",
                                0)
