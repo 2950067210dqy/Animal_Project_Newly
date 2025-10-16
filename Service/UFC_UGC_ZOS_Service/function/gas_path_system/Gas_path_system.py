@@ -852,6 +852,18 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         #存储值
         result_data = r['data']
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        if len(result_data['data'])>0:
+            oxygen_value = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='氧传感器测量值(%)']
+            if len(oxygen_value)>0:
+                oxygen_value = oxygen_value[0]
+                # 氧浓度V应校准为（V-Vzero）* K
+                oxygen_value =(oxygen_value-global_setting.get_setting("Vzero",0))*(oxygen_value-global_setting.get_setting("K",1))
+                for i in range(len(result_data)):
+                    if result_data['data'][i]['desc']=='氧传感器测量值(%)':
+                        logger.warning(f"'氧传感器测量值(%)经过校准后得:{oxygen_value}")
+                        result_data['data'][i]['value'] = oxygen_value
+                        break
+        # logger.critical(f"{'-'*500}|{result_data}")
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
             logger.info(f"数据存储成功，ID: {result.item_id}")

@@ -2,6 +2,7 @@ import math
 import time
 import typing
 
+from PyQt6.QtGui import QDoubleValidator
 from loguru import logger
 
 from Module.experiment_setting.config.experiment_default_config import get_default_config
@@ -26,7 +27,7 @@ from theme.ThemeQt6 import ThemedWindow
 from PyQt6 import QtGui
 from PyQt6.QtCore import QRect, Qt, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QGroupBox, QLabel, QSlider, QRadioButton, \
-    QGridLayout, QButtonGroup, QComboBox, QListWidget, QPushButton, QMessageBox
+    QGridLayout, QButtonGroup, QComboBox, QListWidget, QPushButton, QMessageBox, QHBoxLayout, QLineEdit, QDoubleSpinBox
 
 from public.util.time_util import time_util
 
@@ -177,6 +178,7 @@ class Tab_7(ThemedWindow):
         self.group_box = None
         self.port_combox=None
         self.response_text=None
+        self.vr_desc_text:QDoubleSpinBox=None
         self.experiment_setting: Experiment_setting_entity =None
         # 发送报文线程
         self.send_thread:Send_thread = None
@@ -343,6 +345,8 @@ class Tab_7(ThemedWindow):
             self.scroll_area_content = QWidget()
             self.scroll_area_layout = QVBoxLayout(self.scroll_area_content)
 
+            # 添加一些基本设置
+            self.init_basic_config(self.scroll_area_layout)
 
             # 添加每个模块
             for module_key, module_value in self.config.items():
@@ -407,6 +411,10 @@ class Tab_7(ThemedWindow):
             if self.main_gui is not None:
                 self.main_gui.change_enable_component_app_state_signal.emit()
                 pass
+            # 设置vr值
+            vr_value= self.vr_desc_text.value()
+            if  vr_value:
+                global_setting.set_setting("Vr",float(vr_value))
             send_message_queue = global_setting.get_setting("send_message_queue")
             send_message_queue.put(ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_port',
                                                    data=self.send_message['port'],
@@ -551,9 +559,9 @@ class Tab_7(ThemedWindow):
         pass
     def init_enm_config_ui(self, module_key, module_value,scroll_area_layout):
         # 创建 GroupBox
-        self.group_box = QGroupBox(f"{module_value['desc']}-{module_value['config'][0]['value'][0]['desc']}")
-        self.group_box.setContentsMargins(10,10,10,10)
-        scroll_area_layout.addWidget(self.group_box)
+        group_box = QGroupBox(f"{module_value['desc']}-{module_value['config'][0]['value'][0]['desc']}")
+        group_box.setContentsMargins(10,10,10,10)
+        scroll_area_layout.addWidget(group_box)
 
         # 创建第一个 GridLayout
         grid_layout1 = QGridLayout()
@@ -691,6 +699,28 @@ class Tab_7(ThemedWindow):
                     grid_layout4.addWidget(label, i, j * 3)  # 标签在 (i, j * 3)
                     grid_layout4.addWidget(slider, i, j * 3 + 1)  # 滑块在 (i, j * 3 + 1)
                     grid_layout4.addWidget(current_value_label, i, j * 3 + 2)  # 当前值标签在 (i, j * 3 + 2)
+        pass
+
+    def init_basic_config(self, scroll_area_layout):
+        """
+        设置基础设置
+        :param scroll_area_layout:
+        :return:
+        """
+        # 创建 GroupBox
+        self.group_box = QGroupBox(f"基本配置")
+        self.group_box.setContentsMargins(10, 10, 10, 10)
+        scroll_area_layout.addWidget(self.group_box)
+
+        # 创建第一个 GridLayout
+        h_layout = QHBoxLayout()
+        vr_desc_label=QLabel("请输入Vr值（实际的标定气体，根据气瓶上的标识确定,单位:%,例如20.9%，请输入20.9）：")
+        self.vr_desc_text=QDoubleSpinBox()
+        self.vr_desc_text.setValue(global_setting.get_setting("Vr",20.9))
+
+        h_layout.addWidget(vr_desc_label)
+        h_layout.addWidget(self.vr_desc_text)
+        self.group_box.setLayout(h_layout)
         pass
 
 

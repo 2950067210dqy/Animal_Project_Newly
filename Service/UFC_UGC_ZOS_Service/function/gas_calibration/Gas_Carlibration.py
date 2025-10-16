@@ -194,6 +194,8 @@ class Zero_Carlibration(Gas_Carlibration):
         return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         return_data_struct['table_name'] = next(iter(Others_Tables.Zero_Carlibration_Data.value.keys()))
         return_data_struct['mouse_cage_number']=0
+        # 添加Vzero参数到全局变量 方便氧传感器的值校准
+        global_setting.set_setting("Vzero",now_oxygen_value)
         return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value}]
         return_data_struct['slave_id']=0
         return_data_struct['function_code']=0
@@ -340,6 +342,11 @@ class Range_Carlibration(Gas_Carlibration):
         return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         return_data_struct['table_name'] = next(iter(Others_Tables.SPan_Carlibration_Data.value.keys()))
         return_data_struct['mouse_cage_number'] = 0
+        # 添加K参数到全局变量 方便氧传感器的值校准 Vr默认是20.9%
+        #K=（Vs-Vzero）/（Vr-Vzero）
+        K =(now_oxygen_value-global_setting.get_setting("Vzero",0))/(global_setting.get_setting("Vr",20.9)-global_setting.get_setting("Vzero",0))
+        logger.warning(f"量程标定的K值为：{K}")
+        global_setting.set_setting("K",K )
         return_data_struct['data'] = [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value}]
         return_data_struct['slave_id'] = 0
         return_data_struct['function_code'] = 0
