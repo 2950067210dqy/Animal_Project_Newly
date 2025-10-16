@@ -269,6 +269,8 @@ class UFC_UGC_ZOS_index(MyQThread):
         p = AsyPromise(self.UFC_gas_state_check_obj.state_check).then(
         ).catch(lambda e: logger.error(f"{e}"))
         return p
+        # p = AsyPromise(lambda r, e: r()).then().catch(lambda e: logger.error(f"{e}"))
+        # return p
 
 
 
