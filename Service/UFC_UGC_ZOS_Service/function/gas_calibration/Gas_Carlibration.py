@@ -146,7 +146,7 @@ class Zero_Carlibration(Gas_Carlibration):
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。2）采集氧气浓度")
             oxygen_data,oxygen_message =  self.send_thread.Send_no_promise()
-            now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧传感器测量值" in item['desc']]
+            now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气传感器测量值" in item['desc']]
             last_oxygen_value = copy.deepcopy(now_oxygen_value)
             now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
             end_time = time.time()
@@ -184,7 +184,7 @@ class Zero_Carlibration(Gas_Carlibration):
         self.send_thread.send_message = self.send_message
 
         oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-        now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧传感器测量值" in item['desc']]
+        now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气传感器测量值" in item['desc']]
         now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  零点标定 5.氧浓传感器零点记录值{now_oxygen_value}")
@@ -319,7 +319,7 @@ class Range_Carlibration(Gas_Carlibration):
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 3.循环采样zos氧浓度。1)采样zos氧气浓度")
             oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-            now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧传感器测量值" in item['desc']]
+            now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气传感器测量值" in item['desc']]
             last_oxygen_value = copy.deepcopy(now_oxygen_value)
             now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
             self.update_status_main_signal_gui_update.send(
@@ -336,7 +336,7 @@ class Range_Carlibration(Gas_Carlibration):
         self.send_thread.send_message = self.send_message
 
         oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-        now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧传感器测量值" in item['desc']]
+        now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气传感器测量值" in item['desc']]
         now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 5.氧浓传感器span数值记录。{now_oxygen_value}")
