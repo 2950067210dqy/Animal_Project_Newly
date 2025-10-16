@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 import time
 import traceback
 from enum import Enum
@@ -110,3 +111,15 @@ class folder_util():
         # 获取指定路径下的所有文件夹名称
         directories = [name for name in os.listdir(path) if os.path.isdir(os.path.join(path, name))]
         return directories
+    @classmethod
+    def open_folder(cls,folder_path):
+        """打开文件夹"""
+        try:
+            if sys.platform.startswith('darwin'):  # macOS
+                os.system(f"open {folder_path}")
+            elif sys.platform.startswith('win'):  # Windows
+                os.startfile(folder_path)
+            else:  # Linux
+                os.system(f"xdg-open {folder_path}")
+        except Exception as e:
+            raise Exception(f" {e}")

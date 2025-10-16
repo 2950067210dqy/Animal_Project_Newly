@@ -320,7 +320,7 @@ class MainWindow_Index(ThemedWindow):
         action_six.triggered.connect(self.export_experiment_datas)
         action_six.setDisabled(True)
         self.tool_bar_actions.append(
-            {"name": name, "obj_name": obj_name, "action": action_six, "app_state": AppState.CONFIGURING,
+            {"name": name, "obj_name": obj_name, "action": action_six, "app_state": AppState.MONITORING,
              'tip': "单击此按钮会将将实验数据保存。"})
 
         name = "重置教程页"
@@ -561,7 +561,7 @@ class MainWindow_Index(ThemedWindow):
         ).catch(lambda e: logger.error(e))
         pass
     def show_dialog(self,resolve,reject):
-        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])+15,title="开始实验",message="正在启动气路...")
+        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])+20,title="开始实验",message="正在启动气路...")
         result = dialog.exec()
         if result == QDialog.DialogCode.Accepted:
             resolve()
@@ -802,7 +802,8 @@ class MainWindow_Index(ThemedWindow):
                     'fold_path'] + os.path.join(
                     global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
                     f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
-                custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data,is_delete_original_data_file=False)
+                custom_data_file_util.export_data_to_csv(export_file_path=None, file_name=os.path.basename(folder_path_data))
+                # custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data,is_delete_original_data_file=False)
 
         QTimer.singleShot(1000, stop_store_info_Qtimer)
     def close_tab(self, index):

@@ -8,6 +8,7 @@ from loguru import logger
 
 from public.config_class.global_setting import global_setting
 from public.dao.SQLite.SQliteManager import SQLiteManager
+from public.entity.dict.AdvancedFuzzyDict import FuzzyDict
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.DataCaculation import Data_Caculation
 from public.function.DataCaculation.Data_Caculation import DataCaculation
@@ -199,13 +200,13 @@ class Monitor_Datas_Handle():
         :return:输出: {'id': None, 'temperature': -85.9, 'humidity': 93.9, 'noise': 190.1, 'pressure': 2275.6, 'wheel_count': 8501.028, 'remarks': None, 'other_field': None}
         """
         # 创建描述到列名的映射
-        desc_to_column = {desc: column for item in columns_mapping for desc, column in item.items()}
+        desc_to_column = columns_mapping
 
-        # 创建数据的描述到值的映射
-        desc_to_value = {item['desc']: item['value'] for item in data_list}
+        # 创建数据的描述到值的映射 模糊查询 因为可能键会有细微差异
+        desc_to_value =FuzzyDict({item['desc']: item['value'] for item in data_list})
 
         # 为所有列创建映射
-        result = {column: desc_to_value.get(desc) for desc, column in desc_to_column.items()}
+        result = {column: desc_to_value.fuzzy_get(desc) for desc, column in desc_to_column.items()}
 
         return result
     def insert_data(self, data):
@@ -216,7 +217,7 @@ class Monitor_Datas_Handle():
         """
         # 添加数据到表里
         if data is not None:
-
+            # logger.critical(f"{data}")
             # 公共传感器：
             if data['mouse_cage_number'] == 0:
                 # 获取该表名称
@@ -225,9 +226,10 @@ class Monitor_Datas_Handle():
                 table_name_meta = f"{table_name}_meta"
                 columns_query = self.sqlite_manager.query(table_name_meta)
                 # 把id列去掉 因为id自增
-                columns_all_except_id = [{i[2]:i[0]} for i in columns_query if i[0] != 'id' ]
+                columns_all_except_id = {i[2]:i[0] for i in columns_query if i[0] != 'id' }
                 data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
-                logger.critical(f"{data_store}||||{data}")
+                data_store['time'] = data['time']
+                # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
                 result = self.sqlite_manager.insert(table_name, **data_store)
                 if result == 1:
                     logger.info(f"数据插入表{table_name}成功！")
@@ -243,9 +245,10 @@ class Monitor_Datas_Handle():
                 table_name_meta = f"{table_name}_meta"
                 columns_query = self.sqlite_manager.query(table_name_meta)
                 # 把id列去掉 因为id自增
-                columns_all_except_id = [{i[2]: i[0]} for i in columns_query if i[0] != 'id']
+                columns_all_except_id = {i[2]:i[0] for i in columns_query if i[0] != 'id' }
                 data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
-                logger.critical(f"{data_store}||||{data}")
+                data_store['time'] = data['time']
+                # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
                 result = self.sqlite_manager.insert(table_name, **data_store)
                 if result == 1:
                     logger.info(f"数据插入表{table_name}成功！")
@@ -367,14 +370,14 @@ class Monitor_Datas_Handle():
 
     def query_meta_table_data(self, table_name):
         """
-        获取表结构数据 item_desc
+        获取表结构数据 item_desc 去除id remarks time列
         :param table_name:
         :return:
         """
         columns_query = self.sqlite_manager.query(f"{table_name}_meta")
         columns_desc = []
         if columns_query is not None and len(columns_query) > 0:
-            columns_desc = [{'desc':i[2],'name':i[0]} for i in columns_query][1:-1]
+            columns_desc = [{'desc':i[2],'name':i[0]} for i in columns_query][1:-2]
         return columns_desc
 
     def query_meta_table_data_all(self, table_name):

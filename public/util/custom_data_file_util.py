@@ -7,6 +7,8 @@ import json
 import os
 
 import pandas as pd
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from loguru import logger
 
 from public.function.Tansfer.DbTransferExcel import DbTransferExcel
@@ -99,21 +101,57 @@ class custom_data_file_util:
         # 将内容写入自定义格式文件
         with open(custom_file_path, 'w', encoding=cls.encoding) as custom_file:
             json.dump(contents, custom_file, ensure_ascii=False, indent=4)
+        # 将数据db文件转成excel文件
+        excel_file_path=os.path.join(parent_directory, f'{folder_name}.xlsx')
+        cls.export_data_to_csv(excel_file_path,folder_name)
 
-        #将数据db文件转成excel文件
-        transfer_handle =DbTransferExcel()
-        excel_file_path = os.path.join(parent_directory, f'{folder_name}.xlsx')
-        used_sheet_names = set()
-        try:
-            import openpyxl
-            with pd.ExcelWriter(excel_file_path, engine="openpyxl") as writer:
-                transfer_handle.export_db_to_excel( writer, combine_mode=True, sheet_used=used_sheet_names, chunksize=(5000 or None))
-        except Exception as e:
-            logger.error(e)
+
         #删除该文件夹
         if is_delete_original_data_file:
             folder_util.remove_non_empty_folder(folder_path)
+    @classmethod
+    def export_data_to_csv(cls,export_file_path=None,file_name=None):
+        # 将数据db文件转成excel文件
+        transfer_handle = DbTransferExcel()
+        if export_file_path is None:
+            try:
+                file_path, _ = QFileDialog.getSaveFileName(
+                    None,
+                    "保存监测数据",
+                    f"{file_name}.xlsx",
+                    "excel文件 (*.xlsx);;所有文件 (*)"
+                )
 
+                if file_path:
+                    export_file_path=file_path
+                else:
+                    QMessageBox.warning(None, "错误", f"选择保存路径失败")
+                    return
+            except Exception as e:
+                QMessageBox.warning(None, "错误", f"选择保存路径失败: {str(e)}")
+                return
+        used_sheet_names = set()
+        try:
+            import openpyxl
+            with pd.ExcelWriter(export_file_path, engine="openpyxl") as writer:
+                transfer_handle.export_db_to_excel(writer, combine_mode=True, sheet_used=used_sheet_names,
+                                                   chunksize=(5000 or None))
+            msg_box = QMessageBox(
+                QMessageBox.Icon.Information,
+                "导出成功",
+                  f"数据已导出到: {export_file_path}\n\n点击'open'按钮可以打开保存的文件夹。",
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Open
+            )
+            # msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+            msg_box.setWindowFlags(msg_box.windowFlags() )
+
+            if QMessageBox.StandardButton.Open == msg_box.exec():
+                # 打开保存的文件夹
+
+                folder_util.open_folder(os.path.dirname(export_file_path))
+        except Exception as e:
+            logger.error(e)
+        pass
     @classmethod
     def save_folder_contents_as_custom_file_for_user_choose(cls, folder_path, is_delete_original_data_file=True):
         contents = {}

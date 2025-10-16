@@ -15,12 +15,14 @@ class ResponsiveBubbleTooltip(QWidget):
         self.text = text
         self.main_window = main_window
 
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # 创建背景遮罩
         self.overlay_background = QWidget(main_window)
-        self.overlay_background.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.overlay_background.setWindowFlags(Qt.WindowType.FramelessWindowHint )
+        # self.overlay_background.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.overlay_background.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.overlay_background.resize(main_window.size())
         self.overlay_background.move(0, 0)

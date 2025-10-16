@@ -19,7 +19,7 @@ class AnimalDialog(QDialog):
         super().__init__()
         self.setting_data:Experiment_setting_entity = None
         self.setWindowTitle("动物信息")
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         # 创建表单布局
         self.layout = QFormLayout(self)
 

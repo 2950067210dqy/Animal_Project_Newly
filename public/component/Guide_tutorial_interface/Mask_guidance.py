@@ -19,7 +19,8 @@ class OverlayWidget(QWidget):
         self.target_widget = target_widget
         self.text = text
         self.parent_window = parent
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # 监听父窗口的大小变化

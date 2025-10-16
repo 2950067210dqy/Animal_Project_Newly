@@ -11,7 +11,7 @@ from loguru import logger
 
 from public.config_class.global_setting import global_setting
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
-from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser
+from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser, get_module_name
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 from public.util.time_util import time_util
 
@@ -231,11 +231,10 @@ class ModbusRTUMasterNew:
         发送Modbus RTU命令并获取响应（主要方法）
         """
         return_data = {}
-        return_data['module_name'] = 'ZeroCalibration'
+        return_data['module_name'] = get_module_name(slave_id)
         return_data['table_name'] = self.get_table_name(slave_id)
         return_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return_data['ufc_mouse_cage_number'] = 0
-        return_data['mouse_cage_number'] = int(slave_id, 16) if int(slave_id, 16) > 16 else 0
+        return_data['mouse_cage_number'] = int(slave_id, 16)// 16 if int(slave_id, 16) > 16 else 0
         return_data['data'] = []
         return_data['slave_id'] = slave_id
         return_data['function_code'] = function_code

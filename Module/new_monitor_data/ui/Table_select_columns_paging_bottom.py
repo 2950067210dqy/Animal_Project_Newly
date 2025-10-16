@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from loguru import logger
 
+from Module.new_monitor_data.ui.Custom_table import CustomTableWidget
 from public.config.Data_Column import Data_column_list
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.BaseWindow import BaseWindow
@@ -146,7 +147,8 @@ class Table_select_columns_paging_bottom(BaseWindow):
         main_vbox.addWidget(self.scroll_area, 1)
 
         # QTableWidget 初始无列
-        self.table = QTableWidget()
+        self.table =CustomTableWidget()
+        self.table.setMouseTracking(True)# 启用鼠标跟踪
         self.table.setColumnCount(0)
         self.table.setRowCount(0)
         self.table.setAlternatingRowColors(True)
@@ -308,7 +310,7 @@ class Table_select_columns_paging_bottom(BaseWindow):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
                 self.table.setItem(row_idx, index, item)
                 index+=1
-
+        self.table.resizeColumnsToContents()
         # self.current_page=result['page']
         self.total_items=result['total_items']
         # 更新分页信息与按钮状态

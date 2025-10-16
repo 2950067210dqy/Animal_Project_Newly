@@ -10,6 +10,37 @@ from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids, Modbus_Slave_Ty
 from public.util.time_util import time_util
 
 #logger = logger.bind(category="deep_camera_logger")
+def get_module_name(slave_id):
+    """
+    根据slave_id寻找模块名称 例如02为UFC 03为UGC
+    :param slave_id:
+    :return:
+    """
+
+    slave_id_int = int(slave_id, 16)
+    # print(f"slave_id_int:{slave_id_int}")
+    if slave_id_int > 16:
+        mouse_cage_number = slave_id_int // 16
+        # 鼠笼内传感器
+        for type in Modbus_Slave_Type.Each_Mouse_Cage.value:
+            if type.value['int'] == (slave_id_int % 16):
+                # logger.info(f"type.value['name'] Each:{type.value['name']}|mouse_cage_number:{mouse_cage_number}")
+               return type.value['name']
+
+        else:
+            logger.info(f"type.value['name'] Each:{'ERROR'}|mouse_cage_number:{mouse_cage_number}")
+            return None
+        pass
+    else:
+        # 非鼠笼内传感器
+        for type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value:
+            if type.value['int'] == (slave_id_int % 16):
+                # logger.info(f"type.value['name'] Not_Each:{type.value['name']}")
+                return type.value['name']
+        else:
+            logger.info(f"type.value['name'] Not_Each:{'ERROR'}")
+            return None
+        pass
 class Modbus_Response_Parser():
     """
 响应报文解析
@@ -607,7 +638,7 @@ class Modbus_Response_ENM(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['温度测量值(℃)', '湿度测量值(%RH)', '噪声测量值(dB)', '大气压测量值(KPa)', '当前计量周期内跑轮圈数测量值']
+        port_types = ['温度测量值(°C)', '湿度测量值(%RH)', '噪声测量值(dB)', '大气压测量值(KPa)', '当前计量周期内跑轮圈数测量值']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
@@ -1611,7 +1642,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['氧传感器测量值(%)']
+        port_types = ['氧气传感器测量值(%)']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:

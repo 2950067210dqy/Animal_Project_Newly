@@ -15,7 +15,8 @@ class ArrowOverlayWidget(QWidget):
         self.parent_window = parent
         self.arrow_direction = "bottom"
 
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # 监听父窗口的大小变化

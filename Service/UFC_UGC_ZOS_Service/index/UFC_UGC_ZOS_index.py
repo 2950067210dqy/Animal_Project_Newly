@@ -122,7 +122,7 @@ class UFC_UGC_ZOS_index(MyQThread):
 
     def logger_info(self, text):
 
-        if "\n" not in text:
+        if text and "\n" not in text:
             logger.debug(text)
 
     def _init_function(self):
@@ -203,6 +203,7 @@ class UFC_UGC_ZOS_index(MyQThread):
     def run_btn_handle(self):
 
         global auto_wait_event
+        # 测试timeout
         auto_wait_event.wait()
         #每轮运行发送报文数量 赋值0
         global_setting.set_setting("messages_sent_epoch_for_running", 0)

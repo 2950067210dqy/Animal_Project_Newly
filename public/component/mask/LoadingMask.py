@@ -102,7 +102,8 @@ class AnimatedLoadingMask(QWidget):
 
     def setupUI(self):
         """设置UI"""
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlags(Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # 如果有父窗口，设置为覆盖整个父窗口

@@ -444,6 +444,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         # 参考气路
         if mouse_cages_inc[self.mouse_cage_index]+1 ==9:
             logger.error(f"---------------参考气路值：{result_data['data']}")
+
             self.reference_gap_value=result_data['data'][0]['value']
             # 获得参考气则直接进行下个鼠笼的UFC数据获取
             # 将鼠笼下标循环前移动

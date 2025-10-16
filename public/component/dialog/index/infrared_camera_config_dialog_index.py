@@ -114,7 +114,7 @@ class infrared_camera_config_dialog(QDialog):
         self.ui.setupUi(self)
         self.setParent(None)
         # 窗口总是在最顶层
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         # 隐藏右上角的关闭按钮
         self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
         self.setModal(True)

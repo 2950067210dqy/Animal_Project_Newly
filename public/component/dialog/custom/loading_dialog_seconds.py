@@ -19,7 +19,8 @@ class AnimatedLoadingDialog(QDialog):
     def init_ui(self):
         self.setWindowTitle(self.title)
         self.setFixedSize(400, 200)
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setStyleSheet("""
             QDialog {
                 background-color: #f0f0f0;

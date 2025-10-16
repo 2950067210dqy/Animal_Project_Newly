@@ -18,7 +18,7 @@ class Save_Experiment_Dialog(QDialog):
         event.accept()  # 允许关闭对话框
     def __init__(self,title="",text=""):
         super().__init__()
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         self.setWindowTitle(title)
         # 记录对话框结果的变量
         self.dialog_result = None

@@ -19,7 +19,7 @@ class RunningCagesDialog(QDialog):
     def __init__(self, parent: QWidget | None = None, total_cages: int = 8):
         super().__init__(parent)
         self.setWindowTitle("UFC启动-设定运行的鼠笼")
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         self.setModal(True)
         self.total_cages = max(1, int(total_cages))
         self._result_data = None

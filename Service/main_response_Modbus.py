@@ -1327,6 +1327,8 @@ class communication(threading.Thread):
                             pass
 
                         # 根据发送来的数据进行响应
+                        #测试timeout
+                        # if return_bytes!=data:
                         self.ser.write(return_bytes)
 
                     except UnicodeDecodeError:

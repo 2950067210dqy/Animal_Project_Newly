@@ -9,6 +9,6 @@ class InfoDialog(QMessageBox):
         super().__init__()
         self.setWindowTitle(title)
         self.setText(info)
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         self.setIcon(icon)  # 设置图标
         self.setStandardButtons(QMessageBox.StandardButton.Ok)

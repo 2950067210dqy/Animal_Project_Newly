@@ -108,6 +108,7 @@ def start_qt_application():
     # 绑定突出事件
     app.aboutToQuit.connect(quit_qt_application)
     program_self_check_index_dialog = Program_self_check_index()
+    program_self_check_index_dialog.activateWindow()
     return_Data = program_self_check_index_dialog.exec()
     if return_Data ==QDialog.DialogCode.Accepted:
         #点了确认

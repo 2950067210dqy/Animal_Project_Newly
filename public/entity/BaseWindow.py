@@ -181,7 +181,7 @@ class BaseWindow(QMainWindow):
         # 状态栏
         self.status_bar=None
         # 设置窗口标志，
-        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
         # 创建文件菜单
 
 
@@ -441,6 +441,9 @@ class BaseWindow(QMainWindow):
     # 显示窗口
     def show_frame(self):
         self.show()
+        # 将窗口提升到前台并激活
+        self.raise_()
+        self.activateWindow()
         pass
     # 设置主窗口变量
     def set_main_gui(self,main_gui):
