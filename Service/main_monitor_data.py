@@ -337,15 +337,15 @@ class Send_thread(MyQThread):
                                                                                  send_message['slave_id'],
                                                                                  function_code=
                                                                                  send_message['function_code'], )
+                        return_data['data'].append({'desc': '备注', 'value': None})
+                    return_data['time']= datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
-                        return_data['time']= datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-
-                        result = store_data_with_result(return_data, need_result=True, timeout=5)
-                        if result and result.success:
-                            logger.info(f"数据存储成功，ID: {result.item_id}")
-                        else:
-                            logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
-                        # logger.info(f"{total_messages_processed}|{return_data}")
+                    result = store_data_with_result(return_data, need_result=True, timeout=5)
+                    if result and result.success:
+                        logger.debug(f"数据存储成功{response_hex}，ID: {result.item_id}")
+                    else:
+                        logger.error(f"数据{response_hex}存储失败: {result.error if result else '未知错误'}")
+                    # logger.info(f"{total_messages_processed}|{return_data}")
                         pass
 
                 except queue.Empty:

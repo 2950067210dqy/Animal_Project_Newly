@@ -252,6 +252,13 @@ class UFC_UGC_ZOS_index(MyQThread):
             ).then().catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
         return p
+        # # 测试   不需要校0标定
+        # p = AsyPromise(
+        #     self.Range_carlibration_obj.calibrate
+        # ).then().catch(lambda e: logger.error(f"{e}"))
+        # return p
+        # p = AsyPromise(lambda r, e: r()).then().catch(lambda e: logger.error(f"{e}"))
+        # return p
 
     def gas_state_check_handle(self):
         self.set_gas_state_check_timer()

@@ -247,12 +247,14 @@ class ModbusRTUMasterNew:
                 global_setting.set_setting("messages_sent_epoch_for_running", global_setting.get_setting("messages_sent_epoch_for_running", 0)+1)
                 # 确保连接可用
                 if not self._ensure_connection():
+                    return_data['data'].append({'desc':'备注', 'value':f"{self.sport}-无法建立连接"})
                     logger.error(f"{self.sport}-无法建立连接")
                     return None, None, False,return_data
 
                 # 构造报文
                 frame = self.build_frame(slave_id, function_code, data_hex_list)
                 if frame is None:
+                    return_data['data'].append({'desc': '备注', 'value': f"构造发送报文 frame 为空"})
                     return None, None, False,return_data
 
                 # 发送数据
@@ -270,12 +272,13 @@ class ModbusRTUMasterNew:
 
         except TimeoutError as e:
             logger.error(f"{self.sport}-操作超时: {e}")
+            return_data['data'].append({'desc': '备注', 'value': f"{self.sport}-操作超时: {e}"})
             return None, None, False,return_data
         except Exception as e:
             error_msg = f"串口通信异常: {e}"
             self._send_status_message(f"❗ {error_msg}")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-❗ {error_msg}")
-
+            return_data['data'].append({'desc': '备注', 'value': f"{error_msg}"})
             # 通信异常时断开连接
             self.is_connected = False
             return None, None, False,return_data
@@ -288,12 +291,14 @@ class ModbusRTUMasterNew:
         if not response:
             self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT1-未获取到响应数据")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT1-未获取到响应数据")
+            return_data['data'].append({'desc': '备注', 'value': f"Time OUT1-未获取到响应数据"})
             return None, None, False,return_data
 
         # 数据长度检查
         if len(response) < 5:
             self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT2-返回数据位数错误")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT2-返回数据位数错误")
+            return_data['data'].append({'desc': '备注', 'value': f"Time OUT2-返回数据位数错误"})
             return response, response.hex(), False,return_data
 
         # CRC校验
@@ -304,6 +309,7 @@ class ModbusRTUMasterNew:
         if crc_received != crc_expected:
             self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败")
+            return_data['data'].append({'desc': '备注', 'value': f"Time OUT3-数据错误，CRC验证失败"})
             return response, response.hex(), False,return_data
 
         # 检查异常响应
@@ -313,6 +319,7 @@ class ModbusRTUMasterNew:
             error_msg = f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"
             self._send_status_message(error_msg)
             logger.error(f"{error_msg}")
+            return_data['data'].append({'desc': '备注', 'value': f"异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"})
             return response, response.hex(), False,return_data
 
         # 响应正常
@@ -323,7 +330,7 @@ class ModbusRTUMasterNew:
         logger.info(
             f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-收到响应消息-{response.hex()}-数据部分{data_part.hex()}")
 
-        # 解析响应
+        # 解析响应 一般都不在这里直接解析响应！！！！要不在main_monitor_data 里或者就在send_message里
         if is_parse_response:
             self.parse_response(response, response.hex(), True, slave_id, function_code)
         # 等待响应

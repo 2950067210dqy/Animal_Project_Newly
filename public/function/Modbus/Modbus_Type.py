@@ -13,6 +13,7 @@ class Others_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("oxygen_calibration_zero_value", "氧浓度0点校准值", " REAL "),
+                ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ],
         }
@@ -23,6 +24,7 @@ class Others_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("oxygen_calibration_span_value", "氧浓传感器span数值", " REAL "),
+                ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ],
         }
@@ -51,6 +53,7 @@ class Others_Tables(Enum):
                 ("WM_weight_num", "称重重量测量值(g)", " REAL "),
                 ("epoch_start_time", "轮次开始时间", " TIMESTAMP "),
                 ("epoch_end_time", "轮次结束时间", " TIMESTAMP "),
+                ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
         }
@@ -72,6 +75,7 @@ class Modbus_Slave_Tables(Enum):
                             ("reserve_high_num_2", "备用2高字节", " TEXT "),
                             ("reserve_low_num_2", "备用2低字节", " TEXT "),
                             ("reference_flow_num","参考气路流量计测量值(sccm)", " INTEGER "),
+                            ("remarks", "备注", " TEXT "),
                             ("time", "获取时间", " TIMESTAMP ")
                                 ],
             }
@@ -148,6 +152,7 @@ class Modbus_Slave_Tables(Enum):
                 ("flow_num_1", "流量计1", " INTEGER "),
                 ("CO2_num", "CO2(%)", " REAL "),
                 ("reserve", "保留", " REAL "),
+                ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
         }
@@ -239,6 +244,7 @@ class Modbus_Slave_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("oxygen_num", "氧气传感器测量值(%)", " REAL "),
+                ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
         }
@@ -291,7 +297,7 @@ class Modbus_Slave_Tables(Enum):
             ]
         }
     }
-
+    #11 04
     ENM_monitor_data={
         "monitor_data": {
             'function_code': 4,
@@ -302,6 +308,7 @@ class Modbus_Slave_Tables(Enum):
                 ("noise_num", "噪声测量值(dB)", " REAL "),
                 ("barometer_num", "大气压测量值(KPa)", " REAL "),
                 ("running_wheel_num", "当前计量周期内跑轮圈数测量值", " REAL "),
+                ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
         }
@@ -358,13 +365,14 @@ class Modbus_Slave_Tables(Enum):
             ]
         }
     }
-
+    #12 04
     DWM_monitor_data={
         "monitor_data": {
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("weight_num", "重量测量值(g)", " REAL "),
+                ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
         }
@@ -396,13 +404,14 @@ class Modbus_Slave_Tables(Enum):
             ]
         }
     }
-
+#13 04
     EM_monitor_data={
         "monitor_data": {
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("weight_num", "重量测量值(g)", " REAL "),
+                ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
         }
@@ -445,13 +454,14 @@ class Modbus_Slave_Tables(Enum):
             ]
         }
     }
-
+    #14 04
     WM_monitor_data={
         "monitor_data": {
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("weight_num", "重量测量值(g)", " REAL "),
+                ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
         }

@@ -179,35 +179,6 @@ class Monitor_Datas_Handle():
                                                            description=item[1])
         pass
 
-    def _map_data_compact_with_none(self,data_list, columns_mapping):
-        """
-        我的columns_all_except_id列表装着我数据表的所有列名以及列的描述，例如[{'序号':'id'}.......],
-        现在我的data['data']拥有数据 [
-            {'desc': '温度测量值(℃)', 'value': -85.9},
-            {'desc': '湿度测量值(%RH)', 'value': 93.9},
-            {'desc': '噪声测量值(dB)', 'value': 190.1},
-            {'desc': '大气压测量值(KPa)', 'value': 2275.6},
-            {'desc': '当前计量周期内跑轮圈数测量值', 'value': 8501.028},
-            {'desc': '备注', 'value': None}
-        ],
-        我该怎么根据data['data']里的列的描述desc去columns_all_except_id找着对应的列名，
-        并且将data['data']里desc所在字典的'value'键的值与我们所找着对应的列名给形成键值对的字典，
-        例如{'id':0},如果data['data']没有在columns_all_except_id找着对应的列名，
-        则将键值对列名的值为None
-        :param data_list:
-        :param columns_mapping:
-        :return:输出: {'id': None, 'temperature': -85.9, 'humidity': 93.9, 'noise': 190.1, 'pressure': 2275.6, 'wheel_count': 8501.028, 'remarks': None, 'other_field': None}
-        """
-        # 创建描述到列名的映射
-        desc_to_column = {desc: column for item in columns_mapping for desc, column in item.items()}
-
-        # 创建数据的描述到值的映射
-        desc_to_value = {item['desc']: item['value'] for item in data_list}
-
-        # 为所有列创建映射
-        result = {column: desc_to_value.get(desc) for desc, column in desc_to_column.items()}
-
-        return result
     def insert_data(self, data):
         """
 
@@ -224,35 +195,97 @@ class Monitor_Datas_Handle():
                 # # 获取该表的column项
                 table_name_meta = f"{table_name}_meta"
                 columns_query = self.sqlite_manager.query(table_name_meta)
-                # 把id列去掉 因为id自增
-                columns_all_except_id = [{i[2]:i[0]} for i in columns_query if i[0] != 'id' ]
-                data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
-                logger.critical(f"{data_store}||||{data}")
-                result = self.sqlite_manager.insert(table_name, **data_store)
-                if result == 1:
-                    logger.info(f"数据插入表{table_name}成功！")
-                    return True, None
-                else:
-                    logger.info(f"数据插入表{table_name}失败！")
-                    return False, f"数据插入表{table_name}失败！"
 
+                # 如果数据空 或者为UFC的 空
+                if len(data['data']) ==0 or (len(data['data']) == 1 and data['data'][0]['desc']=='鼠笼号'):
+                    columns = [i[0] for i in columns_query if i[0] != 'id' and i[0] != 'time']
+                    if columns:
+                        # 因为UFC也分鼠笼 所以单独处理
+                        if "UFC" in table_name and len(data['data']) == 1:
+                            # 去除首列mouse_cage_num
+                            columns.pop(0)
+                            #data['data'][0]['value']为mouse_cage_num
+                            datas = [None, data['data'][0]['value']]
+                            for i in range(len(columns)):
+                                datas.append(None)
+                            datas.append(data['time'])
+                            result = self.sqlite_manager.insert_not_columns(table_name, datas)
+                            if result == 1:
+                                logger.info(f"数据插入表{table_name}成功！")
+                                return True,None
+                            else:
+                                logger.info(f"数据插入表{table_name}失败！")
+                                return False,f"数据插入表{table_name}失败！"
+                            pass
+                        else:
+                            datas = [None]
+                            for i in range(len(columns)):
+                                datas.append(None)
+
+                            datas.append(data['time'])
+                            result = self.sqlite_manager.insert_not_columns(table_name, datas)
+                            if result == 1:
+                                logger.info(f"数据插入表{table_name}成功！")
+                                return True,None
+                            else:
+                                logger.info(f"数据插入表{table_name}失败！")
+                                return False,f"数据插入表{table_name}失败！"
+                            pass
+
+                            pass
+                    else:
+                        logger.info(f"数据插入表{table_name}失败！列为空")
+                        return False,f"数据插入表{table_name}失败！列为空"
+
+                else:
+                    columns = [i[0] for i in columns_query if i[0] != 'id']
+                    datas = [i['value'] for i in data['data']]
+
+                    datas.append(data['time'])
+                    # logger.error(f"{columns} | {datas}")
+                    result = self.sqlite_manager.insert_2(table_name, columns, datas)
+                    if result == 1:
+                        logger.info(f"数据插入表{table_name}成功！")
+                        return True,None
+                    else:
+                        logger.info(f"数据插入表{table_name}失败！")
+                        return False,f"数据插入表{table_name}失败！"
             else:  # 每个鼠笼传感器：
                 # 获取该表名称
                 table_name = f"{data['module_name']}_{data['table_name']}_cage_{data['mouse_cage_number']}"
                 # # 获取该表的column项
                 table_name_meta = f"{table_name}_meta"
                 columns_query = self.sqlite_manager.query(table_name_meta)
-                # 把id列去掉 因为id自增
-                columns_all_except_id = [{i[2]: i[0]} for i in columns_query if i[0] != 'id']
-                data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
-                logger.critical(f"{data_store}||||{data}")
-                result = self.sqlite_manager.insert(table_name, **data_store)
-                if result == 1:
-                    logger.info(f"数据插入表{table_name}成功！")
-                    return True, None
+                # 如果数据非空
+                if len(data['data']) != 0:
+                    columns = [i[0] for i in columns_query if i[0] != 'id']
+                    datas = [i['value'] for i in data['data']]
+
+                    datas.append(data['time'])
+                    result = self.sqlite_manager.insert_2(table_name, columns, datas)
+                    if result == 1:
+                        logger.info(f"数据插入表{table_name}成功！")
+                        return True,None
+                    else:
+                        logger.info(f"数据插入表{table_name}失败！")
+                        return False,f"数据插入表{table_name}失败！"
+                    pass
                 else:
-                    logger.info(f"数据插入表{table_name}失败！")
-                    return False, f"数据插入表{table_name}失败！"
+                    columns = [i[0] for i in columns_query if i[0] != 'id' and i[0] != 'time']
+                    datas = [None]
+                    for i in range(len(columns)):
+                        datas.append(None)
+
+                    datas.append(data['time'])
+                    result = self.sqlite_manager.insert_not_columns(table_name, datas)
+                    if result == 1:
+                        logger.info(f"数据插入表{table_name}成功！")
+                        return True,None
+                    else:
+                        logger.info(f"数据插入表{table_name}失败！")
+                        return False,f"数据插入表{table_name}失败！"
+                    pass
+                    pass
         else:
             return False
             pass

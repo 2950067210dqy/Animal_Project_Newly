@@ -41,13 +41,14 @@ class Send_Message:
                                                                              function_code=
                                                                              self.send_message['function_code'], )
 
-                    # 把返回数据返回给源头
-                    message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index",
-                                                     data=parser_message,
-                                                     origin='UFC_UGC_ZOS_index_send_thread')
+                    return_data['data'].append({'desc': '备注', 'value': None})
+                # 把返回数据返回给源头
+                message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index",
+                                                 data=parser_message,
+                                                 origin='UFC_UGC_ZOS_index_send_thread')
 
-                    global_setting.get_setting("send_message_queue").put(message_struct)
-                    # logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
+                global_setting.get_setting("send_message_queue").put(message_struct)
+                # logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
 
 
             except Exception as e:
@@ -84,14 +85,14 @@ class Send_Message:
                                                                              function_code=
                                                                              self.send_message['function_code'], )
 
-                    # 把返回数据返回给源头
-
-                    message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index",
-                                                     data=parser_message,
-                                                     origin='UFC_UGC_ZOS_index_send_thread')
-                    global_setting.get_setting("send_message_queue").put(message_struct)
-                    # logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
-                    pass
+                    return_data['data'].append({'desc': '备注', 'value': None})
+                # 把返回数据返回给源头
+                message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index",
+                                                 data=parser_message,
+                                                 origin='UFC_UGC_ZOS_index_send_thread')
+                global_setting.get_setting("send_message_queue").put(message_struct)
+                # logger.debug(f"UFC_UGC_ZOS_index_send_thread将响应报文的解析数据返回源头：{message_struct}")
+                pass
 
             except Exception as e:
                 self.modbus.close()

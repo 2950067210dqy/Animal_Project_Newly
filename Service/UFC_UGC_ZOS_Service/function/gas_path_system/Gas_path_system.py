@@ -857,7 +857,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             if len(oxygen_value)>0:
                 oxygen_value = oxygen_value[0]
                 # 氧浓度V应校准为（V-Vzero）* K
-                oxygen_value =(oxygen_value-global_setting.get_setting("Vzero",0))*(oxygen_value-global_setting.get_setting("K",1))
+                oxygen_value =round((oxygen_value-global_setting.get_setting("Vzero",0))*global_setting.get_setting("K",1),3)
                 for i in range(len(result_data)):
                     if result_data['data'][i]['desc']=='氧传感器测量值(%)':
                         logger.warning(f"'氧传感器测量值(%)经过校准后得:{oxygen_value}")
