@@ -139,16 +139,18 @@ class custom_data_file_util:
             msg_box = QMessageBox(
                 QMessageBox.Icon.Information,
                 "导出成功",
-                  f"数据已导出到: {export_file_path}\n\n点击'open'按钮可以打开保存的文件夹。",
+                  f"数据已导出到: {export_file_path}\n\n点击'open'按钮可以打开保存的文件以及文件夹。",
                 QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Open
             )
+            msg_box.setDefaultButton(QMessageBox.StandardButton.Open)
             # msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
             msg_box.setWindowFlags(msg_box.windowFlags() )
 
             if QMessageBox.StandardButton.Open == msg_box.exec():
-                # 打开保存的文件夹
+                # 打开保存的文件夹和文件
 
                 folder_util.open_folder(os.path.dirname(export_file_path))
+                folder_util.open_folder(export_file_path)
         except Exception as e:
             logger.error(e)
         pass

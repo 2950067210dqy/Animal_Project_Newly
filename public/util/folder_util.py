@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import sys
 import time
 import traceback
@@ -121,5 +122,20 @@ class folder_util():
                 os.startfile(folder_path)
             else:  # Linux
                 os.system(f"xdg-open {folder_path}")
+        except Exception as e:
+            raise Exception(f" {e}")
+    @classmethod
+    def open_file(cls,filepath):
+        # 打开文件
+        try:
+            if sys.platform == "win32":
+                # Windows
+                subprocess.run(["start", filepath], shell=True)
+            elif sys.platform == "darwin":
+                # macOS
+                subprocess.run(["open", filepath])
+            else:
+                # Linux
+                subprocess.run(["xdg-open", filepath])
         except Exception as e:
             raise Exception(f" {e}")
