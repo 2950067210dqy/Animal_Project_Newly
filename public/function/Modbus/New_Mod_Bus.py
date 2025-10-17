@@ -172,11 +172,11 @@ class ModbusRTUMasterNew:
                 logger.info(f"{self.sport}-重连成功")
                 return True
             except PermissionError as e:
-                logger.error(f"{self.sport}-重连尝试 {attempt + 1} 失败:串口占用: {e}")
+                logger.error(f"{self.origin}|{self.sport}-重连尝试 {attempt + 1} 失败:串口占用: {e}")
                 # 被占用就关闭串口
                 self._close_connection_unsafe()
             except Exception as e:
-                logger.error(f"{self.sport}-重连尝试 {attempt + 1} 失败: {e}")
+                logger.error(f"{self.origin}|{self.sport}-重连尝试 {attempt + 1} 失败: {e}")
                 # 被占用就关闭串口
                 self._close_connection_unsafe()
 
@@ -304,10 +304,11 @@ class ModbusRTUMasterNew:
                 # 每轮运行报文加1
                 global_setting.set_setting("messages_sent_epoch_for_running", global_setting.get_setting("messages_sent_epoch_for_running", 0)+1)
                 # 确保连接可用
-                if not self._ensure_connection():
-                    return_data['data'].append({'desc':'备注', 'value':f"{self.sport}-无法建立连接"})
-                    logger.error(f"{self.sport}-无法建立连接")
-                    return None, None, False,return_data
+                if not self.connect():
+                    if not self._ensure_connection():
+                        return_data['data'].append({'desc':'备注', 'value':f"{self.sport}-{slave_id, function_code, data_hex_list}-无法建立连接"})
+                        logger.error(f"{self.sport}-{slave_id, function_code, data_hex_list}-无法建立连接")
+                        return None, None, False,return_data
 
                 # 构造报文
                 frame = self.build_frame(slave_id, function_code, data_hex_list)
