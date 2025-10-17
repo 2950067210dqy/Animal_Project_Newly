@@ -22,6 +22,7 @@ from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState, Tutorial_Type
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
+from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.time_util import time_util
@@ -57,6 +58,8 @@ class MainWindow_Index(ThemedWindow):
         if state is not None and state ==AppState.MONITORING:
             # 停止实验
             self.stop_experiment()
+        # 关闭所有串口
+        ModbusRTUMasterNew.close_all()
     def closeEvent(self, event):
         app_state = global_setting.get_setting("app_state", AppState.INITIALIZED)
         if len(self.open_windows)!=0:
