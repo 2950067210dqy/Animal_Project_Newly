@@ -290,14 +290,14 @@ class ModbusRTUMasterNew:
         if not response:
             self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT1-未获取到响应数据")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应-Time OUT1-未获取到响应数据")
-            return_data['data'].append({'desc': '备注', 'value': f"Time OUT1-未获取到响应数据"})
+            return_data['data'].append({'desc': '备注', 'value': f"请求报文{send_frame.hex()}-Time OUT1-未获取到响应数据"})
             return None, None, False,return_data
 
         # 数据长度检查
         if len(response) < 5:
             self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT2-返回数据位数错误")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT2-返回数据位数错误")
-            return_data['data'].append({'desc': '备注', 'value': f"Time OUT2-返回数据位数错误"})
+            return_data['data'].append({'desc': '备注', 'value': f"请求报文{send_frame.hex()}-响应报文{response.hex()}-Time OUT2-返回数据位数错误"})
             return response, response.hex(), False,return_data
 
         # CRC校验
@@ -308,7 +308,7 @@ class ModbusRTUMasterNew:
         if crc_received != crc_expected:
             self._send_status_message(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败")
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败")
-            return_data['data'].append({'desc': '备注', 'value': f"Time OUT3-数据错误，CRC验证失败"})
+            return_data['data'].append({'desc': '备注', 'value': f"请求报文{send_frame.hex()}-响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败"})
             return response, response.hex(), False,return_data
 
         # 检查异常响应
@@ -318,7 +318,7 @@ class ModbusRTUMasterNew:
             error_msg = f"{time_util.get_format_from_time(time.time())}-{self.sport}-请求报文{send_frame.hex()}响应报文{response.hex()}-异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"
             self._send_status_message(error_msg)
             logger.error(f"{error_msg}")
-            return_data['data'].append({'desc': '备注', 'value': f"异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"})
+            return_data['data'].append({'desc': '备注', 'value': f"请求报文{send_frame.hex()}-响应报文{response.hex()}-异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"})
             return response, response.hex(), False,return_data
 
         # 响应正常
