@@ -171,7 +171,10 @@ class ModbusRTUMasterNew:
                 self.is_connected = True
                 logger.info(f"{self.sport}-重连成功")
                 return True
-
+            except PermissionError as e:
+                logger.error(f"{self.sport}-重连尝试 {attempt + 1} 失败:串口占用: {e}")
+                # 被占用就关闭串口
+                self._close_connection_unsafe()
             except Exception as e:
                 logger.error(f"{self.sport}-重连尝试 {attempt + 1} 失败: {e}")
 
