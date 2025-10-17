@@ -42,7 +42,27 @@ class ModbusRTUMasterNew:
         # 自动重连参数
         self.auto_reconnect = True
         self.max_reconnect_attempts = 3
+        # 性能优化：缓存常用值
+        self._delay_cache = None
+        self._last_delay_check = 0
+        self._module_name_cache = {}
+        self._table_name_cache = {}
 
+        # CRC查找表，提高计算效率
+        self._crc_table = self._build_crc_table()
+
+    def _build_crc_table(self):
+        """构建CRC查找表，提高计算效率"""
+        table = []
+        for i in range(256):
+            crc = i
+            for _ in range(8):
+                if crc & 0x0001:
+                    crc = (crc >> 1) ^ 0xA001
+                else:
+                    crc >>= 1
+            table.append(crc)
+        return table
     @contextmanager
     def _safe_lock(self):
         """安全的锁管理器"""
@@ -135,6 +155,9 @@ class ModbusRTUMasterNew:
                 # 关闭现有连接
                 self._close_connection_unsafe()
 
+                # 减少重连等待时间
+                if attempt > 0:
+                    time.sleep(0.1)  # 减少到100ms
                 # 建立新连接
                 self.ser = serial.Serial(
                     port=self.sport,
@@ -151,7 +174,7 @@ class ModbusRTUMasterNew:
 
             except Exception as e:
                 logger.error(f"{self.sport}-重连尝试 {attempt + 1} 失败: {e}")
-                time.sleep(0.5)  # 重连间隔
+
 
         return False
 
@@ -168,17 +191,27 @@ class ModbusRTUMasterNew:
         except Exception as e:
             logger.error(f"发送状态消息失败: {e}")
 
+    def _get_cached_delay(self):
+        """缓存延迟配置，避免频繁访问全局设置"""
+        current_time = time.time()
+        if self._delay_cache is None or (current_time - self._last_delay_check) > 5:
+            try:
+                self._delay_cache = float(global_setting.get_setting('monitor_data')['SEND']['get_response_delay'])
+                self._last_delay_check = current_time
+            except:
+                self._delay_cache = 0.1  # 默认值
+        return self._delay_cache
     def calculate_crc(self, data: bytes) -> bytes:
         """计算Modbus RTU CRC-16，小端返回"""
+        """
+        使用查找表计算Modbus
+        RTU
+        CRC - 16，提高效率
+        """
         crc = 0xFFFF
         for byte in data:
-            crc ^= byte
-            for _ in range(8):
-                if crc & 0x0001:
-                    crc >>= 1
-                    crc ^= 0xA001
-                else:
-                    crc >>= 1
+            tbl_idx = (crc ^ byte) & 0xFF
+            crc = ((crc >> 8) ^ self._crc_table[tbl_idx]) & 0xFFFF
         return struct.pack('<H', crc)
 
     def build_frame(self, slave_id: Union[str, int], function_code: Union[str, int],
@@ -206,37 +239,60 @@ class ModbusRTUMasterNew:
             logger.error(f"{time_util.get_format_from_time(time.time())}-{self.sport}-{error_msg}")
             return None
     def get_table_name(self,slave_id):
-        slave_id_int = int(slave_id, 16)
-        # print(f"slave_id_int:{slave_id_int}")
-        if slave_id_int > 16:
-            mouse_cage_number = slave_id_int // 16
-            # 鼠笼内传感器
-            for type in Modbus_Slave_Type.Each_Mouse_Cage.value:
-                if type.value['int'] == (slave_id_int % 16):
-                    return next(iter(type.value['table'].keys()))
-        else:
-            # 非鼠笼内传感器
-            for type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value:
-                if type.value['int'] == (slave_id_int % 16):
-                    # logger.info(f"type.value['name'] Not_Each:{type.value['name']}")
-                    return next(iter(type.value['table'].keys()))
-                    break
-        return ""
-        pass
+        """获取表名 - 缓存优化版本"""
+        if slave_id in self._table_name_cache:
+            return self._table_name_cache[slave_id]
+
+        try:
+            slave_id_int = int(slave_id, 16)
+            table_name = ""
+
+            if slave_id_int > 16:
+                # 鼠笼内传感器
+                for type_item in Modbus_Slave_Type.Each_Mouse_Cage.value:
+                    if type_item.value['int'] == (slave_id_int % 16):
+                        table_name = next(iter(type_item.value['table'].keys()))
+                        break
+            else:
+                # 非鼠笼内传感器
+                for type_item in Modbus_Slave_Type.Not_Each_Mouse_Cage.value:
+                    if type_item.value['int'] == (slave_id_int % 16):
+                        table_name = next(iter(type_item.value['table'].keys()))
+                        break
+
+            # 缓存结果
+            self._table_name_cache[slave_id] = table_name
+            return table_name
+        except:
+            return ""
+
+    def _get_cached_module_name(self, slave_id):
+        """缓存模块名称"""
+        if slave_id not in self._module_name_cache:
+            self._module_name_cache[slave_id] = get_module_name(slave_id)
+        return self._module_name_cache[slave_id]
+
+    def _prepare_return_data(self, slave_id, function_code):
+        """准备返回数据结构 - 优化版本"""
+        slave_id_int = int(slave_id, 16) if isinstance(slave_id, str) else slave_id
+
+        return {
+            'module_name': self._get_cached_module_name(slave_id),
+            'table_name': self.get_table_name(slave_id),
+            'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'mouse_cage_number': slave_id_int // 16 if slave_id_int > 16 else 0,
+            'data': [],
+            'slave_id': slave_id,
+            'function_code': function_code
+        }
     def send_command(self, slave_id: Union[str, int], function_code: Union[str, int],
                      data_hex_list: List[str], is_parse_response: bool = True) -> Tuple[
         Optional[bytes], Optional[str], bool,dict]:
         """
         发送Modbus RTU命令并获取响应（主要方法）
         """
-        return_data = {}
-        return_data['module_name'] = get_module_name(slave_id)
-        return_data['table_name'] = self.get_table_name(slave_id)
-        return_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return_data['mouse_cage_number'] = int(slave_id, 16)// 16 if int(slave_id, 16) > 16 else 0
-        return_data['data'] = []
-        return_data['slave_id'] = slave_id
-        return_data['function_code'] = function_code
+        # 准备返回数据
+        return_data = self._prepare_return_data(slave_id, function_code)
         try:
             with self._safe_lock():
 
@@ -332,9 +388,9 @@ class ModbusRTUMasterNew:
         if is_parse_response:
             self.parse_response(response, response.hex(), True, slave_id, function_code)
         # 等待响应
-        delay = float(global_setting.get_setting('monitor_data')['SEND']['get_response_delay'])
-        # delay=0.5
-        time.sleep(delay)
+        delay = self._get_cached_delay()
+        if delay > 0:
+            time.sleep(delay)
         return response, response.hex(), True,return_data
 
     def parse_response(self, response: bytes, response_hex: str, send_state: bool,
@@ -374,3 +430,10 @@ class ModbusRTUMasterNew:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """支持with语句"""
         self.close()
+
+    def __del__(self):
+        """析构函数，确保资源清理"""
+        try:
+            self.close()
+        except:
+            pass
