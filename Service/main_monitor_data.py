@@ -279,7 +279,6 @@ class Send_thread(MyQThread):
             try:
                 # logger.info(self.send_messages)
 
-                # 优先检查紧急队列
                 try:
                     with self.priority_queue_lock:
                         message = self.priority_queue.get_nowait()
@@ -366,8 +365,7 @@ class Send_thread(MyQThread):
                                 barrier.wait()
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
-                            if self.modbus:
-                                self.modbus.close()
+
                             batch_complete_event.set()  # 通知主线程当前批次完成
                             batch_complete_event.clear()  # 重置事件
                         else:
@@ -382,8 +380,7 @@ class Send_thread(MyQThread):
                             if barrier is not None:
                                 logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
                                 barrier.wait()
-                            if self.modbus:
-                                self.modbus.close()
+
                             total_messages_processed = 1
                             MESSAGE_BATCH_SIZE = 0
                             batch_complete_event.set()  # 通知主线程当前批次完成

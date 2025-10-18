@@ -270,8 +270,8 @@ class communication(threading.Thread):
             count = self.ser.inWaiting()
             if count != 0:
                 # data = self.ser.readline()
+
                 data = self.ser.read(count)
-                self.ser.flushInput()
                 if data:
                     try:
 
@@ -1329,6 +1329,8 @@ class communication(threading.Thread):
                         # 根据发送来的数据进行响应
                         #测试timeout
                         # if return_bytes!=data:
+                        # 发送数据
+                        # logger.critical(f"{return_bytes}")
                         self.ser.write(return_bytes)
 
                     except UnicodeDecodeError:

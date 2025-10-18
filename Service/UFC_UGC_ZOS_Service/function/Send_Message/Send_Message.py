@@ -52,11 +52,11 @@ class Send_Message:
 
 
             except Exception as e:
-                self.modbus.close()
+
                 logger.error(e)
                 reject(e)
             finally:
-                self.modbus.close()
+
                 resolve({"data":return_data,"message":parser_message})
                 pass
 
@@ -95,12 +95,12 @@ class Send_Message:
                 pass
 
             except Exception as e:
-                self.modbus.close()
+
                 logger.error(e)
                 return_data = None
                 parser_message = None
             finally:
-                self.modbus.close()
+
                 return return_data, parser_message
                 pass
 
