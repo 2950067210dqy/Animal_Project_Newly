@@ -676,6 +676,10 @@ def stop():
             send_thread.stop()
     except Exception as e:
         logger.error(f"关闭实验监测send_thread错误，原因：{e}")
+    modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+    if modbus is not None:
+        logger.error("stop_modbus_stop_experiment")
+        modbus.close()
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     send_message_q = multiprocessing.Queue()

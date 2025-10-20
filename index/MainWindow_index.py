@@ -519,6 +519,16 @@ class MainWindow_Index(ThemedWindow):
                                          QMessageBox.StandardButton.No)
             self.setEnabled(True)
             return
+        modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+        if modbus is None:
+            modbus = ModbusRTUMasterNew(port, baudrate=115200, timeout=float(
+                global_setting.get_setting('monitor_data')['Serial']['timeout']), )
+            global_setting.set_setting("modbus", modbus)
+        else:
+            modbus.close()
+            modbus = ModbusRTUMasterNew(port, baudrate=115200, timeout=float(
+                global_setting.get_setting('monitor_data')['Serial']['timeout']), )
+            global_setting.set_setting("modbus", modbus)
         # 开始实验
         global_setting.set_setting("app_state", AppState.MONITORING)
         global_setting.set_setting("start_experiment_time", time.time())

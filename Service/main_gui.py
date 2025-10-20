@@ -3,7 +3,7 @@ import sys
 import time
 from multiprocessing import freeze_support
 from PyQt6.QtCore import QThreadPool, QRect, QTimer
-from PyQt6.QtWidgets import QApplication, QDialog
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 from blinker import signal
 from loguru import logger
 from index.MainWindow_index import MainWindow_Index
@@ -17,6 +17,7 @@ from public.config_class.ini_parser import ini_parser
 from public.entity.MyQThread import MyThread, MyQThread
 from public.entity.enum.Public_Enum import AppState
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
+from public.function.Crash_handle.CrashHandle import CrashHandler
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeManager import ThemeManager
 # 过滤日志
@@ -80,6 +81,7 @@ def quit_qt_application():
     logger.error(f"{'-' * 40}quit Qt application{'-' * 40}")
     modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
     if modbus is not None:
+        logger.error("stop_modbus_close_application")
         modbus.close()
 
     #
@@ -90,6 +92,32 @@ def quit_qt_application():
         step -= 1
         time.sleep(1)
     sys.exit(0)
+
+def on_crash( error_msg):
+    """处理崩溃事件"""
+    logger.critical(f"Crash detected: {error_msg[:100]}...")
+    modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+    if modbus is not None:
+        logger.error("stop_modbus_crash_application")
+        modbus.close()
+
+    # 显示崩溃对话框
+
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Icon.Critical)
+    msg_box.setWindowTitle("程序崩溃")
+    msg_box.setText("程序发生了意外错误")
+    msg_box.setDetailedText(error_msg)
+    msg_box.setStandardButtons(
+        QMessageBox.StandardButton.Ok |
+        QMessageBox.StandardButton.Close
+    )
+
+    result = msg_box.exec()
+
+    if result == QMessageBox.StandardButton.Close:
+        logger.info("User chose to close application after crash")
+        QApplication.quit()
 def start_qt_application():
     """
     qt程序开始
@@ -107,6 +135,10 @@ def start_qt_application():
     global_setting.set_setting("screen", screen_rect)
     # 绑定突出事件
     app.aboutToQuit.connect(quit_qt_application)
+    # 程序崩溃闪退监听
+    crash_handler = CrashHandler()
+    crash_handler.crash_signal.connect(on_crash)
+
     program_self_check_index_dialog = Program_self_check_index()
     program_self_check_index_dialog.activateWindow()
     return_Data = program_self_check_index_dialog.exec()
