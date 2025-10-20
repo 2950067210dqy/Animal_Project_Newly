@@ -321,7 +321,7 @@ class ModbusRTUMasterNew:
 
         try:
             # 使用操作锁，而不是连接锁
-            with self._safe_operation_lock(timeout=3.0):
+            with self._safe_operation_lock(timeout= 5.0):
 
                 # 每轮运行报文加1
                 global_setting.set_setting("messages_sent_epoch_for_running",

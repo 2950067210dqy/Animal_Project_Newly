@@ -1064,11 +1064,11 @@ class communication(threading.Thread):
                                             """
                                            03 04 X
                                            读传感器测量值
-                                            参数长度：21
+                                            参数长度：11
                                            """
                                             return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
                                                                             function_code=f"{function_code_int:X}",
-                                                                            return_bytes_nums='14',
+                                                                            return_bytes_nums='A',#14的16进制就是20 现在改为10的16进制就是A
 
                                                                             data_hex_list=[
                                                                                 "0x01",
@@ -1081,16 +1081,6 @@ class communication(threading.Thread):
                                                                                 "0x01",
                                                                                 "0x3D",
                                                                                 "0x02",
-                                                                                "0x2B",
-                                                                                "0x03",
-                                                                                "0x4E",
-                                                                                "0x05",
-                                                                                "0x1A",
-                                                                                "0x09",
-                                                                                "0xAC",
-                                                                                "0x61",
-                                                                                "0xC2",
-                                                                                "0x41",
                                                                             ],
                                                                             struct_type="B"
                                                                             )

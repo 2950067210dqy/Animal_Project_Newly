@@ -1983,14 +1983,14 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
     def parser_function_code_4(self):
         function_desc = """
                                读传感器测量值
-                               参数长度：21
+                               参数长度：11
                                 """
-        pack_struct = "B " * 21
+        pack_struct = "B " * 11
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['流量计1', 'CO2(%)', '保留']
+        port_types = ['流量计1', 'CO2(%)']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
@@ -2003,21 +2003,12 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                     )
                     j += 1
                     pass
-                case 17:
+                case 9:
                     return_datas.append({
                         "desc": port_types[j],
                         'value': round((int("".join(self.int_to_8bit_binary(
                             num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])),
                             2) / 1000000)*100,5)
-                    }
-                    )
-                    j += 1
-                    pass
-                case 19:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': float(
-                            str(self.response_struct['data'][i - 1]) + "." + str(self.response_struct['data'][i]))
                     }
                     )
                     j += 1
