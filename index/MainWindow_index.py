@@ -59,7 +59,7 @@ class MainWindow_Index(ThemedWindow):
             # 停止实验
             self.stop_experiment()
         # 关闭所有串口
-        ModbusRTUMasterNew.close_all()
+
     def closeEvent(self, event):
         app_state = global_setting.get_setting("app_state", AppState.INITIALIZED)
         if len(self.open_windows)!=0:
