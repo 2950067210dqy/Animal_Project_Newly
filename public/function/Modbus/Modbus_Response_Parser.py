@@ -2008,7 +2008,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                         "desc": port_types[j],
                         'value': round((int("".join(self.int_to_8bit_binary(
                             num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])),
-                            2) / 1000000)*100,5)
+                            2) / 1000000)*100,6)
                     }
                     )
                     j += 1
