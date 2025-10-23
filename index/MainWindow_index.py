@@ -574,7 +574,7 @@ class MainWindow_Index(ThemedWindow):
         ).catch(lambda e: logger.error(e))
         pass
     def show_dialog(self,resolve,reject):
-        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])+20,title="开始实验",message="正在启动气路...")
+        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+5,title="开始实验",message="正在启动气路...")
         result = dialog.exec()
         if result == QDialog.DialogCode.Accepted:
             resolve()

@@ -66,7 +66,9 @@ class UFC_gas_path_system_start_thread(MyQThread):
     """
     UFC 气路系统开启线程
     """
-    def __init__(self,name,update_status_main_signal_gui_update):
+    def __init__(self,name,update_status_main_signal_gui_update,parent_class):
+        #基类
+        self.parent_class = parent_class
         # 更新主线程状态栏消息信号
         self.update_status_main_signal_gui_update: _PNamespaceSignal = update_status_main_signal_gui_update
         # 发送的数据结构
@@ -168,6 +170,9 @@ class UFC_gas_path_system_start_thread(MyQThread):
         pass
     def open_zos_valve(self,resolve, reject):
         # 4. 打开zos采样阀
+        # 等待时间
+        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time_delay']) )
+
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-启动 4.打开ZOS采样阀")
         port = global_setting.get_setting("port", None)
@@ -184,8 +189,15 @@ class UFC_gas_path_system_start_thread(MyQThread):
         }
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            lambda r:resolve(r)
+            AsyPromise(self.finsh_start).then(
+                lambda r: resolve(r)
+            ).catch(lambda e: reject(e))
         ).catch(lambda e:logger.error(e))
+    def finsh_start(self,resolve, reject):
+
+        self.parent_class.ufc_start_time_state = True
+        logger.critical(f"ufc_finish_start:{self.parent_class.ufc_start_time_state}")
+        resolve()
 class UFC_gas_path_system_close_thread(MyQThread):
     """
     UFC 气路系统关闭线程
@@ -501,6 +513,7 @@ class UFC_gas_path_system(Gas_path_system):
         self.ufc_gas_path_system_start_thread = UFC_gas_path_system_start_thread(
             name="UFC_gas_path_system_start_thread",
             update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,
+            parent_class=self
 
         )
         #运行线程

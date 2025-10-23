@@ -72,7 +72,7 @@ class Monitor_start_state_Thread(MyThread):
         super().__init__(name)
 
     def dosomething(self):
-        # print(self.UFC_gas_path_system_obj.ufc_start_time_state, self.ZOS_gas_path_system_obj.zos_start_status)
+        logger.critical(f"UFC:{self.UFC_gas_path_system_obj.ufc_start_time_state},ZOS:{self.ZOS_gas_path_system_obj.zos_start_status}" )
         if self.UFC_gas_path_system_obj.ufc_start_time_state and self.ZOS_gas_path_system_obj.zos_start_status:
 
             self.update_start_state_signal.send()
@@ -316,7 +316,7 @@ class UFC_UGC_ZOS_index(MyQThread):
     def set_start_timers(self, resolve, reject):
 
         self.set_zos_start_timer()
-        self.set_ufc_start_timer()
+        # self.set_ufc_start_timer()
         resolve()
 
     def pause_timers(self):
