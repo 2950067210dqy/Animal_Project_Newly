@@ -196,7 +196,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
     def finsh_start(self,resolve, reject):
 
         self.parent_class.ufc_start_time_state = True
-        logger.critical(f"ufc_finish_start:{self.parent_class.ufc_start_time_state}")
+        # logger.critical(f"ufc_finish_start:{self.parent_class.ufc_start_time_state}")
         resolve()
 class UFC_gas_path_system_close_thread(MyQThread):
     """
