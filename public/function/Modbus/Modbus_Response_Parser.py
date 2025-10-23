@@ -2495,7 +2495,7 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
         port_types = ['电磁阀名称', '电磁阀状态']
-        valve_desc = ['鼠笼1气路', '鼠笼1气路', '鼠笼2气路', '鼠笼3气路', '鼠笼4气路', '鼠笼5气路', '鼠笼6气路',
+        valve_desc = [ '鼠笼1气路', '鼠笼2气路', '鼠笼3气路', '鼠笼4气路', '鼠笼5气路', '鼠笼6气路',
                       '鼠笼7气路', '鼠笼8气路', '参考气气路', 'ZOS采样阀气路', '气泵', 'UFC']
         valve_state_desc = [['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'],
                             ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'], ['闭合', '断开'],
