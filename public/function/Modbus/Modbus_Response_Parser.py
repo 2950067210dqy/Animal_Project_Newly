@@ -1646,11 +1646,11 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
-                case 1:
+                case 2:
                     return_datas.append({
                         "desc": port_types[j],
                         'value': float(
-                            str(self.response_struct['data'][i - 1]) + "." + str(self.response_struct['data'][i]))
+                            str(self.response_struct['data'][i - 2]) + "." + str(self.response_struct['data'][i-1])+str(self.response_struct['data'][i]))
                     }
                     )
                     j += 1
