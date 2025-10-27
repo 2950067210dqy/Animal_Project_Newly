@@ -93,6 +93,15 @@ class read_queue_data_Thread(MyQThread):
                             global_setting.set_setting("pause_experiment_time", data.get("pause_experiment_time",[]))
                             global_setting.set_setting("relieve_pause_experiment_time", data.get("relieve_pause_experiment_time",[]))
                         start()
+                    case 'start_zero_calibration':
+                        start_zero_calibration()
+                        pass
+                    case 'start_span_calibration':
+                        start_range_calibration()
+                        pass
+                    case 'start_calibration':
+                        start_calibration()
+                        pass
                     case 'pause':
                         pause()
                     case 'stop':
@@ -638,6 +647,31 @@ def start():
 
     # 将实验配置存储到该实验的文件夹中去
     copy_experiment_setting_file()
+def start_zero_calibration():
+    global ufc_ugc_zos_thread, ufc_ugc_zos
+    if ufc_ugc_zos_thread is not None:
+        ufc_ugc_zos_thread.zero_calibration_handle()
+    """
+    校0
+    :return:
+    """
+    pass
+def start_range_calibration():
+    """
+      校span
+    :return:
+    """
+    if ufc_ugc_zos_thread is not None:
+        ufc_ugc_zos_thread.range_calibration_handle()
+    pass
+def start_calibration():
+    """
+      校0 和span
+    :return:
+    """
+    if ufc_ugc_zos_thread is not None:
+        ufc_ugc_zos_thread.calibration_btn_start()
+    pass
 def restart(q,send_message_q):
     main(q,send_message_q)
     start()

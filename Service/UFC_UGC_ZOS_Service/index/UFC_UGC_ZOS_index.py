@@ -247,20 +247,49 @@ class UFC_UGC_ZOS_index(MyQThread):
         p = AsyPromise(lambda r,e:r()).then().catch(lambda e: logger.error(f"{e}"))
         return p
     def carlibation(self):
-        p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
-            lambda v: AsyPromise(
-                self.Range_carlibration_obj.calibrate
-            ).then().catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
-        return p
+        # p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
+        #     lambda v: AsyPromise(
+        #         self.Range_carlibration_obj.calibrate
+        #     ).then().catch(lambda e: logger.error(f"{e}"))
+        # ).catch(lambda e: logger.error(f"{e}"))
+        # return p
         # # 测试   不需要校0标定
         # p = AsyPromise(
         #     self.Range_carlibration_obj.calibrate
         # ).then().catch(lambda e: logger.error(f"{e}"))
         # return p
-        # p = AsyPromise(lambda r, e: r()).then().catch(lambda e: logger.error(f"{e}"))
-        # return p
-
+        # 不需要自动标定
+        p = AsyPromise(lambda r, e: r()).then().catch(lambda e: logger.error(f"{e}"))
+        return p
+    def range_calibration_handle(self):
+        """
+        量程标定
+        :return:
+        """
+        p = AsyPromise(
+            self.Range_carlibration_obj.calibrate
+        ).then().catch(lambda e: logger.error(f"{e}"))
+        return p
+    def zero_calibration_handle(self):
+        """
+        零点标定
+        :return:
+        """
+        p = AsyPromise(
+            self.Zero_carlibration_obj.calibrate
+        ).then().catch(lambda e: logger.error(f"{e}"))
+        return p
+    def calibration_btn_start(self):
+        """
+        按钮点击的标定事件
+        :return:
+        """
+        p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
+            lambda v: AsyPromise(
+                self.Range_carlibration_obj.calibrate
+            ).then().catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: logger.error(f"{e}"))
+        return  p
     def gas_state_check_handle(self):
         self.set_gas_state_check_timer()
         p = AsyPromise(lambda r,e:r()).then().catch(lambda e: logger.error(f"{e}"))
