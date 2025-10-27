@@ -18,6 +18,7 @@ from public.config.Data_Column import Data_column_list
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.BaseWindow import BaseWindow
 from public.entity.MyQThread import MyQThread
+from public.entity.dict.AdvancedFuzzyDict import FuzzyDict
 
 
 class DataFetcher(MyQThread):
@@ -302,11 +303,14 @@ class Table_select_columns_paging_bottom(BaseWindow):
 
         # 填充当前页的行
         for row_idx, record in enumerate(page_records):
-            record:dict
+            record :dict
             index = 0
             for col_key, col_record in record.items():
-
-                item = QTableWidgetItem(str(col_record))
+                # 将二氧化碳的值和氧气的值小数点后4位。
+                if "oxygen" in col_key or "CO2" in col_key:
+                    item = QTableWidgetItem(f"{col_record:.04f}"  if col_record is not None else None)
+                else:
+                    item = QTableWidgetItem(str(col_record))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
                 self.table.setItem(row_idx, index, item)
                 index+=1
