@@ -7,24 +7,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.3.3.9.6 更新02 04解析">
-      <change afterPath="$PROJECT_DIR$/public/config_class/Exception_Info.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/config_class/Log_Config.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/public/function/ProcessMonitor/ProcessMonitor_backup.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test/error_test.py" afterDir="false" />
+    <list default="true" id="095232fd-3c7d-44ba-972d-9f1fd4fabb39" name="更改" comment="1.3.3.27.5 更新04 04 zos氧浓度的小数精度">
+      <change afterPath="$PROJECT_DIR$/other/parse_message_crc.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/Animal_Project_newly.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Animal_Project_newly.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Service/main_deep_camera.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_deep_camera.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Service/main_gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_gui.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Service/main_infrared_camera.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_infrared_camera.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Service/main_monitor_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_monitor_data.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Service/main_response_Modbus.py" beforeDir="false" afterPath="$PROJECT_DIR$/Service/main_response_Modbus.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/monitor_data/2_2025_09_16_03_21_03_502.Mdata" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/monitor_data/2_2025_09_16_03_21_03_502.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/other/db_to_excel_util.py" beforeDir="false" afterPath="$PROJECT_DIR$/other/db_to_excel_util.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/function/Modbus/Modbus_Response_Parser.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/function/Modbus/Modbus_Response_Parser.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/function/ProcessMonitor/ProcessMonitor.py" beforeDir="false" afterPath="$PROJECT_DIR$/public/function/ProcessMonitor/ProcessMonitor.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -42,6 +28,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;2950067210dqy&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:2950067210dqy/Animal_Project_Newly.git&quot;,
+    &quot;accountId&quot;: &quot;e254beac-5d97-4626-8080-61c824286e30&quot;
+  }
+}</component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/Service/UFC_UGC_ZOS_Service/index/UFC_UGC_ZOS_index.py" root0="FORCE_HIGHLIGHTING" />
   </component>
@@ -68,6 +66,7 @@
     "Python.main.executor": "Run",
     "Python.main_infrared_camera.executor": "Debug",
     "Python.manager.executor": "Run",
+    "Python.parse_message_crc.executor": "Run",
     "Python.table_column_check_list_view.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
@@ -80,7 +79,7 @@
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
     "run.code.analysis.last.selected.profile": "aDefault",
-    "settings.editor.selected.configurable": "com.intellij.platform.ide.impl.presentationAssistant.PresentationAssistantConfigurable",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
@@ -100,7 +99,7 @@
       <recent name="D:\WorkSpace\Animal_Project_Newly\public\component" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.main">
+  <component name="RunManager" selected="Python.parse_message_crc">
     <configuration name="Guidance_test" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Animal_Project_newly" />
       <option name="ENV_FILES" value="" />
@@ -202,7 +201,6 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="SDK_NAME" value="Python 3.11 (Animal_Project_newly)" />
       <option name="WORKING_DIRECTORY" value="" />
       <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
@@ -217,7 +215,7 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
-    <configuration name="main_infrared_camera" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+    <configuration name="parse_message_crc" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Animal_Project_newly" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -226,12 +224,12 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/Service" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/other" />
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Service/main_infrared_camera.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/other/parse_message_crc.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -242,27 +240,27 @@
     </configuration>
     <list>
       <item itemvalue="Python.main" />
+      <item itemvalue="Python.parse_message_crc" />
       <item itemvalue="Python.ProcessMonitor" />
       <item itemvalue="Python.error_test" />
       <item itemvalue="Python.db_to_excel_util" />
       <item itemvalue="Python.Guidance_test" />
-      <item itemvalue="Python.main_infrared_camera" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.parse_message_crc" />
         <item itemvalue="Python.ProcessMonitor" />
         <item itemvalue="Python.error_test" />
         <item itemvalue="Python.db_to_excel_util" />
         <item itemvalue="Python.Guidance_test" />
-        <item itemvalue="Python.main_infrared_camera" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-PY-251.26927.90" />
-        <option value="bundled-python-sdk-41e8cd69c857-64d779b69b7a-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.26927.90" />
+        <option value="bundled-js-predefined-d6986cc7102b-6a121458b545-JavaScript-PY-251.25410.159" />
+        <option value="bundled-python-sdk-e0ed3721d81e-36ea0e71a18c-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.25410.159" />
       </set>
     </attachedChunks>
   </component>
@@ -324,54 +322,12 @@
       <workItem from="1759978560886" duration="8086000" />
       <workItem from="1760058348684" duration="1830000" />
       <workItem from="1760141974831" duration="13175000" />
-    </task>
-    <task id="LOCAL-00016" summary="1.1.6.1 新建实验新增更能复制组和动物">
-      <option name="closed" value="true" />
-      <created>1754964356025</created>
-      <option name="number" value="00016" />
-      <option name="presentableId" value="LOCAL-00016" />
-      <option name="project" value="LOCAL" />
-      <updated>1754964356025</updated>
-    </task>
-    <task id="LOCAL-00017" summary="1.1.6.2 将gui.ini文件里的mouse_cage项去除掉，并更新界面包括Message等，目前存在问题Main_Monitor——Data监控数据线程还存在问题">
-      <option name="closed" value="true" />
-      <created>1754987631957</created>
-      <option name="number" value="00017" />
-      <option name="presentableId" value="LOCAL-00017" />
-      <option name="project" value="LOCAL" />
-      <updated>1754987631957</updated>
-    </task>
-    <task id="LOCAL-00018" summary="1.1.6.3 解决问题Main_Monitor——Data监控数据线程还存在问题">
-      <option name="closed" value="true" />
-      <created>1755048426577</created>
-      <option name="number" value="00018" />
-      <option name="presentableId" value="LOCAL-00018" />
-      <option name="project" value="LOCAL" />
-      <updated>1755048426577</updated>
-    </task>
-    <task id="LOCAL-00019" summary="1.1.6.4 增加串口调试模块">
-      <option name="closed" value="true" />
-      <created>1755051303288</created>
-      <option name="number" value="00019" />
-      <option name="presentableId" value="LOCAL-00019" />
-      <option name="project" value="LOCAL" />
-      <updated>1755051303288</updated>
-    </task>
-    <task id="LOCAL-00020" summary="1.1.6.5 数据存储的sqlite数据库取消wal模式，并且将创建表只创建数据相关的表">
-      <option name="closed" value="true" />
-      <created>1755072426028</created>
-      <option name="number" value="00020" />
-      <option name="presentableId" value="LOCAL-00020" />
-      <option name="project" value="LOCAL" />
-      <updated>1755072426028</updated>
-    </task>
-    <task id="LOCAL-00021" summary="1.1.6.8 将模板文件扩展名由.db改为.template">
-      <option name="closed" value="true" />
-      <created>1755136278581</created>
-      <option name="number" value="00021" />
-      <option name="presentableId" value="LOCAL-00021" />
-      <option name="project" value="LOCAL" />
-      <updated>1755136278581</updated>
+      <workItem from="1760941115805" duration="1771000" />
+      <workItem from="1760952010151" duration="2555000" />
+      <workItem from="1761120748627" duration="3506000" />
+      <workItem from="1761191136279" duration="5030000" />
+      <workItem from="1761406009675" duration="952000" />
+      <workItem from="1761561181898" duration="691000" />
     </task>
     <task id="LOCAL-00022" summary="1.1.6.9 新建新的数据监控页面">
       <option name="closed" value="true" />
@@ -717,7 +673,55 @@
       <option name="project" value="LOCAL" />
       <updated>1759203336325</updated>
     </task>
-    <option name="localTasksCounter" value="65" />
+    <task id="LOCAL-00065" summary="1.3.3.25.6 优化modbus逻辑7">
+      <option name="closed" value="true" />
+      <created>1760721535936</created>
+      <option name="number" value="00065" />
+      <option name="presentableId" value="LOCAL-00065" />
+      <option name="project" value="LOCAL" />
+      <updated>1760721535936</updated>
+    </task>
+    <task id="LOCAL-00066" summary="1.3.3.26 修改ugc响应协议，修改ugc数据表结构，修改newModbus的操作锁timeout为5秒">
+      <option name="closed" value="true" />
+      <created>1760942595340</created>
+      <option name="number" value="00066" />
+      <option name="presentableId" value="LOCAL-00066" />
+      <option name="project" value="LOCAL" />
+      <updated>1760942595340</updated>
+    </task>
+    <task id="LOCAL-00067" summary="1.3.3.27 更新关闭modbus逻辑，更新程序崩溃监测">
+      <option name="closed" value="true" />
+      <created>1760953974885</created>
+      <option name="number" value="00067" />
+      <option name="presentableId" value="LOCAL-00067" />
+      <option name="project" value="LOCAL" />
+      <updated>1760953974886</updated>
+    </task>
+    <task id="LOCAL-00068" summary="1.3.3.27.1 更新关闭 03 04 'CO2(%) 的小数点位数为4位">
+      <option name="closed" value="true" />
+      <created>1761191635607</created>
+      <option name="number" value="00068" />
+      <option name="presentableId" value="LOCAL-00068" />
+      <option name="project" value="LOCAL" />
+      <updated>1761191635607</updated>
+    </task>
+    <task id="LOCAL-00069" summary="1.3.3.27.2 修改02 05 响应模式">
+      <option name="closed" value="true" />
+      <created>1761208814044</created>
+      <option name="number" value="00069" />
+      <option name="presentableId" value="LOCAL-00069" />
+      <option name="project" value="LOCAL" />
+      <updated>1761208814044</updated>
+    </task>
+    <task id="LOCAL-00070" summary="1.3.3.27.5 更新04 04 zos氧浓度的小数精度">
+      <option name="closed" value="true" />
+      <created>1761406364699</created>
+      <option name="number" value="00070" />
+      <option name="presentableId" value="LOCAL-00070" />
+      <option name="project" value="LOCAL" />
+      <updated>1761406364699</updated>
+    </task>
+    <option name="localTasksCounter" value="71" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -748,12 +752,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="1.3.3.1 修改全局定时器" />
-    <MESSAGE value="1.3.3.2 修改全局定时器2" />
-    <MESSAGE value="1.3.3.4.1 修改ufc_ugz_zos_index" />
-    <MESSAGE value="1.3.3.4.3 修改3" />
-    <MESSAGE value="1.3.3.4.4 修改4" />
-    <MESSAGE value="1.3.3.4.5 公司做的修改" />
     <MESSAGE value="1.3.3.4.5.1 将theme的错误参数修改" />
     <MESSAGE value="1.3.3.7.1 修改错误导包" />
     <MESSAGE value="1.3.3.7.2 修改错误选择端口" />
@@ -773,7 +771,13 @@
     <MESSAGE value="1.3.3.9.4 初始化提示页面测试，还未嵌入进项目程序" />
     <MESSAGE value="1.3.3.9.5 更新停止实验导出数据逻辑" />
     <MESSAGE value="1.3.3.9.6 更新02 04解析" />
-    <option name="LAST_COMMIT_MESSAGE" value="1.3.3.9.6 更新02 04解析" />
+    <MESSAGE value="1.3.3.25.6 优化modbus逻辑7" />
+    <MESSAGE value="1.3.3.26 修改ugc响应协议，修改ugc数据表结构，修改newModbus的操作锁timeout为5秒" />
+    <MESSAGE value="1.3.3.27 更新关闭modbus逻辑，更新程序崩溃监测" />
+    <MESSAGE value="1.3.3.27.1 更新关闭 03 04 'CO2(%) 的小数点位数为4位" />
+    <MESSAGE value="1.3.3.27.2 修改02 05 响应模式" />
+    <MESSAGE value="1.3.3.27.5 更新04 04 zos氧浓度的小数精度" />
+    <option name="LAST_COMMIT_MESSAGE" value="1.3.3.27.5 更新04 04 zos氧浓度的小数精度" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -799,11 +803,6 @@
           <option name="timeStamp" value="110" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/Service/main_monitor_data.py</url>
-          <line>395</line>
-          <option name="timeStamp" value="113" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/Module/new_experiment/ui/content_window.py</url>
           <line>508</line>
           <option name="timeStamp" value="117" />
@@ -814,11 +813,6 @@
           <option name="timeStamp" value="127" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/Service/main_monitor_data.py</url>
-          <line>219</line>
-          <option name="timeStamp" value="134" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/deleted_moudle/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
           <line>124</line>
           <option name="timeStamp" value="158" />
@@ -827,11 +821,6 @@
           <url>file://$PROJECT_DIR$/deleted_moudle/UFC_UGC_ZOS_Test/index/UFC_UGC_ZOS_index.py</url>
           <line>123</line>
           <option name="timeStamp" value="161" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/index/MainWindow_index.py</url>
-          <line>42</line>
-          <option name="timeStamp" value="174" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/public/component/dialog/index/deep_camera_config_dialog_index.py</url>
@@ -900,18 +889,33 @@
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Animal_Project_newly$MainWindow_index.coverage" NAME="MainWindow_index 覆盖结果" MODIFIED="1753702069150" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/index" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$AdvancedFuzzyDict.coverage" NAME="AdvancedFuzzyDict 覆盖结果" MODIFIED="1760635586595" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/entity/dict" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$db_to_excel_util.coverage" NAME="db_to_excel_util 覆盖结果" MODIFIED="1758610688496" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/other" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$ScheduledTimerTaskManager.coverage" NAME="ScheduledTimerTaskManager 覆盖结果" MODIFIED="1757859882058" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$manager.coverage" NAME="manager 覆盖结果" MODIFIED="1758154788903" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Service" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$ThemeQt6.coverage" NAME="ThemeQt6 覆盖结果" MODIFIED="1753687576845" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/theme" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$Table_select_columns_paging_bottom.coverage" NAME="Table_select_columns_paging_bottom 覆盖结果" MODIFIED="1755194407271" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_monitor_data/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$New_Mod_Bus.coverage" NAME="New_Mod_Bus 覆盖结果" MODIFIED="1760719069736" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/function/Modbus" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$LoadingMask.coverage" NAME="LoadingMask 覆盖结果" MODIFIED="1757952610713" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/component/mask" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1761406152409" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$main_infrared_camera.coverage" NAME="main_infrared_camera 覆盖结果" MODIFIED="1758244431246" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Service" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$parse_message_crc.coverage" NAME="parse_message_crc 覆盖结果" MODIFIED="1761561560631" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/other" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$animal_window.coverage" NAME="animal_window 覆盖结果" MODIFIED="1754602169200" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$Guidance_test.coverage" NAME="Guidance_test 覆盖结果" MODIFIED="1760197180172" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/component/Guide_tutorial_interface" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$ProcessMonitor.coverage" NAME="ProcessMonitor 覆盖结果" MODIFIED="1760169159096" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/function/ProcessMonitor" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$Guidance_test.coverage" NAME="Guidance_test 覆盖结果" MODIFIED="1759148603730" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/component/Guide_tutorial_interface" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$experiment_setting_entity.coverage" NAME="experiment_setting_entity 覆盖结果" MODIFIED="1754696677057" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/public/entity" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$doc.coverage" NAME="doc 覆盖结果" MODIFIED="1755687169359" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/util" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$table_column_check_list_view.coverage" NAME="table_column_check_list_view 覆盖结果" MODIFIED="1755161519792" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_monitor_data/ui" />
-    <SUITE FILE_PATH="coverage/Animal_Project_newly$manager.coverage" NAME="manager 覆盖结果" MODIFIED="1758154788903" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Service" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$ScheduledTimerTaskManager.coverage" NAME="ScheduledTimerTaskManager 覆盖结果" MODIFIED="1757592441605" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$content_window.coverage" NAME="content_window 覆盖结果" MODIFIED="1754867945456" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$group_window.coverage" NAME="group_window 覆盖结果" MODIFIED="1754600767409" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_experiment/ui" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$error_test.coverage" NAME="error_test 覆盖结果" MODIFIED="1760008401973" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
-    <SUITE FILE_PATH="coverage/Animal_Project_newly$ThemeQt6.coverage" NAME="ThemeQt6 覆盖结果" MODIFIED="1753687576845" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/theme" />
-    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753996820615" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$ScheduledTimerTaskManager_backup.coverage" NAME="ScheduledTimerTaskManager_backup 覆盖结果" MODIFIED="1757593262545" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/Timer" />
-    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1760171212286" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_newly$main.coverage" NAME="main 覆盖结果" MODIFIED="1753787419017" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$main__1_.coverage" NAME="main (1) 覆盖结果" MODIFIED="1756983622566" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test" />
     <SUITE FILE_PATH="coverage/Animal_Project_newly$db_to_excel_util.coverage" NAME="db_to_excel_util 覆盖结果" MODIFIED="1759975064161" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/other" />
-    <SUITE FILE_PATH="coverage/Animal_Project_newly$main_infrared_camera.coverage" NAME="main_infrared_camera 覆盖结果" MODIFIED="1758244431246" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Service" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$AsyPromise.coverage" NAME="AsyPromise 覆盖结果" MODIFIED="1756923864522" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/UFC_UGC_ZOS_Test/function/promise" />
+    <SUITE FILE_PATH="coverage/Animal_Project_Newly$table_column_check_list_view.coverage" NAME="table_column_check_list_view 覆盖结果" MODIFIED="1755189968509" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Module/new_monitor_data/ui" />
   </component>
 </project>
