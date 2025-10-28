@@ -590,6 +590,7 @@ class ContentWindow(ThemedWindow):
                 pass
             self.is_update = False
             # 将实验设置存入全局变量
+            self.setting_data.groups = self.setting_data.groups
             global_setting.set_setting("experiment_setting", self.setting_data)
             global_setting.set_setting("experiment_setting_file", self.setting_file_path)
             send_message_queue = global_setting.get_setting("send_message_queue")

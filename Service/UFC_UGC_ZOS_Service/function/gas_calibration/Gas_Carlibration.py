@@ -193,7 +193,7 @@ class Zero_Carlibration(Gas_Carlibration):
         return_data_struct['module_name']='ZeroCalibration'
         return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         return_data_struct['table_name'] = next(iter(Others_Tables.Zero_Carlibration_Data.value.keys()))
-        return_data_struct['mouse_cage_number']=0
+        return_data_struct['mouse_cage_number']=-1
         # 添加Vzero参数到全局变量 方便氧传感器的值校准
 
         if now_oxygen_value is None:
@@ -345,7 +345,7 @@ class Range_Carlibration(Gas_Carlibration):
         return_data_struct['module_name'] = 'SpanCalibration'
         return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         return_data_struct['table_name'] = next(iter(Others_Tables.SPan_Carlibration_Data.value.keys()))
-        return_data_struct['mouse_cage_number'] = 0
+        return_data_struct['mouse_cage_number'] = -1
         # 添加K参数到全局变量 方便氧传感器的值校准 Vr默认是20.9%
         #K=（Vs-Vzero）/（Vr-Vzero）
         if now_oxygen_value is not None:

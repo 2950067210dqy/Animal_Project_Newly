@@ -95,7 +95,7 @@ def quit_qt_application():
 
 def on_crash( error_msg):
     """处理崩溃事件"""
-    logger.critical(f"Crash detected: {error_msg[:100]}...")
+    logger.critical(f"Crash detected: {error_msg}...")
     modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
     if modbus is not None:
         logger.error("stop_modbus_crash_application")

@@ -28,7 +28,6 @@ class CrashHandler(QObject):
             level="ERROR",
             rotation="1 day",
             retention="90 days",  # 崩溃日志保留更久
-            compression="zip",
             encoding="utf-8",
             filter=lambda record: record["level"].name in ["ERROR", "CRITICAL"]
         )

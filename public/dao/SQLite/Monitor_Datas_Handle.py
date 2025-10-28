@@ -226,7 +226,7 @@ class Monitor_Datas_Handle():
         if data is not None:
             # logger.critical(f"{data}")
             # 公共传感器：
-            if data['mouse_cage_number'] == 0:
+            if data['mouse_cage_number'] == -1:
                 # 获取该表名称
                 table_name = f"{data['module_name']}_{data['table_name']}"
                 # # 获取该表的column项
@@ -245,7 +245,7 @@ class Monitor_Datas_Handle():
                     logger.info(f"数据插入表{table_name}失败！")
                     return False, f"数据插入表{table_name}失败！"
 
-            else:  # 每个鼠笼传感器：
+            else:  # 每个鼠笼传感器以及气路传感器和每轮次数据：
                 # 获取该表名称
                 table_name = f"{data['module_name']}_{data['table_name']}_cage_{data['mouse_cage_number']}"
                 # # 获取该表的column项
@@ -332,6 +332,16 @@ class Monitor_Datas_Handle():
             results = results_query
         return results
         pass
+    def query_current_one_data(self,table_name):
+        results_query = self.sqlite_manager.query_current_Data(table_name)
+
+        results = []
+
+        if results_query is not None and len(results_query) > 0:
+            results = results_query
+            return results[0]
+        else:
+            return None
     def query_data_one_column_current(self, table_name, columns_flag):
         """
         获取指定列的单个最新的数据
@@ -516,6 +526,7 @@ class Monitor_Datas_Handle():
 
 
     def query_data_in_line_with_epoch_data(self,start_time,end_time):
+        # 找出当前时间段的所有数据表的数据除了meta表
         tables = self.sqlite_manager.get_non_meta_tables_with_time(exclude_substr="meta", columns=['time'])
         # logger.critical(tables)
         # 执行查询

@@ -17,6 +17,7 @@ from public.entity.MyQThread import MyQThread
 from public.function.Monitor_data_storage.DataStorage import store_data_with_result
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.number_util import number_util
+from public.util.string_util import String_util
 from public.util.time_util import time_util
 
 logger = logger.bind(category="monitor_data_logger")
@@ -329,22 +330,9 @@ class UFC_gas_path_system_run_thread(MyQThread):
         self.send_thread: Send_Message = Send_Message(
             update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,
             send_message=self.send_message)
-        #鼠笼list的index
 
-        self.mouse_cage_index = 0
-        #参考气路的值
-        self.reference_gap_value = None
         super().__init__(name=name)
     def before_Runing_work(self):
-        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        if mouse_cages_inc is not None and len(mouse_cages_inc) > 0:
-            # 从参考气开始
-
-            self.mouse_cage_index = len(mouse_cages_inc) - 1
-        else:
-
-            # 从鼠笼1开始
-            self.mouse_cage_index = 0
         pass
     def dosomething(self):
 
@@ -380,7 +368,12 @@ class UFC_gas_path_system_run_thread(MyQThread):
         :param mouse_cages_inc:
         :return:
         """
-        mouse_cage_number_addr_single = mouse_cages_inc[self.mouse_cage_index]
+        mouse_cage_index = global_setting.get_setting("cage_number_list_index",None)
+        if mouse_cage_index:
+            mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index]
+        else:
+            # 下标为None 则为参考气
+            mouse_cage_number_addr_single=0
         # 1 切换x号鼠笼
 
         time.sleep(0.01)
@@ -394,7 +387,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC-运行 1. 切换{str(mouse_cage_number_addr_single + 1) + '号鼠笼' if mouse_cage_number_addr_single < 8 else str(mouse_cage_number_addr_single + 1) + '号鼠笼(参考气)'}")
+            f"{time_util.get_format_from_time(time.time())} | UFC-运行 1. 切换{str(mouse_cage_number_addr_single ) + '号鼠笼' if mouse_cage_number_addr_single !=0 else str(mouse_cage_number_addr_single ) + '(参考气)'}")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2. 关闭上个鼠笼的气路或者关闭参考气
@@ -413,10 +406,18 @@ class UFC_gas_path_system_run_thread(MyQThread):
         :return:
         """
         time.sleep(0.01)
-        mouse_cage_number_addr_single = mouse_cages_inc[self.mouse_cage_index-1 if self.mouse_cage_index!=0 else len(mouse_cages_inc)-1]
+        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+        # 当前为参考气 则关闭最后一个鼠笼
+        if mouse_cage_index :
+            mouse_cage_number_addr_single = mouse_cages_inc[len(mouse_cages_inc) - 1 ]
+        elif mouse_cage_index==0:
+        #当前为鼠笼列表的第一个鼠笼 则关闭参考气
+            mouse_cage_number_addr_single=0
+        else:
+            mouse_cage_number_addr_single=mouse_cages_inc[mouse_cage_index-1]
         #2.关闭上个鼠笼号，如果当前鼠笼号为0，则关闭参考气体
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC-运行 2. 关闭{str(mouse_cage_number_addr_single + 1)+'号鼠笼' if mouse_cage_number_addr_single!=8 else str(mouse_cage_number_addr_single + 1)+'号鼠笼(参考气)'}")
+            f"{time_util.get_format_from_time(time.time())} | UFC-运行 2. 关闭{str(mouse_cage_number_addr_single )+'号鼠笼' if mouse_cage_number_addr_single!=0 else '参考气'}")
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list(f"000{mouse_cage_number_addr_single}0000"),
@@ -439,6 +440,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
         """
         time.sleep(0.01)
+        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒） ！弃用
         index = 0
         # while (index< int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])):
@@ -453,32 +455,18 @@ class UFC_gas_path_system_run_thread(MyQThread):
             f"{time_util.get_format_from_time(time.time())} | UFC-运行 3. 循环读取流量值（推荐每{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])}秒读取一次），当前{index}s/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])}s")
         self.send_thread.send_message = self.send_message
         result_data,message = self.send_thread.Send_no_promise()
-        # 参考气路
-        if mouse_cages_inc[self.mouse_cage_index]+1 ==9:
-            logger.error(f"---------------参考气路值：{result_data['data']}")
 
-            self.reference_gap_value=result_data['data'][0]['value']
-            # 获得参考气则直接进行下个鼠笼的UFC数据获取
-            # 将鼠笼下标循环前移动
-            self.mouse_cage_index = (self.mouse_cage_index + 1) % len(mouse_cages_inc)
-            AsyPromise(self.switch_mouse_cage_gas, port=port, mouse_cages_inc=mouse_cages_inc).then(
-                lambda r:resolve()
-            ).catch(lambda e: logger.error(e))
-            return
-        #其他鼠笼气路
+
+        result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        result_data['mouse_cage_number']= mouse_cages_inc[mouse_cage_index] if mouse_cage_index else 0
+        # logger.error(f"---------------鼠笼气路值：{result_data['data']}")
+        result = store_data_with_result(result_data, need_result=True, timeout=5)
+        if result and result.success:
+            logger.info(f"数据存储成功，ID: {result.item_id}")
         else:
-
-            result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            result_data['data'].insert(0,{'desc':'鼠笼号','value':  mouse_cages_inc[self.mouse_cage_index]+1})
-            result_data['data'].append( {'desc':'参考气路流量计测量值(sccm)','value':self.reference_gap_value})
-            logger.error(f"---------------鼠笼气路值：{result_data['data']}")
-            result = store_data_with_result(result_data, need_result=True, timeout=5)
-            if result and result.success:
-                logger.info(f"数据存储成功，ID: {result.item_id}")
-            else:
-                logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
-            # index+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])
-            # time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
+            logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
+        # index+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay'])
+        # time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
 #       #while end
 #       #等待60秒 ！弃用
         AsyPromise(self.finsh_one_batch, port=port, mouse_cages_inc=mouse_cages_inc).then(
@@ -498,8 +486,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         if barrier is not None:
             logger.debug(f"barrier_UFC run one batch done ! ")
             barrier.wait()
-        # 将鼠笼下标循环前移动
-        self.mouse_cage_index = (self.mouse_cage_index + 1) % len(mouse_cages_inc)
+
         resolve()
 class UFC_gas_path_system(Gas_path_system):
     """
@@ -529,6 +516,7 @@ class UFC_gas_path_system(Gas_path_system):
 
         )
         pass
+
     """start start"""
     def start(self,resolve,reject):
         """
@@ -554,9 +542,12 @@ class UFC_gas_path_system(Gas_path_system):
         #                 data += "0"
         #         pass
         # global_setting.set_setting("mouse_cages", res['selected_indices'])
-        global_setting.set_setting("mouse_cages",[0,1,2,3,4,5,6,7,8])
+        experiment_settings = global_setting.get_setting("experiment_settings",None)
+
+        gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+        global_setting.set_setting("mouse_cages",gids)
         # global_setting.set_setting("mouse_cages_2byte_str",data)
-        global_setting.set_setting("mouse_cages_2byte_str", "111111111")
+        global_setting.set_setting("mouse_cages_2byte_str", String_util.array_to_binary_string(gids))
 
         self.ufc_gas_path_system_start_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         self.ufc_gas_path_system_start_thread.start()
@@ -653,13 +644,17 @@ class UGC_gas_path_system_run_thread(MyQThread):
             'function_code': '4',
             'timeout': 1
         }
+        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取CO2浓度")
+            f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index else '参考气'}的CO2浓度")
         self.send_thread.send_message = self.send_message
         result_data, message = self.send_thread.Send_no_promise()
+
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        result_data['mouse_cage_number'] =mouse_cages_inc[mouse_cage_index] if mouse_cage_index else 0
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
             logger.info(f"数据存储成功，ID: {result.item_id}")
@@ -847,10 +842,12 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             'function_code': '4',
             'timeout': 1
         }
+        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取氧浓度")
+            f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index else '参考气'}的氧浓度")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2.传感器故障检测 如果在非调零状态下，氧浓度异常，小于某一个阈值（如1%），检查传感器状态
@@ -863,8 +860,11 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             barrier.wait()
         pass
     def check_senior_state(self,resolve,reject,port,r):
+        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         #存储值
         result_data = r['data']
+        result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index else 0
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         if len(result_data['data'])>0:
             oxygen_value = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='氧传感器测量值(%)']
