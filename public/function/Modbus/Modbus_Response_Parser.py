@@ -685,10 +685,10 @@ class Modbus_Response_ENM(Modbus_Response_Parents):
                 case 11:
                     return_datas.append({
                         "desc": port_types[j],
-                        'value': float(
+                        'value': round(float(
                             str(int("".join(self.int_to_8bit_binary(
                                 num_list=[self.response_struct['data'][i - 2], self.response_struct['data'][i - 1]])),
-                                2)+ round(float(self.response_struct['data'][i])/36, 3)))
+                                2)+ round(float(self.response_struct['data'][i])/36, 3))),5)
                     }
                     )
                     j += 1

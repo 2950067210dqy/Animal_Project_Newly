@@ -199,10 +199,10 @@ class CustomStatusBar(QStatusBar):
      # 更新时间功能 界面更新
     def update_experiment_time_gui_update(self, timeDict={"is_paused":False, "text":""}):
         if timeDict['is_paused']:
-            self.status_label.setText(f"暂停监测数据-已经暂停监测 {timeDict['text']}")
+            self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-暂停监测数据-已经暂停监测 {timeDict['text']}")
             self.status_label.setStyleSheet("QLabel { color:blue; }")
         else:
-            self.status_label.setText(f"正在监测数据-已经监测 {timeDict['text']}")
+            self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-正在监测数据-已经监测 {timeDict['text']}")
             self.status_label.setStyleSheet("QLabel { color:green; }")
             pass
         pass
