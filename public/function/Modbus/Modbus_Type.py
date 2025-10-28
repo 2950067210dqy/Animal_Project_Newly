@@ -35,11 +35,9 @@ class Others_Tables(Enum):
             'function_code': 0,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-                ("mouse_cage", "鼠笼号", " INTEGER "),
                 ("oxygen_calibration_zero_value", "氧浓度0点校准值", " REAL "),
                 ("oxygen_calibration_span_value", "氧浓传感器span数值", " REAL "),
                 ("UFC_flow_num", "ufc_流量计测量值(sccm)", " INTEGER "),
-                ("UFC_reference_flow_num", "ufc_参考气路流量计测量值(sccm)", " INTEGER "),
                 ("UGC_flow_num_1", "ugc_流量计1", " INTEGER "),
                 ("UGC_CO2_num", "CO2(%)", " REAL "),
                 ("ZOS_oxygen_num", "氧气传感器测量值(%)", " REAL "),
@@ -68,13 +66,11 @@ class Modbus_Slave_Tables(Enum):
                     'function_code':4,
                     'column': [
                             ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-                            ("mouse_cage","鼠笼号"," INTEGER "),
                             ("flow_num", "流量计测量值(sccm)", " INTEGER "),
                             ("reserve_high_num_1", "备用1高字节", " TEXT "),
                             ("reserve_low_num_1", "备用1低字节", " TEXT "),
                             ("reserve_high_num_2", "备用2高字节", " TEXT "),
                             ("reserve_low_num_2", "备用2低字节", " TEXT "),
-                            ("reference_flow_num","参考气路流量计测量值(sccm)", " INTEGER "),
                             ("remarks", "备注", " TEXT "),
                             ("time", "获取时间", " TIMESTAMP ")
                                 ],
@@ -151,6 +147,7 @@ class Modbus_Slave_Tables(Enum):
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("flow_num_1", "流量计1", " INTEGER "),
                 ("CO2_num", "CO2(%)", " REAL "),
+                ("CO2_output_num", "CO2生产量(%)", " REAL "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
@@ -243,6 +240,7 @@ class Modbus_Slave_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("oxygen_num", "氧气传感器测量值(%)", " REAL "),
+                ("oxygen_consumption_num", "氧气消耗量(%)", " REAL "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]

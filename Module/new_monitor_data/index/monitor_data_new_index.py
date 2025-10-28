@@ -3,6 +3,7 @@ import typing
 from PyQt6 import QtGui, QtWidgets
 from PyQt6.QtCore import QRect, QSize, Qt, QTimer
 from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel
+from loguru import logger
 
 from Module.new_experiment.ui.group_window import GroupWindow
 from Module.new_monitor_data.ui.Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
@@ -155,16 +156,21 @@ class Monitor_data_new_index(ThemedWindow):
         pass
     def create_table(self,dict_ids:dict):
         if dict_ids is not None:
+            # logger.critical(f"monitor_data_new_index | checkids_dict:{dict_ids}")
             type = dict_ids.get('type',"")
+            # 选择数据项
             if type == "column":
                 for widget in self.left_top_dock_widget_content._docks_widget:
                     widget: Table_select_columns_paging_bottom
                     widget.on_replace_headers(dict_ids['data'])
                 pass
+            # 选择通道
             elif type == "group":
                 settings: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
                 if settings:
-                    gids = [group.id  for index,group in enumerate(settings.groups) if index in dict_ids['data']]
+                    # logger.critical(f"monitor_data_new_index | experiment_setting:{settings}")
+                    gids = [group.id  for group in settings.groups if group.id in dict_ids['data']]
+                    # logger.critical(f"monitor_data_new_index | gids{gids}")
                     self.left_top_dock_widget_content.create_tiled_docks(n=len(gids),gids=gids)
                 pass
             else:

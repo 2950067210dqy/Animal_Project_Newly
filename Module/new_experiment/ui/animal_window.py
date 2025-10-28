@@ -180,7 +180,7 @@ class AnimalWindow(ThemedWindow):
         dialog = AnimalDialog()
         if dialog.exec() == QDialog.DialogCode.Accepted:  # 如果用户点击了OK按钮
             animal_info = dialog.get_animal_info()
-            init_index = 0
+            init_index = 1
             # 取最大name的那一个
             if self.setting_data is not None and len(self.setting_data.animals) > 0:
                 int_animal_ids = [int(animal.id) for animal in self.setting_data.animals]

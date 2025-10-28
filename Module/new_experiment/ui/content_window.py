@@ -282,7 +282,7 @@ class ContentWindow(ThemedWindow):
         """添加组"""
         group_nums, ok = QInputDialog.getInt(self, "添加分组", "请输入分组/通道个数:",1)
         if ok and group_nums:
-            init_index = 0
+            init_index = 1
             # 取最大name的那一个
             if self.setting_data is not None and len(self.setting_data.groups) > 0:
                 int_group_names = [int(group.name) for group in self.setting_data.groups]
@@ -319,7 +319,7 @@ class ContentWindow(ThemedWindow):
             # if len( self.setting_data.animalGroupRecords)==0 or (group.id,animal.id) not in [(animalGroupRecord.gid,animalGroupRecord.aid) for animalGroupRecord in self.setting_data.animalGroupRecords] :
 
             if self.setting_data is not None :
-                init_index = 0
+                init_index = 1
                 # 取最大name的那一个
                 if self.setting_data is not None and len(self.setting_data.animalGroupRecords) > 0:
                     int_animalGroupRecords_ids = [int(animalGroupRecords.id) for animalGroupRecords in self.setting_data.animalGroupRecords]
@@ -371,7 +371,7 @@ class ContentWindow(ThemedWindow):
         group_item: QStandardItem = self.model.itemFromIndex(group_index)
         group: Group = group_item.data(Qt.ItemDataRole.UserRole)
         group_2 = copy.deepcopy(group)
-        init_index = 0
+        init_index = 1
         # 取最大name的那一个
         if self.setting_data is not None and len(self.setting_data.groups) > 0:
             int_group_names = [int(group.name) for group in self.setting_data.groups]
@@ -383,7 +383,7 @@ class ContentWindow(ThemedWindow):
 
 
         # 复制该组里的所有动物关系
-        animalGroupRecords_init_index = 0
+        animalGroupRecords_init_index = 1
         # 取最大name的那一个
         if self.setting_data is not None and len(self.setting_data.animalGroupRecords) > 0:
             int_animalGroupRecords_ids = [int(animalGroupRecords.id) for animalGroupRecords in
@@ -419,7 +419,7 @@ class ContentWindow(ThemedWindow):
         animal_nums, ok = QInputDialog.getInt(self, "复制动物数量",
                                               f"请输入动物\n序号: {animal.id},动物名称: {animal.name}, ID: {animal.id_write}, 性别: {'雌性' if animal.sex == AnimalGender.FEMALE.value else '雄性'}, 重量: {animal.weight} {animal.weight_unit}, 备注: {animal.note}\n数量:",1)
         if ok and animal_nums:
-            init_index = 0
+            init_index = 1
             # 取最大name的那一个
             if self.setting_data is not None and len(self.setting_data.animalGroupRecords) > 0:
                 int_animalGroupRecords_ids = [int(animalGroupRecords.id) for animalGroupRecords in

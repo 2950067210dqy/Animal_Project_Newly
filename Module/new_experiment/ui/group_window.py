@@ -121,7 +121,7 @@ class GroupWindow(ThemedWindow):
         # 从输入框获取动物通道号，添加到列表中
         channel_number = self.line_edit.text()
         if channel_number.isdigit():  # 检查输入值是否为数字
-            init_index = 0
+            init_index = 1
             # 取最大name的那一个
             if self.setting_data is not None and len(self.setting_data.groups)>0:
                 int_group_names = [int(group.name) for group in self.setting_data.groups]

@@ -12,6 +12,9 @@ class Experiment_setting_entity:
     def is_emtpy(self) -> bool:
 
         return all(len == 0 for len in [len(self.animals),len(self.groups),len(self.animalGroupRecords)])
+
+    def __repr__(self):
+        return (f"Experiment_setting_entity(animals={self.animals}, groups={self.groups}, animalGroupRecords='{self.animalGroupRecords}')")
 class Animal:
     """
     类描述：表示数据库中的动物记录

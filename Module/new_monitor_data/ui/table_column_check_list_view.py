@@ -9,6 +9,7 @@ from PyQt6.QtGui import QStandardItemModel, QStandardItem
 from PyQt6.QtWidgets import QListView, QVBoxLayout, QCheckBox, QMainWindow, QHBoxLayout, QPushButton, QScrollArea, \
     QWidget, QApplication, QListWidget, QListWidgetItem, QLabel, QLineEdit, QComboBox, QAbstractItemView, QStatusBar, \
     QFileDialog, QMessageBox, QInputDialog
+from loguru import logger
 
 from public.config.Data_Column import Data_column_list
 from public.config_class.global_setting import global_setting
@@ -329,6 +330,7 @@ class Table_Column_check_list_view(BaseWindow):
         else:
             checkids_dict['type']='group'
         checkids_dict['data']= [it['orig']['id'] for it in self.items if it['checked']]
+        # logger.critical(f"table_column_check_list_view | checkids_dict:{checkids_dict}")
         self.set_table_column_signal.emit(checkids_dict)
 
 if __name__ == "__main__":
