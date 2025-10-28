@@ -14,6 +14,7 @@ from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_
 
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
+from public.entity.barrier.ActionCompleteBarrier import ActionCompleteBarrier
 from public.function.Monitor_data_storage.DataStorage import store_data_with_result
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.number_util import number_util
@@ -341,7 +342,8 @@ class UFC_gas_path_system_run_thread(MyQThread):
             port = global_setting.get_setting("port", None)
             if port is None:
                 self.update_status_main_signal_gui_update.send(
-                    f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+                    f"{time_util.get_format_from_time(time.time())} | UFC运行失败，未选择串口！")
+                logger.error("UFC运行失败，未选择串口！")
                 AsyPromise(self.finsh_one_batch, port=None, mouse_cages_inc=mouse_cages_inc).then(
 
                 ).catch(lambda e: logger.error(e))
@@ -352,6 +354,9 @@ class UFC_gas_path_system_run_thread(MyQThread):
             ).catch(lambda e:logger.error(e))
             pass
         else:
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | UFC运行失败，未选择实例化实验设置的mouse_cages！")
+            logger.error("UFC运行失败，未选择实例化实验设置的mouse_cages！")
             AsyPromise(self.finsh_one_batch,port=None, mouse_cages_inc=mouse_cages_inc).then(
 
             ).catch(lambda e:logger.error(e))
@@ -369,7 +374,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         :return:
         """
         mouse_cage_index = global_setting.get_setting("cage_number_list_index",None)
-        if mouse_cage_index:
+        if mouse_cage_index is not None:
             mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index]
         else:
             # 下标为None 则为参考气
@@ -408,7 +413,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         time.sleep(0.01)
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         # 当前为参考气 则关闭最后一个鼠笼
-        if mouse_cage_index :
+        if mouse_cage_index is None :
             mouse_cage_number_addr_single = mouse_cages_inc[len(mouse_cages_inc) - 1 ]
         elif mouse_cage_index==0:
         #当前为鼠笼列表的第一个鼠笼 则关闭参考气
@@ -458,7 +463,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
 
 
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        result_data['mouse_cage_number']= mouse_cages_inc[mouse_cage_index] if mouse_cage_index else 0
+        result_data['mouse_cage_number']= mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 0
         # logger.error(f"---------------鼠笼气路值：{result_data['data']}")
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
@@ -482,7 +487,18 @@ class UFC_gas_path_system_run_thread(MyQThread):
         :param mouse_cages_inc:
         :return:
         """
-        barrier: Barrier = global_setting.get_setting("barrier")
+        #让ugc开始运行
+        wait_UFC_run_finish_event=global_setting.get_setting("wait_UFC_run_finish_event",None)
+        if wait_UFC_run_finish_event:
+            wait_UFC_run_finish_event.set()
+            wait_UFC_run_finish_event.clear()
+
+        # 让鼠笼内的传感器开始运行 要等待ufc ugc zos 都wait
+        ufc_ugc_zos_barrier=global_setting.get_setting("ufc_ugc_zos_barrier")
+        if ufc_ugc_zos_barrier is not None :
+            logger.debug(f"ufc_ugc_zos_barrier_UFC run one batch done ! ")
+            ufc_ugc_zos_barrier.wait()
+        barrier = global_setting.get_setting("barrier")
         if barrier is not None:
             logger.debug(f"barrier_UFC run one batch done ! ")
             barrier.wait()
@@ -542,7 +558,7 @@ class UFC_gas_path_system(Gas_path_system):
         #                 data += "0"
         #         pass
         # global_setting.set_setting("mouse_cages", res['selected_indices'])
-        experiment_settings = global_setting.get_setting("experiment_settings",None)
+        experiment_settings = global_setting.get_setting("experiment_setting",None)
 
         gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
         global_setting.set_setting("mouse_cages",gids)
@@ -631,6 +647,10 @@ class UGC_gas_path_system_run_thread(MyQThread):
     def before_Runing_work(self):
         pass
     def dosomething(self):
+        wait_UFC_run_finish_event=global_setting.get_setting("wait_UFC_run_finish_event",None )
+        if wait_UFC_run_finish_event:
+            # 阻塞 等待ufc运行完在运行
+            wait_UFC_run_finish_event.wait()
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
@@ -649,19 +669,29 @@ class UGC_gas_path_system_run_thread(MyQThread):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index else '参考气'}的CO2浓度")
+            f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的CO2浓度")
         self.send_thread.send_message = self.send_message
         result_data, message = self.send_thread.Send_no_promise()
 
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        result_data['mouse_cage_number'] =mouse_cages_inc[mouse_cage_index] if mouse_cage_index else 0
+        result_data['mouse_cage_number'] =mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not  None else 0
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
             logger.info(f"数据存储成功，ID: {result.item_id}")
         else:
             logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
-        barrier: Barrier = global_setting.get_setting("barrier")
+        #通知zos 运行
+        wait_UGC_run_finish_event=global_setting.get_setting("wait_UGC_run_finish_event",None )
+        if wait_UGC_run_finish_event:
+            wait_UGC_run_finish_event.set()
+            wait_UGC_run_finish_event.clear()
+        # 让鼠笼内的传感器开始运行
+        ufc_ugc_zos_barrier = global_setting.get_setting("ufc_ugc_zos_barrier")
+        if ufc_ugc_zos_barrier is not None:
+            logger.debug(f"ufc_ugc_zos_barrier_UGC run one batch done ! ")
+            ufc_ugc_zos_barrier.wait()
+        barrier = global_setting.get_setting("barrier")
         if barrier is not None:
             logger.debug(f"barrier_UGC run one batch done ! ")
             barrier.wait()
@@ -829,6 +859,10 @@ class ZOS_gas_path_system_run_thread(MyQThread):
     def before_Runing_work(self):
         pass
     def dosomething(self):
+        wait_UGC_run_finish_event = global_setting.get_setting("wait_UGC_run_finish_event", None)
+        if wait_UGC_run_finish_event:
+            # 阻塞 等待UGC运行完在运行
+            wait_UGC_run_finish_event.wait()
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
@@ -847,14 +881,19 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index else '参考气'}的氧浓度")
+            f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的氧浓度")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2.传感器故障检测 如果在非调零状态下，氧浓度异常，小于某一个阈值（如1%），检查传感器状态
             lambda r:AsyPromise(self.check_senior_state,port=port,r=r)
         ).catch(lambda e: logger.error(e))
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
-        barrier: Barrier = global_setting.get_setting("barrier")
+        # 让鼠笼内的传感器开始运行
+        ufc_ugc_zos_barrier = global_setting.get_setting("ufc_ugc_zos_barrier")
+        if ufc_ugc_zos_barrier is not None:
+            logger.debug(f"ufc_ugc_zos_barrier_ZOS run one batch done ! ")
+            ufc_ugc_zos_barrier.wait()
+        barrier = global_setting.get_setting("barrier")
         if barrier is not None:
             logger.debug(f"barrier_ZOS run one batch done ! ")
             barrier.wait()
@@ -864,7 +903,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         #存储值
         result_data = r['data']
-        result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index else 0
+        result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 0
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         if len(result_data['data'])>0:
             oxygen_value = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='氧传感器测量值(%)']

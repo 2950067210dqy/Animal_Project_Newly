@@ -213,20 +213,21 @@ class UFC_UGC_ZOS_index(MyQThread):
             lambda v: AsyPromise(
                 self.UGC_gas_path_system_obj.run,
             ).then(
-                lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.run).then(
-                    lambda v3: AsyPromise(self.remove_waitting_ufc_ugc_zos_event)
-                ).catch(lambda e: logger.error(f"{e}"))
+                lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.run)
+                # .then(
+                #     lambda v3: AsyPromise(self.remove_waitting_ufc_ugc_zos_event)
+                # ).catch(lambda e: logger.error(f"{e}"))
             ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
 
 
         return p
-    def remove_waitting_ufc_ugc_zos_event(self,resolve,reject):
-        # 通知鼠笼传感器解除阻塞开始运行
-        wait_UFC_UGC_ZOS_start_event = global_setting.get_setting("wait_UFC_UGC_ZOS_start_event")
-        wait_UFC_UGC_ZOS_start_event.set()
-        wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
-        resolve()
+    # def remove_waitting_ufc_ugc_zos_event(self,resolve,reject):
+    #     # 只是第一次执行完才通知鼠笼传感器解除阻塞开始运行 后面的执行不会进入
+    #     wait_UFC_UGC_ZOS_start_event = global_setting.get_setting("wait_UFC_UGC_ZOS_start_event")
+    #     wait_UFC_UGC_ZOS_start_event.set()
+    #     wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
+    #     resolve()
     def stop_btn_handle(self):
         if self.monitor_start_state_Thread is not None:
             self.monitor_start_state_Thread.stop()

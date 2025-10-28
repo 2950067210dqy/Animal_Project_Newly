@@ -22,6 +22,7 @@ from public.config_class.global_setting import global_setting
 
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread, MyThread
+from public.entity.barrier.ActionCompleteBarrier import ActionCompleteBarrier
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 
@@ -40,6 +41,13 @@ batch_complete_event = threading.Event()
 #等待气路启动之后在一起运行发送
 wait_UFC_UGC_ZOS_start_event = threading.Event()
 global_setting.set_setting("wait_UFC_UGC_ZOS_start_event",wait_UFC_UGC_ZOS_start_event)
+#气路之间也需要顺序run ufc run->ugc run->zos run
+wait_UFC_run_finish_event = threading.Event()
+wait_UGC_run_finish_event = threading.Event()
+wait_ZOS_run_finish_event = threading.Event()
+global_setting.set_setting("wait_UFC_run_finish_event",wait_UFC_run_finish_event)
+global_setting.set_setting("wait_UGC_run_finish_event",wait_UGC_run_finish_event)
+global_setting.set_setting("wait_ZOS_run_finish_event",wait_ZOS_run_finish_event)
 #当前鼠笼号列表的下标 参考气的下标为None 注意区分
 global_setting.set_setting("cage_number_list_index",None)
 #使用端口
@@ -332,6 +340,7 @@ class Send_thread(MyQThread):
                     with self.normal_queue_lock:
                         message = self.normal_queue.get(timeout=0.1)
                     send_message = message['message']
+                    logger.critical(f"send_thread:{self.name}<UNK>{message}")
                     # 消息没带type则不会参考气路，则进行鼠笼内传感器值获取 否则不获取
                     if message and message.get('type',None) is None:
                         response, response_hex, send_state,return_data = self.modbus.send_command(
@@ -413,14 +422,14 @@ class Add_message_thread(MyQThread):
         super().__init__(name=name)
         self.send_thread = send_thread
         self.port=port
-        self.experiment_setting:Experiment_setting_entity = global_setting.get_setting("experiment_setting",None)
+
         pass
     def run(self):
         logger.warning(f"{self.name} thread has been started！")
         self._running=True
         # 发送消息
         global MESSAGE_BATCH_SIZE
-        self.experiment_setting = global_setting.get_setting("experiment_setting", None)
+
 
         while self._running:
             self.mutex.lock()
@@ -448,38 +457,52 @@ class Add_message_thread(MyQThread):
             # 每个笼子里的传感器的send_messages
             for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
                 """debugger专用 需要哪个模块的数据监控就放进去"""
+                logger.critical(f"data type : {data_type}")
                 if data_type in [
                                 Modbus_Slave_Send_Messages_Senior_Data.ENM,
                                   Modbus_Slave_Send_Messages_Senior_Data.EM,
                                   Modbus_Slave_Send_Messages_Senior_Data.DWM,
                                   Modbus_Slave_Send_Messages_Senior_Data.WM
                 ]:
-                    if self.experiment_setting  is not None:
+                    # 所有消息
+                    for message_struct in data_type.value['send_messages']:
 
-                        # 所有消息
-                        for message_struct in data_type.value['send_messages']:
+                        message_temp = copy.deepcopy(message_struct.message)
+                        message_temp['port'] =  self.port
+                        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+                        logger.critical(f"add_message_thread_mouse_cage_index:{mouse_cage_index}")
+                        if mouse_cage_index is not None:
+                            mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
+                            mouse_cage = mouse_cages_inc[mouse_cage_index] if mouse_cages_inc else 1
+                            message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
+                            send_messages.append({'message': message_temp})
+                        else:
+                            #参考气路则没有发送鼠笼内传感器
+                            send_messages.append({'message': message_temp,'type':'reference'})
+                        MESSAGE_BATCH_SIZE += 1
 
-                            message_temp = copy.deepcopy(message_struct.message)
-                            message_temp['port'] =  self.port
-                            mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-                            if mouse_cage_index:
-                                mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-                                mouse_cage = mouse_cages_inc[mouse_cage_index] if mouse_cages_inc else 1
-                                message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
-                                self.send_thread.add_message(message={'message':message_temp}, urgent=False)
-                                send_messages.append(message_temp)
-                            else:
-                                #参考气路则没有发送鼠笼内传感器
-                                self.send_thread.add_message(message={'message': message_temp,'type':'reference'}, urgent=False)
 
-                            MESSAGE_BATCH_SIZE += 1
-
-                    else:
-                        logger.error(f"响应报文的打包获取Add_message_thread遇到self.experiment_setting is None 错误")
                 pass
+            for msg in send_messages:
+                self.send_thread.add_message(message=msg, urgent=False)
             #     # 等待从线程处理完当前批次
-            logger.info(f"数据请求报文：一共{len(send_messages)}条报文！")
+            logger.info(f"数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！")
             # print(f"send_messages:{send_messages}")
+            # 将鼠笼下标循环前移动
+            mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+            mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
+            if mouse_cage_index is not None:
+                if mouse_cage_index == len(mouse_cages_inc) - 1:
+                    # 最后一个鼠笼 则下一个为参考气路
+                    mouse_cage_index = None
+                else:
+                    mouse_cage_index = mouse_cage_index + 1
+                pass
+            else:
+                # 当前为参考气 则下一个为第一个鼠笼
+                mouse_cage_index = 0
+                pass
+            global_setting.set_setting("cage_number_list_index", mouse_cage_index)
             batch_complete_event.wait()
 
             logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
@@ -523,7 +546,7 @@ def barrier_action():
     end_time = time.time()
     mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
     mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-    mouse_cage_number = mouse_cages_inc[mouse_cage_index] if mouse_cage_index else 0
+    mouse_cage_number = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 0
 
 
     start_time = global_setting.get_setting("start_time_messages_sent_epoch_for_running", time.time())
@@ -599,20 +622,14 @@ def barrier_action():
     global_setting.set_setting("start_time_messages_sent_epoch_for_running", end_time+0.1)
     global_setting.set_setting("messages_sent_epoch_for_running",
                                0)
-    # 将鼠笼下标循环前移动
-    if mouse_cage_index:
-        if mouse_cage_index == len(mouse_cages_inc) -1:
-            #最后一个鼠笼 则下一个为参考气路
-            mouse_cage_index = None
-        else:
-            mouse_cage_index=mouse_cage_index+1
-        pass
-    else:
-        # 当前为参考气 则下一个为第一个鼠笼
-        mouse_cage_index=0
-        pass
-    global_setting.set_setting("cage_number_list_index", mouse_cage_index)
 
+def after_run_of_ufc_ugc_zos_barrier_action():
+    #ufc ugc zos run完后在鼠笼内run
+    # 通知鼠笼传感器解除阻塞开始运行
+    wait_UFC_UGC_ZOS_start_event = global_setting.get_setting("wait_UFC_UGC_ZOS_start_event")
+    if wait_UFC_UGC_ZOS_start_event is not None:
+        wait_UFC_UGC_ZOS_start_event.set()
+        wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
 def main(q,send_message_q):
 
     # logger.remove(0)
@@ -632,11 +649,15 @@ def main(q,send_message_q):
     global_load.load_global_setting_without_Qt()
     global_setting.set_setting("queue", q)
     global_setting.set_setting("send_message_queue", send_message_q)
-    #设置线程屏障，等待4个线程
+    #设置线程屏障，等待4个线程 ufc ugc zos的run还有鼠笼内的模块线程的send_message_thread
     # barrier专门用于多个线程需要在某个点同步等待的场景。每个线程执行完自己的工作后调用
     # barrier.wait()，当所有线程都到达这个同步点时，它们会同时继续执行下一轮循环。
+    # barrier = threading.Barrier(4,action=barrier_action)
     barrier = threading.Barrier(4,action=barrier_action)
     global_setting.set_setting("barrier", barrier)
+    #专属于ufc ugc zos 的run的barrier
+    ufc_ugc_zos_barrier =threading.Barrier(3,action=after_run_of_ufc_ugc_zos_barrier_action)
+    global_setting.set_setting("ufc_ugc_zos_barrier", ufc_ugc_zos_barrier)
     #每轮运行发送报文数量 总的 在气路启动后和一轮结束后会重新赋值0
     global_setting.set_setting("messages_sent_epoch_for_running",0)
     #每轮运行开始的时间 在气路启动后和一轮结束后会重新赋值
