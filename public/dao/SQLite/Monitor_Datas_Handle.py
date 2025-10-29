@@ -112,7 +112,7 @@ class Monitor_Datas_Handle():
                             # logger.info(f"数据库{self.db_name}创建表结构描述数据表{table_meta_name}成功！")
                             # 插入描述信息
                             for item in data_type.value['table'][table_name_short]['column']:
-                                self.sqlite_manager.insert(table_meta_name, item_name=item[0], item_struct=item[2],
+                                self.sqlite_manager.insert_or_ignore(table_meta_name, item_name=item[0], item_struct=item[2],
                                                            description=item[1])
             # 实例化其他数据项的数据表
             for data_type in Modbus_Slave_Type.Calibrations.value:
@@ -134,7 +134,7 @@ class Monitor_Datas_Handle():
                         # logger.info(f"数据库{self.db_name}创建表结构描述数据表{table_meta_name}成功！")
                         # 插入描述信息
                         for item in data_type.value['table'][table_name_short]['column']:
-                            self.sqlite_manager.insert(table_meta_name, item_name=item[0], item_struct=item[2],
+                            self.sqlite_manager.insert_or_ignore(table_meta_name, item_name=item[0], item_struct=item[2],
                                                        description=item[1])
             # 实例化公共传感器数据的数据表
             for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value:
@@ -158,7 +158,7 @@ class Monitor_Datas_Handle():
                             # logger.info(f"数据库{self.db_name}创建表结构描述数据表{table_meta_name}成功！")
                             # 插入描述信息
                             for item in data_type.value['table'][table_name_short]['column']:
-                                self.sqlite_manager.insert(table_meta_name, item_name=item[0], item_struct=item[2],
+                                self.sqlite_manager.insert_or_ignore(table_meta_name, item_name=item[0], item_struct=item[2],
                                                            description=item[1])
                 pass
         # 实例化每个笼子里的传感器的数据表
@@ -335,13 +335,22 @@ class Monitor_Datas_Handle():
     def query_current_one_data(self,table_name):
         results_query = self.sqlite_manager.query_current_Data(table_name)
 
-        results = []
+        return_results = None
 
         if results_query is not None and len(results_query) > 0:
-            results = results_query
-            return results[0]
+            results = results_query[0]
+            # 寻找列名
+            columns_query_result = self.sqlite_manager.query(f"{table_name}_meta")
+            if columns_query_result is not None and len(columns_query_result) > 0:
+                columns_query =[i[0] for i in columns_query_result]
+                # logger.critical(f"columns_query:{columns_query},columns_query_result:{columns_query_result}")
+                return_results=dict(zip(columns_query, results))
+                return return_results
+            else:
+                return return_results
+
         else:
-            return None
+            return return_results
     def query_data_one_column_current(self, table_name, columns_flag):
         """
         获取指定列的单个最新的数据
@@ -468,9 +477,10 @@ class Monitor_Datas_Handle():
 
         return result
         pass
-    def query_epoch_data_all_tables_paging(self, page: int = 1,
+    def query_epoch_data_all_tables_paging(self,gid:int=0, page: int = 1,
             page_size: int = 100,all_column_datas=[])-> dict:
         """
+        :param gid 鼠笼/通道几的数据
         :param page 第几页
         :param page_size 每页多少
         :param all_column_datas 用户选择的列数据
@@ -495,13 +505,14 @@ class Monitor_Datas_Handle():
         """
         if len(all_column_datas) == 0:
             return {}
-        result = self.sqlite_manager.query_Epoch_datas( "Epoch_data", page=page, page_size=page_size, order_asc=True )
+        table_name = f"Epoch_data_cage_{gid}"
+        result = self.sqlite_manager.query_Epoch_datas( table_name, page=page, page_size=page_size, order_asc=True )
         result_title = []
 
         # 找到中文列名
         for columns in result["columns"]:
 
-            columns_query =self.sqlite_manager.query_conditions(table_name=f"Epoch_data_meta", conditions=f" where item_name='{columns}'")
+            columns_query =self.sqlite_manager.query_conditions(table_name=f"{table_name}_meta", conditions=f" where item_name='{columns}'")
             result_title.append(columns_query[0][2])
         result["columns_title"]=result_title
         # print("参与联立的表:", tables)

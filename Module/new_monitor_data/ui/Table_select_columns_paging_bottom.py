@@ -28,8 +28,9 @@ from public.util.time_util import time_util
 class DataFetcher(MyQThread):
     data_fetched = pyqtSignal(dict)  # 信号传递值
 
-    def __init__(self, name,page_size,page,all_column_datas=[]):
+    def __init__(self, name,gid,page_size,page,all_column_datas=[]):
         super().__init__(name=name)
+        self.gid = gid
         self.page_size = page_size
         self.page = page
         self.all_column_datas = all_column_datas
@@ -58,7 +59,7 @@ class DataFetcher(MyQThread):
         data =[]
 
 
-        datas = self.handle.query_epoch_data_all_tables_paging(page=self.page,page_size=self.page_size,all_column_datas=self.all_column_datas)
+        datas = self.handle.query_epoch_data_all_tables_paging(gid=self.gid,page=self.page,page_size=self.page_size,all_column_datas=self.all_column_datas)
         if datas is None:
             datas = []
         # logger.error(f"get_data:{datas}")
@@ -313,7 +314,7 @@ class Table_select_columns_paging_bottom(BaseWindow):
         # self.update_page()
 
         if self.data_fetcher_thread is None :
-            self.data_fetcher_thread = DataFetcher(name="tab_2_tab_0_table_data_fetch_thread",page=self.current_page,page_size=self.page_size)
+            self.data_fetcher_thread = DataFetcher(name="tab_2_tab_0_table_data_fetch_thread",gid = self.gid,page=self.current_page,page_size=self.page_size)
             self.data_fetcher_thread.data_fetched.connect(self.update_page)
         self.data_fetcher_thread.all_column_datas = self.all_column_datas
         if not self.data_fetcher_thread.isRunning():

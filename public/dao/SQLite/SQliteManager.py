@@ -550,7 +550,16 @@ class SQLiteManager():
         # logger.critical(
         #     f"insert 完成| {table_name}| {datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
         return self.cursor.rowcount
-
+    def insert_or_ignore(self, table_name, **kwargs):
+        """插入数据重复就忽略，防止 SQL 注入."""
+        columns = ', '.join(kwargs.keys())
+        placeholders = ', '.join('?' * len(kwargs))  # 使用 ? 占位符
+        sql = f"""INSERT OR IGNORE  INTO  "{table_name}" ({columns}) VALUES ({placeholders});"""
+        self.cursor.execute(sql, tuple(kwargs.values()))  # 使用参数化查询
+        self.connection.commit()
+        # logger.critical(
+        #     f"insert 完成| {table_name}| {datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        return self.cursor.rowcount
     def insert_2(self, table_name, columns_flag, datas):
         """插入数据，防止 SQL 注入."""
         columns = ', '.join(columns_flag)

@@ -49,7 +49,7 @@ class MonitorDataWindows(ThemedWindow):
             row0 = []
             for i in range(columns):
                 if (row)*columns+i+1 <= n:
-                    dock = QDockWidget(f"通道 {gids[(row)*columns+i]}", self)
+                    dock = QDockWidget(f"通道 {gids[(row)*columns+i]} {'(参考气)' if gids[(row)*columns+i]==0 else ''}", self)
                     dock.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
                     dock.setFeatures(
                         QDockWidget.DockWidgetFeature.DockWidgetMovable
