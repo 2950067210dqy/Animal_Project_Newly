@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QFrame, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QWidget, QSplitter, QScrollArea)
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QTimer, QSize, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QMouseEvent, QPainter, QColor, QPen, QCloseEvent, QFont, QIcon, QScreen
+from loguru import logger
 
 from theme.ThemeQt6 import ThemedWidget, ThemedFrame, ThemedWindow
 
@@ -23,7 +24,7 @@ class DraggableContainer(ThemedWidget):
         self.original_stylesheet = """
             QWidget {
                 background-color: #ffffff;
-                border: 1px solid #d0d0d0;
+             
                 border-radius: 3px;
             }
         """
@@ -102,7 +103,8 @@ class TabButton(QPushButton):
         self.setFixedHeight(32)
         self.setMinimumWidth(100)
         self.setMaximumWidth(180)
-
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setToolTip("可拖拽调整顺序")
         # 拖拽相关属性
         self.is_dragging = False
         self.drag_start_position = QPoint()
@@ -124,7 +126,7 @@ class TabButton(QPushButton):
         self.setStyleSheet("""
             QPushButton {
                 background-color: #f8f9fa;
-                border: 1px solid #c0c4c8;
+              
                 border-radius: 3px;
                 padding: 6px 10px;
                 font-weight: normal;
@@ -169,7 +171,7 @@ class TabButton(QPushButton):
         preview.setStyleSheet("""
             QLabel {
                 background-color: #f8f9fa;
-                border: 1px dashed #6c757d;
+              
                 border-radius: 3px;
                 padding: 6px 10px;
                 color: #6c757d;
@@ -242,10 +244,11 @@ class TabNavigator(ThemedWidget):
 
     def setupUI(self):
         self.setFixedHeight(45)
+
         self.setStyleSheet("""
             QWidget {
                 background-color: #f1f3f4;
-                border: 1px solid #c0c4c8;
+           
                 border-radius: 3px;
             }
         """)
@@ -363,7 +366,7 @@ class TabNavigator(ThemedWidget):
         """Tab入场动画"""
         # 简单的淡入效果
         tab_button.setStyleSheet(tab_button.styleSheet() + "background-color: #dee2e6;")
-        QTimer.singleShot(200, lambda: tab_button.setupStyle())
+        QTimer.singleShot(100, lambda: tab_button.setupStyle())
 
     def removeFrame(self, frame):
         """移除Frame对应的Tab"""
@@ -376,7 +379,7 @@ class TabNavigator(ThemedWidget):
         button.setStyleSheet("""
             QPushButton {
                 background-color: #f8d7da;
-                border: 1px solid #f5c6cb;
+               
                 border-radius: 3px;
                 padding: 6px 10px;
                 color: #721c24;
@@ -400,7 +403,7 @@ class TabNavigator(ThemedWidget):
 
     def onTabDragStarted(self, tab_button):
         """Tab开始拖拽"""
-        print(f"开始拖拽Tab: {tab_button.frame_ref.title}")
+        logger.info(f"开始拖拽Tab: {tab_button.frame_ref.title}")
         self.dragging_button = tab_button
 
         # 显示拖拽指示器
@@ -425,7 +428,7 @@ class TabNavigator(ThemedWidget):
 
     def onTabDragFinished(self, tab_button):
         """Tab拖拽结束"""
-        print(f"结束拖拽Tab: {tab_button.frame_ref.title}")
+        logger.info(f"结束拖拽Tab: {tab_button.frame_ref.title}")
 
         # 隐藏拖拽指示器
         self.drag_indicator.hide()
@@ -457,7 +460,7 @@ class TabNavigator(ThemedWidget):
                     button.setStyleSheet("""
                         QPushButton {
                             background-color: #e2e3e5;
-                            border: 1px dashed #adb5bd;
+                           
                             border-radius: 3px;
                             padding: 6px 10px;
                             color: #6c757d;
@@ -494,7 +497,7 @@ class TabNavigator(ThemedWidget):
                         button.setStyleSheet("""
                             QPushButton {
                                 background-color: #e2e3e5;
-                                border: 1px dashed #adb5bd;
+                             
                                 border-radius: 3px;
                                 padding: 6px 10px;
                                 color: #6c757d;
@@ -569,7 +572,7 @@ class TabNavigator(ThemedWidget):
         # 发送顺序改变信号
         self.tabOrderChanged.emit(self.frame_order.copy())
 
-        print(f"Tab重排序完成: {[f.title for f in self.frame_order]}")
+        logger.info(f"Tab重排序完成: {[f.title for f in self.frame_order]}")
 
     def showReorderFeedback(self, frame, old_index, new_index):
         """显示重排序反馈"""
@@ -680,7 +683,49 @@ class DraggableFrame(ThemedFrame):
         self.drag_start_position = QPoint()
         self.is_dragging = False
         self.drag_threshold = 30
+        # 拖拽状态样式
+        self.normal_style = """
+                    QFrame {
+                        background-color: #f8f9fa;
+                        border: 2px dashed #dee2e6;
+                        border-radius: 8px;
+                        margin: 4px;
+                    }
+                    QLabel {
+                        color: #6c757d;
+                        font-size: 16px;
+                        font-weight: bold;
+                        background: transparent;
+                     
+                        border-radius: 2px;
+                        padding: 4px;
+                        letter-spacing: 1px;
+                    }
+                    QLabel:hover {
+                        color: #495057;
+                        background: #f8f9fa;
+                     
+                    }
+                """
 
+        self.dragging_style = """
+                    QFrame {
+                        background-color: #e3f2fd;
+                        border: 2px dashed #2196f3;
+                        border-radius: 8px;
+                        margin: 4px;
+                    }
+                    QLabel {
+                        color: #495057;
+                        font-size: 16px;
+                        font-weight: bold;
+                        background: #dee2e6;
+                      
+                        border-radius: 2px;
+                        padding: 4px;
+                        letter-spacing: 1px;
+                    }
+                """
         self.setupUI()
         self.setMinimumSize(220, 280)
 
@@ -689,7 +734,7 @@ class DraggableFrame(ThemedFrame):
         self.setLineWidth(1)
         self.setStyleSheet("""
             QFrame {
-                border: 1px solid #c0c4c8;
+               
                 background-color: white;
                 border-radius: 3px;
             }
@@ -714,7 +759,21 @@ class DraggableFrame(ThemedFrame):
 
         title_layout = QHBoxLayout(self.title_bar)
         title_layout.setContentsMargins(10, 0, 10, 0)
+        # 朴素的拖拽图标 - 这是唯一触发拖拽检测的区域
+        self.drag_icon = QLabel("⋮⋮⋮⋮拖拽处⋮⋮⋮⋮")
+        self.drag_icon.setStyleSheet("""
+                    QLabel {
+                        color: #6c757d;
 
+                        background: transparent;
+                        border: none;
+                        padding: 4px;
+                        letter-spacing: 1px;
+                    }
+                """)
+        self.drag_icon.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.drag_icon.setToolTip("拖拽此图标进行拖拽检测")
+        title_layout.addWidget(self.drag_icon)
         self.title_label = QLabel(self.title)
         self.title_label.setStyleSheet("color: #495057; font-weight: bold; font-size: 12px;")
         title_layout.addWidget(self.title_label)
@@ -765,7 +824,7 @@ class DraggableFrame(ThemedFrame):
                 background-color: #5a6268;
             }
         """)
-        btn.clicked.connect(lambda: print(f"{self.title} 按钮被点击"))
+        btn.clicked.connect(lambda: logger.info(f"{self.title} 按钮被点击"))
         layout.addWidget(btn)
         layout.addStretch()
 
@@ -801,7 +860,7 @@ class DraggableFrame(ThemedFrame):
             self.content_widget.setParent(self.content_container)
             self.content_layout.addWidget(self.content_widget)
 
-            print(f"内容组件已恢复到Frame: {self.title}")
+            logger.info(f"内容组件已恢复到Frame: {self.title}")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -851,18 +910,20 @@ class DraggableFrame(ThemedFrame):
 
             # 创建独立窗口
             self.detached_window = DetachableWindow(self, parent_widget)
-
+            # 确保新窗口的拖拽图标处于正常状态
+            if hasattr(self.detached_window, 'custom_title_bar'):
+                self.detached_window.custom_title_bar.resetToNormalState()
             # 设置位置 - 确保鼠标在标题栏合适位置
             # 设置窗口位置 - 以鼠标位置为中心
             window_width, window_height = self.detached_window.width(), self.detached_window.height()
             window_x = global_pos.x() - window_width // 2
             window_y = global_pos.y() - window_height // 2
-            if window_x<0:
+            if window_x < 0:
                 window_x = 0
-            if window_y<0:
+            if window_y < 0:
                 window_y = 0
             self.detached_window.move(window_x, window_y)
-
+            self.detached_window.resize(self.width(),self.height())
             # 继承当前的拖拽状态到新窗口
             self.detached_window.start_dragging_from_detach(
                 global_pos,
@@ -870,7 +931,9 @@ class DraggableFrame(ThemedFrame):
             )
 
             self.detached_window.show()
-
+            # 清理拖拽状态
+            self.is_dragging = False
+            self.setCursor(Qt.CursorShape.ArrowCursor)
             # 隐藏原Frame
             self.hide()
             self.is_detached = True
@@ -878,7 +941,7 @@ class DraggableFrame(ThemedFrame):
             self.frameDetached.emit(self)
 
         except Exception as e:
-            print(f"分离Frame时出错: {e}")
+            logger.error(f"分离Frame时出错: {e}")
 
     def attachFrame(self):
         """重新附加Frame"""
@@ -904,10 +967,10 @@ class DraggableFrame(ThemedFrame):
             self.title_bar.setCursor(Qt.CursorShape.OpenHandCursor)
 
             self.frameAttached.emit(self)
-            print(f"Frame已重新附加: {self.title}")
+            logger.info(f"Frame已重新附加: {self.title}")
 
         except Exception as e:
-            print(f"附加Frame时出错: {e}")
+            logger.error(f"附加Frame时出错: {e}")
 
     def updateStatus(self, status):
         """更新朴素的状态显示"""
@@ -942,12 +1005,46 @@ class CustomTitleBar(ThemedFrame):
         self.title = title
         self.is_maximized = False
 
-        # 窗口拖拽相关
+        # 窗口拖拽相关 - 区分拖拽图标和标题栏拖拽
         self.drag_position = QPoint()
-        self.is_dragging = False
-        self.is_title_bar_dragging = False
+        self.is_icon_dragging = False  # 拖拽图标进行的拖拽
+        self.is_title_bar_dragging = False  # 标题栏区域拖拽
 
         self.setupUI()
+        # 确保初始状态正确
+        self.resetToNormalState()
+
+    def resetToNormalState(self):
+        """重置到正常状态"""
+
+        self.is_icon_dragging = False
+        self.is_title_bar_dragging = False
+
+        # 重置拖拽图标样式
+        if hasattr(self, 'drag_icon'):
+            self.drag_icon.setStyleSheet("""
+                   QLabel {
+                       color: #6c757d;
+                       
+                       background: transparent;
+                      
+                       border-radius: 2px;
+                       padding: 4px;
+                       letter-spacing: 1px;
+                   }
+                   QLabel:hover {
+                       color: #495057;
+                       background: #f8f9fa;
+                      
+                   }
+               """)
+            self.drag_icon.setCursor(Qt.CursorShape.OpenHandCursor)
+
+        # 重置光标
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        # 确保停止拖拽检查定时器
+        if hasattr(self.window, 'drop_check_timer'):
+            self.window.drop_check_timer.stop()# 确保停止拖拽检查定时器
 
     def setupUI(self):
         self.setFixedHeight(35)
@@ -959,19 +1056,17 @@ class CustomTitleBar(ThemedFrame):
                 border-top-right-radius: 4px;
             }
         """)
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 0, 4, 0)
         layout.setSpacing(8)
 
-        # 朴素的拖拽图标
-        self.drag_icon = QLabel("⋮⋮")
+        # 朴素的拖拽图标 - 这是唯一触发拖拽检测的区域
+        self.drag_icon = QLabel("⋮⋮⋮⋮拖拽处⋮⋮⋮⋮")
         self.drag_icon.setStyleSheet("""
             QLabel {
                 color: #6c757d;
-                font-size: 16px;
-                font-weight: bold;
+              
                 background: transparent;
                 border: none;
                 padding: 4px;
@@ -979,12 +1074,14 @@ class CustomTitleBar(ThemedFrame):
             }
         """)
         self.drag_icon.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.drag_icon.setToolTip("拖拽此图标进行拖拽检测")
         layout.addWidget(self.drag_icon)
 
         # 标题
         self.title_label = QLabel(self.title)
         self.title_label.setStyleSheet("""
             QLabel {
+                margin-left: 10px;
                 color: #495057;
                 font-weight: bold;
                 font-size: 13px;
@@ -992,6 +1089,8 @@ class CustomTitleBar(ThemedFrame):
                 border: none;
             }
         """)
+        self.title_label.setCursor(Qt.CursorShape.SizeAllCursor)  # 表示可以移动窗口
+        self.title_label.setToolTip("拖拽此处移动窗口")
         layout.addWidget(self.title_label)
 
         layout.addStretch()
@@ -1064,63 +1163,96 @@ class CustomTitleBar(ThemedFrame):
             self.maximize_btn.setToolTip("还原")
             self.is_maximized = True
 
+    def getClickedWidget(self, pos):
+        """获取点击位置对应的子控件"""
+        for widget in [self.drag_icon, self.title_label, self.minimize_btn, self.maximize_btn, self.close_btn,
+                       self.status_indicator]:
+            widget_pos = widget.mapToParent(QPoint(0, 0))
+            widget_rect = QRect(widget_pos, widget.size())
+            if widget_rect.contains(pos):
+                return widget
+        return None
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            # 检查是否点击在控制按钮上
-            for btn in [self.minimize_btn, self.maximize_btn, self.close_btn]:
-                btn_pos = btn.mapToParent(QPoint(0, 0))
-                btn_rect = QRect(btn_pos, btn.size())
-                if btn_rect.contains(event.pos()):
-                    super().mousePressEvent(event)
-                    return
+            clicked_widget = self.getClickedWidget(event.pos())
 
-            # 整个标题栏都可以拖拽
-            self.drag_position = event.globalPosition().toPoint() - self.window.pos()
-            self.is_dragging = True
-            self.is_title_bar_dragging = True
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            self.drag_icon.setStyleSheet("""
-                QLabel {
-                    color: #495057;
-                    font-size: 16px;
-                    font-weight: bold;
-                    background: #dee2e6;
-                    border: 1px solid #adb5bd;
-                    border-radius: 2px;
-                    padding: 4px;
-                    letter-spacing: 1px;
-                }
-            """)
+            # 检查是否点击在控制按钮上 - 直接传递给按钮处理
+            if clicked_widget in [self.minimize_btn, self.maximize_btn, self.close_btn]:
+                super().mousePressEvent(event)
+                return
 
-            # 启动拖拽检查定时器
-            self.window.drop_check_timer.start(50)
-            event.accept()
+            # 点击拖拽图标 - 开始拖拽检测模式
+            if clicked_widget == self.drag_icon:
+                self.drag_position = event.globalPosition().toPoint() - self.window.pos()
+                self.is_icon_dragging = True
+                self.drag_icon.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self.drag_icon.setStyleSheet("""
+                    QLabel {
+                        color: #495057;
+                       
+                        background: #dee2e6;
+                   
+                        border-radius: 2px;
+                        padding: 4px;
+                        letter-spacing: 1px;
+                    }
+                """)
+                # 启动拖拽检查定时器
+                self.window.drop_check_timer.start(50)
+                event.accept()
+                return
+            else:
+                # 点击标题栏其他区域（包括标题文本） - 普通窗口移动
+                self.is_icon_dragging = False
+                self.drag_position = event.globalPosition().toPoint() - self.window.pos()
+                self.is_title_bar_dragging = True
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+                event.accept()
 
     def mouseMoveEvent(self, event):
-        if self.is_dragging and event.buttons() == Qt.MouseButton.LeftButton:
-            # 如果窗口最大化,先还原
-            if self.window.isMaximized():
-                self.toggle_maximize()
-                # 重新计算拖拽位置
-                ratio = event.pos().x() / self.width()
-                new_width = self.window.width()
-                self.drag_position = QPoint(int(new_width * ratio), event.pos().y())
+        if event.buttons() == Qt.MouseButton.LeftButton:
+            # 拖拽图标的移动 - 带拖拽检测
+            if self.is_icon_dragging:
+                # 如果窗口最大化,先还原
+                if self.window.isMaximized():
+                    self.toggle_maximize()
+                    # 重新计算拖拽位置
+                    ratio = event.pos().x() / self.width()
+                    new_width = self.window.width()
+                    self.drag_position = QPoint(int(new_width * ratio), event.pos().y())
 
-            # 移动窗口
-            new_pos = event.globalPosition().toPoint() - self.drag_position
-            self.window.move(new_pos)
-            event.accept()
+                # 移动窗口
+                new_pos = event.globalPosition().toPoint() - self.drag_position
+                self.window.move(new_pos)
+                event.accept()
+                return
+
+            # 标题栏其他区域的移动 - 纯窗口移动，无拖拽检测
+            if self.is_title_bar_dragging:
+                # 如果窗口最大化,先还原
+                if self.window.isMaximized():
+                    self.toggle_maximize()
+                    # 重新计算拖拽位置
+                    ratio = event.pos().x() / self.width()
+                    new_width = self.window.width()
+                    self.drag_position = QPoint(int(new_width * ratio), event.pos().y())
+
+                # 移动窗口
+                new_pos = event.globalPosition().toPoint() - self.drag_position
+                self.window.move(new_pos)
+                event.accept()
 
     def mouseReleaseEvent(self, event):
-        if self.is_dragging:
-            self.is_dragging = False
-            self.is_title_bar_dragging = False
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
+        # 拖拽图标释放
+        if self.is_icon_dragging:
+            self.is_icon_dragging = False
+            self.drag_icon.setCursor(Qt.CursorShape.OpenHandCursor)
             self.drag_icon.setStyleSheet("""
                 QLabel {
                     color: #6c757d;
-                    font-size: 16px;
-                    font-weight: bold;
+                    
                     background: transparent;
                     border: none;
                     padding: 4px;
@@ -1147,7 +1279,7 @@ class CustomTitleBar(ThemedFrame):
                             attached = True
                             break
                 except (RuntimeError, AttributeError) as e:
-                    print(f"拖拽区域无效: {e}")
+                    logger.error(f"拖拽区域无效: {e}")
                     continue
 
             # 更新有效的拖拽区域列表
@@ -1162,51 +1294,89 @@ class CustomTitleBar(ThemedFrame):
                     except (RuntimeError, AttributeError):
                         continue
 
+        # 标题栏拖拽释放
+        if self.is_title_bar_dragging:
+            self.is_title_bar_dragging = False
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
         event.accept()
 
     def mouseDoubleClickEvent(self, event):
         """双击标题栏切换最大化"""
         if event.button() == Qt.MouseButton.LeftButton:
-            # 检查是否双击在控制按钮上
-            for btn in [self.minimize_btn, self.maximize_btn, self.close_btn]:
-                btn_pos = btn.mapToParent(QPoint(0, 0))
-                btn_rect = QRect(btn_pos, btn.size())
-                if btn_rect.contains(event.pos()):
-                    return
+            clicked_widget = self.getClickedWidget(event.pos())
 
-            self.toggle_maximize()
+            # 只有点击标题文本或空白区域才切换最大化，不包括拖拽图标
+            if clicked_widget not in [self.minimize_btn, self.maximize_btn, self.close_btn, self.drag_icon]:
+                self.toggle_maximize()
 
 
 class DetachableWindow(ThemedWindow):
-    """朴素的可分离独立窗口"""
+    """可分离独立窗口 - 增强拖拽和调整大小功能"""
 
     def __init__(self, draggable_frame, *drop_zones):
         super().__init__()
         self.draggable_frame = draggable_frame
         # 过滤掉None值，确保只添加有效的拖拽区域
         self.drop_zones = [zone for zone in drop_zones if zone is not None]
-        self.is_dragging = False
-        self.drag_offset = QPoint()
-        self.drag_start_position = QPoint()
         self.should_attach_on_close = True
         self.is_closing = False  # 添加关闭状态标志
 
-        # 用于检查拖拽区域的定时器
+        # 窗口调整大小相关变量
+        self.resize_border_width = 6  # 调整大小的边框宽度
+        self.resize_mode = None  # 当前调整大小模式
+        self.resize_start_pos = QPoint()
+        self.resize_start_geometry = QRect()
+
+        # 用于检查拖拽区域的定时器 - 只在拖拽图标时启用
         self.drop_check_timer = QTimer()
         self.drop_check_timer.timeout.connect(self.checkDropZone)
 
         self.setupWindow()
         self.setupUI()
+        # 重置拖拽图标状态 - 确保新窗口开始时处于正常状态
+        self.resetDragIconState()
 
+    def resetDragIconState(self):
+        """重置拖拽图标状态"""
+        if hasattr(self, 'custom_title_bar') and self.custom_title_bar:
+            # 重置拖拽状态
+            self.custom_title_bar.is_icon_dragging = False
+            self.custom_title_bar.is_title_bar_dragging = False
+
+            # 重置拖拽图标样式为正常状态
+            self.custom_title_bar.drag_icon.setStyleSheet("""
+                   QLabel {
+                       color: #6c757d;
+                    
+                       background: transparent;
+                     
+                       border-radius: 2px;
+                       padding: 4px;
+                       letter-spacing: 1px;
+                   }
+                   QLabel:hover {
+                       color: #495057;
+                       background: #f8f9fa;
+                    
+                   }
+               """)
+
+            # 重置光标
+            self.custom_title_bar.drag_icon.setCursor(Qt.CursorShape.OpenHandCursor)
+            self.custom_title_bar.setCursor(Qt.CursorShape.ArrowCursor)
+
+            # 停止拖拽检查定时器
+            self.drop_check_timer.stop()
     def addDropZone(self, drop_zone):
         """添加拖拽区域 - 增加安全检查"""
         if drop_zone is not None and drop_zone not in self.drop_zones:
             try:
                 _ = drop_zone.isVisible()
                 self.drop_zones.append(drop_zone)
-                print(f"成功添加拖拽区域，当前共有 {len(self.drop_zones)} 个区域")
+                logger.info(f"成功添加拖拽区域，当前共有 {len(self.drop_zones)} 个区域")
             except Exception as e:
-                print(f"无法添加拖拽区域: {e}")
+                logger.error(f"无法添加拖拽区域: {e}")
 
     def setupWindow(self):
         """设置朴素的窗口属性"""
@@ -1221,10 +1391,13 @@ class DetachableWindow(ThemedWindow):
         self.setStyleSheet("""
             QMainWindow {
                 background-color: white;
-                border: 1px solid #c0c4c8;
+             
                 border-radius: 4px;
             }
         """)
+
+        # 启用鼠标追踪以检测边缘
+        self.setMouseTracking(True)
 
     def setupUI(self):
         """设置朴素的UI"""
@@ -1238,7 +1411,8 @@ class DetachableWindow(ThemedWindow):
         main_layout.setSpacing(0)
 
         # 朴素的自定义标题栏
-        self.custom_title_bar = CustomTitleBar(self, f"独立窗口: {self.draggable_frame.title}")
+        self.setWindowTitle(f"{self.draggable_frame.title}")
+        self.custom_title_bar = CustomTitleBar(self, f"{self.draggable_frame.title}")
         main_layout.addWidget(self.custom_title_bar)
 
         # 内容区域 - 直接使用原Frame的内容
@@ -1251,7 +1425,7 @@ class DetachableWindow(ThemedWindow):
 
             content_widget.setParent(central_widget)
             main_layout.addWidget(content_widget)
-            print(f"内容组件已移动到独立窗口: {self.draggable_frame.title}")
+            logger.info(f"内容组件已移动到独立窗口: {self.draggable_frame.title}")
         else:
             # 创建朴素的默认内容
             self.setupDefaultContent(main_layout)
@@ -1281,7 +1455,7 @@ class DetachableWindow(ThemedWindow):
                 font-weight: bold;
                 background-color: #f8f9fa;
                 padding: 12px;
-                border: 1px solid #e9ecef;
+            
                 border-radius: 3px;
             }
         """)
@@ -1308,8 +1482,9 @@ class DetachableWindow(ThemedWindow):
 
         # 朴素的使用说明
         help_text = QLabel(f"""使用说明：
-• 拖拽标题栏可以移动窗口
-• 拖拽到高亮区域可重新附加
+• 拖拽 ⋮⋮ 图标可以进行拖拽检测
+• 拖拽标题文本可以移动窗口
+• 鼠标移到边缘可以调整大小
 • 共有 {len(self.drop_zones)} 个拖拽区域
 • 关闭窗口会自动重新附加""")
         help_text.setStyleSheet("""
@@ -1317,7 +1492,7 @@ class DetachableWindow(ThemedWindow):
                 color: #6c757d;
                 font-size: 11px;
                 background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            
                 border-radius: 3px;
                 padding: 12px;
                 line-height: 1.3;
@@ -1331,18 +1506,145 @@ class DetachableWindow(ThemedWindow):
 
     def start_dragging_from_detach(self, current_pos, start_pos):
         """从分离操作开始拖拽"""
-        self.is_dragging = True
-        self.drag_start_position = start_pos
+        # 设置为拖拽图标模式
+        self.custom_title_bar.is_icon_dragging = True
         title_bar_global_pos = self.custom_title_bar.mapToGlobal(QPoint(0, 0))
-        self.drag_offset = current_pos - title_bar_global_pos
-        self.custom_title_bar.setCursor(Qt.CursorShape.ClosedHandCursor)
-        self.custom_title_bar.is_dragging = True
-        self.custom_title_bar.is_title_bar_dragging = True
+        self.custom_title_bar.drag_position = current_pos - title_bar_global_pos
+        self.custom_title_bar.drag_icon.setCursor(Qt.CursorShape.ClosedHandCursor)
+        self.custom_title_bar.drag_icon.setStyleSheet("""
+            QLabel {
+                color: #495057;
+             
+                background: #dee2e6;
+               
+                border-radius: 2px;
+                padding: 4px;
+                letter-spacing: 1px;
+            }
+        """)
+        # 启动拖拽检查
         self.drop_check_timer.start(50)
 
+    def getResizeMode(self, pos):
+        """根据鼠标位置获取调整大小模式"""
+        rect = self.rect()
+        border = self.resize_border_width
+
+        # 检查是否在边缘
+        left_edge = pos.x() <= border
+        right_edge = pos.x() >= rect.width() - border
+        top_edge = pos.y() <= border
+        bottom_edge = pos.y() >= rect.height() - border
+
+        # 检查是否在标题栏区域（不允许在标题栏区域进行调整大小）
+        if pos.y() <= self.custom_title_bar.height():
+            return None
+
+        # 返回调整大小模式
+        if top_edge and left_edge:
+            return 'top_left'
+        elif top_edge and right_edge:
+            return 'top_right'
+        elif bottom_edge and left_edge:
+            return 'bottom_left'
+        elif bottom_edge and right_edge:
+            return 'bottom_right'
+        elif left_edge:
+            return 'left'
+        elif right_edge:
+            return 'right'
+        elif top_edge:
+            return 'top'
+        elif bottom_edge:
+            return 'bottom'
+
+        return None
+
+    def updateCursor(self, resize_mode):
+        """根据调整大小模式更新鼠标指针"""
+        if resize_mode == 'top_left' or resize_mode == 'bottom_right':
+            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        elif resize_mode == 'top_right' or resize_mode == 'bottom_left':
+            self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+        elif resize_mode == 'left' or resize_mode == 'right':
+            self.setCursor(Qt.CursorShape.SizeHorCursor)
+        elif resize_mode == 'top' or resize_mode == 'bottom':
+            self.setCursor(Qt.CursorShape.SizeVerCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def mouseMoveEvent(self, event):
+        """处理鼠标移动事件"""
+        if self.resize_mode:
+            # 正在调整大小
+            self.performResize(event.globalPosition().toPoint())
+        else:
+            # 检查是否在调整大小边缘
+            resize_mode = self.getResizeMode(event.pos())
+            self.updateCursor(resize_mode)
+        # 如果是在标题栏拖拽,不进行拖拽区域检查
+        if self.custom_title_bar.is_title_bar_dragging:
+            return
+        super().mouseMoveEvent(event)
+
+    def mousePressEvent(self, event):
+        """处理鼠标按下事件"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            resize_mode = self.getResizeMode(event.pos())
+            if resize_mode:
+                # 开始调整大小
+                self.resize_mode = resize_mode
+                self.resize_start_pos = event.globalPosition().toPoint()
+                self.resize_start_geometry = self.geometry()
+                event.accept()
+                return
+
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        """处理鼠标释放事件"""
+        if self.resize_mode:
+            # 结束调整大小
+            self.resize_mode = None
+            self.updateCursor(None)
+            event.accept()
+            return
+
+        super().mouseReleaseEvent(event)
+
+    def performResize(self, global_pos):
+        """执行窗口大小调整"""
+        if not self.resize_mode:
+            return
+
+        delta = global_pos - self.resize_start_pos
+        new_geometry = QRect(self.resize_start_geometry)
+
+        # 根据调整大小模式计算新的几何形状
+        if 'left' in self.resize_mode:
+            new_width = max(self.minimumWidth(), new_geometry.width() - delta.x())
+            new_geometry.setLeft(new_geometry.right() - new_width)
+        elif 'right' in self.resize_mode:
+            new_width = max(self.minimumWidth(), new_geometry.width() + delta.x())
+            new_geometry.setWidth(new_width)
+
+        if 'top' in self.resize_mode:
+            new_height = max(self.minimumHeight(), new_geometry.height() - delta.y())
+            new_geometry.setTop(new_geometry.bottom() - new_height)
+        elif 'bottom' in self.resize_mode:
+            new_height = max(self.minimumHeight(), new_geometry.height() + delta.y())
+            new_geometry.setHeight(new_height)
+
+        # 应用新的几何形状
+        self.setGeometry(new_geometry)
+
     def checkDropZone(self):
-        """检查是否在拖拽区域内 - 增加安全检查"""
+        """检查是否在拖拽区域内 - 只在拖拽图标时检查"""
         if not self.drop_zones or self.is_closing:
+            return
+
+        # 只有在拖拽图标时才进行检查
+        if not self.custom_title_bar.is_icon_dragging:
             return
 
         try:
@@ -1354,7 +1656,7 @@ class DetachableWindow(ThemedWindow):
                         _ = drop_zone.size()
                         valid_zones.append(drop_zone)
                 except (RuntimeError, AttributeError) as e:
-                    print(f"拖拽区域无效，已跳过: {e}")
+                    logger.error(f"拖拽区域无效，已跳过: {e}")
                     continue
 
             # 更新有效的拖拽区域列表
@@ -1367,11 +1669,11 @@ class DetachableWindow(ThemedWindow):
                     if hasattr(drop_zone, 'setHighlight'):
                         drop_zone.setHighlight(in_zone)
                 except Exception as e:
-                    print(f"检查拖拽区域时出错: {e}")
+                    logger.error(f"检查拖拽区域时出错: {e}")
                     continue
 
         except Exception as e:
-            print(f"检查拖拽区域总体错误: {e}")
+            logger.error(f"检查拖拽区域总体错误: {e}")
             if self.drop_check_timer.isActive():
                 self.drop_check_timer.stop()
 
@@ -1390,7 +1692,7 @@ class DetachableWindow(ThemedWindow):
             return drop_zone_rect.contains(window_center)
 
         except (RuntimeError, AttributeError) as e:
-            print(f"检查区域包含时出错: {e}")
+            logger.error(f"检查区域包含时出错: {e}")
             return False
 
     def attach_to_main(self):
@@ -1504,7 +1806,7 @@ class DropZoneWidget(DraggableContainer):
                 }
             """)
         else:
-            self.label.setText("拖拽区域\n将分离的窗口拖到这里可以重新附加")
+            self.label.setText("拖拽区域\n拖拽 ⋮⋮ 图标到这里可以重新附加")
             self.label.setStyleSheet("""
                 QLabel {
                     color: #6c757d;

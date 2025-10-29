@@ -365,14 +365,14 @@ class MainWindow_Index(ThemedWindow):
                     # 创建menu action
                     module.set_main_gui(main_gui=self)
                     action = QAction(module_title, self)
-                    action.setObjectName(f"{module.name}_menu_action")
+                    action.setObjectName(f"{module.name}")
                     # 创建点击事件
                     # action.triggered.connect(module.start_service)
                     action.triggered.connect(module.click_method)
                     # action.triggered.connect( module.adjustGUIPolicy)
                     # action.triggered.connect( module.interface_widget.show)
                     self.menu_bar_actions.append(
-                        {"name": module_title, "obj_name": f"{module.name}_menu_action", "action": action, "app_state": module.app_state})
+                        {"name": module_title, "obj_name": f"{module.name}", "action": action, "app_state": module.app_state})
                     # 将操作添加到文件菜单
                     menu.addAction(action)
                     menu.addSeparator()  # 添加分隔线
@@ -833,7 +833,10 @@ class MainWindow_Index(ThemedWindow):
                 menu_bar_action["action"].setEnabled(False)
             else:
                 menu_bar_action["action"].setEnabled(True)
-
+                #特殊情况
+                if global_setting.get_setting("app_state",AppState.INITIALIZED) == AppState.MONITORING \
+                    and menu_bar_action['obj_name'] in ["Main_New_experiment", "Main_New_experiment_open"]:
+                    menu_bar_action["action"].setEnabled(False)
         # 设置是否可以点击 tool_bar
         for tool_bar_action in self.tool_bar_actions:
             if tool_bar_action["app_state"] > global_setting.get_setting("app_state",AppState.INITIALIZED):
@@ -841,7 +844,7 @@ class MainWindow_Index(ThemedWindow):
             else:
                 tool_bar_action["action"].setEnabled(True)
             # 特殊按钮需要特殊配置
-            if tool_bar_action['obj_name'] in ["stop_experiment", "pause_experiment"]:
+            if tool_bar_action['obj_name'] in ["stop_experiment", "pause_experiment","toggle_mode","window_exchange"]:
                 tool_bar_action["action"].setEnabled(False)
         pass
 

@@ -33,7 +33,8 @@ class Monitor_Datas_Handle():
         if self.sqlite_manager is not None:
             self.stop()
         self.sqlite_manager = SQLiteManager(db_name=self.db_name)
-        self.create_tables()
+        if db_name is None:
+            self.create_tables()
         pass
 
     def stop(self):
@@ -513,7 +514,8 @@ class Monitor_Datas_Handle():
         for columns in result["columns"]:
 
             columns_query =self.sqlite_manager.query_conditions(table_name=f"{table_name}_meta", conditions=f" where item_name='{columns}'")
-            result_title.append(columns_query[0][2])
+            if columns_query and len(columns_query) > 0:
+                result_title.append(columns_query[0][2])
         result["columns_title"]=result_title
         # print("参与联立的表:", tables)
         # print(

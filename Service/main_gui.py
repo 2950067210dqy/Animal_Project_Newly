@@ -145,11 +145,9 @@ def start_qt_application():
     if return_Data ==QDialog.DialogCode.Accepted:
         #点了确认
         # # 主窗口实例化
-        try:
-            main_window=MainWindow_Index()
-        except Exception as e:
-            logger.error(f"gui程序实例化失败，原因:{e} ")
-            return
+
+        main_window=MainWindow_Index()
+
         # 主窗口显示
         logger.info("Appliacation start")
 
@@ -179,8 +177,6 @@ def main(q, send_message_q):
     global read_queue_data_thread
     read_queue_data_thread.queue = q
     read_queue_data_thread.start()
-    try:
-        # qt程序开始
-        start_qt_application()
-    except Exception as e:
-        logger.error(e)
+
+    # qt程序开始
+    start_qt_application()

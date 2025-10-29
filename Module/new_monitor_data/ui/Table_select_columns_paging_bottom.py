@@ -23,6 +23,7 @@ from public.entity.MyQThread import MyQThread
 from public.entity.dict.AdvancedFuzzyDict import FuzzyDict
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.time_util import time_util
+from theme.ThemeQt6 import ThemedWidget, ThemedWindow
 
 
 class DataFetcher(MyQThread):
@@ -66,8 +67,10 @@ class DataFetcher(MyQThread):
         self.data_fetched.emit(datas)
 
         time.sleep(0.3)  # 每秒获取一次数据
-class Table_select_columns_paging_bottom(BaseWindow):
-
+class Table_select_columns_paging_bottom(ThemedWindow):
+    def hide(self):
+        if self.data_fetcher_thread is not None:
+            self.data_fetcher_thread.stop()
     def __init__(self,gid):
         super().__init__()
         self.gid = gid
@@ -97,14 +100,18 @@ class Table_select_columns_paging_bottom(BaseWindow):
         self.setCentralWidget(central)
         main_vbox = QVBoxLayout(central)
 
+        self.setMinimumWidth(1100)
 
 
         # 分页器区域（放在表格上方）
+        # Scroll area 包含 QTableWidget
+        self.page_scroll_area = QScrollArea()
+        self.page_scroll_area.setWidgetResizable(True)
         pager_widget = QWidget()
         pager_layout = QHBoxLayout(pager_widget)
         pager_layout.setContentsMargins(0, 0, 0, 0)
         pager_layout.setSpacing(8)
-
+        self.page_scroll_area.setWidget(pager_widget)
         # 分页控件：首页/上一页/下一页/尾页
         self.first_btn = QPushButton("首页")
         self.prev_btn = QPushButton("上一页")
@@ -154,12 +161,12 @@ class Table_select_columns_paging_bottom(BaseWindow):
         pager_layout.addStretch()
         pager_layout.addWidget(self.info_label)
 
-        main_vbox.addWidget(pager_widget)
+        main_vbox.addWidget(self.page_scroll_area)
 
         # Scroll area 包含 QTableWidget
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-        main_vbox.addWidget(self.scroll_area, 3)
+        main_vbox.addWidget(self.scroll_area, stretch=7)
 
         # QTableWidget 初始无列
         self.table =CustomTableWidget()
@@ -198,7 +205,7 @@ class Table_select_columns_paging_bottom(BaseWindow):
 
         # 设置滚动区域的内容
         self.scroll_area_2.setWidget(scroll_content)
-        main_vbox.addWidget(self.scroll_area_2,1)
+        main_vbox.addWidget(self.scroll_area_2,stretch=1)
         # 初始时分页器不可用，直到表头被置换
         self.set_pager_enabled(False)
     def _init_function(self):
@@ -424,9 +431,10 @@ class Table_select_columns_paging_bottom(BaseWindow):
         send_message_queue.put(ObjectQueueItem(origin='Table_select_columns_paging_bottom', to='main_monitor_data', title='start_zero_calibration',
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))
+        self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-校0按钮被点击时间")
         msg_box = InfoDialog(title="校0", info=f"确认校0开始，校准完成还需要至少4轮次时间，请耐心等待", icon=QMessageBox.Icon.Information)
         msg_box.exec()
-        self.list_widget.insertItem(0,f"{time_util.get_format_from_time(time.time())}-校0按钮被点击时间")
+
         pass
     def range_calibration_start(self):
         #校span按钮事件
@@ -435,9 +443,10 @@ class Table_select_columns_paging_bottom(BaseWindow):
         send_message_queue.put(ObjectQueueItem(origin='Table_select_columns_paging_bottom', to='main_monitor_data', title='start_span_calibration',
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))
+        self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-校span按钮被点击时间")
         msg_box = InfoDialog(title="校span", info=f"确认校span开始，校准完成还需要至少3-4轮次时间，请耐心等待", icon=QMessageBox.Icon.Information)
         msg_box.exec()
-        self.list_widget.insertItem(0,f"{time_util.get_format_from_time(time.time())}-校span按钮被点击时间")
+
         pass
     def calibration_start(self):
         #校0校span按钮事件
@@ -446,9 +455,10 @@ class Table_select_columns_paging_bottom(BaseWindow):
         send_message_queue.put(ObjectQueueItem(origin='Table_select_columns_paging_bottom', to='main_monitor_data', title='start_calibration',
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))
+        self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-校0和校span按钮被点击时间")
         msg_box = InfoDialog(title="校0和校span", info=f"确认校0和校span开始，校准完成还需要至少3-5轮次时间，请耐心等待", icon=QMessageBox.Icon.Information)
         msg_box.exec()
-        self.list_widget.insertItem(0,f"{time_util.get_format_from_time(time.time())}-校0和校span按钮被点击时间")
+
         pass
 
 

@@ -90,7 +90,7 @@ class DbTransferExcel():
 
                 sheet_name_CN+="监控数据"
                 if cage_number is not None:
-                    sheet_name_CN+=f"_通道{cage_number-1}"
+                    sheet_name_CN+=f"_通道{cage_number} {'参考气路' if  cage_number==0 else ''}"
                     pass
 
                 # 读取 'xxx_meta' 表，它包含字段名称和中文描述

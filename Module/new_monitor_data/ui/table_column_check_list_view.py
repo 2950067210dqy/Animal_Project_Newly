@@ -27,7 +27,7 @@ class Table_Column_check_list_view(BaseWindow):
         else:
             self.load_group()
      
-
+        self.select_all()
         pass
 
 
