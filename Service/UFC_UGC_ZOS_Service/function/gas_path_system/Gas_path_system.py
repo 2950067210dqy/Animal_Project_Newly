@@ -754,9 +754,10 @@ class UGC_gas_path_system(Gas_path_system):
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
+        # 修改命令反了 FF->00
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("0000FF00"),
+            'data': number_util.set_int_to_4_bytes_list("00000000"),
             'slave_id': '3',
             'function_code': '5',
             'timeout': 1
