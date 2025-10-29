@@ -757,7 +757,7 @@ class UGC_gas_path_system(Gas_path_system):
         # 修改命令反了 FF->00
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("00000000"),
+            'data': number_util.set_int_to_4_bytes_list("0000FF00"),
             'slave_id': '3',
             'function_code': '5',
             'timeout': 1

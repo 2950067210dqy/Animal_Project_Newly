@@ -2,13 +2,13 @@ import abc
 
 from PyQt6 import QtCore
 from PyQt6.QtCore import QRect
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QWidget, QFrame
 from loguru import logger
 
 from public.entity.BaseWindow import BaseWindow
 
 #logger = logger.bind(category="gui_logger")
-class BaseWidget(QWidget):
+class BaseFrame(QFrame):
     def __init__(self,parent=None):
         super().__init__(parent)
         self.main_gui: BaseWindow = None

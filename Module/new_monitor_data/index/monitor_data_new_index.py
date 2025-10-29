@@ -11,6 +11,7 @@ from Module.new_monitor_data.ui.monitor_data_new import Ui_monitor_data_new
 from Module.new_monitor_data.ui.monitor_data_windows import MonitorDataWindows
 from Module.new_monitor_data.ui.table_column_check_list_view import Table_Column_check_list_view
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
+from public.component.dock_widget import CustomQDockWidget
 from public.component.paging_exportcsv_table_widget import TableWidgetPaging
 from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
@@ -84,12 +85,12 @@ class Monitor_data_new_index(ThemedWindow):
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
         self.setMinimumSize(0,0)
-        self.left_top_dock_widget:QDockWidget = None
+        self.left_top_dock_widget:CustomQDockWidget = None
         self.left_top_dock_widget_content:MonitorDataWindows=None
-        self.left_bottom_dock_widget:QDockWidget = None
-        self.right_top_dock_widget:QDockWidget = None
+        self.left_bottom_dock_widget:CustomQDockWidget = None
+        self.right_top_dock_widget:CustomQDockWidget = None
         self.right_top_dock_widget_content: Table_Column_check_list_view = None
-        self.right_bottom_dock_widget:QDockWidget = None
+        self.right_bottom_dock_widget:CustomQDockWidget = None
         self.right_bottom_dock_widget_content: Table_Column_check_list_view = None
 
         # 实例化ui
@@ -126,15 +127,15 @@ class Monitor_data_new_index(ThemedWindow):
         pass
     def _init_customize_ui(self) -> None:
         self.delete_central_widget()
-        self.left_top_dock_widget:QDockWidget = self.findChild(QDockWidget, "left_top_dock_widget")
+        self.left_top_dock_widget:CustomQDockWidget = self.findChild(QDockWidget, "left_top_dock_widget")
 
         self.left_top_dock_widget_content: MonitorDataWindows = MonitorDataWindows()
         self.left_top_dock_widget.setWidget( self.left_top_dock_widget_content)
 
-        self.left_bottom_dock_widget:QDockWidget = self.findChild(QDockWidget, "left_bottom_dock_widget")
+        self.left_bottom_dock_widget:CustomQDockWidget = self.findChild(QDockWidget, "left_bottom_dock_widget")
         self.left_bottom_dock_widget.hide()
 
-        self.right_top_dock_widget:QDockWidget = self.findChild(QDockWidget, "right_top_dock_widget")
+        self.right_top_dock_widget:CustomQDockWidget = self.findChild(QDockWidget, "right_top_dock_widget")
 
         self.right_top_dock_widget_content = Table_Column_check_list_view(ok_btn_text="确定选择通道",datas_type=1)
         self.right_top_dock_widget.setWidget(self.right_top_dock_widget_content)
@@ -145,7 +146,7 @@ class Monitor_data_new_index(ThemedWindow):
 
 
         # 这部分挪到数据处理区域
-        self.right_bottom_dock_widget: QDockWidget = self.findChild(QDockWidget, "right_bottom_dock_widget")
+        self.right_bottom_dock_widget: CustomQDockWidget = self.findChild(QDockWidget, "right_bottom_dock_widget")
         self.right_bottom_dock_widget.hide()
         # self.right_bottom_dock_widget_content = Table_Column_check_list_view(ok_btn_text="生成图表",datas_type=0)
         # self.right_bottom_dock_widget.setWidget(self.right_bottom_dock_widget_content)

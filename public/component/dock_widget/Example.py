@@ -1083,19 +1083,36 @@ class CustomTitleBar(QFrame):
             if self.window.drop_check_timer.isActive():
                 self.window.drop_check_timer.stop()
 
-            # 检查是否在拖拽区域内 - 支持多个拖拽区域
+            # 检查是否在拖拽区域内 - 支持多个拖拽区域，增加安全检查
             attached = False
-            for drop_zone in self.window.drop_zones:
-                if self.window.is_in_drop_zone(drop_zone):
-                    self.window.attach_to_main()
-                    attached = True
-                    break
+            valid_zones = []
+
+            for drop_zone in self.window.drop_zones[:]:  # 使用副本遍历
+                try:
+                    if drop_zone is not None:
+                        # 测试对象有效性
+                        _ = drop_zone.isVisible()
+                        valid_zones.append(drop_zone)
+
+                        if self.window.is_in_drop_zone(drop_zone):
+                            self.window.attach_to_main()
+                            attached = True
+                            break
+                except (RuntimeError, AttributeError) as e:
+                    print(f"拖拽区域无效: {e}")
+                    continue
+
+            # 更新有效的拖拽区域列表
+            self.window.drop_zones = valid_zones
 
             if not attached:
-                # 清除所有拖拽区域的高亮
-                for drop_zone in self.window.drop_zones:
-                    if hasattr(drop_zone, 'setHighlight'):
-                        drop_zone.setHighlight(False)
+                # 清除所有有效拖拽区域的高亮
+                for drop_zone in valid_zones:
+                    try:
+                        if hasattr(drop_zone, 'setHighlight'):
+                            drop_zone.setHighlight(False)
+                    except (RuntimeError, AttributeError):
+                        continue
 
         event.accept()
 
@@ -1118,7 +1135,8 @@ class DetachableWindow(QMainWindow):
     def __init__(self, draggable_frame, *drop_zones):
         super().__init__()
         self.draggable_frame = draggable_frame
-        self.drop_zones = list(drop_zones)  # 支持多个拖拽区域
+        # 过滤掉None值，确保只添加有效的拖拽区域
+        self.drop_zones = [zone for zone in drop_zones if zone is not None]
         self.is_dragging = False
         self.drag_offset = QPoint()
         self.drag_start_position = QPoint()
@@ -1132,9 +1150,16 @@ class DetachableWindow(QMainWindow):
         self.setupUI()
 
     def addDropZone(self, drop_zone):
-        """添加拖拽区域"""
-        if drop_zone not in self.drop_zones:
-            self.drop_zones.append(drop_zone)
+        """添加拖拽区域 - 增加安全检查"""
+        if drop_zone is not None and drop_zone not in self.drop_zones:
+            # 检查对象是否有效
+            try:
+                # 尝试访问基本属性来验证对象有效性
+                _ = drop_zone.isVisible()
+                self.drop_zones.append(drop_zone)
+                print(f"成功添加拖拽区域，当前共有 {len(self.drop_zones)} 个区域")
+            except Exception as e:
+                print(f"无法添加拖拽区域: {e}")
 
     def setupWindow(self):
         """设置朴素的窗口属性"""
@@ -1264,34 +1289,77 @@ class DetachableWindow(QMainWindow):
         self.drop_check_timer.start(50)
 
     def checkDropZone(self):
-        """检查是否在拖拽区域内"""
+        """检查是否在拖拽区域内 - 增加安全检查"""
         if not self.drop_zones:
             return
 
         try:
-            # 检查所有拖拽区域
+            # 过滤出有效的拖拽区域
+            valid_zones = []
             for drop_zone in self.drop_zones:
-                in_zone = self.is_in_drop_zone(drop_zone)
-                if hasattr(drop_zone, 'setHighlight'):
-                    drop_zone.setHighlight(in_zone)
+                try:
+                    if drop_zone is not None and not drop_zone.isHidden():
+                        # 测试是否可以访问基本属性
+                        _ = drop_zone.size()
+                        valid_zones.append(drop_zone)
+                except (RuntimeError, AttributeError) as e:
+                    # 对象可能已被销毁，跳过
+                    print(f"拖拽区域无效，已跳过: {e}")
+                    continue
+
+            # 更新有效的拖拽区域列表
+            self.drop_zones = valid_zones
+
+            # 检查所有有效的拖拽区域
+            for drop_zone in self.drop_zones:
+                try:
+                    in_zone = self.is_in_drop_zone(drop_zone)
+                    if hasattr(drop_zone, 'setHighlight'):
+                        drop_zone.setHighlight(in_zone)
+                except Exception as e:
+                    print(f"检查拖拽区域时出错: {e}")
+                    continue
 
         except Exception as e:
-            print(f"检查拖拽区域时出错: {e}")
+            print(f"检查拖拽区域总体错误: {e}")
+            # 如果出现严重错误，停止定时器
+            if self.drop_check_timer.isActive():
+                self.drop_check_timer.stop()
 
     def is_in_drop_zone(self, drop_zone):
-        """检查窗口是否在指定拖拽区域内"""
+        """检查窗口是否在指定拖拽区域内 - 增加安全检查"""
         if not drop_zone:
             return False
 
         try:
+            # 检查对象是否有效
+            if not hasattr(drop_zone, 'mapToGlobal') or not hasattr(drop_zone, 'size'):
+                return False
+
             window_center = self.geometry().center()
             drop_zone_global_pos = drop_zone.mapToGlobal(QPoint(0, 0))
             drop_zone_rect = QRect(drop_zone_global_pos, drop_zone.size())
             return drop_zone_rect.contains(window_center)
 
-        except Exception as e:
+        except (RuntimeError, AttributeError) as e:
             print(f"检查区域包含时出错: {e}")
             return False
+
+    def clearInvalidDropZones(self):
+        """清理无效的拖拽区域"""
+        valid_zones = []
+        for zone in self.drop_zones:
+            try:
+                if zone is not None:
+                    # 测试访问基本属性
+                    _ = zone.isVisible()
+                    valid_zones.append(zone)
+            except (RuntimeError, AttributeError):
+                # 对象已销毁，跳过
+                continue
+
+        self.drop_zones = valid_zones
+        print(f"清理后剩余 {len(self.drop_zones)} 个有效拖拽区域")
 
     def attach_to_main(self):
         """附加到主窗口"""
@@ -1304,23 +1372,33 @@ class DetachableWindow(QMainWindow):
         if self.drop_check_timer.isActive():
             self.drop_check_timer.stop()
         # 清除所有拖拽区域的高亮
-        for drop_zone in self.drop_zones:
-            if hasattr(drop_zone, 'setHighlight'):
-                drop_zone.setHighlight(False)
+        for drop_zone in self.drop_zones[:]:  # 使用副本遍历
+            try:
+                if drop_zone is not None and hasattr(drop_zone, 'setHighlight'):
+                    drop_zone.setHighlight(False)
+            except (RuntimeError, AttributeError):
+                continue
         self.close()
 
     def closeEvent(self, event: QCloseEvent):
-        """重写关闭事件"""
+        """重写关闭事件 - 增加安全检查"""
         if self.should_attach_on_close:
             event.ignore()
             self.attach_to_main()
         else:
             if self.drop_check_timer.isActive():
                 self.drop_check_timer.stop()
-            # 清除所有拖拽区域的高亮
-            for drop_zone in self.drop_zones:
-                if hasattr(drop_zone, 'setHighlight'):
-                    drop_zone.setHighlight(False)
+
+            # 安全地清除所有拖拽区域的高亮
+            for drop_zone in self.drop_zones[:]:  # 使用副本遍历
+                try:
+                    if drop_zone is not None and hasattr(drop_zone, 'setHighlight'):
+                        drop_zone.setHighlight(False)
+                except (RuntimeError, AttributeError):
+                    # 对象可能已销毁，忽略错误
+                    continue
+
+            self.drop_zones.clear()  # 清空引用
             event.accept()
 
 

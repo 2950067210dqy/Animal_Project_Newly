@@ -4,10 +4,12 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QFrame, QVBoxLayout,
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QTimer, QSize, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QMouseEvent, QPainter, QColor, QPen, QCloseEvent, QFont, QIcon, QScreen
 
+from theme.ThemeQt6 import ThemedWidget, ThemedFrame, ThemedWindow
+
 
 # ========================= 核心拖拽框架类 =========================
 
-class DraggableContainer(QWidget):
+class DraggableContainer(ThemedWidget):
     """支持拖拽高亮提示的父容器 - 开箱即用"""
 
     def __init__(self, parent=None):
@@ -224,7 +226,7 @@ class TabButton(QPushButton):
         super().mouseReleaseEvent(event)
 
 
-class TabNavigator(QWidget):
+class TabNavigator(ThemedWidget):
     """支持拖拽重排序的Tab导航栏组件 - 带反馈效果"""
 
     tabClicked = pyqtSignal(object)  # 发送被点击的frame对象
@@ -657,7 +659,7 @@ class TabNavigator(QWidget):
             """)
 
 
-class DraggableFrame(QFrame):
+class DraggableFrame(ThemedFrame):
     """可拖拽的Frame组件 - 朴素样式"""
     frameDetached = pyqtSignal(object)
     frameAttached = pyqtSignal(object)
@@ -669,6 +671,10 @@ class DraggableFrame(QFrame):
         self.is_detached = False
         self.detached_window = None
         self.original_parent = parent
+
+        # 保存内容组件的原始布局信息
+        self.original_layout = None
+        self.content_widget_index = -1
 
         # 拖拽状态
         self.drag_start_position = QPoint()
@@ -728,14 +734,14 @@ class DraggableFrame(QFrame):
                 border-bottom-right-radius: 3px;
             }
         """)
-        content_layout = QVBoxLayout(self.content_container)
-        content_layout.setContentsMargins(12, 12, 12, 12)
+        self.content_layout = QVBoxLayout(self.content_container)
+        self.content_layout.setContentsMargins(12, 12, 12, 12)
 
         # 如果提供了自定义内容组件,使用它;否则使用默认内容
         if self.content_widget:
-            content_layout.addWidget(self.content_widget)
+            self.content_layout.addWidget(self.content_widget)
         else:
-            self.setupDefaultContent(content_layout)
+            self.setupDefaultContent(self.content_layout)
 
         layout.addWidget(self.title_bar)
         layout.addWidget(self.content_container)
@@ -766,11 +772,36 @@ class DraggableFrame(QFrame):
     def setContentWidget(self, widget):
         """设置自定义内容组件"""
         if self.content_widget:
-            self.content_container.layout().removeWidget(self.content_widget)
+            self.content_layout.removeWidget(self.content_widget)
             self.content_widget.setParent(None)
 
         self.content_widget = widget
-        self.content_container.layout().addWidget(widget)
+        self.content_layout.addWidget(widget)
+
+    def saveContentState(self):
+        """保存内容组件的布局状态"""
+        if self.content_widget and self.content_widget.parent():
+            parent_layout = self.content_widget.parent().layout()
+            if parent_layout:
+                self.original_layout = parent_layout
+                for i in range(parent_layout.count()):
+                    if parent_layout.itemAt(i).widget() == self.content_widget:
+                        self.content_widget_index = i
+                        break
+
+    def restoreContentToFrame(self):
+        """将内容组件恢复到Frame中"""
+        if self.content_widget:
+            # 从当前父组件移除
+            current_parent = self.content_widget.parent()
+            if current_parent and current_parent.layout():
+                current_parent.layout().removeWidget(self.content_widget)
+
+            # 重新添加到Frame的内容容器中
+            self.content_widget.setParent(self.content_container)
+            self.content_layout.addWidget(self.content_widget)
+
+            print(f"内容组件已恢复到Frame: {self.title}")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -812,6 +843,9 @@ class DraggableFrame(QFrame):
             return
 
         try:
+            # 保存内容状态
+            self.saveContentState()
+
             # 找到原Frame所在的父容器
             parent_widget = self.parent()
 
@@ -819,8 +853,15 @@ class DraggableFrame(QFrame):
             self.detached_window = DetachableWindow(self, parent_widget)
 
             # 设置位置 - 确保鼠标在标题栏合适位置
-            window_pos = global_pos - QPoint(self.width() // 2, 25)
-            self.detached_window.move(window_pos)
+            # 设置窗口位置 - 以鼠标位置为中心
+            window_width, window_height = self.detached_window.width(), self.detached_window.height()
+            window_x = global_pos.x() - window_width // 2
+            window_y = global_pos.y() - window_height // 2
+            if window_x<0:
+                window_x = 0
+            if window_y<0:
+                window_y = 0
+            self.detached_window.move(window_x, window_y)
 
             # 继承当前的拖拽状态到新窗口
             self.detached_window.start_dragging_from_detach(
@@ -845,6 +886,9 @@ class DraggableFrame(QFrame):
             return
 
         try:
+            # 先恢复内容组件到Frame
+            self.restoreContentToFrame()
+
             # 关闭独立窗口
             if self.detached_window:
                 self.detached_window.close_and_attach()
@@ -860,6 +904,7 @@ class DraggableFrame(QFrame):
             self.title_bar.setCursor(Qt.CursorShape.OpenHandCursor)
 
             self.frameAttached.emit(self)
+            print(f"Frame已重新附加: {self.title}")
 
         except Exception as e:
             print(f"附加Frame时出错: {e}")
@@ -888,7 +933,7 @@ class DraggableFrame(QFrame):
             """)
 
 
-class CustomTitleBar(QFrame):
+class CustomTitleBar(ThemedFrame):
     """朴素的自定义标题栏"""
 
     def __init__(self, window, title, parent=None):
@@ -998,9 +1043,13 @@ class CustomTitleBar(QFrame):
             }
         """
         self.close_btn.setStyleSheet(close_button_style)
-        self.close_btn.clicked.connect(self.window.close)
+        self.close_btn.clicked.connect(self.closeWindow)
         self.close_btn.setToolTip("关闭 (重新附加)")
         layout.addWidget(self.close_btn)
+
+    def closeWindow(self):
+        """关闭窗口"""
+        self.window.attach_to_main()
 
     def toggle_maximize(self):
         """切换最大化状态"""
@@ -1083,19 +1132,35 @@ class CustomTitleBar(QFrame):
             if self.window.drop_check_timer.isActive():
                 self.window.drop_check_timer.stop()
 
-            # 检查是否在拖拽区域内 - 支持多个拖拽区域
+            # 检查是否在拖拽区域内
             attached = False
-            for drop_zone in self.window.drop_zones:
-                if self.window.is_in_drop_zone(drop_zone):
-                    self.window.attach_to_main()
-                    attached = True
-                    break
+            valid_zones = []
+
+            for drop_zone in self.window.drop_zones[:]:
+                try:
+                    if drop_zone is not None:
+                        _ = drop_zone.isVisible()
+                        valid_zones.append(drop_zone)
+
+                        if self.window.is_in_drop_zone(drop_zone):
+                            self.window.attach_to_main()
+                            attached = True
+                            break
+                except (RuntimeError, AttributeError) as e:
+                    print(f"拖拽区域无效: {e}")
+                    continue
+
+            # 更新有效的拖拽区域列表
+            self.window.drop_zones = valid_zones
 
             if not attached:
-                # 清除所有拖拽区域的高亮
-                for drop_zone in self.window.drop_zones:
-                    if hasattr(drop_zone, 'setHighlight'):
-                        drop_zone.setHighlight(False)
+                # 清除所有有效拖拽区域的高亮
+                for drop_zone in valid_zones:
+                    try:
+                        if hasattr(drop_zone, 'setHighlight'):
+                            drop_zone.setHighlight(False)
+                    except (RuntimeError, AttributeError):
+                        continue
 
         event.accept()
 
@@ -1112,17 +1177,19 @@ class CustomTitleBar(QFrame):
             self.toggle_maximize()
 
 
-class DetachableWindow(QMainWindow):
+class DetachableWindow(ThemedWindow):
     """朴素的可分离独立窗口"""
 
     def __init__(self, draggable_frame, *drop_zones):
         super().__init__()
         self.draggable_frame = draggable_frame
-        self.drop_zones = list(drop_zones)  # 支持多个拖拽区域
+        # 过滤掉None值，确保只添加有效的拖拽区域
+        self.drop_zones = [zone for zone in drop_zones if zone is not None]
         self.is_dragging = False
         self.drag_offset = QPoint()
         self.drag_start_position = QPoint()
         self.should_attach_on_close = True
+        self.is_closing = False  # 添加关闭状态标志
 
         # 用于检查拖拽区域的定时器
         self.drop_check_timer = QTimer()
@@ -1132,9 +1199,14 @@ class DetachableWindow(QMainWindow):
         self.setupUI()
 
     def addDropZone(self, drop_zone):
-        """添加拖拽区域"""
-        if drop_zone not in self.drop_zones:
-            self.drop_zones.append(drop_zone)
+        """添加拖拽区域 - 增加安全检查"""
+        if drop_zone is not None and drop_zone not in self.drop_zones:
+            try:
+                _ = drop_zone.isVisible()
+                self.drop_zones.append(drop_zone)
+                print(f"成功添加拖拽区域，当前共有 {len(self.drop_zones)} 个区域")
+            except Exception as e:
+                print(f"无法添加拖拽区域: {e}")
 
     def setupWindow(self):
         """设置朴素的窗口属性"""
@@ -1171,10 +1243,15 @@ class DetachableWindow(QMainWindow):
 
         # 内容区域 - 直接使用原Frame的内容
         if self.draggable_frame.content_widget:
-            # 如果有自定义内容组件,将其移动到这里
+            # 移动内容组件到独立窗口
             content_widget = self.draggable_frame.content_widget
-            content_widget.setParent(self)
+            # 先从原来的布局中移除
+            if content_widget.parent() and content_widget.parent().layout():
+                content_widget.parent().layout().removeWidget(content_widget)
+
+            content_widget.setParent(central_widget)
             main_layout.addWidget(content_widget)
+            print(f"内容组件已移动到独立窗口: {self.draggable_frame.title}")
         else:
             # 创建朴素的默认内容
             self.setupDefaultContent(main_layout)
@@ -1264,63 +1341,105 @@ class DetachableWindow(QMainWindow):
         self.drop_check_timer.start(50)
 
     def checkDropZone(self):
-        """检查是否在拖拽区域内"""
-        if not self.drop_zones:
+        """检查是否在拖拽区域内 - 增加安全检查"""
+        if not self.drop_zones or self.is_closing:
             return
 
         try:
-            # 检查所有拖拽区域
+            # 过滤出有效的拖拽区域
+            valid_zones = []
             for drop_zone in self.drop_zones:
-                in_zone = self.is_in_drop_zone(drop_zone)
-                if hasattr(drop_zone, 'setHighlight'):
-                    drop_zone.setHighlight(in_zone)
+                try:
+                    if drop_zone is not None and not drop_zone.isHidden():
+                        _ = drop_zone.size()
+                        valid_zones.append(drop_zone)
+                except (RuntimeError, AttributeError) as e:
+                    print(f"拖拽区域无效，已跳过: {e}")
+                    continue
+
+            # 更新有效的拖拽区域列表
+            self.drop_zones = valid_zones
+
+            # 检查所有有效的拖拽区域
+            for drop_zone in self.drop_zones:
+                try:
+                    in_zone = self.is_in_drop_zone(drop_zone)
+                    if hasattr(drop_zone, 'setHighlight'):
+                        drop_zone.setHighlight(in_zone)
+                except Exception as e:
+                    print(f"检查拖拽区域时出错: {e}")
+                    continue
 
         except Exception as e:
-            print(f"检查拖拽区域时出错: {e}")
+            print(f"检查拖拽区域总体错误: {e}")
+            if self.drop_check_timer.isActive():
+                self.drop_check_timer.stop()
 
     def is_in_drop_zone(self, drop_zone):
-        """检查窗口是否在指定拖拽区域内"""
-        if not drop_zone:
+        """检查窗口是否在指定拖拽区域内 - 增加安全检查"""
+        if not drop_zone or self.is_closing:
             return False
 
         try:
+            if not hasattr(drop_zone, 'mapToGlobal') or not hasattr(drop_zone, 'size'):
+                return False
+
             window_center = self.geometry().center()
             drop_zone_global_pos = drop_zone.mapToGlobal(QPoint(0, 0))
             drop_zone_rect = QRect(drop_zone_global_pos, drop_zone.size())
             return drop_zone_rect.contains(window_center)
 
-        except Exception as e:
+        except (RuntimeError, AttributeError) as e:
             print(f"检查区域包含时出错: {e}")
             return False
 
     def attach_to_main(self):
         """附加到主窗口"""
-        self.should_attach_on_close = True
-        self.draggable_frame.attachFrame()
+        if not self.is_closing:
+            self.is_closing = True
+            self.should_attach_on_close = True
+            self.draggable_frame.attachFrame()
 
     def close_and_attach(self):
         """关闭窗口并附加"""
         self.should_attach_on_close = False
+        self.is_closing = True
+
         if self.drop_check_timer.isActive():
             self.drop_check_timer.stop()
+
         # 清除所有拖拽区域的高亮
-        for drop_zone in self.drop_zones:
-            if hasattr(drop_zone, 'setHighlight'):
-                drop_zone.setHighlight(False)
+        for drop_zone in self.drop_zones[:]:
+            try:
+                if drop_zone is not None and hasattr(drop_zone, 'setHighlight'):
+                    drop_zone.setHighlight(False)
+            except (RuntimeError, AttributeError):
+                continue
+
         self.close()
 
     def closeEvent(self, event: QCloseEvent):
-        """重写关闭事件"""
-        if self.should_attach_on_close:
+        """重写关闭事件 - 增加安全检查"""
+        if self.should_attach_on_close and not self.is_closing:
+            # 防止关闭，而是触发附加
             event.ignore()
             self.attach_to_main()
         else:
+            # 真正关闭窗口
+            self.is_closing = True
+
             if self.drop_check_timer.isActive():
                 self.drop_check_timer.stop()
-            # 清除所有拖拽区域的高亮
-            for drop_zone in self.drop_zones:
-                if hasattr(drop_zone, 'setHighlight'):
-                    drop_zone.setHighlight(False)
+
+            # 安全地清除所有拖拽区域的高亮
+            for drop_zone in self.drop_zones[:]:
+                try:
+                    if drop_zone is not None and hasattr(drop_zone, 'setHighlight'):
+                        drop_zone.setHighlight(False)
+                except (RuntimeError, AttributeError):
+                    continue
+
+            self.drop_zones.clear()
             event.accept()
 
 

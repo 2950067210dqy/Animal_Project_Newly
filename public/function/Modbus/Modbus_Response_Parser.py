@@ -2054,18 +2054,12 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                     j += 1
                     pass
                 case 2:
-                    if int(self.response_struct['data'][i-1])==0:
-                        return_datas.append({
-                            "desc": port_types[j],
-                            'value': "开" if int(self.response_struct['data'][i]) == 0 else "关"
-                        }
-                        )
-                    else:
-                        return_datas.append({
-                            "desc": port_types[j],
-                            'value': "开" if int(self.response_struct['data'][i]) == 255 else "关"
-                        }
-                        )
+
+                    return_datas.append({
+                        "desc": port_types[j],
+                        'value': "开" if int(self.response_struct['data'][i]) == 255 else "关"
+                    }
+                    )
                     j += 1
                     pass
                 case _:

@@ -1,52 +1,26 @@
-
 import sys
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QFrame, QVBoxLayout,
-                             QHBoxLayout, QLabel, QPushButton, QWidget, QSplitter, QScrollArea)
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QTimer, QSize, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QMouseEvent, QPainter, QColor, QPen, QCloseEvent, QFont, QIcon, QScreen
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QScrollArea,
+                             QSplitter, QLabel, QHBoxLayout, QGridLayout)
+from PyQt6.QtCore import Qt, QTimer
 
-from public.component.dock_widget.DraggableDockWidget import TabNavigator, DraggableContainer, DropZoneWidget, \
-    DraggableFrame
+from public.component.dock_widget.DraggableDockWidget import TabNavigator, DraggableContainer, DraggableFrame
 
 
-# ========================= 演示应用 =========================
-
-class DemoMainWindow(QWidget):
+class DemoDraggableDockWidget(QWidget):
     """演示如何使用拖拽框架的主窗口 - 朴素风格"""
 
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Tab导航 + 拖拽框架(朴素风格)")
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Tab导航 + 拖拽框架演示 (朴素风格)")
+        self.setGeometry(100, 100, 1300, 750)
         self.frames = []  # 存储所有Frame的引用
 
         self.setupUI()
 
     def setupUI(self):
-
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(12)
-
-        # 朴素的说明
-        info_label = QLabel("""
-                <b>Tab导航 + 拖拽框架演示：</b><br>
-                • <b>Tab导航栏</b>：点击标签导航到对应Frame，拖拽标签可以重新排序<br>
-                • <b>拖拽反馈</b>：拖拽时有清晰的视觉提示和实时预览效果<br>
-                • <b>上方容器</b>：Frame的原始父容器，支持横向滚动<br>
-                • <b>下方区域</b>：额外的拖拽区域，支持重新附加功能<br>
-                • <b>朴素风格</b>：使用简洁的配色和适度的视觉效果
-                """)
-        info_label.setStyleSheet("""
-                    QLabel {
-                        background-color: #f8f9fa;
-                        border: 1px solid #dee2e6;
-                        border-radius: 4px;
-                        padding: 10px;
-                        font-size: 11px;
-                        color: #495057;
-                    }
-                """)
-        main_layout.addWidget(info_label)
 
         # Tab导航栏
         self.tab_navigator = TabNavigator()
@@ -54,363 +28,44 @@ class DemoMainWindow(QWidget):
         self.tab_navigator.tabOrderChanged.connect(self.onTabOrderChanged)
         main_layout.addWidget(self.tab_navigator)
 
-        # 主要内容区域 - 垂直分割
-        content_splitter = QSplitter(Qt.Orientation.Vertical)
-
         # 上方 - 横向滚动的DraggableContainer
         self.upper_scroll = QScrollArea()
         self.upper_scroll.setWidgetResizable(True)
         self.upper_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.upper_scroll.setMinimumHeight(320)
+        self.upper_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # self.upper_scroll.setMinimumHeight(650)  # 增加高度以容纳2行
 
         # 使用DraggableContainer作为父容器
         self.container = DraggableContainer()
-        self.container_layout = QHBoxLayout(self.container)
+        # 改为网格布局 - 2行n列
+        self.container_layout = QGridLayout(self.container)
+        self.container_layout.setObjectName("container_layout")
         self.container_layout.setContentsMargins(12, 12, 12, 12)
         self.container_layout.setSpacing(12)
 
-        # 先添加标题说明
-        title_container = QWidget()
-        title_container.setFixedWidth(180)
-        title_layout = QVBoxLayout(title_container)
-        title_layout.setContentsMargins(0, 0, 0, 0)
-
-        container_title = QLabel("拖拽容器\n(灰色高亮)")
-        container_title.setStyleSheet("""
-                    QLabel {
-                        font-weight: bold; 
-                        font-size: 13px; 
-                        color: #495057; 
-                        background: #ffffff; 
-                        border: 1px solid #c0c4c8;
-                        border-radius: 3px;
-                        padding: 8px;
-                        text-align: center;
-                    }
-                """)
-        container_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_layout.addWidget(container_title)
-        title_layout.addStretch()
-
-        self.container_layout.addWidget(title_container)
-
-        # 下方 - 使用DropZoneWidget
-        self.drop_zone = DropZoneWidget()
-        self.drop_zone.setMinimumHeight(180)
-
-        # 创建可拖拽的Frame
-        self.createDraggableFrames(self.container_layout)
-
-        # 设置滚动区域
+        # 关键步骤：将container设置为scroll area的widget
         self.upper_scroll.setWidget(self.container)
 
-        # 添加到分割器
-        content_splitter.addWidget(self.upper_scroll)
-        content_splitter.addWidget(self.drop_zone)
-        content_splitter.setStretchFactor(0, 2)
-        content_splitter.setStretchFactor(1, 1)
+        main_layout.addWidget(self.upper_scroll)
 
-        main_layout.addWidget(content_splitter)
+    def addFrames(self, widgets):
+        """添加Frame组件 - 按2行n列排列"""
+        for i, widget in enumerate(widgets):
+            # 确保widget有合适的最小尺寸
+            if widget.minimumSize().width() == 0:
+                widget.setMinimumSize(200, 150)
 
-        # 朴素的状态栏
-        self.status_label = QLabel("状态：所有面板已附加")
-        self.status_label.setStyleSheet("""
-                    QLabel {
-                        background-color: #d4edda;
-                        border: 1px solid #c3e6cb;
-                        border-radius: 3px;
-                        padding: 8px;
-                        color: #155724;
-                        font-weight: bold;
-                        font-size: 11px;
-                    }
-                """)
-        main_layout.addWidget(self.status_label)
-
-    def createDraggableFrames(self, layout):
-        """创建朴素的拖拽Frame示例"""
-
-        # Frame 1 - 默认内容
-        frame1 = DraggableFrame("数据面板", parent=self.container)
-        frame1.frameDetached.connect(self.onFrameDetached)
-        frame1.frameAttached.connect(self.onFrameAttached)
-        layout.addWidget(frame1)
-        self.frames.append(frame1)
-        self.tab_navigator.addFrame(frame1)
-
-        # Frame 2 - 自定义内容
-        custom_content2 = QWidget()
-        custom_layout2 = QVBoxLayout(custom_content2)
-        custom_layout2.addWidget(QLabel("控制面板内容"))
-
-        btn_group = QWidget()
-        btn_layout = QVBoxLayout(btn_group)
-        for i, text in enumerate(["开始", "暂停", "停止"]):
-            btn = QPushButton(text)
-            btn.setStyleSheet("""
-                        QPushButton {
-                            background-color: #6c757d;
-                            color: white;
-                            border: none;
-                            padding: 6px 12px;
-                            border-radius: 2px;
-                            font-weight: bold;
-                            font-size: 11px;
-                        }
-                        QPushButton:hover {
-                            background-color: #5a6268;
-                        }
-                    """)
-            btn.clicked.connect(lambda checked, t=text: print(f"点击了{t}按钮"))
-            btn_layout.addWidget(btn)
-
-        custom_layout2.addWidget(btn_group)
-        custom_layout2.addStretch()
-
-        frame2 = DraggableFrame("控制面板", custom_content2, self.container)
-        frame2.frameDetached.connect(self.onFrameDetached)
-        frame2.frameAttached.connect(self.onFrameAttached)
-        layout.addWidget(frame2)
-        self.frames.append(frame2)
-        self.tab_navigator.addFrame(frame2)
-
-        # Frame 3 - 设置面板
-        custom_content3 = QWidget()
-        custom_layout3 = QVBoxLayout(custom_content3)
-
-        for setting in ["启用日志", "自动保存", "显示提示"]:
-            from PyQt6.QtWidgets import QCheckBox
-            checkbox = QCheckBox(setting)
-            checkbox.setChecked(True)
-            checkbox.setStyleSheet("""
-                        QCheckBox {
-                            font-weight: bold;
-                            color: #495057;
-                            font-size: 11px;
-                        }
-                        QCheckBox::indicator {
-                            width: 16px;
-                            height: 16px;
-                        }
-                        QCheckBox::indicator:checked {
-                            background-color: #28a745;
-                            border: 1px solid #28a745;
-                            border-radius: 2px;
-                        }
-                    """)
-            custom_layout3.addWidget(checkbox)
-
-        custom_layout3.addStretch()
-
-        frame3 = DraggableFrame("设置面板", custom_content3, self.container)
-        frame3.frameDetached.connect(self.onFrameDetached)
-        frame3.frameAttached.connect(self.onFrameAttached)
-        layout.addWidget(frame3)
-        self.frames.append(frame3)
-        self.tab_navigator.addFrame(frame3)
-
-        # 更多Frame
-        frame_titles = ["网络监控", "系统状态", "性能指标", "日志查看", "用户管理", "权限控制"]
-        for i, title in enumerate(frame_titles, 4):
-            frame = DraggableFrame(title, parent=self.container)
+            frame = DraggableFrame(widget.windowTitle(), widget, self.container)
             frame.frameDetached.connect(self.onFrameDetached)
             frame.frameAttached.connect(self.onFrameAttached)
-            layout.addWidget(frame)
+
+            # 计算网格位置：2行n列
+            row = i % 2  # 行索引：0或1
+            col = i // 2  # 列索引：0, 1, 2, ...
+
+            self.container_layout.addWidget(frame, row, col)
             self.frames.append(frame)
             self.tab_navigator.addFrame(frame)
-
-        # 使用说明
-        usage_info_widget = QWidget()
-        usage_info_widget.setFixedWidth(260)
-        usage_info_layout = QVBoxLayout(usage_info_widget)
-
-        usage_info = QLabel("""💡 使用说明：
-        • 点击Tab标签快速导航
-        • 拖拽Tab重新排序（有反馈）
-        • 拖拽Frame标题栏分离窗口
-        • 拖拽到高亮区域重新附加
-        • 支持横向滚动浏览""")
-        usage_info.setStyleSheet("""
-                    QLabel {
-                        background-color: #f8f9fa;
-                        border: 1px dashed #adb5bd;
-                        border-radius: 4px;
-                        padding: 8px;
-                        color: #495057;
-                        font-size: 10px;
-                    }
-                """)
-        usage_info.setWordWrap(True)
-        usage_info_layout.addWidget(usage_info)
-        usage_info_layout.addStretch()
-
-        layout.addWidget(usage_info_widget)
-
-    def createDraggableFrames(self, layout):
-        """创建朴素的拖拽Frame示例"""
-
-        # Frame 1 - 默认内容
-        frame1 = DraggableFrame("数据面板", parent=self.container)
-        frame1.frameDetached.connect(self.onFrameDetached)
-        frame1.frameAttached.connect(self.onFrameAttached)
-        layout.addWidget(frame1)
-        self.frames.append(frame1)
-        self.tab_navigator.addFrame(frame1)
-
-        # Frame 2 - 自定义内容
-        custom_content2 = QWidget()
-        custom_layout2 = QVBoxLayout(custom_content2)
-        custom_layout2.addWidget(QLabel("控制面板内容"))
-
-        btn_group = QWidget()
-        btn_layout = QVBoxLayout(btn_group)
-        for i, text in enumerate(["开始", "暂停", "停止"]):
-            btn = QPushButton(text)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #6c757d;
-                    color: white;
-                    border: none;
-                    padding: 6px 12px;
-                    border-radius: 2px;
-                    font-weight: bold;
-                    font-size: 11px;
-                }
-                QPushButton:hover {
-                    background-color: #5a6268;
-                }
-            """)
-            btn.clicked.connect(lambda checked, t=text: print(f"点击了{t}按钮"))
-            btn_layout.addWidget(btn)
-
-        custom_layout2.addWidget(btn_group)
-        custom_layout2.addStretch()
-
-        frame2 = DraggableFrame("控制面板", custom_content2, self.container)
-        frame2.frameDetached.connect(self.onFrameDetached)
-        frame2.frameAttached.connect(self.onFrameAttached)
-        layout.addWidget(frame2)
-        self.frames.append(frame2)
-        self.tab_navigator.addFrame(frame2)
-
-        # Frame 3 - 设置面板
-        custom_content3 = QWidget()
-        custom_layout3 = QVBoxLayout(custom_content3)
-
-        for setting in ["启用日志", "自动保存", "显示提示"]:
-            from PyQt6.QtWidgets import QCheckBox
-            checkbox = QCheckBox(setting)
-            checkbox.setChecked(True)
-            checkbox.setStyleSheet("""
-                QCheckBox {
-                    font-weight: bold;
-                    color: #495057;
-                    font-size: 11px;
-                }
-                QCheckBox::indicator {
-                    width: 16px;
-                    height: 16px;
-                }
-                QCheckBox::indicator:checked {
-                    background-color: #28a745;
-                    border: 1px solid #28a745;
-                    border-radius: 2px;
-                }
-            """)
-            custom_layout3.addWidget(checkbox)
-
-        custom_layout3.addStretch()
-
-        frame3 = DraggableFrame("设置面板", custom_content3, self.container)
-        frame3.frameDetached.connect(self.onFrameDetached)
-        frame3.frameAttached.connect(self.onFrameAttached)
-        layout.addWidget(frame3)
-        self.frames.append(frame3)
-        self.tab_navigator.addFrame(frame3)
-
-        # 更多Frame
-        frame_titles = ["网络监控", "系统状态", "性能指标", "日志查看", "用户管理", "权限控制"]
-        for i, title in enumerate(frame_titles, 4):
-            frame = DraggableFrame(title, parent=self.container)
-            frame.frameDetached.connect(self.onFrameDetached)
-            frame.frameAttached.connect(self.onFrameAttached)
-            layout.addWidget(frame)
-            self.frames.append(frame)
-            self.tab_navigator.addFrame(frame)
-
-        # 使用说明
-        usage_info_widget = QWidget()
-        usage_info_widget.setFixedWidth(260)
-        usage_info_layout = QVBoxLayout(usage_info_widget)
-
-        usage_info = QLabel("""💡 使用说明：
-• 点击Tab标签快速导航
-• 拖拽Tab重新排序（有反馈）
-• 拖拽Frame标题栏分离窗口
-• 拖拽到高亮区域重新附加
-• 支持横向滚动浏览""")
-        usage_info.setStyleSheet("""
-            QLabel {
-                background-color: #f8f9fa;
-                border: 1px dashed #adb5bd;
-                border-radius: 4px;
-                padding: 8px;
-                color: #495057;
-                font-size: 10px;
-            }
-        """)
-        usage_info.setWordWrap(True)
-        usage_info_layout.addWidget(usage_info)
-        usage_info_layout.addStretch()
-
-        layout.addWidget(usage_info_widget)
-
-    def onTabOrderChanged(self, new_frame_order):
-        """响应Tab重排序事件，重新排列Frame"""
-        print(f"Tab重排序，新顺序: {[f.title for f in new_frame_order]}")
-
-        # 收集所有widget
-        frame_widgets = []
-        other_widgets = []
-
-        for i in range(self.container_layout.count()):
-            item = self.container_layout.itemAt(i)
-            if item and item.widget():
-                widget = item.widget()
-                if isinstance(widget, DraggableFrame):
-                    frame_widgets.append(widget)
-                else:
-                    other_widgets.append((i, widget))
-
-        # 移除所有Frame widget
-        for frame in frame_widgets:
-            self.container_layout.removeWidget(frame)
-
-        # 按新顺序重新插入Frame（从索引1开始，跳过标题容器）
-        insert_index = 1
-        for frame in new_frame_order:
-            if frame in frame_widgets:
-                self.container_layout.insertWidget(insert_index, frame)
-                insert_index += 1
-
-        # 更新frames列表
-        self.frames = new_frame_order.copy()
-
-        # 更新状态显示
-        self.status_label.setText("状态：Tab和Frame重排序完成")
-        self.status_label.setStyleSheet("""
-            QLabel {
-                background-color: #cce5ff;
-                border: 1px solid #99ccff;
-                border-radius: 3px;
-                padding: 8px;
-                color: #0066cc;
-                font-weight: bold;
-                font-size: 11px;
-            }
-        """)
-
-        QTimer.singleShot(2000, self.resetStatus)
 
     def navigateToFrame(self, frame):
         """导航到指定Frame"""
@@ -437,64 +92,168 @@ class DemoMainWindow(QWidget):
         frame.updateStatus("detached")
         self.tab_navigator.updateFrameStatus(frame, True)
 
-        # 为独立窗口添加拖拽区域
-        if frame.detached_window:
-            frame.detached_window.addDropZone(self.drop_zone)
-
-        self.status_label.setText(f"状态：{frame.title} 已分离")
-        self.status_label.setStyleSheet("""
-            QLabel {
-                background-color: #fff3cd;
-                border: 1px solid #ffeaa7;
-                border-radius: 3px;
-                padding: 8px;
-                color: #856404;
-                font-weight: bold;
-                font-size: 11px;
-            }
-        """)
-
     def onFrameAttached(self, frame):
         frame.updateStatus("attached")
         self.tab_navigator.updateFrameStatus(frame, False)
 
-        self.status_label.setText(f"状态：{frame.title} 已重新附加")
-        self.status_label.setStyleSheet("""
-            QLabel {
-                background-color: #d4edda;
-                border: 1px solid #c3e6cb;
-                border-radius: 3px;
-                padding: 8px;
-                color: #155724;
-                font-weight: bold;
-                font-size: 11px;
-            }
-        """)
+        # 重新排列网格布局
+        self.rearrangeGridLayout()
 
-        QTimer.singleShot(2000, self.resetStatus)
+    def rearrangeGridLayout(self):
+        """重新排列网格布局"""
+        # 收集所有可见的Frame
+        visible_frames = [frame for frame in self.frames if frame.isVisible() and not frame.is_detached]
 
-    def resetStatus(self):
-        self.status_label.setText("状态：所有面板已附加")
-        self.status_label.setStyleSheet("""
-            QLabel {
-                background-color: #d4edda;
-                border: 1px solid #c3e6cb;
-                border-radius: 3px;
-                padding: 8px;
-                color: #155724;
-                font-weight: bold;
-                font-size: 11px;
-            }
-        """)
+        # 清除现有布局
+        for frame in self.frames:
+            self.container_layout.removeWidget(frame)
 
+        # 重新按2行n列排列
+        for i, frame in enumerate(visible_frames):
+            row = i % 2
+            col = i // 2
+            self.container_layout.addWidget(frame, row, col)
 
-# ========================= 使用示例 =========================
+    def onTabOrderChanged(self, new_frame_order):
+        """响应Tab重排序事件，重新排列Frame"""
+        print(f"Tab重排序，新顺序: {[f.title for f in new_frame_order]}")
 
+        # 更新frames列表
+        self.frames = new_frame_order.copy()
+
+        # 重新排列网格布局
+        self.rearrangeGridLayout()
+
+    def remove_all(self):
+        """将界面恢复到初始状态"""
+        # 移除所有Frame
+        for frame in self.frames:
+            self.container_layout.removeWidget(frame)
+            frame.deleteLater()
+        self.frames.clear()
+        #
+        # # 清空Tab导航栏
+        # # # 清空Tab导航栏
+        # # for i in range(self.tab_navigator.tab_layout.count() - 1, -1, -1):
+        # #     item = self.tab_navigator.tab_layout.itemAt(i)
+        # #     if item and item.widget():
+        # #         self.tab_navigator.tab_layout.removeWidget(item.widget())
+        # #         item.widget().deleteLater()
+        #
+        # # 重置网格布局
+        # self.container_layout.setParent(None)
+        # self.container_layout.deleteLater()
+        # self.container_layout = QGridLayout(self.container)
+        # self.container_layout.setContentsMargins(12, 12, 12, 12)
+        # self.container_layout.setSpacing(12)
+        # self.container.setLayout(self.container_layout)
+
+# 示例使用
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    # 演示主窗口
-    demo_window = DemoMainWindow()
-    demo_window.show()
+    # 创建一些测试用的 QWidget 并添加内容
+    widget1 = QWidget()
+    widget1.setWindowTitle("数据面板")
+    layout1 = QVBoxLayout(widget1)
+    layout1.addWidget(QLabel("这是数据面板的内容"))
+    layout1.addWidget(QLabel("包含各种数据显示组件"))
+    widget1.setMinimumSize(250, 200)
+
+    widget2 = QWidget()
+    widget2.setWindowTitle("控制面板")
+    layout2 = QVBoxLayout(widget2)
+    layout2.addWidget(QLabel("这是控制面板的内容"))
+    layout2.addWidget(QLabel("包含各种控制按钮"))
+    widget2.setMinimumSize(250, 200)
+
+    widget3 = QWidget()
+    widget3.setWindowTitle("设置面板")
+    layout3 = QVBoxLayout(widget3)
+    layout3.addWidget(QLabel("这是设置面板的内容"))
+    layout3.addWidget(QLabel("包含各种设置选项"))
+    widget3.setMinimumSize(250, 200)
+
+    widget4 = QWidget()
+    widget4.setWindowTitle("监控面板")
+    layout4 = QVBoxLayout(widget4)
+    layout4.addWidget(QLabel("这是监控面板的内容"))
+    layout4.addWidget(QLabel("包含各种监控信息"))
+    widget4.setMinimumSize(250, 200)
+
+    widget5 = QWidget()
+    widget5.setWindowTitle("日志面板")
+    layout5 = QVBoxLayout(widget5)
+    layout5.addWidget(QLabel("这是日志面板的内容"))
+    layout5.addWidget(QLabel("包含各种日志信息"))
+    widget5.setMinimumSize(250, 200)
+
+    widget6 = QWidget()
+    widget6.setWindowTitle("统计面板")
+    layout6 = QVBoxLayout(widget6)
+    layout6.addWidget(QLabel("这是统计面板的内容"))
+    layout6.addWidget(QLabel("包含各种统计图表"))
+    widget6.setMinimumSize(250, 200)
+
+    widget7 = QWidget()
+    widget7.setWindowTitle("统计面板")
+    layout7 = QVBoxLayout(widget7)
+    layout7.addWidget(QLabel("这是统计面板的内容"))
+    layout7.addWidget(QLabel("包含各种统计图表"))
+    widget7.setMinimumSize(250, 200)
+
+    widget8 = QWidget()
+    widget8.setWindowTitle("统计面板")
+    layout8 = QVBoxLayout(widget8)
+    layout8.addWidget(QLabel("这是统计面板的内容"))
+    layout8.addWidget(QLabel("包含各种统计图表"))
+    widget8.setMinimumSize(250, 200)
+
+    widget9 = QWidget()
+    widget9.setWindowTitle("统计面板")
+    layout9 = QVBoxLayout(widget9)
+    layout9.addWidget(QLabel("这是统计面板的内容"))
+    layout9.addWidget(QLabel("包含各种统计图表"))
+    widget9.setMinimumSize(250, 200)
+
+    widget10 = QWidget()
+    widget10.setWindowTitle("统计面板")
+    layout10 = QVBoxLayout(widget10)
+    layout10.addWidget(QLabel("这是统计面板的内容"))
+    layout10.addWidget(QLabel("包含各种统计图表"))
+    widget10.setMinimumSize(250, 200)
+
+    widget11 = QWidget()
+    widget11.setWindowTitle("统计面板")
+    layout11 = QVBoxLayout(widget11)
+    layout11.addWidget(QLabel("这是统计面板的内容"))
+    layout11.addWidget(QLabel("包含各种统计图表"))
+    widget11.setMinimumSize(250, 200)
+
+    widget12 = QWidget()
+    widget12.setWindowTitle("统计面板")
+    layout12 = QVBoxLayout(widget12)
+    layout12.addWidget(QLabel("这是统计面板的内容"))
+    layout12.addWidget(QLabel("包含各种统计图表"))
+    widget12.setMinimumSize(250, 200)
+
+    widget13 = QWidget()
+    widget13.setWindowTitle("统计面板")
+    layout13 = QVBoxLayout(widget13)
+    layout13.addWidget(QLabel("这是统计面板的内容"))
+    layout13.addWidget(QLabel("包含各种统计图表"))
+    widget13.setMinimumSize(250, 200)
+
+    widget14 = QWidget()
+    widget14.setWindowTitle("统计面板")
+    layout14 = QVBoxLayout(widget14)
+    layout14.addWidget(QLabel("这是统计面板的内容"))
+    layout14.addWidget(QLabel("包含各种统计图表"))
+    widget14.setMinimumSize(250, 200)
+    # 创建 DemoWidget 并添加 Frame
+    demo_widget = DemoDraggableDockWidget()
+    demo_widget.remove_all()
+    demo_widget.addFrames([widget1, widget2, widget3, widget4, widget5, widget6, widget7, widget8, widget9, widget10, widget11, widget12, widget13, widget14])
+    demo_widget.show()
 
     sys.exit(app.exec())
