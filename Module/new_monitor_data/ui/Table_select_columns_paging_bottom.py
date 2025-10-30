@@ -8,7 +8,8 @@ import time
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton,
-    QScrollArea, QTableWidget, QTableWidgetItem, QMessageBox, QLabel, QSpinBox, QHBoxLayout, QListWidget, QFileDialog
+    QScrollArea, QTableWidget, QTableWidgetItem, QMessageBox, QLabel, QSpinBox, QHBoxLayout, QListWidget, QFileDialog,
+    QSlider
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from loguru import logger
@@ -398,10 +399,13 @@ class Table_select_columns_paging_bottom(ThemedWindow):
                 # 将二氧化碳的值和氧气的值小数点后4位。
                 if "oxygen" in col_key or "CO2" in col_key:
                     item = QTableWidgetItem(f"{col_record:.04f}"  if col_record is not None else None)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                    self.table.setItem(row_idx, index, item)
+
                 else:
                     item = QTableWidgetItem(str(col_record))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-                self.table.setItem(row_idx, index, item)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                    self.table.setItem(row_idx, index, item)
                 index+=1
         self.table.resizeColumnsToContents()
         # self.current_page=result['page']
@@ -414,6 +418,8 @@ class Table_select_columns_paging_bottom(ThemedWindow):
 
         # 如果页内行较少导致表格高度不足以出现滚动，可以选择调整最低高度或不做处理（这里不强制加载更多）
         # 若需要自动扩展以填满视图，可以在这里考虑加载更多或调整策略。
+
+
 
     def _update_nav_buttons(self):
         """根据 current_page 与 total_pages 更新上一页/下一页按钮可用性"""
@@ -464,7 +470,7 @@ class Table_select_columns_paging_bottom(ThemedWindow):
 
 def main():
     app = QApplication(sys.argv)
-    w = Table_select_columns_paging_bottom()
+    w = Table_select_columns_paging_bottom(gid=1)
     w.show()
     sys.exit(app.exec())
 

@@ -644,9 +644,11 @@ def barrier_action():
     store_Datas.append({'desc':'轮次开始时间','value':datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
     store_Datas.append({'desc':'轮次结束时间','value':datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
     # 获得所有备注
+    logger.critical(f"rs:{results}")
     remarks = "".join(f" {key}: {value}; " for key, value in results.items()
                             if "remarks" in key and value is not None and value != [])
     store_Datas.append({'desc':'备注','value':remarks+remarks_reference})
+    logger.critical(f"sd:{store_Datas}")
     # store_Datas.append({'desc':'获取时间','value':datetime.now().fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
     handle.stop()
     # 装载数据
