@@ -38,7 +38,7 @@ class ModbusRTUMaster:
                     crc >>= 1
         return struct.pack('<H', crc)
 
-    def build_frame(self, slave_id, function_code, data_hex_list):
+    def build_frame(self, slave_id, function_code, data_hex_list,test=False,test_data=None):
         '''
         构造完整 Modbus RTU 报文（包含CRC）
         data_hex_list: 4个字节数据，十六进制字符串，如 ['00', '00', '00', 'FF']
@@ -46,17 +46,24 @@ class ModbusRTUMaster:
         '''
         try:
             # 字符串转整数
-            slave_id = int(slave_id, 16)
-            function_code = int(function_code, 16)
-            data_bytes = [int(x, 16) for x in data_hex_list]
+
             # logger.info(f"data_hex_list: {data_hex_list}|data_bytes: {data_bytes}")
             # 组装帧
-            frame = struct.pack('>B B B B B B', slave_id, function_code, *data_bytes)
-            crc = self.calculate_crc(frame)
-            str_frame = frame.hex()
-            str_crc = crc.hex()
-            logger.info(f"frame: {frame} , {str_frame}|crc: {crc} , {str_crc}")
-            return frame + crc
+            if not test:
+                slave_id = int(slave_id, 16)
+                function_code = int(function_code, 16)
+                data_bytes = [int(x, 16) for x in data_hex_list]
+                frame = struct.pack('>B B B B B B', slave_id, function_code, *data_bytes)
+            else:
+                frame = struct.pack('>B', int(test_data, 16))
+            if not test:
+                crc = self.calculate_crc(frame)
+                str_frame = frame.hex()
+                str_crc = crc.hex()
+                logger.info(f"frame: {frame} , {str_frame}|crc: {crc} , {str_crc}")
+                return frame + crc
+            else:
+                return frame
         except Exception as e:
             if self.origin is not None:
                 # 把返回数据返回给源头
@@ -92,6 +99,7 @@ class ModbusRTUMaster:
 
                 global_setting.get_setting("send_message_queue").put(message_struct)
             logger.info(f"{self.sport}-连接成功")
+            # frame = self.build_frame(slave_id, function_code, data_hex_list,test=True,test_data=slave_id)
             frame = self.build_frame(slave_id, function_code, data_hex_list)
             if self.origin is not None:
                 # 把返回数据返回给源头

@@ -85,7 +85,7 @@ class communication(threading.Thread):
                     bytesize=8,
                     parity='N',
                     stopbits=1,
-                    timeout=1
+                    timeout=0.05
                 )
                 logger.info(f"{self.category}串口{str(self.port)}连接成功")
             except KeyboardInterrupt:
