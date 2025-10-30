@@ -445,6 +445,11 @@ class UFC_gas_path_system_run_thread(MyQThread):
         循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
         """
         time.sleep(0.01)
+        # 让ugc开始运行
+        wait_UFC_run_finish_event = global_setting.get_setting("wait_UFC_run_finish_event", None)
+        if wait_UFC_run_finish_event:
+            wait_UFC_run_finish_event.set()
+            wait_UFC_run_finish_event.clear()
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒） ！弃用
         index = 0
@@ -487,17 +492,13 @@ class UFC_gas_path_system_run_thread(MyQThread):
         :param mouse_cages_inc:
         :return:
         """
-        #让ugc开始运行
-        wait_UFC_run_finish_event=global_setting.get_setting("wait_UFC_run_finish_event",None)
-        if wait_UFC_run_finish_event:
-            wait_UFC_run_finish_event.set()
-            wait_UFC_run_finish_event.clear()
 
-        # 让鼠笼内的传感器开始运行 要等待ufc ugc zos 都wait
-        ufc_ugc_zos_barrier=global_setting.get_setting("ufc_ugc_zos_barrier")
-        if ufc_ugc_zos_barrier is not None :
-            logger.debug(f"ufc_ugc_zos_barrier_UFC run one batch done ! ")
-            ufc_ugc_zos_barrier.wait()
+
+        # # 让鼠笼内的传感器开始运行 要等待ufc ugc zos 都wait
+        # ufc_ugc_zos_barrier=global_setting.get_setting("ufc_ugc_zos_barrier")
+        # if ufc_ugc_zos_barrier is not None :
+        #     logger.debug(f"ufc_ugc_zos_barrier_UFC run one batch done ! ")
+        #     ufc_ugc_zos_barrier.wait()
         barrier = global_setting.get_setting("barrier")
         if barrier is not None:
             logger.debug(f"barrier_UFC run one batch done ! ")
@@ -686,11 +687,11 @@ class UGC_gas_path_system_run_thread(MyQThread):
         if wait_UGC_run_finish_event:
             wait_UGC_run_finish_event.set()
             wait_UGC_run_finish_event.clear()
-        # 让鼠笼内的传感器开始运行
-        ufc_ugc_zos_barrier = global_setting.get_setting("ufc_ugc_zos_barrier")
-        if ufc_ugc_zos_barrier is not None:
-            logger.debug(f"ufc_ugc_zos_barrier_UGC run one batch done ! ")
-            ufc_ugc_zos_barrier.wait()
+        # # 让鼠笼内的传感器开始运行
+        # ufc_ugc_zos_barrier = global_setting.get_setting("ufc_ugc_zos_barrier")
+        # if ufc_ugc_zos_barrier is not None:
+        #     logger.debug(f"ufc_ugc_zos_barrier_UGC run one batch done ! ")
+        #     ufc_ugc_zos_barrier.wait()
         barrier = global_setting.get_setting("barrier")
         if barrier is not None:
             logger.debug(f"barrier_UGC run one batch done ! ")
@@ -889,11 +890,29 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             lambda r:AsyPromise(self.check_senior_state,port=port,r=r)
         ).catch(lambda e: logger.error(e))
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
-        # 让鼠笼内的传感器开始运行
-        ufc_ugc_zos_barrier = global_setting.get_setting("ufc_ugc_zos_barrier")
-        if ufc_ugc_zos_barrier is not None:
-            logger.debug(f"ufc_ugc_zos_barrier_ZOS run one batch done ! ")
-            ufc_ugc_zos_barrier.wait()
+        # # 让鼠笼内的传感器开始运行
+        # ufc_ugc_zos_barrier = global_setting.get_setting("ufc_ugc_zos_barrier")
+        # if ufc_ugc_zos_barrier is not None:
+        #     logger.debug(f"ufc_ugc_zos_barrier_ZOS run one batch done ! ")
+        #     ufc_ugc_zos_barrier.wait()
+        # 将鼠笼下标循环前移动
+
+        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+        # logger.critical(f"zos run :mouse_cage_index before:{mouse_cage_index}")
+        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
+        if mouse_cage_index is not None:
+            if mouse_cage_index == len(mouse_cages_inc) - 1:
+                # 最后一个鼠笼 则下一个为参考气路
+                mouse_cage_index = None
+            else:
+                mouse_cage_index = mouse_cage_index + 1
+            pass
+        else:
+            # 当前为参考气 则下一个为第一个鼠笼
+            mouse_cage_index = 0
+            pass
+        global_setting.set_setting("cage_number_list_index", mouse_cage_index)
+        # logger.critical(f"zos run :mouse_cage_index after:{mouse_cage_index}")
         barrier = global_setting.get_setting("barrier")
         if barrier is not None:
             logger.debug(f"barrier_ZOS run one batch done ! ")

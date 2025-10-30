@@ -205,6 +205,9 @@ class UFC_UGC_ZOS_index(MyQThread):
         global auto_wait_event
         # 测试timeout
         auto_wait_event.wait()
+        wait_UFC_UGC_ZOS_start_event = global_setting.get_setting("wait_UFC_UGC_ZOS_start_event")
+        wait_UFC_UGC_ZOS_start_event.set()
+        wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
         #每轮运行发送报文数量 赋值0
         global_setting.set_setting("messages_sent_epoch_for_running", 0)
         global_setting.set_setting("start_time_messages_sent_epoch_for_running", time.time())
