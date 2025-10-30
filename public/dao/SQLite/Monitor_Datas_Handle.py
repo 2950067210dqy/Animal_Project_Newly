@@ -93,13 +93,17 @@ class Monitor_Datas_Handle():
             gids = [group.id for group in self.experiment_setting.groups ]
             # 实例化每轮次数据表
             for data_type in Modbus_Slave_Type.Epochs.value:
-                # 添加cage_0 给参考气存储数据
-                for carge_number in [0]+gids:
+                # 添加cage_0 给参考气存储数据 这里的-1代表总轮次表，表名为Epoch_data_all 不带后面的cage_-1
+                for carge_number in [-1,0]+gids:
                     for table_name_short in data_type.value['table']:
                         # 列
                         columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}
                         # 表名称
-                        table_name = f"{data_type.value['name']}_{table_name_short}_cage_{carge_number}"
+                        # 总表 表名为Epoch_data_all 不带后面的cage_-1
+                        if carge_number ==-1:
+                            table_name = f"{data_type.value['name']}_{table_name_short}_all"
+                        else:
+                            table_name = f"{data_type.value['name']}_{table_name_short}_cage_{carge_number}"
                         # 创建表
                         if not self.sqlite_manager.is_exist_table(table_name):
                             self.sqlite_manager.create_table(table_name,
@@ -115,6 +119,7 @@ class Monitor_Datas_Handle():
                             for item in data_type.value['table'][table_name_short]['column']:
                                 self.sqlite_manager.insert_or_ignore(table_meta_name, item_name=item[0], item_struct=item[2],
                                                            description=item[1])
+
             # 实例化其他数据项的数据表
             for data_type in Modbus_Slave_Type.Calibrations.value:
                 for table_name_short in data_type.value['table']:
@@ -481,7 +486,7 @@ class Monitor_Datas_Handle():
     def query_epoch_data_all_tables_paging(self,gid:int=0, page: int = 1,
             page_size: int = 100,all_column_datas=[])-> dict:
         """
-        :param gid 鼠笼/通道几的数据
+        :param gid 鼠笼/通道几的数据  如果为-1 则获取总表Epoch_data_all的数据
         :param page 第几页
         :param page_size 每页多少
         :param all_column_datas 用户选择的列数据
@@ -506,7 +511,12 @@ class Monitor_Datas_Handle():
         """
         if len(all_column_datas) == 0:
             return {}
-        table_name = f"Epoch_data_cage_{gid}"
+        # 如果为-1 则获取总表Epoch_data_all的数据
+        if gid == -1:
+            table_name = f"Epoch_data_all"
+            pass
+        else:
+            table_name = f"Epoch_data_cage_{gid}"
         result = self.sqlite_manager.query_Epoch_datas( table_name, page=page, page_size=page_size, order_asc=True )
         result_title = []
 

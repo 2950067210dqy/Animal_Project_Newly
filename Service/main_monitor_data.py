@@ -660,11 +660,21 @@ def barrier_action():
     return_data_struct['slave_id'] = 0
     return_data_struct['time']=datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     return_data_struct['function_code'] = 0
+    # 存到分表
     result = store_data_with_result(return_data_struct, need_result=True, timeout=5)
     if result and result.success:
-        logger.info(f"数据存储成功，ID: {result.item_id}")
+        logger.info(f"epoch_result数据存储成功，ID: {result.item_id}")
     else:
-        logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
+        logger.error(f"epoch_result数据存储失败: {result.error if result else '未知错误'}")
+    # 存到总表
+    return_data_struct_all = copy.deepcopy(return_data_struct)
+    return_data_struct_all['table_name'] = f"{next(iter(Others_Tables.Epoch_Data.value.keys()))}_all"
+    return_data_struct_all['mouse_cage_number'] =-1
+    result_all = store_data_with_result(return_data_struct_all, need_result=True, timeout=5)
+    if result_all and result_all.success:
+        logger.info(f"epoch_result_all数据存储成功，ID: {result_all.item_id}")
+    else:
+        logger.error(f"epoch_result_all数据存储成功: {result_all.error if result_all else '未知错误'}")
     global_setting.set_setting("start_time_messages_sent_epoch_for_running", end_time+0.1)
     global_setting.set_setting("messages_sent_epoch_for_running",
                                0)

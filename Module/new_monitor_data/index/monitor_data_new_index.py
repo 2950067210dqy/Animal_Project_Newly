@@ -24,14 +24,14 @@ from theme.ThemeQt6 import ThemedWindow
 
 class Monitor_data_new_index(ThemedWindow):
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
-        for widget in self._docks_widget:
+        for widget in self.left_top_widget_content._docks_widget:
             widget: Table_select_columns_paging_bottom
             if widget is not None and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.pause()
         pass
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
-        for widget in self._docks_widget:
+        for widget in self.left_top_widget_content._docks_widget:
             widget: Table_select_columns_paging_bottom
             if widget is not None and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.resume()
@@ -93,7 +93,7 @@ class Monitor_data_new_index(ThemedWindow):
 
         # 用QWidget替代QDockWidget
         self.left_top_widget: QWidget = None
-        self.left_top_widget_content: DemoDraggableDockWidget = None
+        self.left_top_widget_content: MonitorDataWindows = None
         self.left_bottom_widget: QWidget = None
         self.right_top_widget: QWidget = None
         self.right_top_widget_content: Table_Column_check_list_view = None
@@ -106,8 +106,7 @@ class Monitor_data_new_index(ThemedWindow):
         self.right_splitter: QSplitter = None
 
 
-        # 装载left_top_widget_content里的各个widget
-        self._docks_widget = []
+
 
         # 实例化ui
         self._init_ui(parent, geometry, title)
@@ -179,7 +178,7 @@ class Monitor_data_new_index(ThemedWindow):
         left_top_layout.setContentsMargins(0, 0, 0, 0)
 
         # 创建DemoDraggableDockWidget
-        self.left_top_widget_content = DemoDraggableDockWidget()
+        self.left_top_widget_content = MonitorDataWindows()
         left_top_layout.addWidget(self.left_top_widget_content)
 
         self.left_splitter.addWidget(self.left_top_widget)
@@ -257,29 +256,12 @@ class Monitor_data_new_index(ThemedWindow):
                     # 将参考气也放进去
                     gids = [0] + [group.id for group in settings.groups if group.id in dict_ids['data']]
                     # logger.critical(f"monitor_data_new_index | gids{gids}")
-                    self.create_tiled_docks(n=len(gids), gids=gids)
+                    self.left_top_widget_content.create_tiled_docks(n=len(gids), gids=gids)
                 pass
             else:
                 pass
 
-    def clear_existing_docks(self):
-        self.left_top_widget_content.remove_all()
-        for d in self._docks_widget:
-            d.hide()
-            d.deleteLater()
-        self._docks_widget = []
 
-    def create_tiled_docks(self, n=8, gids=[]):
-        self.clear_existing_docks()
-
-        for gid in gids:
-            widget = Table_select_columns_paging_bottom(gid=gid)
-            widget.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid==0 else ''}")
-            # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
-            widget.on_replace_headers([1])
-
-            self._docks_widget.append(widget)
-        self.left_top_widget_content.addFrames(self._docks_widget)
 
     def show_left_bottom_widget(self):
         """显示左下widget"""

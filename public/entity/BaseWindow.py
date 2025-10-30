@@ -176,6 +176,7 @@ class BaseWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()  # 隐藏系统标题栏
+        self.ancestor =None
         # 主窗口 特指代MainWindow_index
         self.main_gui:BaseWindow=None
         # 状态栏
@@ -425,17 +426,26 @@ class BaseWindow(QMainWindow):
         if widget:
             widget.setParent(None)  # 移除并删除 (也可以使用 deleteLater())
             self.setCentralWidget(None)  # 设置 centralWidget 为 None
-    def get_ancestor(self, ancestor_obj_name):
+
+    def get_ancestor(self, ancestor_obj_name=None):
         # 获取当前对象的祖先对象
         ancestor = self
-        while ancestor is not None and ancestor.objectName() != ancestor_obj_name:
-            ancestor = ancestor.parent()
-        if ancestor == self:
-            logger.info(f"{self.objectName()}没有祖先组件")
-        elif ancestor is None:
-            logger.info(f"{self.objectName()}未找到祖先{ancestor_obj_name}")
+        if ancestor_obj_name is not None:
+            while ancestor is not None and ancestor.objectName() != ancestor_obj_name:
+                ancestor = ancestor.parent()
+            if ancestor == self:
+                logger.info(f"{self.objectName()}没有祖先组件")
+            elif ancestor is None:
+                logger.info(f"{self.objectName()}未找到祖先{ancestor_obj_name}")
+            else:
+                logger.info(f"{self.objectName()}找到祖先{ancestor_obj_name}")
         else:
-            logger.info(f"{self.objectName()}找到祖先{ancestor_obj_name}")
+            while ancestor.parent() is not None:
+                ancestor = ancestor.parent()
+            if ancestor == self:
+                logger.info(f"{self.objectName()}没有祖先组件")
+            else:
+                logger.info(f"{self.objectName()}找到祖先{ancestor_obj_name}")
         self.ancestor = ancestor
 
     # 显示窗口

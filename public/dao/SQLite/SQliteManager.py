@@ -667,8 +667,13 @@ class SQLiteManager():
         # self.connection.execute('PRAGMA wal_checkpoint(TRUNCATE);')#TRUNCATE会删除WAL文件
         # self.connection.execute('PRAGMA journal_mode=DELETE;')  # 将WAL模式变为默认模式
         """关闭数据库连接."""
-        self.cursor.close()
-        self.connection.close()
+        try:
+            if self.cursor is not None:
+                self.cursor.close()
+            if self.connection is not None:
+                self.connection.close()
+        except Exception as e:
+            logger.error(e)
 
 
 

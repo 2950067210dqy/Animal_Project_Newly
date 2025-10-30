@@ -207,8 +207,8 @@ class Monitor_data_new_index(ThemedWindow):
         self.right_splitter.addWidget(self.right_bottom_widget)
 
         # 设置初始大小比例
-        # 主分割器：左边80%，右边20%
-        self.main_splitter.setSizes([800, 200])
+        # 主分割器：左边95%，右边5%
+        self.main_splitter.setSizes([950, 50])
 
         # 左侧分割器：上边100%（因为下边隐藏了）
         self.left_splitter.setSizes([1000, 0])
@@ -220,7 +220,7 @@ class Monitor_data_new_index(ThemedWindow):
         splitter_style = """
             QSplitter::handle {
                 background-color: #cccccc;
-                border: 1px solid #999999;
+
             }
             QSplitter::handle:hover {
                 background-color: #bbbbbb;
@@ -273,6 +273,7 @@ class Monitor_data_new_index(ThemedWindow):
 
         for gid in gids:
             widget = Table_select_columns_paging_bottom(gid=gid)
+            widget.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid == 0 else ''}")
             # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
             widget.on_replace_headers([1])
 

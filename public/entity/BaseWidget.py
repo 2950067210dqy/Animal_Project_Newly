@@ -11,6 +11,7 @@ from public.entity.BaseWindow import BaseWindow
 class BaseWidget(QWidget):
     def __init__(self,parent=None):
         super().__init__(parent)
+        self.ancestor =None
         self.main_gui: BaseWindow = None
 
     @abc.abstractmethod
@@ -46,17 +47,25 @@ class BaseWidget(QWidget):
         child.setVisible(visible)
         pass
 
-    def get_ancestor(self, ancestor_obj_name):
+    def get_ancestor(self, ancestor_obj_name=None):
         # 获取当前对象的祖先对象
         ancestor = self
-        while ancestor is not None and ancestor.objectName() != ancestor_obj_name:
-            ancestor = ancestor.parent()
-        if ancestor == self:
-            logger.info(f"{self.objectName()}没有祖先组件")
-        elif ancestor is None:
-            logger.info(f"{self.objectName()}未找到祖先{ancestor_obj_name}")
+        if ancestor_obj_name is not None:
+            while ancestor is not None and ancestor.objectName() != ancestor_obj_name:
+                ancestor = ancestor.parent()
+            if ancestor == self:
+                logger.info(f"{self.objectName()}没有祖先组件")
+            elif ancestor is None:
+                logger.info(f"{self.objectName()}未找到祖先{ancestor_obj_name}")
+            else:
+                logger.info(f"{self.objectName()}找到祖先{ancestor_obj_name}")
         else:
-            logger.info(f"{self.objectName()}找到祖先{ancestor_obj_name}")
+            while ancestor.parent() is not None:
+                ancestor = ancestor.parent()
+            if ancestor == self:
+                logger.info(f"{self.objectName()}没有祖先组件")
+            else:
+                logger.info(f"{self.objectName()}找到祖先{ancestor_obj_name}")
         self.ancestor = ancestor
 
     # 显示窗口
