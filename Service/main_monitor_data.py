@@ -355,7 +355,10 @@ class Send_thread(MyQThread):
                             is_parse_response=False
                         )
                         end_time = time.time()
-                        logger.critical(f"报文{response.hex()}发收时间：{(end_time - start_time):.3f}秒")
+                        if response is not None:
+                            logger.critical(f"报文{response.hex()}发收时间：{(end_time - start_time):.3f}秒")
+                        else:
+                            logger.critical(f"报文{send_message['slave_id']}{send_message['function_code']}{send_message['data']},出现问题！：发收时间：{(end_time - start_time):.3f}秒")
                         # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
                         if send_state:
                             # start_time =time.time()

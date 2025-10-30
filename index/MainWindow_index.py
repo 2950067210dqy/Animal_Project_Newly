@@ -6,7 +6,8 @@ from json import JSONDecodeError
 from PyQt6 import QtCore
 from PyQt6.QtCore import QTimer, QObject
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog, QMenu, QMenuBar, QWidget
+from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog, QMenu, QMenuBar, QWidget, \
+    QApplication
 from loguru import logger
 
 
@@ -76,6 +77,8 @@ class MainWindow_Index(ThemedWindow):
                 for window in self.open_windows:
                     self.close_window_handle()
                     window.close()
+                # 关闭所有窗口
+                QApplication.closeAllWindows()
                 event.accept()  # 关闭窗口
             else:
                 event.ignore()  # 忽略关闭事件
@@ -91,6 +94,8 @@ class MainWindow_Index(ThemedWindow):
                                          QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
                 self.close_window_handle()
+                # 关闭所有窗口
+                QApplication.closeAllWindows()
                 event.accept()  # 关闭窗口
             else:
                 event.ignore()  # 忽略关闭事件
