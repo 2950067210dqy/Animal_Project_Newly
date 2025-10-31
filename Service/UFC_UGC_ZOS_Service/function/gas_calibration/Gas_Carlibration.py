@@ -219,7 +219,14 @@ class Zero_Carlibration(Gas_Carlibration):
         # 添加Vzero参数到全局变量 方便氧传感器的值校准
 
         if now_oxygen_value is None:
-            return_data_struct['data'] =oxygen_data['data']+ [{'desc': '氧浓度0点校准值', 'value': now_oxygen_value}]
+            now_oxygen_value=[data['value'] for data in oxygen_data['data'] if data['desc'] =="备注"]
+            if len(now_oxygen_value)==0:
+                now_oxygen_value=None
+            else:
+                now_oxygen_value=now_oxygen_values[0]
+            logger.critical(f"zero_calibration:{now_oxygen_value}")
+            return_data_struct['data'] =oxygen_data['data']+ [{'desc': '氧浓度0点校准值', 'value':now_oxygen_value}]
+
         else:
             global_setting.set_setting("Vzero", now_oxygen_value)
             return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value}]
@@ -376,6 +383,12 @@ class Range_Carlibration(Gas_Carlibration):
             global_setting.set_setting("K",K )
             return_data_struct['data'] = [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value}]
         else:
+            now_oxygen_value = [data['value'] for data in oxygen_data['data'] if data['desc'] == "备注"]
+            if len(now_oxygen_value) == 0:
+                now_oxygen_value = None
+            else:
+                now_oxygen_value = now_oxygen_values[0]
+            logger.critical(f"span_calibration:{now_oxygen_value}")
             return_data_struct['data'] =oxygen_data['data']+ [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value}]
         return_data_struct['slave_id'] = 0
         return_data_struct['function_code'] = 0
