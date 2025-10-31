@@ -450,7 +450,7 @@ class Monitor_Datas_Handle():
         """
         if len(all_column_datas) == 0:
             return {}
-        tables = self.sqlite_manager.get_non_meta_tables_with_time(exclude_substr="meta",columns=['time'])
+        tables = self.sqlite_manager.get_tables_with_time(exclude_substr=["meta","Epoch_data"],columns=['time'])
         result = self.sqlite_manager.query_joined_by_time( tables, page=page, page_size=page_size, order_asc=True)
 
         result_title = ["时间"]
@@ -539,7 +539,7 @@ class Monitor_Datas_Handle():
 
 
     def query_data_in_line_with_epoch_data(self,start_time,end_time):
-        tables = self.sqlite_manager.get_non_meta_tables_with_time(exclude_substr="meta", columns=['time'])
+        tables = self.sqlite_manager.get_tables_with_time(exclude_substr=["meta","Epoch_data"], columns=['time'])
         # logger.critical(tables)
         # 执行查询
         results, columns = self.sqlite_manager.get_multi_table_data(tables,

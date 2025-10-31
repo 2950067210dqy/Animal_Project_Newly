@@ -40,11 +40,8 @@ class DbTransferExcel():
 
     def get_table_list(self) -> List[Tuple[str, str]]:
         # 返回 (name, type) 列表，排除 sqlite_ 开头的内部表
+        return self.handler.sqlite_manager.get_tables_with_time_sql_results(select_column_name=["name","type"],exclude_substr=["sqlite_","meta"])
 
-        self.handler.sqlite_manager.cursor.execute(
-            "SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%meta%' ORDER BY LENGTH(name) ASC"
-        )
-        return self.handler.sqlite_manager.cursor.fetchall()
 
 
 
@@ -65,6 +62,7 @@ class DbTransferExcel():
 
         try:
             tables = self.get_table_list()
+            # logger.critical(f"tables: {tables}")
             if not tables:
 
                 return
@@ -95,7 +93,10 @@ class DbTransferExcel():
 
                 # 读取 'xxx_meta' 表，它包含字段名称和中文描述
                 meta_query = f"SELECT item_name, description FROM {name}_meta"
-                meta_df = pd.read_sql_query(meta_query, self.handler.sqlite_manager.connection)
+                # 正确的调用方式
+                with self.handler.sqlite_manager.get_connection() as conn:
+                    meta_df = pd.read_sql_query(meta_query, conn)
+                # logger.critical(f"meta_df: {meta_df}")
                 # 创建列名到中文描述的映射字典
                 col_mapping = dict(zip(meta_df['item_name'], meta_df['description']))
 
@@ -104,20 +105,23 @@ class DbTransferExcel():
                 if chunksize and chunksize > 0:
                     startrow = 0
                     # 使用 pandas.read_sql_query 的 chunksize 返回迭代器
-                    for i, chunk in enumerate(pd.read_sql_query(sql, self.handler.sqlite_manager.connection, chunksize=chunksize)):
-                        df = self.convert_bytes_columns(chunk)
+                    with self.handler.sqlite_manager.get_connection() as conn:
+                        for i, chunk in enumerate(pd.read_sql_query(sql, conn, chunksize=chunksize)):
+                            # logger.critical(f"chunk: {chunk}")
+                            df = self.convert_bytes_columns(chunk)
+                            # 替换列名
+                            df.rename(columns=col_mapping, inplace=True)
+                            # header 仅写入第一块
+                            header = (startrow == 0)
+                            df.to_excel(writer, sheet_name=sheet_name_CN, index=False, startrow=startrow, header=header)
+                            startrow += len(df)
+                else:
+                    with self.handler.sqlite_manager.get_connection() as conn:
+                        df = pd.read_sql_query(sql, conn,)
+                        df = self.convert_bytes_columns(df)
                         # 替换列名
                         df.rename(columns=col_mapping, inplace=True)
-                        # header 仅写入第一块
-                        header = (startrow == 0)
-                        df.to_excel(writer, sheet_name=sheet_name_CN, index=False, startrow=startrow, header=header)
-                        startrow += len(df)
-                else:
-                    df = pd.read_sql_query(sql, self.handler.sqlite_manager.connection,)
-                    df = self.convert_bytes_columns(df)
-                    # 替换列名
-                    df.rename(columns=col_mapping, inplace=True)
-                    df.to_excel(writer, sheet_name=sheet_name_CN, index=False)
+                        df.to_excel(writer, sheet_name=sheet_name_CN, index=False)
         finally:
             self.handler.stop()
     pass

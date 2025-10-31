@@ -66,24 +66,88 @@ class SQLiteManager:
     def quote_ident(self, name: str) -> str:
         """用双引号安全引用 SQLite 标识符（表名或列名）。"""
         return '"' + name.replace('"', '""') + '"'
+    def get_tables_with_time_sql_results(self,select_column_name:list=None, exclude_substr: list = None, columns: list = None):
+        """
+                返回数据库中不包含 exclude_substr（不区分大小写）的数据库返回结果，并且该表具有 columns列。
 
-    def get_non_meta_tables_with_time(self, exclude_substr="meta", columns: list = ['time']) -> List[str]:
-        """返回数据库中不包含 'meta'（不区分大小写）的表名，并且该表具有 columns列。"""
-        with self.execute_transaction(auto_commit=False) as cursor:
-            cursor.execute(
-                f"SELECT name FROM sqlite_master WHERE type='table' AND lower(name) NOT LIKE '%{exclude_substr}%' "
-                f"AND lower(name) NOT LIKE '%Epoch_data%'"
-            )
+                Args:
+                    select_column_name:要查找该表的字段默认为['name']
+                    exclude_substr: 要排除的子字符串列表，默认为["meta", "Epoch_data"]
+                    columns: 必须包含的列名列表，默认为['time']
+
+                Returns:
+                    符合条件的表名的数据库查询结果
+                """
+        # 设置默认值
+        if select_column_name is None:
+            select_column_name = ['name']
+        if exclude_substr is None:
+            exclude_substr = ["meta", "Epoch_data"]
+        if columns is None:
+            columns = ['time']
+
+        with self.execute_transaction(auto_commit=True) as cursor:
+            select_column_name_sql = " , ".join(select_column_name)
+            # 构建排除条件的SQL查询
+            if exclude_substr:
+                exclude_conditions = []
+                for substr in exclude_substr:
+                    # 使用参数化查询防止SQL注入
+                    exclude_conditions.append("lower(name) NOT LIKE ?")
+
+                exclude_clause = " AND ".join(exclude_conditions)
+                query = f"SELECT {select_column_name_sql} FROM sqlite_master WHERE  {exclude_clause}"
+
+                # 准备参数
+                params = [f'%{substr.lower()}%' for substr in exclude_substr]
+                cursor.execute(query, params)
+            else:
+                # 如果没有排除条件，获取所有表
+                cursor.execute("SELECT {select_column_name_sql} FROM sqlite_master ")
+
             rows = cursor.fetchall()
+            return rows
+    def get_tables_with_time(self,select_column_name:list=None, exclude_substr: list = None, columns: list = None) -> List[str]:
+        """
+        返回数据库中不包含 exclude_substr（不区分大小写）的表名，并且该表具有 columns列。
+
+        Args:
+            select_column_name:要查找该表的字段默认为['name']
+            exclude_substr: 要排除的子字符串列表，默认为["meta", "Epoch_data"]
+            columns: 必须包含的列名列表，默认为['time']
+
+        Returns:
+            符合条件的表名列表
+        """
+        # 设置默认值
+        if select_column_name is None:
+            select_column_name = ['name']
+        if exclude_substr is None:
+            exclude_substr = ["meta", "Epoch_data"]
+        if columns is None:
+            columns = ['time']
+        rows = self.get_tables_with_time_sql_results(select_column_name=select_column_name,exclude_substr=exclude_substr,columns=columns)
+        with self.execute_transaction(auto_commit=True) as cursor:
             tables = [r[0] for r in rows]
 
             good = []
-            for t in tables:
-                q = self.quote_ident(t)
-                cursor.execute(f"PRAGMA table_info({q})")
-                cols = [r[1] for r in cursor.fetchall()]
-                if all([column in cols for column in columns]):
-                    good.append(t)
+            for table_name in tables:
+                try:
+                    q = self.quote_ident(table_name)
+                    cursor.execute(f"PRAGMA table_info({q})")
+                    table_info = cursor.fetchall()
+                    cols = [r[1] for r in table_info]
+
+                    # 检查是否包含所有required columns（不区分大小写）
+                    cols_lower = [col.lower() for col in cols]
+                    if all([column.lower() in cols_lower for column in columns]):
+                        good.append(table_name)
+
+                except Exception as e:
+                    # 记录错误但继续处理其他表
+                    print(f"检查表 {table_name} 时出错: {e}")
+                    continue
+
             return good
 
     def build_all_times_sql(self, tables: List[str]) -> str:
@@ -94,7 +158,7 @@ class SQLiteManager:
     def count_all_times(self, all_times_sql: str) -> int:
         """统计 all_times 的行数（即所有表 time 的并集大小）。"""
         count_sql = f"SELECT COUNT(*) FROM ({all_times_sql}) AS _all_times_count"
-        with self.execute_transaction(auto_commit=False) as cursor:
+        with self.execute_transaction(auto_commit=True) as cursor:
             cursor.execute(count_sql)
             return cursor.fetchone()[0] or 0
 
@@ -102,7 +166,7 @@ class SQLiteManager:
         """查询数据条数"""
         sql = f"""SELECT COUNT(*) FROM "{table_name}" """
         sql += conditions
-        with self.execute_transaction(auto_commit=False) as cursor:
+        with self.execute_transaction(auto_commit=True) as cursor:
             cursor.execute(sql)
             return cursor.fetchone()[0]
 
@@ -139,7 +203,7 @@ class SQLiteManager:
            LIMIT ? OFFSET ?
         """
 
-        with self.execute_transaction(auto_commit=False) as cursor:
+        with self.execute_transaction(auto_commit=True) as cursor:
             cursor.execute(final_sql, (page_size, offset))
             rows = cursor.fetchall()
             colnames = [desc[0] for desc in cursor.description]
@@ -181,7 +245,7 @@ class SQLiteManager:
 
         offset = (page - 1) * page_size
 
-        with self.execute_transaction(auto_commit=False) as cursor:
+        with self.execute_transaction(auto_commit=True) as cursor:
             # 构造 SELECT 列与 JOIN 子句
             select_cols = [f"all_times.time AS {self.quote_ident('time')}"]
             join_clauses = []
@@ -252,7 +316,7 @@ class SQLiteManager:
             valid_tables = []
             table_columns = {}
 
-            with self.execute_transaction(auto_commit=False) as cursor:
+            with self.execute_transaction(auto_commit=True) as cursor:
                 for table in table_names:
                     try:
                         # 检查表是否存在
@@ -300,7 +364,7 @@ class SQLiteManager:
         start_time_f = datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         end_time_f = datetime.datetime.fromtimestamp(end_time + 100).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
-        with self.execute_transaction(auto_commit=False) as cursor:
+        with self.execute_transaction(auto_commit=True) as cursor:
             for table in tables:
                 table_cols = table_columns[table]
                 column_selects = ['time'] + [f"{col} AS {table}__{col}" for col in table_cols]
@@ -354,7 +418,7 @@ class SQLiteManager:
         for _ in tables:
             params.extend([start_time_f, end_time_f])
 
-        with self.execute_transaction(auto_commit=False) as cursor:
+        with self.execute_transaction(auto_commit=True) as cursor:
             cursor.execute(final_query, params)
             results = cursor.fetchall()
             column_names = [desc[0] for desc in cursor.description]
@@ -380,7 +444,7 @@ class SQLiteManager:
             ORDER BY {table}.time
             """
 
-            with self.execute_transaction(auto_commit=False) as cursor:
+            with self.execute_transaction(auto_commit=True) as cursor:
                 cursor.execute(query, (start_time_f, end_time_f))
                 results = cursor.fetchall()
                 column_names = [desc[0] for desc in cursor.description]
@@ -410,7 +474,7 @@ class SQLiteManager:
     def is_exist_table(self, table_name: str) -> bool:
         """查询数据表是否存在"""
         sql = "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
-        with self.execute_transaction(auto_commit=False) as cursor:
+        with self.execute_transaction(auto_commit=True) as cursor:
             cursor.execute(sql, (table_name,))
             result = cursor.fetchone()
             return result is not None
@@ -486,7 +550,7 @@ class SQLiteManager:
         sql = f"""SELECT * FROM "{table_name}" """
         sql += conditions
 
-        with self.execute_transaction(auto_commit=False) as cursor:
+        with self.execute_transaction(auto_commit=True) as cursor:
             cursor.execute(sql)
             return cursor.fetchall()
 
@@ -497,11 +561,11 @@ class SQLiteManager:
             conditions = ' AND '.join(f"{key} = ?" for key in kwargs.keys())
             sql += f" WHERE {conditions};"
 
-            with self.execute_transaction(auto_commit=False) as cursor:
+            with self.execute_transaction(auto_commit=True) as cursor:
                 cursor.execute(sql, tuple(kwargs.values()))
                 return cursor.fetchall()
         else:
-            with self.execute_transaction(auto_commit=False) as cursor:
+            with self.execute_transaction(auto_commit=True) as cursor:
                 cursor.execute(sql)
                 return cursor.fetchall()
 
@@ -512,12 +576,12 @@ class SQLiteManager:
             conditions = ' AND '.join(f"{key} = ?" for key in kwargs.keys())
             sql += f" WHERE {conditions} ORDER BY time DESC LIMIT 1;"
 
-            with self.execute_transaction(auto_commit=False) as cursor:
+            with self.execute_transaction(auto_commit=True) as cursor:
                 cursor.execute(sql, tuple(kwargs.values()))
                 return cursor.fetchall()
         else:
             sql += f" ORDER BY time DESC LIMIT 1;"
-            with self.execute_transaction(auto_commit=False) as cursor:
+            with self.execute_transaction(auto_commit=True) as cursor:
                 cursor.execute(sql)
                 return cursor.fetchall()
 
@@ -529,12 +593,12 @@ class SQLiteManager:
             conditions = ' AND '.join(f"{key} = ?" for key in kwargs.keys())
             sql += f" WHERE {conditions} ORDER BY time DESC LIMIT 1;"
 
-            with self.execute_transaction(auto_commit=False) as cursor:
+            with self.execute_transaction(auto_commit=True) as cursor:
                 cursor.execute(sql, tuple(kwargs.values()))
                 return cursor.fetchall()
         else:
             sql += f" ORDER BY time DESC LIMIT 1;"
-            with self.execute_transaction(auto_commit=False) as cursor:
+            with self.execute_transaction(auto_commit=True) as cursor:
                 cursor.execute(sql)
                 return cursor.fetchall()
 
@@ -544,7 +608,7 @@ class SQLiteManager:
         sql += conditions
         sql += f" ORDER BY id DESC LIMIT {rows_per_page} OFFSET {start_row}"
 
-        with self.execute_transaction(auto_commit=False) as cursor:
+        with self.execute_transaction(auto_commit=True) as cursor:
             cursor.execute(sql)
             return cursor.fetchall()
 
