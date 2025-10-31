@@ -114,11 +114,33 @@ class Zero_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。")
         start_time = time.time()
         end_time = None
-        #小于阈值稳定 至少循环60秒
-        while ((now_oxygen_value is  None and now_carbon_value is  None) or(last_carbon_value is None and last_oxygen_value is None) or (
-                now_oxygen_value-last_oxygen_value)>float(global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']['zero_calibration_oxygen_threshold'] and
-                now_carbon_value - last_carbon_value) > float(global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']['zero_calibration_carbon_threshold']))\
-                and (end_time is None or int(end_time-start_time)<= float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['circular_times'])):
+        #小于阈值稳定0 或者 至少循环60秒
+        while (
+                (
+                        (now_oxygen_value is  None and now_carbon_value is  None) or
+                        (last_carbon_value is None and last_oxygen_value is None) or
+
+                        (
+                                abs(now_oxygen_value - last_oxygen_value) > float(
+                            global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
+                                'zero_calibration_oxygen_threshold'])
+                                or
+                                abs(now_carbon_value - last_carbon_value) > float(
+                            global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
+                                'zero_calibration_carbon_threshold'])
+                        )
+                        or
+                        (
+                                now_carbon_value != 0 or now_oxygen_value != 0
+                        )
+
+
+                ) and
+                (
+                      end_time is None or int(end_time - start_time) <= float(
+                  global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['circular_times'])
+                )
+        ):
             # 循环开始
             self.send_message = {
                 'port': port,
