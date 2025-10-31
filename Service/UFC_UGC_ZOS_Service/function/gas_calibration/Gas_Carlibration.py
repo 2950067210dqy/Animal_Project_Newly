@@ -138,7 +138,7 @@ class Zero_Carlibration(Gas_Carlibration):
                 ) and
                 (
                       end_time is None or int(end_time - start_time) <= float(
-                  global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['circular_times'])
+                  global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])
                 )
         ):
             # 循环开始
@@ -173,7 +173,7 @@ class Zero_Carlibration(Gas_Carlibration):
             now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
             end_time = time.time()
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度（{now_oxygen_value}）之前氧气浓度（{last_oxygen_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time),b=datetime.fromtimestamp(start_time),zero_pad=True,signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['circular_times'])}秒")
+                f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度（{now_oxygen_value}）之前氧气浓度（{last_oxygen_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time),b=datetime.fromtimestamp(start_time),zero_pad=True,signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])}秒")
             time.sleep(1)
             pass
 
@@ -224,10 +224,11 @@ class Zero_Carlibration(Gas_Carlibration):
                 now_oxygen_value=None
             else:
                 now_oxygen_value=now_oxygen_values[0]
-            logger.critical(f"zero_calibration:{now_oxygen_value}")
+            logger.critical(f"zero_calibration_None:{now_oxygen_value}")
             return_data_struct['data'] =oxygen_data['data']+ [{'desc': '氧浓度0点校准值', 'value':now_oxygen_value}]
 
         else:
+            logger.critical(f"zero_calibration:{now_oxygen_value}")
             global_setting.set_setting("Vzero", now_oxygen_value)
             return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value}]
         return_data_struct['slave_id']=0
@@ -331,11 +332,20 @@ class Range_Carlibration(Gas_Carlibration):
 
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 3.循环采样zos氧浓度。")
+        start_time = time.time()
+        end_time = None
         # 小于阈值稳定
-        while (now_oxygen_value is None ) or (
-                 last_oxygen_value is None) or (
-                now_oxygen_value - last_oxygen_value) > float(
-            global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']['span_calibration_oxygen_threshold']):
+        while (
+                (now_oxygen_value is None ) or
+                (last_oxygen_value is None) or
+                (
+                    now_oxygen_value - last_oxygen_value >
+                    float(global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']['span_calibration_oxygen_threshold'])
+                )
+              ) and(
+                end_time is None or int(end_time - start_time) <= float(
+                  global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['span_calibration_circular_times'])
+            ):
             # 循环开始
             self.send_message = {
                 'port': port,
@@ -351,8 +361,10 @@ class Range_Carlibration(Gas_Carlibration):
             now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气传感器测量值" in item['desc']]
             last_oxygen_value = copy.deepcopy(now_oxygen_value)
             now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
+            end_time = time.time()
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 3.循环采样zos氧浓度。2）现在氧气浓度（{now_oxygen_value}）之前氧气浓度（{last_oxygen_value}）")
+                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 3.循环采样zos氧浓度。2）现在氧气浓度（{now_oxygen_value}）之前氧气浓度（{last_oxygen_value}）已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time),b=datetime.fromtimestamp(start_time),zero_pad=True,signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['span_calibration_circular_times'])}秒")
+            time.sleep(1)
             pass
         # 5. 氧浓传感器span数值记录。
         self.send_message = {

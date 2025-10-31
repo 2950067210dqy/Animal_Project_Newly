@@ -31,7 +31,7 @@ class TutorialManager(QObject):
 
     def eventFilter(self, obj, event):
         """监听主窗口事件"""
-        if hasattr(self, 'main_window') or self.main_window is not None:
+        if hasattr(self, 'main_window') and self.main_window is not None:
             if obj == self.main_window and self.overlay:
                 if event.type() in [QEvent.Type.Resize, QEvent.Type.Move]:
                     self.update_overlay_geometry()
