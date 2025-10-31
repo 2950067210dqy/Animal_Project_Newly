@@ -110,9 +110,12 @@ class custom_data_file_util:
         if is_delete_original_data_file:
             folder_util.remove_non_empty_folder(folder_path)
     @classmethod
-    def export_data_to_csv(cls,export_file_path=None,file_name=None):
+    def export_data_to_csv(cls,export_file_path=None,file_name=None,file_path =None):
         # 将数据db文件转成excel文件
-        transfer_handle = DbTransferExcel()
+        if file_path is None:
+            transfer_handle = DbTransferExcel()
+        else:
+            transfer_handle = DbTransferExcel(db_name=file_path)
         if export_file_path is None:
             try:
                 file_path, _ = QFileDialog.getSaveFileName(
@@ -190,6 +193,7 @@ class custom_data_file_util:
         # 删除该文件夹
         if is_delete_original_data_file:
             folder_util.remove_non_empty_folder(folder_path)
+    @classmethod
     def load_folder_contents_from_custom_file(cls,custom_file_path):
         # 读取自定义格式文件
         with open(custom_file_path, 'r', encoding=cls.encoding) as custom_file:
@@ -210,3 +214,4 @@ class custom_data_file_util:
             # 将内容写入文件
             with open(target_file_path, 'wb') as f:
                 f.write(base64.b64decode(content))
+        return target_folder
