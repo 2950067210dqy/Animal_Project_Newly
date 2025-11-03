@@ -46,6 +46,38 @@ class Stop_experiment_thread(MyQThread):
     def dosomething(self):
         self.window.stop_experiment_handle()
         self.stop()
+class read_queue_data_Thread(MyQThread):
+    def __init__(self, name,window=None):
+        super().__init__(name)
+        self.queue = None
+        self.camera_list = None
+        self.window:MainWindow_Index = window
+        pass
+
+    def dosomething(self):
+        if self.queue and  not self.queue.empty():
+            message:ObjectQueueItem = self.queue.get()
+            if message is not None and message.is_Empty():
+                return
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to=='MainWindow_index':
+                logger.error(f"{self.name}_get_message:{message}")
+                match message.title:
+                    case "gap_system_running_state":
+                        if message.data  and self.window:
+                            #  更新气路运行消息
+                            self.window.status_bar.update_tip(message.data)
+                            pass
+                        # 将运行信息放入status栏中
+
+                        pass
+
+                    case _:
+                        pass
+
+            else:
+                # 把消息放回去
+                self.queue.put(message)
+read_queue_data_thread = read_queue_data_Thread(name="MainWindow_index_read_queue_data_thread")
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
     change_enable_component_app_state_signal = QtCore.pyqtSignal()
@@ -206,7 +238,7 @@ class MainWindow_Index(ThemedWindow):
         # 工具栏
         self.toolbar = None
         #状态栏
-        self.status_bar = None
+        self.status_bar:CustomStatusBar = None
         # 内容layout
         self.content_layout :QVBoxLayout =None
         # tab_widget
@@ -235,6 +267,10 @@ class MainWindow_Index(ThemedWindow):
         self.setObjectName("mainWindow_Index")
         pass
     def _init_customize_ui(self):
+        global read_queue_data_thread
+        read_queue_data_thread.queue = global_setting.get_setting("queue",None)
+        read_queue_data_thread.window=self
+        read_queue_data_thread.start()
         self.content_layout = self.findChild(QVBoxLayout,"content_layout")
         self.tab_widget:QTabWidget = self.findChild(QTabWidget,"tab_widget")
         # 启用标签关闭按钮

@@ -18,6 +18,7 @@ from public.entity.MyQThread import MyQThread, MyThread
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Timer.ProcederTimer import PeriodicTimer
 from public.function.promise.AsyPromise import AsyPromise
+from public.util.time_util import time_util
 
 # 过滤日志
 
@@ -81,7 +82,7 @@ class Monitor_start_state_Thread(MyThread):
 
 class UFC_UGC_ZOS_index(MyQThread):
     def __init__(self):
-        super().__init__(name="UFC_UGC_ZOS_index")
+        super().__init__(name="UFC_UGC_ZOS_index" )
         self.ispause = False
 
         self.send_message = {
@@ -123,6 +124,11 @@ class UFC_UGC_ZOS_index(MyQThread):
     def logger_info(self, text):
 
         if text and "\n" not in text:
+            # 除了日志需求，需要将响应信息放映出来
+            queue = global_setting.get_setting("queue",None)
+            if queue:
+                queue.put(ObjectQueueItem(origin="UFC_UGC_ZOS_index", to="MainWindow_index", title="gap_system_running_state",data=text,
+                                          time=time_util.get_format_from_time(time.time())))
             logger.debug(text)
 
     def _init_function(self):
