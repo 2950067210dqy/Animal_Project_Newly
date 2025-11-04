@@ -509,8 +509,11 @@ class UFC_gas_path_system(Gas_path_system):
     """
     UFC 气路系统
     """
+    # UFC开始的操作数
+    process_nums =3+1
     def __init__(self):
         super().__init__()
+
         #记录ufc等待的1分钟状态
         self.ufc_start_time_state = False
         #开启线程
@@ -573,8 +576,7 @@ class UFC_gas_path_system(Gas_path_system):
     def ufc_start_timer_task(self,elapsed_ms):
         #ufc 气泵及设定鼠笼流量控制器开启 此过程需1分钟，等待流量控制器自动配置及运行
 
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'-'*100}")
+
 
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms//1000}s)，等待流量控制器自动配置及运行 .")
@@ -701,7 +703,8 @@ class UGC_gas_path_system(Gas_path_system):
     """
     UGC 气路系统
     """
-
+    # UgC开始的操作数
+    process_nums =1
     def __init__(self):
         super().__init__()
         # 运行线程
@@ -936,7 +939,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
                         logger.warning(f"'氧传感器测量值(%)经过校准后得:{oxygen_value}")
                         result_data['data'][i]['value'] = oxygen_value
                         break
-        # logger.critical(f"{'-'*500}|{result_data}")
+
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
             logger.info(f"数据存储成功，ID: {result.item_id}")
@@ -969,7 +972,8 @@ class ZOS_gas_path_system(Gas_path_system):
     """
     ZOS 气路系统
     """
-
+    # UFC开始的操作数
+    process_nums =2+2
     def __init__(self):
         super().__init__()
         # zos启动状态
@@ -989,7 +993,7 @@ class ZOS_gas_path_system(Gas_path_system):
         else:
             self.zos_start_status = False
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | ZOS 启动状态:{'运行' if self.zos_start_status else '停止（预热）'}{r}{'-'*100}-end.")
+            f"{time_util.get_format_from_time(time.time())} | ZOS 启动状态:{'运行' if self.zos_start_status else '停止（预热）'}{r}-end.")
 
         resolve()
     def start(self,resolve,reject):
@@ -1021,8 +1025,6 @@ class ZOS_gas_path_system(Gas_path_system):
 
     def zos_start_timer_task(self,elapsed_ms):
         #zos启动之后需要预热
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'-'*100}")
 
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS 正在预热时间为{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_time'])}s(当前{elapsed_ms//1000}s)，循环判断zos状态是否完成，预热完成进入运行状态-start.")
@@ -1038,7 +1040,6 @@ class ZOS_gas_path_system(Gas_path_system):
             'function_code': '1',
             'timeout': 1
         }
-        self.send_thread.send_message = self.send_message
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             lambda r: AsyPromise(self.judge_zos_start_status, r=r)

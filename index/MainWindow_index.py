@@ -12,6 +12,8 @@ from loguru import logger
 
 
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
+from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
+    UFC_gas_path_system, UGC_gas_path_system
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 from my_abc.BaseModule import BaseModule
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
@@ -65,9 +67,13 @@ class read_queue_data_Thread(MyQThread):
                     case "gap_system_running_state":
                         if message.data  and self.window:
                             #  更新气路运行消息
+                            # 将运行信息放入status栏中
                             self.window.status_bar.update_tip(message.data)
+                            if self.window.start_dialog is not None:
+                                self.window.start_dialog.insert_list_data(f"{message.data} ")
+                                self.window.start_dialog.update_progress_value(1)
                             pass
-                        # 将运行信息放入status栏中
+
 
                         pass
 
@@ -209,6 +215,8 @@ class MainWindow_Index(ThemedWindow):
                                f"Tips：\n如果还不会操作，可再次单击该按钮查看教程。")
     def __init__(self):
         super().__init__()
+        # 开始实验dialog
+        self.start_dialog:AnimatedLoadingDialog=None
         #暂停实验标志位
         self.is_paused = False
         # 点击开始实验 接受数据和存储数据的线程
@@ -615,8 +623,17 @@ class MainWindow_Index(ThemedWindow):
         ).catch(lambda e: logger.error(e))
         pass
     def show_dialog(self,resolve,reject):
-        dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']),title="开始实验",message="正在启动气路...")
-        result = dialog.exec()
+        if self.start_dialog is None:
+            self.start_dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']),title="开始实验",message="正在启动气路...")
+        else:
+            self.start_dialog.reset_progress()
+            self.start_dialog.clear_list_data()
+            self.start_dialog.deleteLater()
+            self.start_dialog = AnimatedLoadingDialog(
+                countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']),
+                title="开始实验", message="正在启动气路...")
+        self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
+        result = self.start_dialog.exec()
         if result == QDialog.DialogCode.Accepted:
             resolve()
         else:
