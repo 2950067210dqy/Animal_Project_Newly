@@ -372,6 +372,28 @@ class Send_thread(MyQThread):
                             # end_time = time.time()
                             # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
                             return_data['data'].append({'desc': '备注', 'value': None})
+                            logo_text = f"{time_util.get_format_from_time(time.time())} | {parser_message}"
+                            q = global_setting.get_setting("queue", None)
+                            if q:
+                                q.put(
+                                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                                                    title="mouse_cage_inner_module_running_state",
+                                                    data=logo_text,
+                                                    time=time_util.get_format_from_time(time.time())))
+                        else:
+                            # 将错误信息返回给主菜单
+                            if return_data:
+                                for data in return_data['data']:
+                                    if data and data.get('desc') and data.get('desc') == '备注':
+                                        q = global_setting.get_setting("queue", None)
+                                        if q:
+                                            q.put(
+                                                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                                                                title="mouse_cage_inner_module_running_state",
+                                                                data=f"{time_util.get_format_from_time(time.time())} | {data.get('value')}",
+                                                                time=time_util.get_format_from_time(time.time())))
+                                        break
+                            pass
                         return_data['time']= datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
                         result = store_data_with_result(return_data, need_result=True, timeout=5)
@@ -499,7 +521,14 @@ class Add_message_thread(MyQThread):
             for msg in send_messages:
                 self.send_thread.add_message(message=msg, urgent=False)
             #     # 等待从线程处理完当前批次
-            logger.info(f"数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！")
+            logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{self.mouse_cage_index if self.mouse_cage_index else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
+            logger.info(logo_text)
+            queue = global_setting.get_setting("queue", None)
+            if queue:
+                queue.put(
+                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="mouse_cage_inner_module_running_state",
+                                    data=logo_text,
+                                    time=time_util.get_format_from_time(time.time())))
             # print(f"send_messages:{send_messages}")
             # 将鼠笼下标循环前移动
             if self.mouse_cage_index is not None:
@@ -573,8 +602,15 @@ def barrier_action():
 
     start_time = global_setting.get_setting("start_time_messages_sent_epoch_for_running", time.time())
 
-    logger.warning(f"一轮结束|结束时间：{time_util.get_format_from_time(end_time)}|开始时间：{time_util.get_format_from_time(start_time)}|用时：{time_util.format_timedelta(a= datetime.fromtimestamp(end_time),b= datetime.fromtimestamp(start_time),signed=True,zero_pad=True)}|一轮传感器发送报文结束|期间一共发送{ global_setting.get_setting('messages_sent_epoch_for_running', 0)}条报文。")
-
+    logo_text =f"{time_util.get_format_from_time(time.time())} | 一轮结束|结束时间：{time_util.get_format_from_time(end_time)}|开始时间：{time_util.get_format_from_time(start_time)}|用时：{time_util.format_timedelta(a= datetime.fromtimestamp(end_time),b= datetime.fromtimestamp(start_time),signed=True,zero_pad=True)}|一轮传感器发送报文结束|期间一共发送{ global_setting.get_setting('messages_sent_epoch_for_running', 0)}条报文。"
+    logger.warning(logo_text)
+    q = global_setting.get_setting("queue", None)
+    if q:
+        q.put(
+            ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                            title="epoch_running_state",
+                            data=logo_text,
+                            time=time_util.get_format_from_time(time.time())))
     handle = Monitor_Datas_Handle()  # # 创建数据库操作器
     # 去数据库里查询 所有的在这个时间段的数据
     results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time)

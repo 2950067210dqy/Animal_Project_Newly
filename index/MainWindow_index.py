@@ -77,6 +77,18 @@ class read_queue_data_Thread(MyQThread):
 
 
                         pass
+                    case "mouse_cage_inner_module_running_state":
+                        #鼠笼环境内部模块运行情况
+                        if message.data and self.window:
+                            # 将运行信息放入status栏中
+                            self.window.status_bar.update_tip(message.data)
+                            pass
+                    case "epoch_running_state":
+                        # 一轮模块数据运行情况
+                        if message.data and self.window:
+                            # 将运行信息放入status栏中
+                            self.window.status_bar.update_tip(message.data)
+                            pass
                     case 'close_start_experiment_dialog':
                         #启动气路完成，关闭开始实验窗口
                         if self.window is not None and self.window.start_dialog is not None :
