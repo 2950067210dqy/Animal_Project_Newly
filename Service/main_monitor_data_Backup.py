@@ -305,7 +305,7 @@ class Send_thread(MyQThread):
                 if self.normal_queue_empty:
                     continue
                 if send_message is not None:
-                    logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束{'-' * 100}")
+                    logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束")
                     with lock:
                         if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
                             barrier: threading.Barrier = global_setting.get_setting("barrier")
@@ -320,7 +320,7 @@ class Send_thread(MyQThread):
                             total_messages_processed += 1
                 else:
                     #如果遇到未知错误，则跳过这条报文
-                    logger.error(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束{'-' * 100}")
+                    logger.error(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束")
                     with lock:
 
                         if MESSAGE_BATCH_SIZE == 0 or total_messages_processed % MESSAGE_BATCH_SIZE == 0:

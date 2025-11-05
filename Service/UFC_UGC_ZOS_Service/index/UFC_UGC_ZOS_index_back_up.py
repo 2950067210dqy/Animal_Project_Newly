@@ -100,12 +100,12 @@ class auto_run_Thread(MyQThread):
             self.start_signal.emit()
             self.before_start_flag=False
 
-            logger.debug(f"{'-' * 1000}")
+
 
         if self.start_finish_flag:
             self.start_finish_flag = False
 
-            logger.debug(f"{'.' * 1000}")
+
             global auto_wait_event
             auto_wait_event.wait()
 

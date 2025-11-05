@@ -41,7 +41,8 @@ class Gas_Carlibration:
         }
         # 发送报文线程
         self.send_thread: Send_Message = Send_Message(update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,send_message=self.send_message)
-
+    def update(self):
+        self.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
     @abc.abstractmethod
     def calibrate(self,resolve,reject):
         """

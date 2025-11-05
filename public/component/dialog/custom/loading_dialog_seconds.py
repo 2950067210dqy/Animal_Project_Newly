@@ -1,12 +1,13 @@
 import sys
 from PyQt6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout,
                              QLabel, QProgressBar, QPushButton, QListView, QMessageBox)
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QStandardItemModel, QStandardItem
 from loguru import logger
 
 
 class AnimatedLoadingDialog(QDialog):
+    insert_data_signal=pyqtSignal(str)
     def __init__(self, countdown_seconds=10, message="正在加载数据...", title="系统加载中", show_listview=True):
         super().__init__()
         self.countdown_seconds = countdown_seconds
@@ -26,6 +27,7 @@ class AnimatedLoadingDialog(QDialog):
         self.start_countdown()
         if not self.use_manual_progress:
             self.start_progress_animation()
+        self.insert_data_signal.connect(self.insert_list_data)
 
     def init_ui(self):
         self.setWindowTitle(self.title)
@@ -353,8 +355,8 @@ class AnimatedLoadingDialog(QDialog):
         if hasattr(self, 'timer'):
             self.timer.stop()
 
-        # 延迟500ms后关闭对话框
-        QTimer.singleShot(500, self.accept)
+        # 延迟2000ms后关闭对话框
+        QTimer.singleShot(2000, self.accept)
 
     def get_progress_value(self):
         """

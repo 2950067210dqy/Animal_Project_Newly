@@ -2,6 +2,7 @@ import threading
 import time
 
 from PyQt6.QtCore import pyqtSignal
+from blinker.base import _PNamespaceSignal
 from loguru import logger
 
 from public.config_class.global_setting import global_setting
@@ -13,7 +14,7 @@ from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 class Send_Message:
     def __init__(self,update_status_main_signal_gui_update=None,send_message=None,modbus=None):
         # 更新主线程状态栏消息信号
-        self.update_status_main_signal_gui_update: pyqtSignal(str) =update_status_main_signal_gui_update
+        self.update_status_main_signal_gui_update: _PNamespaceSignal =update_status_main_signal_gui_update
         self.send_message = send_message
         self.modbus: ModbusRTUMasterNew= global_setting.get_setting("modbus", None)
 
@@ -52,7 +53,17 @@ class Send_Message:
 
                     # end_time = time.time()
                     # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
+                    #将解析数据返回给主菜单
+                    self.update_status_main_signal_gui_update.send(parser_message)
                     return_data['data'].append({'desc': '备注', 'value': None})
+                else:
+                    # 将错误信息返回给主菜单
+                    if return_data :
+                        for data in return_data['data']:
+                            if data and data.get('desc') and data.get('desc')=='备注':
+                                self.update_status_main_signal_gui_update.send(data.get('value'))
+                                break
+                    pass
                 # 把返回数据返回给源头
                 message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index",
                                                  data=parser_message,
@@ -105,7 +116,16 @@ class Send_Message:
 
                     # end_time = time.time()
                     # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
+                    # 将解析数据返回给主菜单
+                    self.update_status_main_signal_gui_update.send(parser_message)
                     return_data['data'].append({'desc': '备注', 'value': None})
+                else:
+                    # 将错误信息返回给主菜单
+                    if return_data :
+                        for data in return_data['data']:
+                            if data and data.get('desc') and data.get('desc')=='备注':
+                                self.update_status_main_signal_gui_update.send(data.get('value'))
+                                break
                 # 把返回数据返回给源头
                 message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index",
                                                  data=parser_message,

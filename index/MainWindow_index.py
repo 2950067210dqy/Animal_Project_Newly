@@ -4,7 +4,7 @@ import os
 import time
 from json import JSONDecodeError
 from PyQt6 import QtCore
-from PyQt6.QtCore import QTimer, QObject
+from PyQt6.QtCore import QTimer, QObject, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog, QMenu, QMenuBar, QWidget, \
     QApplication
@@ -59,6 +59,7 @@ class read_queue_data_Thread(MyQThread):
     def dosomething(self):
         if self.queue and  not self.queue.empty():
             message:ObjectQueueItem = self.queue.get()
+
             if message is not None and message.is_Empty():
                 return
             if message is not None and isinstance(message, ObjectQueueItem) and message.to=='MainWindow_index':
@@ -69,14 +70,18 @@ class read_queue_data_Thread(MyQThread):
                             #  更新气路运行消息
                             # 将运行信息放入status栏中
                             self.window.status_bar.update_tip(message.data)
-                            if self.window.start_dialog is not None:
-                                self.window.start_dialog.insert_list_data(f"{message.data} ")
-                                self.window.start_dialog.update_progress_value(1)
+                            if self.window.start_dialog is not None :
+                                self.window.start_dialog.insert_data_signal.emit(f"{message.data} ")
+                                # self.window.start_dialog.update_progress_value(1)
                             pass
 
 
                         pass
+                    case 'close_start_experiment_dialog':
+                        #启动气路完成，关闭开始实验窗口
+                        if self.window is not None and self.window.start_dialog is not None :
 
+                            self.window.start_dialog.update_progress_value(self.window.start_dialog.progress_max)
                     case _:
                         pass
 
@@ -87,6 +92,7 @@ read_queue_data_thread = read_queue_data_Thread(name="MainWindow_index_read_queu
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
     change_enable_component_app_state_signal = QtCore.pyqtSignal()
+
     def close_window_handle(self):
         """
         关闭窗口执行的事件
@@ -632,7 +638,8 @@ class MainWindow_Index(ThemedWindow):
             self.start_dialog = AnimatedLoadingDialog(
                 countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']),
                 title="开始实验", message="正在启动气路...")
-        self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
+
+        # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
         result = self.start_dialog.exec()
         if result == QDialog.DialogCode.Accepted:
             resolve()

@@ -32,7 +32,8 @@ class Gas_State_Check:
         self.send_thread: Send_Message = Send_Message(
             update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,
             send_message=self.send_message)
-
+    def update(self):
+        self.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
     @abc.abstractmethod
     def state_check(self,resolve,reject):
         """
@@ -52,7 +53,7 @@ class UFC_Gas_State_Check(Gas_State_Check):
         UFC 状态检测
         :return:
         """
-        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 状态检测 开始{'-'*50}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 状态检测 开始")
         # resolve()
         #1.端口输出状态是否正确，确认与程序逻辑是否一致，否则报错
         port = global_setting.get_setting("port", None)

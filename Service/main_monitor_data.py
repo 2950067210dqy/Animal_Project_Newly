@@ -391,7 +391,7 @@ class Send_thread(MyQThread):
                 if self.normal_queue_empty:
                     continue
                 if send_message is not None:
-                    logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束{'-' * 100}")
+                    logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束")
                     with lock:
                         if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
                             barrier: threading.Barrier = global_setting.get_setting("barrier")
@@ -407,7 +407,7 @@ class Send_thread(MyQThread):
                             total_messages_processed += 1
                 else:
                     #如果遇到未知错误，则跳过这条报文
-                    logger.error(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束{'-' * 100}")
+                    logger.error(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束")
                     with lock:
 
                         if MESSAGE_BATCH_SIZE == 0 or total_messages_processed % MESSAGE_BATCH_SIZE == 0:
@@ -573,7 +573,7 @@ def barrier_action():
 
     start_time = global_setting.get_setting("start_time_messages_sent_epoch_for_running", time.time())
 
-    logger.warning(f"{'-'*100}|结束时间：{time_util.get_format_from_time(end_time)}|开始时间：{time_util.get_format_from_time(start_time)}|用时：{time_util.format_timedelta(a= datetime.fromtimestamp(end_time),b= datetime.fromtimestamp(start_time),signed=True,zero_pad=True)}|一轮传感器发送报文结束|期间一共发送{ global_setting.get_setting('messages_sent_epoch_for_running', 0)}条报文。")
+    logger.warning(f"一轮结束|结束时间：{time_util.get_format_from_time(end_time)}|开始时间：{time_util.get_format_from_time(start_time)}|用时：{time_util.format_timedelta(a= datetime.fromtimestamp(end_time),b= datetime.fromtimestamp(start_time),signed=True,zero_pad=True)}|一轮传感器发送报文结束|期间一共发送{ global_setting.get_setting('messages_sent_epoch_for_running', 0)}条报文。")
 
     handle = Monitor_Datas_Handle()  # # 创建数据库操作器
     # 去数据库里查询 所有的在这个时间段的数据

@@ -154,15 +154,18 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.UFC_gas_path_system_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         self.UGC_gas_path_system_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         self.ZOS_gas_path_system_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
-
+        self.UFC_gas_path_system_obj.update()
+        self.ZOS_gas_path_system_obj.update()
+        self.UGC_gas_path_system_obj.update()
         self.Zero_carlibration_obj = Zero_Carlibration()
         self.Zero_carlibration_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
+        self.Zero_carlibration_obj.update()
         self.Range_carlibration_obj = Range_Carlibration()
         self.Range_carlibration_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
-
+        self.Range_carlibration_obj.update()
         self.UFC_gas_state_check_obj = UFC_Gas_State_Check()
         self.UFC_gas_state_check_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
-
+        self.UFC_gas_state_check_obj.update()
         global read_queue_data_thread
         read_queue_data_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         read_queue_data_thread.queue = global_setting.get_setting("send_message_queue")
@@ -180,7 +183,14 @@ class UFC_UGC_ZOS_index(MyQThread):
         global auto_wait_event
         auto_wait_event.set()
         auto_wait_event.clear()
+        queue = global_setting.get_setting("queue", None)
+        if queue is not None :
 
+            # 通知主界面将主界面的开始实验弹窗给关闭
+            queue.put(ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index', title='close_start_experiment_dialog',
+
+                                                   time=time_util.get_format_from_time(time.time())))
+            pass
     def start_btn_handle(self):
         p = AsyPromise(self.ZOS_gas_path_system_obj.start).then(
             AsyPromise(

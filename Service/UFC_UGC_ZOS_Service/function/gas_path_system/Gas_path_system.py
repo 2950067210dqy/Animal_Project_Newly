@@ -41,6 +41,8 @@ class Gas_path_system:
         # 发送报文线程
         self.send_thread: Send_Message = Send_Message(update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,send_message=self.send_message)
         pass
+    def update(self):
+        self.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
 
 
     @abc.abstractmethod
@@ -389,8 +391,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             'function_code': '5',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
+
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-运行 1. 切换{str(mouse_cage_number_addr_single ) + '号鼠笼' if mouse_cage_number_addr_single !=0 else str(mouse_cage_number_addr_single ) + '(参考气)'}")
         self.send_thread.send_message = self.send_message
@@ -669,8 +670,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
         }
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
+
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的CO2浓度")
         self.send_thread.send_message = self.send_message
@@ -883,8 +883,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         }
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
+
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的氧浓度")
         self.send_thread.send_message = self.send_message
@@ -973,7 +972,7 @@ class ZOS_gas_path_system(Gas_path_system):
     ZOS 气路系统
     """
     # UFC开始的操作数
-    process_nums =2+2
+    process_nums =2+2+2
     def __init__(self):
         super().__init__()
         # zos启动状态

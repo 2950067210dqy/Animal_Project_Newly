@@ -368,7 +368,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
                 'timeout': 1
             }
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
+                f"{time_util.get_format_from_time(time.time())} ")
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | UFC-运行 1. 切换{str(mouse_cage_number_addr_single + 1) + '号鼠笼' if mouse_cage_number_addr_single < 8 else str(mouse_cage_number_addr_single + 1) + '号鼠笼(参考气)'}")
             self.send_thread.send_message = self.send_message
@@ -545,8 +545,7 @@ class UFC_gas_path_system(Gas_path_system):
     def ufc_start_timer_task(self, elapsed_ms):
         # ufc 气泵及设定鼠笼流量控制器开启 此过程需1分钟，等待流量控制器自动配置及运行
 
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'-' * 100}")
+
 
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms // 1000}s)，等待流量控制器自动配置及运行 .")
@@ -641,8 +640,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
             'function_code': '4',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
+
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取CO2浓度")
         self.send_thread.send_message = self.send_message
@@ -850,8 +848,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             'function_code': '4',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'-' * 500}")
+
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取氧浓度")
         self.send_thread.send_message = self.send_message
@@ -925,7 +922,7 @@ class ZOS_gas_path_system(Gas_path_system):
         else:
             self.zos_start_status = False
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | ZOS 启动状态:{'运行' if self.zos_start_status else '停止（预热）'}{r}{'-' * 100}-end.")
+            f"{time_util.get_format_from_time(time.time())} | ZOS 启动状态:{'运行' if self.zos_start_status else '停止（预热）'}{r}-end.")
 
         resolve()
 
@@ -961,7 +958,7 @@ class ZOS_gas_path_system(Gas_path_system):
     def zos_start_timer_task(self, elapsed_ms):
         # zos启动之后需要预热
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'-' * 100}")
+            f"{time_util.get_format_from_time(time.time())} ")
 
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS 正在预热时间为{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_time'])}s(当前{elapsed_ms // 1000}s)，循环判断zos状态是否完成，预热完成进入运行状态-start.")
