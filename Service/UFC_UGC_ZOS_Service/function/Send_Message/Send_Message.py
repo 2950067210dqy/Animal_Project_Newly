@@ -9,6 +9,8 @@ from public.config_class.global_setting import global_setting
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
+from public.util.time_util import time_util
+
 
 #logger = logger.bind(category="deep_camera_logger")
 class Send_Message:
@@ -54,14 +56,14 @@ class Send_Message:
                     # end_time = time.time()
                     # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
                     #将解析数据返回给主菜单
-                    self.update_status_main_signal_gui_update.send(parser_message)
+                    self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | {parser_message}")
                     return_data['data'].append({'desc': '备注', 'value': None})
                 else:
                     # 将错误信息返回给主菜单
                     if return_data :
                         for data in return_data['data']:
                             if data and data.get('desc') and data.get('desc')=='备注':
-                                self.update_status_main_signal_gui_update.send(data.get('value'))
+                                self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} |{data.get('value')}")
                                 break
                     pass
                 # 把返回数据返回给源头
@@ -117,14 +119,14 @@ class Send_Message:
                     # end_time = time.time()
                     # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
                     # 将解析数据返回给主菜单
-                    self.update_status_main_signal_gui_update.send(parser_message)
+                    self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | {parser_message}")
                     return_data['data'].append({'desc': '备注', 'value': None})
                 else:
                     # 将错误信息返回给主菜单
                     if return_data :
                         for data in return_data['data']:
                             if data and data.get('desc') and data.get('desc')=='备注':
-                                self.update_status_main_signal_gui_update.send(data.get('value'))
+                                self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | {data.get('value')}")
                                 break
                 # 把返回数据返回给源头
                 message_struct = ObjectQueueItem(to="UFC_UGC_ZOS_index",

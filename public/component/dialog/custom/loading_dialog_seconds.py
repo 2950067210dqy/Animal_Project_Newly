@@ -33,7 +33,7 @@ class AnimatedLoadingDialog(QDialog):
         self.setWindowTitle(self.title)
         # 根据是否显示listview调整窗口大小
         if self.show_listview:
-            self.setFixedSize(500, 400)
+            self.setFixedSize(700, 500)
         else:
             self.setFixedSize(400, 200)
 

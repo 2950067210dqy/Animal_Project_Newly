@@ -537,6 +537,16 @@ class UFC_gas_path_system(Gas_path_system):
 
         )
         pass
+    def update(self):
+        super().update()
+        # 开启线程
+        self.ufc_gas_path_system_start_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
+        self.ufc_gas_path_system_start_thread.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
+        self.ufc_gas_path_system_run_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
+        self.ufc_gas_path_system_run_thread.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
+        self.ufc_gas_path_system_close_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
+        self.ufc_gas_path_system_close_thread.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
+
 
     """start start"""
     def start(self,resolve,reject):
@@ -714,6 +724,10 @@ class UGC_gas_path_system(Gas_path_system):
 
         )
         pass
+    def update(self):
+        super().update()
+        self.ugc_gas_path_system_run_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
+        self.ugc_gas_path_system_run_thread.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
     """start start"""
     def start(self,resolve,reject):
         """
@@ -984,6 +998,10 @@ class ZOS_gas_path_system(Gas_path_system):
 
         )
         pass
+    def update(self):
+        super().update()
+        self.zos_gas_path_system_run_thread. update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
+        self.zos_gas_path_system_run_thread.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
     """start start"""
     def judge_zos_start_status(self,resolve,reject,r):
 

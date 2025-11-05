@@ -6,6 +6,7 @@ import sys
 import random
 import time
 
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton,
     QScrollArea, QTableWidget, QTableWidgetItem, QMessageBox, QLabel, QSpinBox, QHBoxLayout, QListWidget, QFileDialog,
@@ -395,17 +396,20 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         for row_idx, record in enumerate(page_records):
             record :dict
             index = 0
+            # 检查是否需要将整行设置为红色 remarks 存在则标红
+            should_highlight_row = False
+            if record.get("remarks") is not None and len(str(record.get("remarks")).strip()) > 3:
+                should_highlight_row=True
             for col_key, col_record in record.items():
                 # 将二氧化碳的值和氧气的值小数点后4位。
                 if "oxygen" in col_key or "CO2" in col_key:
                     item = QTableWidgetItem(f"{col_record:.04f}"  if col_record is not None else None)
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-                    self.table.setItem(row_idx, index, item)
-
                 else:
                     item = QTableWidgetItem(str(col_record))
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-                    self.table.setItem(row_idx, index, item)
+                if should_highlight_row:
+                    item.setForeground(QColor(255, 0, 0))  # 红色
+                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                self.table.setItem(row_idx, index, item)
                 index+=1
         self.table.resizeColumnsToContents()
         # self.current_page=result['page']

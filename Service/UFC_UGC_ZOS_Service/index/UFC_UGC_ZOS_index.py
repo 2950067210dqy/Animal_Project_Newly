@@ -5,6 +5,7 @@ import threading
 import time
 from typing import Any
 
+from blinker.base import _PNamespaceSignal
 from loguru import logger
 from blinker import signal
 
@@ -106,7 +107,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.gas_state_check_timer: PeriodicTimer = None
         self.monitor_start_state_Thread: MyQThread = None
 
-
+        self.update_status_main_signal_gui_update: _PNamespaceSignal=None
         self._init_data()
         self._init_function()
 
@@ -180,6 +181,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.monitor_start_state_Thread.stop()
         self.close_timers()
 
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | 气路启动完成")
         global auto_wait_event
         auto_wait_event.set()
         auto_wait_event.clear()

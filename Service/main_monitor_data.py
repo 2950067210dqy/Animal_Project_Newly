@@ -278,8 +278,8 @@ class Send_thread(MyQThread):
 
 
     def stop(self):
-        if self.modbus is not None:
-            self.modbus.close()
+        # if self.modbus is not None:
+        #     self.modbus.close()
         super().stop()
 
     def set_modbus(self, modbus):
@@ -805,6 +805,7 @@ def stop():
         logger.error("stop_ufc_ugc_zos")
 
         if ufc_ugc_zos_thread is not None:
+            ufc_ugc_zos_thread.stop_btn_handle()
             ufc_ugc_zos_thread.stop()
 
     except Exception as e:
@@ -829,10 +830,10 @@ def stop():
             send_thread.stop()
     except Exception as e:
         logger.error(f"关闭实验监测send_thread错误，原因：{e}")
-    modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
-    if modbus is not None:
-        logger.error("stop_modbus_stop_experiment")
-        modbus.close()
+    # modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+    # if modbus is not None:
+    #     logger.error("stop_modbus_stop_experiment")
+    #     modbus.close()
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     send_message_q = multiprocessing.Queue()

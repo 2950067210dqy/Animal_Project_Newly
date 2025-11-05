@@ -4,6 +4,7 @@ from datetime import datetime
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QStatusBar, QLabel, QProgressBar, QPushButton
 
+from public.component.list_view.Custom_List_view import CustomListView
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import AppState
@@ -133,7 +134,7 @@ class CustomStatusBar(QStatusBar):
             self.status_label.setStyleSheet("QLabel { color: red; }")
             self.addWidget(self.status_label)
         # 添加 tip
-        self.tip_label = QLabel("")
+        self.tip_label = CustomListView()
         self.addWidget(self.tip_label)
         if is_main:
 
@@ -145,7 +146,7 @@ class CustomStatusBar(QStatusBar):
             self.progress_bar = QProgressBar()
             self.progress_bar.setMaximum(100)
             self.progress_bar.setValue(0)
-            self.addWidget(self.progress_bar)  # 将进度条添加为永久小部件
+            # self.addWidget(self.progress_bar)  # 将进度条添加为永久小部件
 
         self.tip_btn = QPushButton("教程帮助")
         self.tip_btn.setStyleSheet("QPushButton { font-weight:bolder; font-size: 15px;padding: 5px; }")
@@ -164,7 +165,7 @@ class CustomStatusBar(QStatusBar):
             self.update_experiment_time_main_signal_gui_update.connect(self.update_experiment_time_gui_update)
 
     def update_tip(self, message):
-        self.tip_label.setText(message)
+        self.tip_label.insert_data(message)
     def update_setting_file_name(self,message):
         self.setting_file_name_label.setText(message)
     def set_progress(self, value):
