@@ -735,9 +735,9 @@ class UGC_gas_path_system(Gas_path_system):
         :return:
         """
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UGC 正在启动{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UGC 正在启动")
 
-        # 1.读取系统状态
+        # 1.开泵抽气（正式开机）
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
@@ -750,7 +750,8 @@ class UGC_gas_path_system(Gas_path_system):
             'function_code': '5',
             'timeout': 1
         }
-
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UGC 正在启动-1.开泵抽气（正式开机）")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             lambda r: resolve(r)
@@ -758,6 +759,7 @@ class UGC_gas_path_system(Gas_path_system):
 
         pass
         pass
+
     """start end"""
     """run start"""
     def run(self,resolve,reject):
@@ -1019,7 +1021,7 @@ class ZOS_gas_path_system(Gas_path_system):
         :return:
         """
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在启动{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在启动")
         #1.读取系统状态
         port = global_setting.get_setting("port", None)
         if port is None:
@@ -1034,6 +1036,7 @@ class ZOS_gas_path_system(Gas_path_system):
         }
 
         self.send_thread.send_message = self.send_message
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在启动 1.读取系统状态")
         AsyPromise(self.send_thread.Send).then(
            lambda r:AsyPromise(self.judge_zos_start_status,r=r)
         ).catch(lambda e:reject(e))
