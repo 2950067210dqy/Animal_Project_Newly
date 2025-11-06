@@ -140,12 +140,8 @@ class Table_select_columns_paging_bottom(ThemedWindow):
 
 
 
-        self.zero_calibration_btn =QPushButton("校零")
-        self.range_calibration_btn = QPushButton("校量程")
-        self.calibration_btn = QPushButton("校零且量程")
-        pager_layout.addWidget(self.zero_calibration_btn)
-        pager_layout.addWidget(self.range_calibration_btn)
-        pager_layout.addWidget(self.calibration_btn)
+
+
 
         # 每页显示条数：SpinBox 或 ComboBox
         pager_layout.addWidget(QLabel(" 每页显示"))
@@ -181,78 +177,14 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         # 将表格放入滚动区域
         self.scroll_area.setWidget(self.table)
 
-        # Scroll area2 包含 QListView
 
-        h_layout = QHBoxLayout()
-        tip_label=QLabel("操作（操作必须手动导出数据，否则停止实验和关闭程序不会导出操作数据！）:")
-        # 创建导出按钮
-        self.export_button = QPushButton("导出操作")
-        self.export_button.setMaximumHeight(40)
-        h_layout.addWidget(tip_label)
-        h_layout.addWidget(self.export_button)
-        main_vbox.addLayout(h_layout)
 
-        self.scroll_area_2 = QScrollArea()
-        self.scroll_area_2.setWidgetResizable(True)
-        # 创建滚动区域内的内容窗口部件
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
-
-        # 创建 QListWidget
-        self.list_widget = QListWidget()
-        self.list_widget.setMinimumHeight(300)
-
-        # 添加组件到滚动布局
-        scroll_layout.addWidget(self.list_widget)
-
-        # 设置滚动区域的内容
-        self.scroll_area_2.setWidget(scroll_content)
-        main_vbox.addWidget(self.scroll_area_2,stretch=1)
         # 初始时分页器不可用，直到表头被置换
         self.set_pager_enabled(False)
     def _init_function(self):
-        # 绑定按钮事件
-        self.zero_calibration_btn.clicked.connect(self.zero_calibration_start)
-        self.range_calibration_btn.clicked.connect(self.range_calibration_start)
-        self.calibration_btn.clicked.connect(self.calibration_start)
-        self.export_button.clicked.connect(self.export_opera_data)
+
         pass
-    def export_opera_data(self):
-        """导出所有操作数据功能"""
-        try:
-            # 获取文件保存路径
-            file_path, _ = QFileDialog.getSaveFileName(
-                self,
-                "保存所有数据",
-                "all_data.txt",
-                "文本文件 (*.txt);;所有文件 (*)"
-            )
 
-            if file_path:
-                # 获取列表中的所有数据
-                all_items = []
-                for i in range(self.list_widget.count()):
-                    item = self.list_widget.item(i)
-                    all_items.append(item.text())
-
-                # 写入文件
-                with open(file_path, 'w', encoding='utf-8') as file:
-                    for item_text in all_items:
-                        file.write(item_text + '\n')
-
-                QMessageBox.information(
-                    self,
-                    "导出成功",
-                    f"已导出 {len(all_items)} 项数据到:\n{file_path}"
-                )
-
-        except Exception as e:
-            QMessageBox.critical(
-                self,
-                "导出失败",
-                f"导出过程中发生错误:\n{str(e)}"
-            )
-        pass
     # ---------- 属性辅助 ----------
     @property
     def total_pages(self) -> int:
@@ -435,41 +367,7 @@ class Table_select_columns_paging_bottom(ThemedWindow):
 
     # 如果需要对外提供刷新数据的接口，可以添加方法从数据源重新加载 self.data / self.total_items
     # 并在替换表头后或数据变化时调用 self.go_to_page(1) 或 self.update_page() 来刷新界面。
-    def zero_calibration_start(self):
-        #校0按钮事件
-        send_message_queue = global_setting.get_setting("send_message_queue")
-        send_message_queue.put(ObjectQueueItem(origin='Table_select_columns_paging_bottom', to='main_monitor_data', title='start_zero_calibration',
-                                               data=None,
-                                               time=time_util.get_format_from_time(time.time())))
-        self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-校0按钮被点击时间")
-        msg_box = InfoDialog(title="校0", info=f"确认校0开始，校准完成还需要至少4轮次时间，请耐心等待", icon=QMessageBox.Icon.Information)
-        msg_box.exec()
 
-        pass
-    def range_calibration_start(self):
-        #校span按钮事件
-        #校0按钮事件
-        send_message_queue = global_setting.get_setting("send_message_queue")
-        send_message_queue.put(ObjectQueueItem(origin='Table_select_columns_paging_bottom', to='main_monitor_data', title='start_span_calibration',
-                                               data=None,
-                                               time=time_util.get_format_from_time(time.time())))
-        self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-校span按钮被点击时间")
-        msg_box = InfoDialog(title="校span", info=f"确认校span开始，校准完成还需要至少3-4轮次时间，请耐心等待", icon=QMessageBox.Icon.Information)
-        msg_box.exec()
-
-        pass
-    def calibration_start(self):
-        #校0校span按钮事件
-        #校0按钮事件
-        send_message_queue = global_setting.get_setting("send_message_queue")
-        send_message_queue.put(ObjectQueueItem(origin='Table_select_columns_paging_bottom', to='main_monitor_data', title='start_calibration',
-                                               data=None,
-                                               time=time_util.get_format_from_time(time.time())))
-        self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-校0和校span按钮被点击时间")
-        msg_box = InfoDialog(title="校0和校span", info=f"确认校0和校span开始，校准完成还需要至少3-5轮次时间，请耐心等待", icon=QMessageBox.Icon.Information)
-        msg_box.exec()
-
-        pass
 
 
 def main():

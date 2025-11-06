@@ -356,7 +356,7 @@ class AnimatedLoadingDialog(QDialog):
             self.timer.stop()
 
         # 延迟2000ms后关闭对话框
-        QTimer.singleShot(2000, self.accept)
+        QTimer.singleShot(500, self.accept)
 
     def get_progress_value(self):
         """

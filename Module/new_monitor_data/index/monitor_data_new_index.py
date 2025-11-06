@@ -1,3 +1,4 @@
+import time
 import typing
 
 from PyQt6 import QtGui, QtWidgets
@@ -16,11 +17,63 @@ from public.component.dock_widget.DraggableWindow import DemoDraggableDockWidget
 from public.component.paging_exportcsv_table_widget import TableWidgetPaging
 from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
+from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import Tutorial_Type
 from public.entity.experiment_setting_entity import Experiment_setting_entity
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
+from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
+class read_queue_data_Thread(MyQThread):
+    def __init__(self, name,window=None):
+        super().__init__(name)
+        self.queue = None
+        self.window:Monitor_data_new_index = window
+        pass
 
+    def stop(self):
+
+        super().stop()
+    def dosomething(self):
+        if not self.queue.empty():
+            # logger.error(f"{self.queue.qsize()}")
+            message:ObjectQueueItem = self.queue.get()
+            # logger.error(f"{self.name}_get_message:{message}|")
+            if message is not None and message.is_Empty():
+                return
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'monitor_data_new_index':
+                logger.error(f"{self.name}_get_message:{message}")
+                match message.title:
+                    case 'zero_calibration_finish':
+                        """
+                        零点标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_zero_calibration_btn()
+                            self.window.left_top_widget_content.list_widget.insertItem(0,
+                                                        f"{time_util.get_format_from_time(time.time())}-校零完成时间")
+                    case 'range_calibration_finish':
+                        """
+                        量程标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_range_calibration_btn()
+                            self.window.left_top_widget_content.list_widget.insertItem(0,
+                                                                                       f"{time_util.get_format_from_time(time.time())}-校量程完成时间")
+                    case _:
+                        pass
+
+
+
+
+            else:
+                # 把消息放回去
+                self.queue.put(message)
+
+        pass
+
+
+read_queue_data_thread = read_queue_data_Thread(name="monitor_data_new_index_read_queue_data_thread")
 
 class Monitor_data_new_index(ThemedWindow):
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
@@ -29,7 +82,9 @@ class Monitor_data_new_index(ThemedWindow):
             if widget is not None and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.pause()
         pass
-
+        global read_queue_data_thread
+        if read_queue_data_thread is not None and read_queue_data_Thread.isRunning():
+            read_queue_data_thread.pause()
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         for widget in self.left_top_widget_content._docks_widget:
             widget: Table_select_columns_paging_bottom
@@ -37,6 +92,8 @@ class Monitor_data_new_index(ThemedWindow):
                 widget.data_fetcher_thread.resume()
             elif widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.start()
+        if read_queue_data_thread is not None :
+            read_queue_data_thread.resume()
         pass
 
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
@@ -133,7 +190,12 @@ class Monitor_data_new_index(ThemedWindow):
         self.ui = Ui_monitor_data_new()
         self.ui.setupUi(self)
         self._retranslateUi()
-
+    def _init_function(self):
+        global read_queue_data_thread
+        read_queue_data_thread.window = self
+        read_queue_data_thread.queue = global_setting.get_setting("send_message_queue")
+        if read_queue_data_thread is not None and not read_queue_data_thread.isRunning():
+            read_queue_data_thread.start()
     def _init_customize_ui(self) -> None:
         # 删除原有的中央widget
         self.delete_central_widget()

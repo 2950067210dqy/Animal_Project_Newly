@@ -8,8 +8,8 @@ class CustomListView(QMainWindow):
     def __init__(self):
         super().__init__()
         self.max_items = 100  # 最大数据条数
-        self.single_row_height = 20  # 单行高度
-        self.expanded_height = 450  # 展开时的高度（约15行）
+        self.single_row_height = 25  # 单行高度
+        self.expanded_height = 550  # 展开时的高度（约15行）
         self.default_height = self.single_row_height * 2  # 默认显示2行
         self.is_expanded = False  # 是否展开状态
         self._init_ui()

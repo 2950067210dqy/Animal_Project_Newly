@@ -134,8 +134,8 @@ class CustomStatusBar(QStatusBar):
             self.status_label.setStyleSheet("QLabel { color: red; }")
             self.addWidget(self.status_label)
         # 添加 tip
-        self.tip_label = CustomListView()
-        self.addWidget(self.tip_label)
+        self.tip_label =None
+        # self.addWidget(self.tip_label)
         if is_main:
 
             # 添加当前实验设置文件显示
@@ -165,6 +165,9 @@ class CustomStatusBar(QStatusBar):
             self.update_experiment_time_main_signal_gui_update.connect(self.update_experiment_time_gui_update)
 
     def update_tip(self, message):
+        if self.tip_label is None:
+            self.tip_label = CustomListView()
+            self.addWidget(self.tip_label)
         self.tip_label.insert_data(message)
     def update_setting_file_name(self,message):
         self.setting_file_name_label.setText(message)

@@ -11,6 +11,7 @@ from loguru import logger
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
 
 from public.config_class.global_setting import global_setting
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Type import Others_Tables
 from public.function.Monitor_data_storage.DataStorage import store_data_with_result
 
@@ -269,10 +270,23 @@ class Zero_Carlibration(Gas_Carlibration):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  零点标定 7 ugc sample电磁阀打开")
         AsyPromise(self.send_thread.Send).then(
-            # 7 ugc sample电磁阀打开。
-            lambda r: resolve()
+            # 8 标定完成。
+            AsyPromise(self.finish_calibration).then(
+                lambda r: resolve()
+            ).catch(lambda e: reject(e))
+
         ).catch(lambda e: reject(e))
         pass
+    def finish_calibration(self,resolve,reject):
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} |  零点标定 8 标定完成")
+        # 标定完成通知
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        send_message_queue.put(ObjectQueueItem(origin='Gas_Carlibration', to='monitor_data_new_index',
+                                               title='zero_calibration_finish',
+                                               data=None,
+                                               time=time_util.get_format_from_time(time.time())))
+        resolve()
 class Range_Carlibration(Gas_Carlibration):
     """
     量程标定
@@ -440,8 +454,22 @@ class Range_Carlibration(Gas_Carlibration):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 7. ugc sample电磁阀打开")
         AsyPromise(self.send_thread.Send).then(
-            # 7 ugc sample电磁阀打开。
-            lambda r: resolve()
+            # 8 标定完成
+            AsyPromise(self.finish_calibration).then(
+                lambda r: resolve()
+            ).catch(lambda e: reject(e))
         ).catch(lambda e: reject(e))
         pass
+
+    def finish_calibration(self, resolve, reject):
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 8 标定完成")
+        # 标定完成通知
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        send_message_queue.put(ObjectQueueItem(origin='Gas_Carlibration', to='monitor_data_new_index',
+                                               title='range_calibration_finish',
+                                               data=None,
+                                               time=time_util.get_format_from_time(time.time())))
+        resolve()
     pass
+
