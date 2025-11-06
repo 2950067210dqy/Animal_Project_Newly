@@ -93,11 +93,7 @@ class MonitorDataWindows(ThemedWidget):
                     self.is_all_calibration=False
                     self.calibration_btn.setDisabled(False)
         else:
-            if (
-                    (not self._is_zero_calibration and  self._is_range_calibration)
-                    or
-                    (self._is_zero_calibration and not  self._is_range_calibration)
-                ):
+            if not self._is_zero_calibration or not  self._is_range_calibration:
                 if self.calibration_btn is not None:
                     self.calibration_btn.setDisabled(False)
     def __init__(self):
@@ -315,7 +311,7 @@ class MonitorDataWindows(ThemedWidget):
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))
         self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-校0按钮被点击时间")
-        msg_box = InfoDialog(title="校0", info=f"确认校0开始，校准完成还需要至少4轮次时间，请耐心等待",
+        msg_box = InfoDialog(title="校0", info=f"确认校0开始，校准完成还需要至少6-8轮次时间，请耐心等待",
                              icon=QMessageBox.Icon.Information)
         msg_box.exec()
 
@@ -331,7 +327,7 @@ class MonitorDataWindows(ThemedWidget):
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))
         self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-校span按钮被点击时间")
-        msg_box = InfoDialog(title="校span", info=f"确认校span开始，校准完成还需要至少3-4轮次时间，请耐心等待",
+        msg_box = InfoDialog(title="校span", info=f"确认校span开始，校准完成还需要至少6-8轮次时间，请耐心等待",
                              icon=QMessageBox.Icon.Information)
         msg_box.exec()
 
@@ -350,7 +346,7 @@ class MonitorDataWindows(ThemedWidget):
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))
         self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-校0和校span按钮被点击时间")
-        msg_box = InfoDialog(title="校0和校span", info=f"确认校0和校span开始，校准完成还需要至少3-5轮次时间，请耐心等待",
+        msg_box = InfoDialog(title="校0和校span", info=f"确认校0和校span开始，校准完成还需要至少12-16轮次时间，请耐心等待",
                              icon=QMessageBox.Icon.Information)
         msg_box.exec()
 

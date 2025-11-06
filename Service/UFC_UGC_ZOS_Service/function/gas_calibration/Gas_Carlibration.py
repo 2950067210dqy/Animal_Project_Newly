@@ -119,8 +119,8 @@ class Zero_Carlibration(Gas_Carlibration):
         #小于阈值稳定0 或者 至少循环60秒
         while (
                 (
-                        (now_oxygen_value is  None and now_carbon_value is  None) or
-                        (last_carbon_value is None and last_oxygen_value is None) or
+                        (now_oxygen_value is  None or now_carbon_value is  None) or
+                        (last_carbon_value is None or last_oxygen_value is None) or
 
                         (
                                 abs(now_oxygen_value - last_oxygen_value) > float(
