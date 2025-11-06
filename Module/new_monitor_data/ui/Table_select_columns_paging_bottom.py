@@ -65,7 +65,7 @@ class DataFetcher(MyQThread):
         datas = self.handle.query_epoch_data_all_tables_paging(gid=self.gid,page=self.page,page_size=self.page_size,all_column_datas=self.all_column_datas)
         if datas is None:
             datas = []
-        # logger.error(f"get_data:{datas}")
+
         self.data_fetched.emit(datas)
 
         time.sleep(0.3)  # 每秒获取一次数据
@@ -327,6 +327,7 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         # 填充当前页的行
         for row_idx, record in enumerate(page_records):
             record :dict
+            # logger.error(f"{record}")
             index = 0
             # 检查是否需要将整行设置为红色 remarks 存在则标红
             should_highlight_row = False
@@ -335,9 +336,14 @@ class Table_select_columns_paging_bottom(ThemedWindow):
             for col_key, col_record in record.items():
                 # 将二氧化碳的值和氧气的值小数点后4位。
                 if "oxygen" in col_key or "CO2" in col_key:
-                    item = QTableWidgetItem(f"{col_record:.04f}"  if col_record is not None else None)
+                    # 区分校0和校span的氧气 因为他们的值有可能是字符串
+                    if isinstance(col_record,str):
+                        #校0和校span的氧气
+                        item = QTableWidgetItem(str(col_record) if not isinstance(col_record, str) else col_record)
+                    else:
+                        item = QTableWidgetItem(f"{col_record:.04f}"  if col_record is not None else str(None))
                 else:
-                    item = QTableWidgetItem(str(col_record))
+                    item = QTableWidgetItem(str(col_record) if not isinstance(col_record,str) else col_record)
                 if should_highlight_row:
                     item.setForeground(QColor(255, 0, 0))  # 红色
                 item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)

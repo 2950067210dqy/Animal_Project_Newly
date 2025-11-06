@@ -83,7 +83,7 @@ class Zero_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |  零点标定 1.ugc sample电磁阀关闭")
         AsyPromise(self.send_thread.Send).then(
             # 2.校零气路（Zero气）电磁阀开
-            lambda r: AsyPromise(self.solenoid_valve_of_zero_gas_open,port=port),resolve()
+            lambda r: AsyPromise(self.solenoid_valve_of_zero_gas_open,port=port)
         ).catch(lambda e: print(e))
         pass
     #2.校零气路（Zero气）电磁阀开
@@ -101,7 +101,7 @@ class Zero_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |  零点标定 2.校零气路（Zero气）电磁阀开")
         AsyPromise(self.send_thread.Send).then(
             # 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。
-            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor_and_zos_oxygen_sensor, port=port),resolve()
+            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor_and_zos_oxygen_sensor, port=port)
         ).catch(lambda e: reject(e))
         pass
     # 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。
@@ -192,7 +192,7 @@ class Zero_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |  零点标定 4.二氧化碳零点设置")
         AsyPromise(self.send_thread.Send).then(
             # 5.氧浓传感器零点记录。
-            lambda r: AsyPromise(self.zero_point_recording_of_oxygen_sensor, port=port),resolve()
+            lambda r: AsyPromise(self.zero_point_recording_of_oxygen_sensor, port=port)
         ).catch(lambda e: reject(e))
         pass
     # 5.氧浓传感器零点记录。
@@ -211,7 +211,7 @@ class Zero_Carlibration(Gas_Carlibration):
         now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气传感器测量值" in item['desc']]
         now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  零点标定 5.氧浓传感器零点记录值{now_oxygen_value}")
+            f"{time_util.get_format_from_time(time.time())} |  零点标定 5.氧浓传感器零点记录值{now_oxygen_value}，oxygen_data：{oxygen_data}，now_oxygen_values：{now_oxygen_values}")
         # 存储值----------------------------------------------------
         return_data_struct={}
         return_data_struct['module_name']='ZeroCalibration'
@@ -219,20 +219,24 @@ class Zero_Carlibration(Gas_Carlibration):
         return_data_struct['table_name'] = next(iter(Others_Tables.Zero_Carlibration_Data.value.keys()))
         return_data_struct['mouse_cage_number']=-1
         # 添加Vzero参数到全局变量 方便氧传感器的值校准
+        try:
+            if now_oxygen_value is None:
+                now_oxygen_value=[data['value'] for data in oxygen_data['data'] if data['desc'] =="备注"]
+                if len(now_oxygen_value)==0:
+                    now_oxygen_value=None
+                else:
+                    now_oxygen_value=now_oxygen_value[0]
+                logger.critical(f"zero_calibration_None:{now_oxygen_value}")
+                return_data_struct['data'] =oxygen_data['data']+ [{'desc': '氧浓度0点校准值', 'value':now_oxygen_value}]
 
-        if now_oxygen_value is None:
-            now_oxygen_value=[data['value'] for data in oxygen_data['data'] if data['desc'] =="备注"]
-            if len(now_oxygen_value)==0:
-                now_oxygen_value=None
             else:
-                now_oxygen_value=now_oxygen_values[0]
-            logger.critical(f"zero_calibration_None:{now_oxygen_value}")
-            return_data_struct['data'] =oxygen_data['data']+ [{'desc': '氧浓度0点校准值', 'value':now_oxygen_value}]
-
-        else:
-            logger.critical(f"zero_calibration:{now_oxygen_value}")
-            global_setting.set_setting("Vzero", now_oxygen_value)
+                logger.critical(f"zero_calibration:{now_oxygen_value}")
+                global_setting.set_setting("Vzero", now_oxygen_value)
+                return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value}]
+        except Exception as e:
             return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value}]
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} |  零点标定 5.出错，错误：{e} |氧浓传感器零点记录值{now_oxygen_value}，oxygen_data：{oxygen_data}，now_oxygen_values：{now_oxygen_values}")
         return_data_struct['slave_id']=0
         return_data_struct['function_code']=0
         result = store_data_with_result(return_data_struct, need_result=True, timeout=5)
@@ -254,7 +258,7 @@ class Zero_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 7 ugc sample电磁阀打开。
             lambda r: AsyPromise(self.ugc_sample_open, port=port
-                               ),resolve()
+                               )
         ).catch(lambda e: reject(e))
         pass
     # 7 ugc sample电磁阀打开
@@ -317,7 +321,7 @@ class Range_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |   SPan量程标定 1.ugc sample电磁阀关闭")
         AsyPromise(self.send_thread.Send).then(
             # 2.ugc span电磁阀打开。
-            lambda r: AsyPromise(self.ugc_span_open,port=port),resolve()
+            lambda r: AsyPromise(self.ugc_span_open,port=port)
         ).catch(lambda e: print(e))
         pass
     def ugc_span_open(self,resolve,reject,port):
@@ -335,7 +339,7 @@ class Range_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |   SPan量程标定 2.ugc span电磁阀打开。")
         AsyPromise(self.send_thread.Send).then(
             # 3.循环采样zos氧浓度
-            lambda r: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=port),resolve()
+            lambda r: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=port)
         ).catch(lambda e: print(e))
         pass
     def cyclic_sampling_of_zos_oxygen_sensor(self,resolve,reject,port):
@@ -406,7 +410,7 @@ class Range_Carlibration(Gas_Carlibration):
         #K=（Vs-Vzero）/（Vr-Vzero）
         if now_oxygen_value is not None:
             K =(now_oxygen_value-global_setting.get_setting("Vzero",0))/(global_setting.get_setting("Vr",20.9)-global_setting.get_setting("Vzero",0))
-            logger.warning(f"量程标定的K值为：{K}")
+            logger.warning(f"量程标定的K值为：{K},Vs值为：{now_oxygen_value}，Vr值为：{global_setting.get_setting('Vr',20.9)},Vzero值为：{global_setting.get_setting('Vzero',0)}")
             global_setting.set_setting("K",K )
             return_data_struct['data'] = [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value}]
         else:
@@ -414,7 +418,7 @@ class Range_Carlibration(Gas_Carlibration):
             if len(now_oxygen_value) == 0:
                 now_oxygen_value = None
             else:
-                now_oxygen_value = now_oxygen_values[0]
+                now_oxygen_value = now_oxygen_value[0]
             logger.critical(f"span_calibration:{now_oxygen_value}")
             return_data_struct['data'] =oxygen_data['data']+ [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value}]
         return_data_struct['slave_id'] = 0
@@ -438,7 +442,7 @@ class Range_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 7 ugc sample电磁阀打开。
             lambda r: AsyPromise(self.ugc_sample_open, port=port
-                                 ),resolve()
+                                 )
         ).catch(lambda e: reject(e))
 
     # 7 ugc sample电磁阀打开

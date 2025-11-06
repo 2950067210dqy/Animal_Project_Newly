@@ -38,8 +38,12 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if not self.queue.empty():
-            message: ObjectQueueItem = self.queue.get()
-            # message 结构{'to'发往哪个线程，'data'数据，'from'从哪来}
+            try:
+                message: ObjectQueueItem = self.queue.get()
+            except Exception as e:
+                logger.error(f"{self.name}发生错误{e}")
+                return
+                # message 结构{'to'发往哪个线程，'data'数据，'from'从哪来}
 
             if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'UFC_UGC_ZOS_index':
                 # logger.error(f"{self.name}_get_message:{message}")
@@ -232,7 +236,7 @@ class UFC_UGC_ZOS_index(MyQThread):
 
         p = AsyPromise(self.UFC_gas_path_system_obj.run).then(
             lambda v: AsyPromise(
-                self.UGC_gas_path_system_obj.run,
+                self.UGC_gas_path_system_obj.run
             ).then(
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.run)
                 # .then(
@@ -311,9 +315,11 @@ class UFC_UGC_ZOS_index(MyQThread):
         :return:
         """
         p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
-            lambda v: AsyPromise(
+            AsyPromise(
                 self.Range_carlibration_obj.calibrate
-            ).then().catch(lambda e: logger.error(f"{e}"))
+            ).then(
+                lambda r:r()
+            ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
         return  p
     def gas_state_check_handle(self):

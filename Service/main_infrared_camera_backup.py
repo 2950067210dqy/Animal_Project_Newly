@@ -71,7 +71,11 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if not self.queue.empty():
-            message = self.queue.get()
+            try:
+                message = self.queue.get()
+            except Exception as e:
+                logger.error(f"{self.name}发生错误{e}")
+                return
             if message is not None and isinstance(message, dict) and len(message) > 0 and 'to' in message and message[
                 'to'] == 'main_infrared_camera':
                 logger.error(f"{self.name}_get_message:{message}")

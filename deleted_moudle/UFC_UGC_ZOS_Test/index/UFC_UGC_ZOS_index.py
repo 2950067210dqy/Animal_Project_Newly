@@ -138,7 +138,11 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if not self.queue.empty():
-            message:ObjectQueueItem = self.queue.get()
+            try:
+                message: ObjectQueueItem = self.queue.get()
+            except Exception as e:
+                logger.error(f"{self.name}发生错误{e}")
+                return
             # message 结构{'to'发往哪个线程，'data'数据，‘from'从哪来}
 
             if message is not None and isinstance(message, ObjectQueueItem) and message.to== 'UFC_UGC_ZOS_index':

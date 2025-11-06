@@ -58,12 +58,16 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if self.queue and  not self.queue.empty():
-            message:ObjectQueueItem = self.queue.get()
+            try:
+                message: ObjectQueueItem = self.queue.get()
+            except Exception as e:
+                logger.error(f"{self.name}发生错误{e}")
+                return
 
             if message is not None and message.is_Empty():
                 return
             if message is not None and isinstance(message, ObjectQueueItem) and message.to=='MainWindow_index':
-                logger.error(f"{self.name}_get_message:{message}")
+                # logger.error(f"{self.name}_get_message:{message}")
                 match message.title:
                     case "gap_system_running_state":
                         if message.data  and self.window:
@@ -642,13 +646,13 @@ class MainWindow_Index(ThemedWindow):
         pass
     def show_dialog(self,resolve,reject):
         if self.start_dialog is None:
-            self.start_dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']),title="开始实验",message="正在启动气路...")
+            self.start_dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+15,title="开始实验",message="正在启动气路...")
         else:
             self.start_dialog.reset_progress()
             self.start_dialog.clear_list_data()
             self.start_dialog.deleteLater()
             self.start_dialog = AnimatedLoadingDialog(
-                countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']),
+                countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+15,
                 title="开始实验", message="正在启动气路...")
 
         # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)

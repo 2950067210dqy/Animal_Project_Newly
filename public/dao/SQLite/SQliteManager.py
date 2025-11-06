@@ -362,7 +362,7 @@ class SQLiteManager:
         results_dict = {}
         all_columns = ['time']
         start_time_f = datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        end_time_f = datetime.datetime.fromtimestamp(end_time + 100).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        end_time_f = datetime.datetime.fromtimestamp(end_time +10).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
         with self.execute_transaction(auto_commit=True) as cursor:
             for table in tables:

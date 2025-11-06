@@ -1,13 +1,16 @@
 import sys
 from PyQt6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout,
                              QLabel, QProgressBar, QPushButton, QListView, QMessageBox)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QStandardItemModel, QStandardItem
-from loguru import logger
 
 
 class AnimatedLoadingDialog(QDialog):
-    insert_data_signal=pyqtSignal(str)
+    # 定义信号，确保线程安全
+    progress_updated = pyqtSignal(int)
+    insert_data_signal = pyqtSignal(str)
+    task_completed_signal = pyqtSignal()
+
     def __init__(self, countdown_seconds=10, message="正在加载数据...", title="系统加载中", show_listview=True):
         super().__init__()
         self.countdown_seconds = countdown_seconds
@@ -21,19 +24,26 @@ class AnimatedLoadingDialog(QDialog):
         self.progress_max = 100
         self.use_manual_progress = False  # 是否使用手动进度控制
         self.task_completed = False  # 任务是否完成标志
+        self.is_closing = False  # 防止重复关闭
 
         self.init_ui()
         self.init_listview()
+        self.connect_signals()
         self.start_countdown()
         if not self.use_manual_progress:
             self.start_progress_animation()
-        self.insert_data_signal.connect(self.insert_list_data)
+
+    def connect_signals(self):
+        """连接信号到槽函数，确保线程安全"""
+        self.progress_updated.connect(self._update_progress_ui)
+        self.insert_data_signal.connect(self._insert_data_ui)
+        self.task_completed_signal.connect(self._complete_task_ui)
 
     def init_ui(self):
         self.setWindowTitle(self.title)
         # 根据是否显示listview调整窗口大小
         if self.show_listview:
-            self.setFixedSize(700, 500)
+            self.setFixedSize(500, 400)
         else:
             self.setFixedSize(400, 200)
 
@@ -152,43 +162,38 @@ class AnimatedLoadingDialog(QDialog):
             self.progress_timer.start(100)  # 每100ms更新一次进度条
 
     def update_countdown(self):
+        if self.is_closing:
+            return
+
         self.current_seconds -= 1
         self.countdown_label.setText(f"剩余时间: {self.current_seconds}s")
 
-        # 如果使用手动进度控制，检查任务是否完成
-        if self.use_manual_progress and not self.task_completed:
-            # 根据剩余时间改变消息（但不影响手动任务）
-            if self.current_seconds <= 3:
-                if not self.task_completed:
-                    pass  # 保持当前消息，不覆盖任务状态消息
-            elif self.current_seconds <= 5:
-                if not self.task_completed:
-                    pass  # 保持当前消息，不覆盖任务状态消息
-        else:
-            # 自动模式下的消息更新
-            if self.current_seconds <= 3:
-                self.message_label.setText("即将完成...")
-            elif self.current_seconds <= 5:
-                self.message_label.setText("正在处理最后步骤...")
+        # 根据剩余时间更新消息
+        if self.current_seconds <= 3 and not self.task_completed:
+            self.message_label.setText("即将超时...")
+        elif self.current_seconds <= 5 and not self.task_completed:
+            self.message_label.setText("正在处理最后步骤...")
 
+        # 倒计时结束处理
         if self.current_seconds <= 0:
             self.timer.stop()
             if hasattr(self, 'progress_timer'):
                 self.progress_timer.stop()
 
-            # 检查是否使用手动进度控制且任务未完成
-            if self.use_manual_progress and not self.task_completed:
+            # 修正逻辑：只有在任务未完成时才显示超时错误
+            if not self.task_completed:
+ # 调试信息
                 self.show_timeout_error()
             else:
-                # 正常完成
+
+                # 任务已完成，正常关闭
                 self.progress_bar.setValue(100)
                 self.message_label.setText("加载完成！")
-                # 延迟500ms后关闭对话框
-                QTimer.singleShot(500, self.accept)
+                QTimer.singleShot(500, self._safe_accept)
 
     def update_progress(self):
         """更新进度条（基于倒计时）"""
-        if not self.use_manual_progress:
+        if not self.use_manual_progress and not self.is_closing:
             elapsed_time = self.countdown_seconds - self.current_seconds
             progress = int((elapsed_time / self.countdown_seconds) * 100)
             self.progress_bar.setValue(min(progress, 100))
@@ -196,41 +201,76 @@ class AnimatedLoadingDialog(QDialog):
     def show_timeout_error(self):
         """显示超时错误弹窗"""
 
+
+        if self.is_closing:
+            return
+
+
+
+        # 创建消息框
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Icon.Critical)
-        msg_box.setWindowTitle("任务超时")
-        msg_box.setText("任务执行超时！")
-        msg_box.setInformativeText("任务未能在规定时间内完成，请检查网络连接或重试。")
+        msg_box.setWindowTitle("启动超时")
+        msg_box.setText("启动执行超时！")
+        msg_box.setInformativeText("启动未能在规定时间内完成。")
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg_box.setDefaultButton(QMessageBox.StandardButton.Ok)
 
+        # 确保消息框显示在前面
+        msg_box.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint)
+
         # 设置弹窗样式
         msg_box.setStyleSheet("""
-            QMessageBox {
-                background-color: #f0f0f0;
-            }
-            QMessageBox QLabel {
-                color: #333;
-            }
-            QPushButton {
-                background-color: #007acc;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                min-width: 60px;
-            }
-            QPushButton:hover {
-                background-color: #005c99;
-            }
-        """)
+                    QMessageBox {
+                        background-color: #f0f0f0;
+                    }
+                    QMessageBox QLabel {
+                        color: #333;
+                        font-size: 12px;
+                    }
+                    QPushButton {
+                        background-color: #007acc;
+                        color: white;
+                        border: none;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                        min-width: 60px;
+                        font-size: 12px;
+                    }
+                    QPushButton:hover {
+                        background-color: #005c99;
+                    }
+                """)
+
+
 
         # 显示弹窗并等待用户点击
         result = msg_box.exec()
-        if result == QMessageBox.StandardButton.Ok:
-            self.reject()  # 关闭主窗口
 
-    # ==================== QListView 相关接口 ====================
+
+        # 用户点击OK后关闭对话框
+        # if result == QMessageBox.StandardButton.Ok:
+
+        self._safe_reject()
+
+
+    def _safe_accept(self):
+        """安全地接受对话框"""
+        if not self.is_closing:
+            self.is_closing = True
+
+            self.accept()
+
+
+    def _safe_reject(self):
+        """安全地拒绝对话框"""
+        if not self.is_closing:
+            self.is_closing = True
+
+            self.reject()
+
+        # ==================== QListView 相关接口 ====================
+
 
     def show_listview(self):
         """显示QListView"""
@@ -241,6 +281,7 @@ class AnimatedLoadingDialog(QDialog):
             self.setFixedSize(500, 400)
             self.center_on_screen()
 
+
     def hide_listview(self):
         """隐藏QListView"""
         if self.show_listview:
@@ -250,23 +291,28 @@ class AnimatedLoadingDialog(QDialog):
             self.setFixedSize(400, 200)
             self.center_on_screen()
 
+
     def insert_list_data(self, data):
         """
-        插入数据到QListView最前面
+        插入数据到QListView最前面（线程安全）
 
         Args:
             data (str): 要插入的数据
         """
-        if isinstance(data, str):
-            item = QStandardItem(data)
-        else:
-            item = QStandardItem(str(data))
+        self.insert_data_signal.emit(str(data))
 
+
+    def _insert_data_ui(self, data):
+        """在主线程中执行UI更新"""
+        if self.is_closing:
+            return
+
+        item = QStandardItem(data)
         # 插入到第一行（索引0）
         self.list_model.insertRow(0, item)
-
         # 滚动到顶部显示新添加的数据
         self.list_view.scrollToTop()
+
 
     def insert_multiple_list_data(self, data_list):
         """
@@ -278,9 +324,12 @@ class AnimatedLoadingDialog(QDialog):
         for data in reversed(data_list):  # 反向插入保持顺序
             self.insert_list_data(data)
 
+
     def clear_list_data(self):
         """清空QListView中的所有数据"""
-        self.list_model.clear()
+        if not self.is_closing:
+            self.list_model.clear()
+
 
     def get_all_list_data(self):
         """
@@ -296,7 +345,8 @@ class AnimatedLoadingDialog(QDialog):
                 data_list.append(item.text())
         return data_list
 
-    # ==================== 进度条手动控制接口 ====================
+        # ==================== 进度条手动控制接口 ====================
+
 
     def set_progress_range(self, minimum=0, maximum=100):
         """
@@ -311,52 +361,82 @@ class AnimatedLoadingDialog(QDialog):
         self.progress_max = maximum
         self.use_manual_progress = True
 
+
         # 停止自动进度条动画
         if hasattr(self, 'progress_timer'):
             self.progress_timer.stop()
 
+
     def set_progress_value(self, value):
         """
-        设置进度条的当前值
+        设置进度条的当前值（线程安全）
 
         Args:
             value (int): 进度值
         """
+        if self.is_closing:
+            return
+
         self.manual_progress = value
-        self.progress_bar.setValue(value)
         self.use_manual_progress = True
 
+        self.progress_updated.emit(value)
+
+
+    def _update_progress_ui(self, value):
+        """在主线程中更新进度条UI"""
+        if self.is_closing:
+            return
+
+        self.progress_bar.setValue(value)
+
+
         # 检查任务是否完成
-        if value >= self.progress_max:
-            self.complete_task()
+        if value >= self.progress_max and not self.task_completed:
+
+            self.task_completed_signal.emit()
+
 
     def update_progress_value(self, increment=1):
         """
-        更新进度条的值（增加指定数量）
+        更新进度条的值（增加指定数量）（线程安全）
 
         Args:
             increment (int): 增加的数量，默认为1
         """
+        if self.is_closing:
+            return
+
         self.manual_progress += increment
         self.manual_progress = min(self.manual_progress, self.progress_max)
-        self.progress_bar.setValue(self.manual_progress)
         self.use_manual_progress = True
 
-        # 检查任务是否完成
-        if self.manual_progress >= self.progress_max:
-            self.complete_task()
+        self.progress_updated.emit(self.manual_progress)
+
 
     def complete_task(self):
-        """手动标记任务完成"""
+        """手动标记任务完成（线程安全）"""
+        if not self.is_closing and not self.task_completed:
+
+            self.task_completed_signal.emit()
+
+
+    def _complete_task_ui(self):
+        """在主线程中执行任务完成的UI更新"""
+        if self.is_closing or self.task_completed:
+            return
+
         self.task_completed = True
         self.message_label.setText("任务完成！")
+
 
         # 停止倒计时
         if hasattr(self, 'timer'):
             self.timer.stop()
 
-        # 延迟2000ms后关闭对话框
-        QTimer.singleShot(500, self.accept)
+        # 延迟500ms后关闭对话框
+        QTimer.singleShot(500, self._safe_accept)
+
 
     def get_progress_value(self):
         """
@@ -367,79 +447,60 @@ class AnimatedLoadingDialog(QDialog):
         """
         return self.progress_bar.value()
 
+
     def reset_progress(self):
         """重置进度条到0"""
-        self.manual_progress = 0
-        self.progress_bar.setValue(0)
-        self.task_completed = False
+        if not self.is_closing:
+            self.manual_progress = 0
+            self.progress_bar.setValue(0)
+            self.task_completed = False
+
 
     def is_task_completed(self):
         """
         检查任务是否完成
 
-        Returns:
+       Returns:
             bool: 任务完成状态
         """
         return self.task_completed
 
 
-# 使用示例
+    def closeEvent(self, event):
+        """重写关闭事件"""
+        self.is_closing = True
+
+        if hasattr(self, 'timer'):
+            self.timer.stop()
+        if hasattr(self, 'progress_timer'):
+            self.progress_timer.stop()
+        super().closeEvent(event)
+
+
+# 测试用例
 def main():
     app = QApplication(sys.argv)
 
-    # 创建加载对话框
+    # 测试场景1：超时情况（不调用complete_task）
+
     dialog = AnimatedLoadingDialog(
-        countdown_seconds=10,  # 设置较短的倒计时用于测试
+        countdown_seconds=5,  # 短倒计时用于测试
         message="正在处理数据...",
         title="数据处理中",
         show_listview=True
     )
 
-    # 演示QListView功能
-    dialog.insert_list_data("开始处理数据...")
-    dialog.insert_list_data("连接到服务器")
-    dialog.insert_list_data("验证用户权限")
+    # 设置手动进度控制但不完成任务
+    dialog.set_progress_range(0, 100)
+    dialog.set_progress_value(50)  # 只完成50%
 
-    # 演示手动进度条控制
-    dialog.set_progress_range(0, 50)
-    dialog.set_progress_value(5)
+    dialog.insert_list_data("开始处理...")
+    dialog.insert_list_data("进行中...")
 
-    # 模拟数据处理过程
-    def simulate_process():
-        import time
-        for i in range(1, 11):  # 模拟10个步骤
-            time.sleep(0.8)  # 每步0.8秒，总共8秒
-            dialog.insert_list_data(f"处理步骤 {i} 完成")
-            dialog.update_progress_value(4)  # 每次增加4，10次后达到45，最后一次会触发完成
-
-            # 模拟最后一步完成整个任务
-            if i == 10:
-                dialog.update_progress_value(5)  # 达到50，触发任务完成
-
-    def simulate_timeout_process():
-        """模拟超时情况 - 任务执行时间超过倒计时"""
-        import time
-        for i in range(1, 6):
-            time.sleep(2.5)  # 每步2.5秒，会导致超时
-            dialog.insert_list_data(f"缓慢处理步骤 {i}")
-            dialog.update_progress_value(8)
-
-    # 选择模拟场景
-    scenario = "normal"  # 可以改为 "timeout" 测试超时情况
-
-    if scenario == "normal":
-        # 正常完成场景
-        import threading
-        thread = threading.Thread(target=simulate_process, daemon=True)
-        thread.start()
-    else:
-        # 超时场景
-        import threading
-        thread = threading.Thread(target=simulate_timeout_process, daemon=True)
-        thread.start()
+    # 不调用 complete_task()，让其超时
 
     result = dialog.exec()
-    print(f"对话框结果: {'接受' if result == QDialog.DialogCode.Accepted else '拒绝'}")
+
 
     sys.exit(app.exec())
 

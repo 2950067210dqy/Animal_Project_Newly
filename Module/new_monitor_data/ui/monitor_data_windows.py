@@ -5,10 +5,11 @@ import typing
 from enum import Enum
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import Qt, QRect, QTimer, QLine
+from PyQt6.QtCore import Qt, QRect, QTimer, QLine, pyqtSignal
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel, QHBoxLayout, QButtonGroup, QRadioButton, \
-    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame
+    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame, QApplication
+from loguru import logger
 
 from Module.new_monitor_data.ui.Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
 from public.component.dialog.custom.InfoDialog import InfoDialog
@@ -55,16 +56,61 @@ class Show_Type(Enum):
             return False
         return self.value != other.value
 class MonitorDataWindows(ThemedWidget):
+    enabled_zero_calibration_btn_signal =pyqtSignal()
+    enabled_range_calibration_btn_signal =pyqtSignal()
     def resizeEvent(self, a0: typing.Optional[QtGui.QResizeEvent]):
         self.setMinimumSize(0, 0)
+
+    @property
+    def is_zero_calibration(self):
+        return self._is_zero_calibration
+
+    @property
+    def is_range_calibration(self):
+        return self._is_range_calibration
+
+    @is_zero_calibration.setter
+    def is_zero_calibration(self, value):
+        old_value = self._is_zero_calibration
+        self._is_zero_calibration = value
+        if not value:
+            self._check_both_calibration_status()
+
+    @is_range_calibration.setter
+    def is_range_calibration(self, value):
+        old_value = self._is_range_calibration
+        self._is_range_calibration = value
+        if not value:
+            self._check_both_calibration_status()
+
+    def _check_both_calibration_status(self):
+        """检查两个标定状态是否都为False"""
+        # 如果是按了一起标定的按钮
+        logger.critical(f"is_all_calibration:{self.is_all_calibration}|_is_zero_calibration:{self._is_zero_calibration}|_is_range_calibration:{self._is_range_calibration}")
+        if self.is_all_calibration:
+            if not self._is_zero_calibration and not self._is_range_calibration:
+                if self.calibration_btn is not None:
+                    self.is_all_calibration=False
+                    self.calibration_btn.setDisabled(False)
+        else:
+            if (
+                    (not self._is_zero_calibration and  self._is_range_calibration)
+                    or
+                    (self._is_zero_calibration and not  self._is_range_calibration)
+                ):
+                if self.calibration_btn is not None:
+                    self.calibration_btn.setDisabled(False)
     def __init__(self):
         super().__init__()
         self.gids = []
         self.n = 0
+
+        # 是否正在零点标定 和量程标定
+        self.is_all_calibration = False
         # 正在零点标定
-        self.is_zero_calibration = False
+        self._is_zero_calibration = False
         # 正在量程标定
-        self.is_range_calibration =False
+        self._is_range_calibration =False
         # 默认看总表
         self.default_show = Show_Type.ALL
         # 当前看
@@ -152,6 +198,8 @@ class MonitorDataWindows(ThemedWidget):
         line.setStyleSheet("height: 3px; background-color: gray;")  # 设置粗细和颜色
         self.main_layout.addWidget(line, stretch=1)
         # 连接信号
+        self.enabled_zero_calibration_btn_signal.connect(self.enabled_zero_calibration_btn)
+        self.enabled_range_calibration_btn_signal.connect(self.enabled_range_calibration_btn)
         # 绑定按钮事件
         self.zero_calibration_btn.clicked.connect(self.zero_calibration_start)
         self.range_calibration_btn.clicked.connect(self.range_calibration_start)
@@ -290,9 +338,10 @@ class MonitorDataWindows(ThemedWidget):
         pass
 
     def calibration_start(self):
-        self.calibration_btn.setDisabled(True)
+        self.is_all_calibration = True
         self.disabled_range_calibration_btn()
         self.disabled_zero_calibration_btn()
+
         # 校0校span按钮事件
         # 校0按钮事件
         send_message_queue = global_setting.get_setting("send_message_queue")
@@ -304,22 +353,30 @@ class MonitorDataWindows(ThemedWidget):
         msg_box = InfoDialog(title="校0和校span", info=f"确认校0和校span开始，校准完成还需要至少3-5轮次时间，请耐心等待",
                              icon=QMessageBox.Icon.Information)
         msg_box.exec()
-        while not self.is_zero_calibration and not self.is_range_calibration:
-            self.calibration_btn.setDisabled(False)
+
         pass
     def disabled_zero_calibration_btn(self):
+        self.calibration_btn.setDisabled(True)
         self.zero_calibration_btn.setDisabled(True)
         self.is_zero_calibration=True
         self.zero_calibration_btn.setText("正在校零中")
     def disabled_range_calibration_btn(self):
+        self.calibration_btn.setDisabled(True)
         self.range_calibration_btn.setDisabled(True)
         self.is_range_calibration=True
         self.range_calibration_btn.setText("正在校量程中")
     def enabled_zero_calibration_btn(self):
+
         self.zero_calibration_btn.setDisabled(False)
-        self.is_range_calibration = False
+        self.is_zero_calibration = False
         self.zero_calibration_btn.setText("校零")
+        msg_box_3 = InfoDialog(title="校零完成", info=f"校0已经完成，完成时间{time_util.get_format_from_time(time.time())}",
+                             icon=QMessageBox.Icon.Information)
+        msg_box_3.exec()
     def enabled_range_calibration_btn(self):
         self.range_calibration_btn.setDisabled(False)
         self.is_range_calibration = False
         self.range_calibration_btn.setText("校量程")
+        msg_box_2 = InfoDialog(title="校量程完成", info=f"校量程已经完成，完成时间{time_util.get_format_from_time(time.time())}",
+                             icon=QMessageBox.Icon.Information)
+        msg_box_2.exec()

@@ -41,8 +41,12 @@ class read_queue_data_Thread(MyQThread):
 
     def dosomething(self):
         if not self.queue.empty():
-            message:ObjectQueueItem = self.queue.get()
-            # message 结构{'to'发往哪个线程，'data'数据，‘from'从哪来}
+            try:
+                message: ObjectQueueItem = self.queue.get()
+            except Exception as e:
+                logger.error(f"{self.name}发生错误{e}")
+                return
+                # message 结构{'to'发往哪个线程，'data'数据，‘from'从哪来}
 
             if message is not None and isinstance(message, ObjectQueueItem) and message.to== 'tab_7':
                 logger.error(f"{self.name}_get_message:{message}")

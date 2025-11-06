@@ -74,7 +74,11 @@ class read_queue_data_Thread(MyQThread):
     def dosomething(self):
         if not self.queue.empty():
             # logger.error(f"{self.queue.qsize()}")
-            message:ObjectQueueItem = self.queue.get()
+            try:
+                message: ObjectQueueItem = self.queue.get()
+            except Exception as e:
+                logger.error(f"{self.name}发生错误{e}")
+                return
             # logger.error(f"{self.name}_get_message:{message}|")
             if message is not None and message.is_Empty():
                 return
@@ -618,16 +622,21 @@ def barrier_action():
     store_Datas =[]
     # store_Datas.append({'desc':'序号','value':None})
     store_Datas.append({'desc':'鼠笼号','value':mouse_cage_number})
+    # 为什么还要判断一下，因为有时候results.get('xxxx')的值为[]
     store_Datas.append({'desc': '氧浓度0点校准值',
                         'value': results.get('ZeroCalibration_data__oxygen_calibration_zero_value') if results.get(
                             'ZeroCalibration_data__oxygen_calibration_zero_value') else None})
     store_Datas.append({'desc': '氧浓传感器span数值',
                         'value': results.get('SpanCalibration_data__oxygen_calibration_span_value') if results.get(
                             'SpanCalibration_data__oxygen_calibration_span_value') else None})
-    store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num')})
-    store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1')})
-    store_Datas.append({'desc': 'CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num')})
-    store_Datas.append({'desc': '氧气传感器测量值(%)', 'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')})
+    store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') if results.get(
+                            f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') else None   })
+    store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
+                            f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') else None })
+    store_Datas.append({'desc': 'CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
+                            f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') else None })
+    store_Datas.append({'desc': '氧气传感器测量值(%)', 'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') else None })
     # 非参考气
     remarks_reference=""
     if mouse_cage_number > 0:
@@ -640,13 +649,16 @@ def barrier_action():
             # logger.critical(f"reference_data:{reference_data}")
             store_Datas.append(
                 {'desc': 'ufc_参考气流量计测量值(sccm)',
-                 'value': reference_data.get(f'UFC_flow_num')})
+                 'value': reference_data.get(f'UFC_flow_num') if results.get(
+                            f'UFC_flow_num') else None })
             store_Datas.append(
                 {'desc': '参考气CO2(%)',
-                 'value': reference_data.get(f'UGC_CO2_num')})
+                 'value': reference_data.get(f'UGC_CO2_num') if results.get(
+                            f'UGC_CO2_num') else None })
             store_Datas.append(
                 {'desc': '参考气氧气测量值(%)',
-                 'value': reference_data.get(f'ZOS_oxygen_num')})
+                 'value': reference_data.get(f'ZOS_oxygen_num') if results.get(
+                            f'ZOS_oxygen_num') else None })
 
             if results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None and reference_data.get(f'UGC_CO2_num') is not None:
                 store_Datas.append(
@@ -661,21 +673,29 @@ def barrier_action():
             pass
 
         store_Datas.append(
-            {'desc': '温度测量值(°C)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num')})
+            {'desc': '温度测量值(°C)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') if results.get(
+                            f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') else None })
         store_Datas.append(
-            {'desc': '湿度测量值(%RH)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num')})
+            {'desc': '湿度测量值(%RH)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') if results.get(
+                            f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') else None })
         store_Datas.append(
-            {'desc': '噪声测量值(dB)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num')})
+            {'desc': '噪声测量值(dB)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num')  if results.get(
+                            f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num') else None})
         store_Datas.append({'desc': '大气压测量值(KPa)',
-                            'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num')})
+                            'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') if results.get(
+                            f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') else None})
         store_Datas.append({'desc': '当前计量周期内跑轮圈数测量值',
-                            'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num')})
+                            'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num')  if results.get(
+                            f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num') else None})
         store_Datas.append(
-            {'desc': '饮水重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num') })
+            {'desc': '饮水重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
+                            f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num') else None})
         store_Datas.append(
-            {'desc': '食物重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num')  })
+            {'desc': '食物重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') if results.get(
+                            f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') else None })
         store_Datas.append(
-            {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')})
+            {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
+                            f'WM_monitor_data_cage_{mouse_cage_number}__weight_num') else None })
 
     store_Datas.append({'desc':'轮次开始时间','value':datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
     store_Datas.append({'desc':'轮次结束时间','value':datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})

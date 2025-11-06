@@ -37,8 +37,12 @@ class read_queue_data_Thread(MyQThread):
     def dosomething(self):
         if not self.queue.empty():
             # logger.error(f"{self.queue.qsize()}")
-            message:ObjectQueueItem = self.queue.get()
-            # logger.error(f"{self.name}_get_message:{message}|")
+            try:
+                message: ObjectQueueItem = self.queue.get()
+            except Exception as e:
+                logger.error(f"{self.name}发生错误{e}")
+                return
+                # logger.error(f"{self.name}_get_message:{message}|")
             if message is not None and message.is_Empty():
                 return
             if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'monitor_data_new_index':
@@ -49,7 +53,7 @@ class read_queue_data_Thread(MyQThread):
                         零点标定结束
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
-                            self.window.left_top_widget_content.enabled_zero_calibration_btn()
+                            self.window.left_top_widget_content.enabled_zero_calibration_btn_signal.emit()
                             self.window.left_top_widget_content.list_widget.insertItem(0,
                                                         f"{time_util.get_format_from_time(time.time())}-校零完成时间")
                     case 'range_calibration_finish':
@@ -57,7 +61,7 @@ class read_queue_data_Thread(MyQThread):
                         量程标定结束
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
-                            self.window.left_top_widget_content.enabled_range_calibration_btn()
+                            self.window.left_top_widget_content.enabled_range_calibration_btn_signal.emit()
                             self.window.left_top_widget_content.list_widget.insertItem(0,
                                                                                        f"{time_util.get_format_from_time(time.time())}-校量程完成时间")
                     case _:
@@ -82,9 +86,10 @@ class Monitor_data_new_index(ThemedWindow):
             if widget is not None and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.pause()
         pass
+    def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]):
         global read_queue_data_thread
-        if read_queue_data_thread is not None and read_queue_data_Thread.isRunning():
-            read_queue_data_thread.pause()
+        if read_queue_data_thread is not None:
+            read_queue_data_thread.stop()
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         for widget in self.left_top_widget_content._docks_widget:
             widget: Table_select_columns_paging_bottom
@@ -92,9 +97,7 @@ class Monitor_data_new_index(ThemedWindow):
                 widget.data_fetcher_thread.resume()
             elif widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.start()
-        if read_queue_data_thread is not None :
-            read_queue_data_thread.resume()
-        pass
+
 
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
         pass

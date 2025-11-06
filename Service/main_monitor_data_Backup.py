@@ -63,7 +63,11 @@ class read_queue_data_Thread(MyQThread):
     def dosomething(self):
         if not self.queue.empty():
             # logger.error(f"{self.queue.qsize()}")
-            message:ObjectQueueItem = self.queue.get()
+            try:
+                message: ObjectQueueItem = self.queue.get()
+            except Exception as e:
+                logger.error(f"{self.name}发生错误{e}")
+                return
             # logger.error(f"{self.name}_get_message:{message}|")
             if message is not None and message.is_Empty():
                 return
