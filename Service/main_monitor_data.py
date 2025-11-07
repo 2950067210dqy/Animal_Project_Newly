@@ -649,15 +649,15 @@ def barrier_action():
             # logger.critical(f"reference_data:{reference_data}")
             store_Datas.append(
                 {'desc': 'ufc_参考气流量计测量值(sccm)',
-                 'value': reference_data.get(f'UFC_flow_num') if results.get(
+                 'value': reference_data.get(f'UFC_flow_num') if reference_data.get(
                             f'UFC_flow_num') else None })
             store_Datas.append(
                 {'desc': '参考气CO2(%)',
-                 'value': reference_data.get(f'UGC_CO2_num') if results.get(
+                 'value': reference_data.get(f'UGC_CO2_num') if reference_data.get(
                             f'UGC_CO2_num') else None })
             store_Datas.append(
                 {'desc': '参考气氧气测量值(%)',
-                 'value': reference_data.get(f'ZOS_oxygen_num') if results.get(
+                 'value': reference_data.get(f'ZOS_oxygen_num') if reference_data.get(
                             f'ZOS_oxygen_num') else None })
 
             if results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None and reference_data.get(f'UGC_CO2_num') is not None:
