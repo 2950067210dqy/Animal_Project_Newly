@@ -348,19 +348,31 @@ class Modbus_Response_Parents():
 
     def get_signed_int(self, bin_str):
         """
-        根据8位二进制数获得有符号的整数
-        :return:
+        根据8的倍数位二进制数获得有符号的整数
+        :param bin_str: 二进制字符串，长度必须是8的倍数（8, 16, 24, 32等）
+        :return: 有符号整数
         """
-        # 确保 bin_str 是 8 位二进制数
-        if len(bin_str) != 8 or not all(bit in '01' for bit in bin_str):
-            raise ValueError("输入必须是一个8位二进制字符串")
+        # 确保 bin_str 只包含 0 和 1
+        if not all(bit in '01' for bit in bin_str):
+            raise ValueError("输入必须是二进制字符串（只包含0和1）")
+
+        # 确保长度是8的倍数
+        bit_length = len(bin_str)
+        if bit_length == 0 or bit_length % 8 != 0:
+            raise ValueError(f"输入长度必须是8的倍数，当前长度为{bit_length}")
 
         # 先将其转换为无符号整数
         unsigned_int = int(bin_str, 2)
 
+        # 计算符号位的阈值（2^(n-1)，n为位数）
+        sign_threshold = 2 ** (bit_length - 1)
+
+        # 计算转换值（2^n）
+        conversion_value = 2 ** bit_length
+
         # 如果最高位是 1，则说明它是负数，计算补码
-        if unsigned_int >= 128:  # 对于8位补码，数字 >= 128 是负数
-            signed_int = unsigned_int - 256  # 转换为负数
+        if unsigned_int >= sign_threshold:
+            signed_int = unsigned_int - conversion_value
         else:
             signed_int = unsigned_int
 
@@ -1990,7 +2002,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['流量计1', 'CO2(%)']
+        port_types = ['流量计1(ML/min)','气压(KPa)', 'CO2(%)']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
@@ -2003,6 +2015,18 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                     )
                     j += 1
                     pass
+                # 气压
+                case 7:
+                    return_datas.append({
+                        "desc": port_types[j],
+                        'value':round( float(
+                                self.get_signed_int(
+                                    "".join(self.int_to_8bit_binary([self.response_struct['data'][i - 1],self.response_struct['data'][i ]]))
+                                )) /10,4)
+                        })
+                    j += 1
+                    pass
+
                 case 9:
                     return_datas.append({
                         "desc": port_types[j],

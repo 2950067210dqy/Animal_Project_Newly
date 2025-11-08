@@ -151,7 +151,8 @@ class Modbus_Slave_Tables(Enum):
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-                ("flow_num_1", "流量计1", " INTEGER "),
+                ("flow_num_1", "流量计1(ML/min)", " INTEGER "),
+                ('air_pressure','气压(KPa)'," REAL "),
                 ("CO2_num", "CO2(%)", " REAL "),
                 ("CO2_output_num", "CO2生产量(%)", " REAL "),
                 ("remarks", "备注", " TEXT "),
