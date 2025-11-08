@@ -472,7 +472,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         """
         循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
         """
-        time.sleep(2)
+        time.sleep(18)
         # 让ugc开始运行
         wait_UFC_run_finish_event = global_setting.get_setting("wait_UFC_run_finish_event", None)
         if wait_UFC_run_finish_event:

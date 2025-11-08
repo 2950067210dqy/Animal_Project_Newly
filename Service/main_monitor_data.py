@@ -52,8 +52,7 @@ wait_ZOS_run_finish_event = threading.Event()
 global_setting.set_setting("wait_UFC_run_finish_event",wait_UFC_run_finish_event)
 global_setting.set_setting("wait_UGC_run_finish_event",wait_UGC_run_finish_event)
 global_setting.set_setting("wait_ZOS_run_finish_event",wait_ZOS_run_finish_event)
-#当前鼠笼号列表的下标 参考气的下标为None 注意区分
-global_setting.set_setting("cage_number_list_index",None)
+
 #使用端口
 port_use=None
 
@@ -641,7 +640,7 @@ def barrier_action():
     remarks_reference=""
     if mouse_cage_number != 8:
         # 获取参考气轮次的数据：
-        reference_data = handle.query_current_one_data(table_name="Epoch_data_cage_0")
+        reference_data = handle.query_current_one_data(table_name="Epoch_data_cage_8")
         if reference_data is not None:
             # 获得所有参考备注
             remarks_reference = ";"
@@ -762,6 +761,8 @@ def main(q,send_message_q):
     app = QCoreApplication(sys.argv)
     # 设置全局变量
     global_load.load_global_setting_without_Qt()
+    # 当前鼠笼号列表的下标 参考气的下标为None 注意区分
+    global_setting.set_setting("cage_number_list_index", None)
     global_setting.set_setting("queue", q)
     global_setting.set_setting("send_message_queue", send_message_q)
     #设置线程屏障，等待4个线程 ufc ugc zos的run还有鼠笼内的模块线程的send_message_thread
@@ -790,6 +791,8 @@ def start():
     global MESSAGE_BATCH_SIZE, total_messages_processed,gids
     MESSAGE_BATCH_SIZE = 0
     total_messages_processed = 1
+    # 当前鼠笼号列表的下标 参考气的下标为None 注意区分
+    global_setting.set_setting("cage_number_list_index", None)
     # 通道
     experiment_settings = global_setting.get_setting("experiment_setting", None)
     gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
@@ -863,7 +866,7 @@ def stop():
         if ufc_ugc_zos_thread is not None:
             ufc_ugc_zos_thread.stop_btn_handle()
             ufc_ugc_zos_thread.stop()
-
+            ufc_ugc_zos_thread=None
     except Exception as e:
         logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
     pass
@@ -871,12 +874,14 @@ def stop():
         logger.error("stop_store_thread")
         if store_thread is not None and store_thread.isRunning():
             store_thread.stop()
+            store_thread=None
     except Exception as e:
         logger.error(f"关闭实验监测store_thread错误，原因：{e}")
     try:
         logger.error("stop_add_message_thread")
         if add_message_thread is not None and add_message_thread.isRunning():
             add_message_thread.stop()
+            add_message_thread=None
     except Exception as e:
         logger.error(f"关闭实验监测add_message_thread错误，原因：{e}")
 
@@ -884,6 +889,7 @@ def stop():
         logger.error("stop_send_thread")
         if send_thread is not None and send_thread.isRunning():
             send_thread.stop()
+            send_thread=None
     except Exception as e:
         logger.error(f"关闭实验监测send_thread错误，原因：{e}")
     # modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
