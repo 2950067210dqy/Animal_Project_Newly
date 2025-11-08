@@ -632,10 +632,19 @@ def barrier_action():
                             f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') is not None else None   })
     store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
                             f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1')  is not None else None })
+    store_Datas.append({'desc': '气压(KPa)',
+                        'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__air_pressure') if results.get(
+                            f'UGC_monitor_data_cage_{mouse_cage_number}__air_pressure') is not None else None})
+    store_Datas.append(
+        {'desc': '补偿前CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_origin_num') if results.get(
+            f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_origin_num') is not None else None})
     store_Datas.append({'desc': 'CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
                             f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None })
-    store_Datas.append({'desc': '氧气传感器测量值(%)', 'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') if results.get(
-                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None else None })
+    store_Datas.append({'desc': '补偿前氧气传感器测量值(%)', 'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_num') is not None else None })
+    store_Datas.append({'desc': '氧气传感器测量值(%)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None else None})
     # 非参考气
     remarks_reference=""
     if mouse_cage_number != 8:

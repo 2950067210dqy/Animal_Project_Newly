@@ -721,6 +721,35 @@ class UGC_gas_path_system_run_thread(MyQThread):
         self.send_thread.send_message = self.send_message
         result_data, message = self.send_thread.Send_no_promise()
         logger.error(f"ugc:{result_data}")
+        datas = result_data.get("data")
+        # 数据不为TIME OUT 就进行补偿
+        if datas and len(datas)>1 :
+            co2 =None
+            for data in datas:
+                desc = data.get("desc")
+                if desc and desc=="气压(KPa)":
+                    # 获得气压的数据
+                    air_pressure =float(data.get("value"))
+                    global_setting.set_setting("air_pressure", air_pressure)
+
+                elif desc and desc =="CO2(%)" :
+                    # 获得co2的数据
+                    co2 = data.get("value")
+
+
+            # 进行压力补偿
+            air_pressure=global_setting.get_setting("air_pressure", None)
+            # 如果没有压力数据则补偿前后数据一样
+            result_data["data"].append({"desc": "补偿前CO2(%)", "value": co2})
+            if air_pressure is not None:
+                # co2补偿 =（标准大气压值*当前co2数值）/当前读出大气压值
+                co2_compensation=(float(global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['standard_atmospheric_pressure'])*co2)/abs(air_pressure)
+                for i in range(len(result_data["data"])):
+                    if result_data['data'][i]['desc']=="CO2(%)":
+                        result_data['data'][i]['value'] = co2_compensation
+                        break
+                pass
+
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         result_data['mouse_cage_number'] =mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not  None else 8
         result = store_data_with_result(result_data, need_result=True, timeout=5)
@@ -979,15 +1008,24 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         result_data = r['data']
         result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 8
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        logger.error(f"zos:{result_data}")
         if len(result_data['data'])>0:
-            oxygen_value = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='氧传感器测量值(%)']
+            oxygen_value = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='氧气传感器测量值(%)']
             if len(oxygen_value)>0:
                 oxygen_value = oxygen_value[0]
                 # 氧浓度V应校准为（V-Vzero）* K
-                oxygen_value =round((oxygen_value-global_setting.get_setting("Vzero",0))*global_setting.get_setting("K",1),3)
+                oxygen_value =round((oxygen_value-global_setting.get_setting("Vzero",0))*global_setting.get_setting("K",1),6)
+                #  当前气压值 然后进行补偿o2
+                air_pressure=global_setting.get_setting("air_pressure",None )
+                # 如果没有压力数据则补偿前后数据一样
+                result_data["data"].append({"desc": "补偿前氧气传感器测量值(%)", "value": oxygen_value})
+                if air_pressure is not None:
+                    # 补偿后的氧气 = （测量的氧气/（1+（ugc测量的压力值）/标准大气压值））*补偿系数
+                    oxygen_value = (oxygen_value/(1+air_pressure/float(global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['standard_atmospheric_pressure'])))*float(global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['oxygen_compensation_coefficient'])
+                    pass
                 for i in range(len(result_data)):
-                    if result_data['data'][i]['desc']=='氧传感器测量值(%)':
-                        logger.warning(f"'氧传感器测量值(%)经过校准后得:{oxygen_value}")
+                    if result_data['data'][i]['desc']=='氧气传感器测量值(%)':
+                        logger.warning(f"'氧气传感器测量值(%)经过校准后得:{oxygen_value}")
                         result_data['data'][i]['value'] = oxygen_value
                         break
 
