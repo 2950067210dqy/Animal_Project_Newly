@@ -666,7 +666,7 @@ def barrier_action():
             if results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None and reference_data.get(f'ZOS_oxygen_num') is not None:
                 store_Datas.append(
                     {'desc': '耗氧量(%)',
-                     'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')-reference_data.get(f'ZOS_oxygen_num')})
+                     'value':reference_data.get(f'ZOS_oxygen_num')-results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')})
 
 
             pass
