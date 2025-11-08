@@ -27,6 +27,7 @@ wait_UFC_start_finish_event = threading.Event()
 wait_UFC_stop_finish_event = threading.Event()
 
 
+
 logger = logger.bind(category="monitor_data_logger")
 class Gas_path_system:
     """
@@ -719,7 +720,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的CO2浓度")
         self.send_thread.send_message = self.send_message
         result_data, message = self.send_thread.Send_no_promise()
-
+        logger.error(f"ugc:{result_data}")
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         result_data['mouse_cage_number'] =mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not  None else 8
         result = store_data_with_result(result_data, need_result=True, timeout=5)
