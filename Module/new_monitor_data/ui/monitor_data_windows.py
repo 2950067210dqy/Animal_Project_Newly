@@ -237,7 +237,7 @@ class MonitorDataWindows(ThemedWidget):
         if self.current_show == Show_Type.EACH:
             for gid in gids:
                 widget = Table_select_columns_paging_bottom(gid=gid)
-                widget.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid==0 else ''}")
+                widget.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid==8 else ''}")
                 # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
                 widget.on_replace_headers([1])
 

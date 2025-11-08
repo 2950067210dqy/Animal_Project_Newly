@@ -283,6 +283,24 @@ class UFC_UGC_ZOS_index(MyQThread):
         #     ).then().catch(lambda e: logger.error(f"{e}"))
         # ).catch(lambda e: logger.error(f"{e}"))
         # return p
+        # 测试   不需要校0标定
+        # p = AsyPromise(
+        #     self.Range_carlibration_obj.calibrate
+        # ).then().catch(lambda e: logger.error(f"{e}"))
+        # return p
+        #測試 不需要校0和校span标定
+        p = AsyPromise(
+            self.no_carlibration
+        ).then().catch(lambda e: logger.error(f"{e}"))
+        return p
+    def no_carlibration(self,resolve,reject):
+        resolve()
+        # p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
+        #     lambda v: AsyPromise(
+        #         self.Range_carlibration_obj.calibrate
+        #     ).then().catch(lambda e: logger.error(f"{e}"))
+        # ).catch(lambda e: logger.error(f"{e}"))
+        # return p
         # # 测试   不需要校0标定
         # p = AsyPromise(
         #     self.Range_carlibration_obj.calibrate

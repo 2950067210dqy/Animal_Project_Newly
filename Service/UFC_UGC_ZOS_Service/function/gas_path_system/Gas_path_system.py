@@ -400,11 +400,12 @@ class UFC_gas_path_system_run_thread(MyQThread):
         :return:
         """
         mouse_cage_index = global_setting.get_setting("cage_number_list_index",None)
+        logger.critical(f"mouse_cages_inc:{mouse_cages_inc},mouse_cage_index:{mouse_cage_index}")
         if mouse_cage_index is not None:
-            mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index]
+            mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index]-1
         else:
             # 下标为None 则为参考气
-            mouse_cage_number_addr_single=0
+            mouse_cage_number_addr_single=8
         # 1 切换x号鼠笼
 
         time.sleep(0.01)
@@ -417,7 +418,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         }
 
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC-运行 1. 切换{str(mouse_cage_number_addr_single ) + '号鼠笼' if mouse_cage_number_addr_single !=0 else str(mouse_cage_number_addr_single ) + '(参考气)'}")
+            f"{time_util.get_format_from_time(time.time())} | UFC-运行 1. 切换{str(mouse_cage_number_addr_single ) + '号鼠笼' if mouse_cage_number_addr_single !=8 else str(mouse_cage_number_addr_single ) + '(参考气)'}")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2. 关闭上个鼠笼的气路或者关闭参考气
@@ -439,15 +440,17 @@ class UFC_gas_path_system_run_thread(MyQThread):
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         # 当前为参考气 则关闭最后一个鼠笼
         if mouse_cage_index is None :
-            mouse_cage_number_addr_single = mouse_cages_inc[len(mouse_cages_inc) - 1 ]
+            mouse_cage_number_addr_single = mouse_cages_inc[len(mouse_cages_inc) - 1 ]-1
         elif mouse_cage_index==0:
         #当前为鼠笼列表的第一个鼠笼 则关闭参考气
-            mouse_cage_number_addr_single=0
+            mouse_cage_number_addr_single=8
         else:
-            mouse_cage_number_addr_single=mouse_cages_inc[mouse_cage_index-1]
+            mouse_cage_number_addr_single=mouse_cages_inc[mouse_cage_index-1]-1
         #2.关闭上个鼠笼号，如果当前鼠笼号为0，则关闭参考气体
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC-运行 2. 关闭{str(mouse_cage_number_addr_single )+'号鼠笼' if mouse_cage_number_addr_single!=0 else '参考气'}")
+            f"{time_util.get_format_from_time(time.time())} | UFC-运行 2. 关闭{str(mouse_cage_number_addr_single )+'号鼠笼' if mouse_cage_number_addr_single!=8 else '参考气'}")
+
+
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list(f"000{mouse_cage_number_addr_single}0000"),
@@ -469,13 +472,14 @@ class UFC_gas_path_system_run_thread(MyQThread):
         """
         循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
         """
-        time.sleep(0.01)
+        time.sleep(2)
         # 让ugc开始运行
         wait_UFC_run_finish_event = global_setting.get_setting("wait_UFC_run_finish_event", None)
         if wait_UFC_run_finish_event:
             wait_UFC_run_finish_event.set()
             wait_UFC_run_finish_event.clear()
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+
         # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒） ！弃用
         index = 0
         # while (index< int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time'])):
@@ -493,8 +497,8 @@ class UFC_gas_path_system_run_thread(MyQThread):
 
 
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        result_data['mouse_cage_number']= mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 0
-        # logger.error(f"---------------鼠笼气路值：{result_data['data']}")
+        result_data['mouse_cage_number']= mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 8
+        logger.error(f"---------------鼠笼气路值：{result_data}")
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
             logger.info(f"数据存储成功，ID: {result.item_id}")
@@ -717,7 +721,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
         result_data, message = self.send_thread.Send_no_promise()
 
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        result_data['mouse_cage_number'] =mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not  None else 0
+        result_data['mouse_cage_number'] =mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not  None else 8
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
             logger.info(f"数据存储成功，ID: {result.item_id}")
@@ -775,7 +779,7 @@ class UGC_gas_path_system(Gas_path_system):
             reject()
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("0004ff00"),
+            'data': number_util.set_int_to_4_bytes_list("0004FF00"),
             'slave_id': '3',
             'function_code': '5',
             'timeout': 1
@@ -804,7 +808,7 @@ class UGC_gas_path_system(Gas_path_system):
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
-        # 修改命令反了 FF->00
+        # 修改命令反了 FF->00，11月1日改回，现和文档一致
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list("0000FF00"),
@@ -972,7 +976,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         #存储值
         result_data = r['data']
-        result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 0
+        result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 8
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         if len(result_data['data'])>0:
             oxygen_value = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='氧传感器测量值(%)']

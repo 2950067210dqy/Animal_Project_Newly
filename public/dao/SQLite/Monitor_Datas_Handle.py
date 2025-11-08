@@ -94,7 +94,7 @@ class Monitor_Datas_Handle():
             # 实例化每轮次数据表
             for data_type in Modbus_Slave_Type.Epochs.value:
                 # 添加cage_0 给参考气存储数据 这里的-1代表总轮次表，表名为Epoch_data_all 不带后面的cage_-1
-                for carge_number in [-1,0]+gids:
+                for carge_number in [-1,8]+gids:
                     for table_name_short in data_type.value['table']:
                         # 列
                         columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}
@@ -144,8 +144,8 @@ class Monitor_Datas_Handle():
                                                        description=item[1])
             # 实例化公共传感器数据的数据表
             for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value:
-                # 添加cage_0 给参考气存储数据
-                for carge_number in [0]+gids:
+                # 添加cage_8 给参考气存储数据
+                for carge_number in [8]+gids:
                     for table_name_short in data_type.value['table']:
                         # 列
                         columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}
@@ -228,9 +228,15 @@ class Monitor_Datas_Handle():
         :param data:
         :return: success ：是否成功, error 错误信息
         """
+
+
         # 添加数据到表里
         if data is not None:
             # logger.critical(f"{data}")
+            # 清洗数据
+            for data_item in data['data']:
+                if isinstance(data_item['value'],list) and len(data_item['value']) ==0:
+                    data_item['value'] =None
             # 公共传感器：
             if data['mouse_cage_number'] == -1:
                 # 获取该表名称

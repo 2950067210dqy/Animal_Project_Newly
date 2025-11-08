@@ -319,7 +319,7 @@ class Monitor_data_new_index(ThemedWindow):
                 if settings:
                     # logger.critical(f"monitor_data_new_index | experiment_setting:{settings}")
                     # 将参考气也放进去
-                    gids = [0] + [group.id for group in settings.groups if group.id in dict_ids['data']]
+                    gids = [8] + [group.id for group in settings.groups if group.id in dict_ids['data']]
                     # logger.critical(f"monitor_data_new_index | gids{gids}")
                     self.left_top_widget_content.create_tiled_docks(n=len(gids), gids=gids)
                 pass
