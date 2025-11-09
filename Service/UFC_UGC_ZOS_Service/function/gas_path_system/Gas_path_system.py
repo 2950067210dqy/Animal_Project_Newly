@@ -742,8 +742,8 @@ class UGC_gas_path_system_run_thread(MyQThread):
             # 如果没有压力数据则补偿前后数据一样
             result_data["data"].append({"desc": "补偿前CO2(%)", "value": co2})
             if air_pressure is not None:
-                # co2补偿 =（标准大气压值*当前co2数值）/当前读出大气压值
-                co2_compensation=(float(global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['standard_atmospheric_pressure'])*co2)/abs(air_pressure)
+                # 当前co2数值/（1104测出来的气压值（没有就为标准大气压值）+当前读出大气压值） =co2补偿/标准大气压值 =》 co2补偿=（标准大气压值*当前co2数值）/（1104测出来的气压值（没有就为标准大气压值）+当前读出大气压值）
+                co2_compensation=(float(global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['standard_atmospheric_pressure'])*co2)/(global_setting.get_setting("air_pressure_1104",None) if global_setting.get_setting("air_pressure_1104",None) is not None else float(global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['standard_atmospheric_pressure'])  +air_pressure)
                 for i in range(len(result_data["data"])):
                     if result_data['data'][i]['desc']=="CO2(%)":
                         result_data['data'][i]['value'] = co2_compensation

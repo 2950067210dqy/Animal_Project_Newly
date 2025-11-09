@@ -329,6 +329,14 @@ class Send_thread(MyQThread):
                                                                                  function_code=
                                                                                  send_message['function_code'], )
 
+                        # 如果为1104 环境模块 存储大气压值
+                        if response.hex()[:4] =="1104" and  return_data.get("data") and len(return_data.get("data"))>1:
+                            datas = return_data.get("data")
+                            for data in datas:
+                                desc = data.get("desc")
+                                if desc and desc == "大气压测量值(KPa)":
+                                    global_setting.set_setting("air_pressure_1104", float(data.get("value")))
+                                    break
                         # 把返回数据返回给源头
                         message_struct = ObjectQueueItem(to=message['origin'],
                                                          data=parser_message,
@@ -348,7 +356,7 @@ class Send_thread(MyQThread):
                         message = self.normal_queue.get(timeout=0.1)
                     send_message = message['message']
                     # logger.critical(f"send_thread:{self.name}<UNK>{message}")
-                    # 消息没带type则不会参考气路，则进行鼠笼内传感器值获取 否则不获取
+                    # 消息没带type则当前不为参考气路，则进行鼠笼内传感器值获取 否则不获取
                     if message and message.get('type',None) is None:
                         start_time=time.time()
                         response, response_hex, send_state,return_data = self.modbus.send_command(
