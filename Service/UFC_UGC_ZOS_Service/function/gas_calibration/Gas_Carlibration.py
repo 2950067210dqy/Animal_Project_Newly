@@ -143,10 +143,10 @@ class Zero_Carlibration(Gas_Carlibration):
                   global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])
                 )
         ):
-            # 循环开始
+            # 循环读取CO2浓度
             self.send_message = {
                 'port': port,
-                'data': number_util.set_int_to_4_bytes_list("8"),
+                'data': number_util.set_int_to_4_bytes_list("5"),
                 'slave_id': '3',
                 'function_code': '4',
                 'timeout': 1
