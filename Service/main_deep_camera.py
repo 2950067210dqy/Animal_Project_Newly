@@ -780,6 +780,7 @@ def init_camera_and_image_handle_thread(serials):
 
 
 def main(q):
+    global_setting.set_setting("queue", q)
     app = QCoreApplication(sys.argv)
     # 加载日志配置
     # logger.remove(0)
@@ -802,7 +803,7 @@ def main(q):
     if read_queue_data_thread.isRunning():
         read_queue_data_thread.stop()
     read_queue_data_thread.start()
-    global_setting.set_setting("queue", q)
+
     return app.exec()
     # global camera_list
     # return camera_list,read_queue_data_thread,delete_file_thread,
@@ -849,6 +850,7 @@ def stop():
                     # 返回响应
                     queue = global_setting.get_setting("queue", None)
                     if queue:
+                        logger.error(f"深度相机{i}已停止")
                         queue.put(
                             ObjectQueueItem(origin="main_deep_camera", to="MainWindow_index",
                                             title="stop_deep_camera_return",
@@ -871,6 +873,7 @@ def stop():
                     # 返回响应
                     queue = global_setting.get_setting("queue", None)
                     if queue:
+                        logger.error(f"深度相机-处理线程{i}已停止")
                         queue.put(
                             ObjectQueueItem(origin="main_deep_camera", to="MainWindow_index",
                                             title="stop_deep_camera_return",
@@ -893,6 +896,7 @@ def stop():
            # 返回响应
            queue = global_setting.get_setting("queue", None)
            if queue:
+               logger.error(f"深度相机-删除文件线程已停止")
                queue.put(
                    ObjectQueueItem(origin="main_deep_camera", to="MainWindow_index",
                                    title="stop_deep_camera_return",

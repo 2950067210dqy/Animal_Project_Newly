@@ -677,6 +677,7 @@ def stop():
                     # 返回响应
                     queue = global_setting.get_setting("queue", None)
                     if queue:
+                        logger.error(f"红外相机{i}已停止")
                         queue.put(
                             ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
                                             title="stop_infrared_camera_return",
@@ -698,6 +699,7 @@ def stop():
             # 返回响应
             queue = global_setting.get_setting("queue", None)
             if queue:
+                logger.error(f"红外相机-文件删除线程已停止")
                 queue.put(
                     ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
                                     title="stop_infrared_camera_return",
