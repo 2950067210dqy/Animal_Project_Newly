@@ -43,7 +43,7 @@ class SQLiteManager:
             if conn:
                 conn.rollback()
             logger.error(f"Database error: {e}")
-            raise Exception
+            raise
         finally:
             if conn:
                 conn.close()
