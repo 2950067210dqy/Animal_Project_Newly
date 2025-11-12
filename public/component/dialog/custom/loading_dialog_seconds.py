@@ -210,9 +210,9 @@ class AnimatedLoadingDialog(QDialog):
         # 创建消息框
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Icon.Critical)
-        msg_box.setWindowTitle("启动超时")
-        msg_box.setText("启动执行超时！")
-        msg_box.setInformativeText("启动未能在规定时间内完成。")
+        msg_box.setWindowTitle(f"{self.title}超时")
+        msg_box.setText(f"{self.message}超时！")
+        msg_box.setInformativeText(f"{self.title}未能在规定时间内完成。")
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg_box.setDefaultButton(QMessageBox.StandardButton.Ok)
 

@@ -30,6 +30,7 @@ from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data, Others_Tables
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
+from public.util.custom_data_file_util import custom_data_file_util
 from public.util.number_util import number_util
 from public.util.time_util import time_util
 
@@ -132,6 +133,9 @@ class read_queue_data_Thread(MyQThread):
                                                        data.get("experiment_setting_file", ""))
 
                         pass
+                    case 'stop_modbus':
+                        logger.critical(f"{self.name},stop_modbus")
+                        stop_modbus()
                     case _:
                         pass
 
@@ -891,28 +895,73 @@ def stop():
         logger.error("stop_store_thread")
         if store_thread is not None and store_thread.isRunning():
             store_thread.stop()
+            # 返回响应
+            queue = global_setting.get_setting("queue", None)
+            if queue:
+                queue.put(
+                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_monitor_data_return",
+                                    data=" 存储线程 已关闭",
+                                    time=time_util.get_format_from_time(time.time())))
             store_thread=None
     except Exception as e:
         logger.error(f"关闭实验监测store_thread错误，原因：{e}")
+        # 返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
+                                data=f"关闭气路模块错误，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
     try:
         logger.error("stop_add_message_thread")
         if add_message_thread is not None and add_message_thread.isRunning():
             add_message_thread.stop()
             add_message_thread=None
+            # 返回响应
+            queue = global_setting.get_setting("queue", None)
+            if queue:
+                queue.put(
+                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_monitor_data_return",
+                                    data=" 鼠笼内模块报文装载线程 已关闭",
+                                    time=time_util.get_format_from_time(time.time())))
     except Exception as e:
         logger.error(f"关闭实验监测add_message_thread错误，原因：{e}")
-
+        # 返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
+                                data=f"关闭鼠笼内模块报文装载线程错误，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
     try:
         logger.error("stop_send_thread")
         if send_thread is not None and send_thread.isRunning():
             send_thread.stop()
             send_thread=None
+            # 返回响应
+            queue = global_setting.get_setting("queue", None)
+            if queue:
+                queue.put(
+                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_monitor_data_return",
+                                    data="鼠笼内模块报文发送线程 已关闭",
+                                    time=time_util.get_format_from_time(time.time())))
     except Exception as e:
         logger.error(f"关闭实验监测send_thread错误，原因：{e}")
-    # modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
-    # if modbus is not None:
-    #     logger.error("stop_modbus_stop_experiment")
-    #     modbus.close()
+        # 返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
+                                data=f"关闭鼠笼内模块报文发送线程错误，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
+
+
+def stop_modbus():
+    modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+    if modbus is not None:
+        logger.error("stop_modbus_stop_experiment")
+        modbus.close()
+    pass
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     send_message_q = multiprocessing.Queue()

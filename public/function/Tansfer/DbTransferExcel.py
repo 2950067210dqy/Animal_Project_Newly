@@ -1,13 +1,17 @@
 #sqlite db文件转成excel文件
 import re
+import time
 
 from typing import List, Tuple
 
 import pandas as pd
 from loguru import logger
 
+from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids, Modbus_Slave_Type
+from public.util.time_util import time_util
 
 
 class DbTransferExcel():
@@ -102,6 +106,7 @@ class DbTransferExcel():
 
                 sql = f"SELECT * FROM {name}"
                 logger.info(f"[INFO] 从 db 的 {typ} {name} 导出到 sheet '{sheet_name}|{sheet_name_CN}' ...")
+
                 if chunksize and chunksize > 0:
                     startrow = 0
                     # 使用 pandas.read_sql_query 的 chunksize 返回迭代器
@@ -123,5 +128,13 @@ class DbTransferExcel():
                         df.rename(columns=col_mapping, inplace=True)
                         df.to_excel(writer, sheet_name=sheet_name_CN, index=False)
         finally:
+            # 返回响应
+            queue = global_setting.get_setting("queue", None)
+            if queue:
+                queue.put(
+                    ObjectQueueItem(origin="DbTransferExcel", to="MainWindow_index",
+                                    title="stop_store_data_return",
+                                    data=f"成功导出数据",
+                                    time=time_util.get_format_from_time(time.time())))
             self.handler.stop()
     pass

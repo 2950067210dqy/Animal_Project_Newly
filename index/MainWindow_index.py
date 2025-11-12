@@ -54,6 +54,11 @@ class read_queue_data_Thread(MyQThread):
         self.queue = None
         self.camera_list = None
         self.window:MainWindow_Index = window
+
+        # 停止实验用到的 返回状态，当深度相机、红外相机、气路、鼠笼内、存储数据都发过返回消息则关闭关闭实验窗口
+        self.old_Stop_experiment_status_text_reTurn =None
+        self.old_stop_status_counts = 0
+        self.old_stop_status_max = 5
         pass
 
     def dosomething(self):
@@ -98,12 +103,41 @@ class read_queue_data_Thread(MyQThread):
                         if self.window is not None and self.window.start_dialog is not None :
 
                             self.window.start_dialog.update_progress_value(self.window.start_dialog.progress_max)
+                    case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_monitor_data_return"|"stop_store_data_return":
+                        if message.data and self.window:
+                            #  更新气路运行消息
+                            # 将运行信息放入status栏中
+                            self.window.status_bar.update_tip(message.data)
+                            if self.window.stop_dialog is not None:
+                                self.window.stop_dialog.insert_data_signal.emit(f"{message.data} ")
+                                # self.window.start_dialog.update_progress_value(1)
+                            pass
+
+                            if self.old_Stop_experiment_status_text_reTurn is not None and message.title !=self.old_Stop_experiment_status_text_reTurn:
+                                self.old_Stop_experiment_status_text_reTurn=message.title
+                                self.old_stop_status_counts += 1
+                            else:
+                                self.old_Stop_experiment_status_text_reTurn = message.title
+                            if self.old_stop_status_counts >= self.old_stop_status_max:
+                                # 停止完成，关闭停止实验窗口
+                                self.old_Stop_experiment_status_text_reTurn = None
+                                self.old_stop_status_counts =0
+
+                                QTimer.singleShot(3000,self.close_stop_experiment_dialog)
+
+                        pass
+                    case 'close_stop_experiment_dialog':
+                        # 停止完成，关闭停止实验窗口
+                        self.close_stop_experiment_dialog()
                     case _:
                         pass
 
             else:
                 # 把消息放回去
                 self.queue.put(message)
+    def close_stop_experiment_dialog(self):
+        if self.window is not None and self.window.stop_dialog is not None:
+            self.window.stop_dialog.update_progress_value(self.window.stop_dialog.progress_max)
 read_queue_data_thread = read_queue_data_Thread(name="MainWindow_index_read_queue_data_thread")
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
@@ -239,6 +273,8 @@ class MainWindow_Index(ThemedWindow):
         super().__init__()
         # 开始实验dialog
         self.start_dialog:AnimatedLoadingDialog=None
+        # 停止实验dialog
+        self.stop_dialog:AnimatedLoadingDialog=None
         #暂停实验标志位
         self.is_paused = False
         # 点击开始实验 接受数据和存储数据的线程
@@ -639,12 +675,12 @@ class MainWindow_Index(ThemedWindow):
             queue=global_setting.get_setting("queue")
             queue.put(           message_struct)
         AsyPromise(self.start_update_gui).then(
-            AsyPromise(self.show_dialog).then(
+            AsyPromise(self.show_open_dialog).then(
                 AsyPromise(self.start_open_window).then().catch(lambda e: logger.error(e))
             ).catch(lambda e: logger.error(e))
         ).catch(lambda e: logger.error(e))
         pass
-    def show_dialog(self,resolve,reject):
+    def show_open_dialog(self,resolve,reject):
         if self.start_dialog is None:
             self.start_dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+15,title="开始实验",message="正在启动气路...")
         else:
@@ -818,10 +854,12 @@ class MainWindow_Index(ThemedWindow):
         for message_struct in message_structs:
             queue = global_setting.get_setting("queue")
             queue.put(message_struct)
-        AsyPromise(self.stop_update_gui).then(
-            AsyPromise(self.stop_store_info_Qtimer).then(
+        self.stop_store_info_Qtimer()
+        AsyPromise(self.show_stop_dialog).then(
+                AsyPromise(self.stop_update_gui).then(
 
-            ).catch(lambda e:logger.error(e))
+
+            ).catch(lambda e: logger.error(e))
         ).catch(
             lambda e:logger.error(e)
         )
@@ -850,9 +888,27 @@ class MainWindow_Index(ThemedWindow):
         self.setEnabled(True)
 
         pass
-    def stop_store_info_Qtimer(self,resolve,reject):
-        QTimer.singleShot(1000, self.stop_store_info)
-        resolve()
+
+    def show_stop_dialog(self,resolve,reject):
+        if self.stop_dialog is None:
+            self.stop_dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+15,title="停止实验",message="正在停止实验...")
+        else:
+            self.stop_dialog.reset_progress()
+            self.stop_dialog.clear_list_data()
+            self.stop_dialog.deleteLater()
+            self.stop_dialog = AnimatedLoadingDialog(
+                countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+15,
+                title="停止实验",message="正在停止实验...")
+
+        # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
+        result = self.stop_dialog.exec()
+        if result == QDialog.DialogCode.Accepted:
+            resolve()
+        else:
+            resolve()
+    def stop_store_info_Qtimer(self):
+        QTimer.singleShot(100, self.stop_store_info)
+
     def stop_store_info(self):
 
         # 停止实验 将文件夹的数据合并成一个数据文件
