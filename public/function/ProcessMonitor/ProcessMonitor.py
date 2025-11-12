@@ -786,6 +786,8 @@ class IntegratedProcessMonitor:
                 self.main_logger.info(f"关闭进程: {process_id} (PID: {process.pid})")
 
                 try:
+                    # 先等待2秒 完成剩余工作
+                    process.join(timeout=2)
                     # 先尝试优雅关闭
                     process.terminate()
                     process.join(timeout=5)

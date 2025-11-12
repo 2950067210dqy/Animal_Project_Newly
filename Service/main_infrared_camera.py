@@ -669,18 +669,52 @@ def stop():
     # 所有红外相机线程停止
     logger.info(f"{'-' * 30}infrared_camera_stop{'-' * 30}")
     logger.error("stop_infrared_camera_thread")
-    for camera_struct_l in camera_list:
+    for i, camera_struct_l in enumerate(camera_list):
         if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
             try:
-                if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                if camera_struct_l['camera'] is not None :
                     camera_struct_l['camera'].stop()
+                    # 返回响应
+                    queue = global_setting.get_setting("queue", None)
+                    if queue:
+                        logger.error(f"红外相机{i}已停止")
+                        queue.put(
+                            ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
+                                            title="stop_infrared_camera_return",
+                                            data=f"红外相机{i}已停止",
+                                            time=time_util.get_format_from_time(time.time())))
             except Exception as e:
                 logger.error(f"关闭实验监测infrared_camera_camera_list错误，原因：{e}")
+                # 返回响应
+                queue = global_setting.get_setting("queue", None)
+                if queue:
+                    queue.put(
+                        ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
+                                        title="stop_infrared_camera_return",
+                                        data=f"红外相机{i}停止失败：原因{e}",
+                                        time=time_util.get_format_from_time(time.time())))
     try:
-        if delete_file_thread is not None and delete_file_thread.isRunning():
+        if delete_file_thread is not None :
             delete_file_thread.stop()
+            # 返回响应
+            queue = global_setting.get_setting("queue", None)
+            if queue:
+                logger.error(f"红外相机-文件删除线程已停止")
+                queue.put(
+                    ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
+                                    title="stop_infrared_camera_return",
+                                    data=f"红外相机-文件删除线程已停止",
+                                    time=time_util.get_format_from_time(time.time())))
     except Exception as e:
         logger.error(f"关闭实验监测infrared_camera_delete_file_thread错误，原因：{e}")
+        # 返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
+                                title="stop_infrared_camera_return",
+                                data=f"红外相机-文件线程线程停止失败，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
     pass
 if __name__ == "__main__":
     q = multiprocessing.Queue()

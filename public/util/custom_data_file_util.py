@@ -89,11 +89,13 @@ class custom_data_file_util:
         for root, _, files in os.walk(folder_path):
             for file in files:
                 file_path = os.path.join(root, file)
-                # 读取文件内容
-                with open(file_path, 'rb') as f:
-                    #将二进制内容编码为 Base64 的字符串
-                    contents[os.path.relpath(file_path, folder_path)] = base64.b64encode(f.read()).decode(cls.encoding)  #  转成base64字符串格式
-
+                try:
+                    # 读取文件内容
+                    with open(file_path, 'rb') as f:
+                        #将二进制内容编码为 Base64 的字符串
+                        contents[os.path.relpath(file_path, folder_path)] = base64.b64encode(f.read()).decode(cls.encoding)  #  转成base64字符串格式
+                except Exception as e:
+                    logger.error(f"{e}")
         # 获取上层路径
         parent_directory = os.path.dirname(folder_path)
         folder_name = os.path.basename(folder_path)

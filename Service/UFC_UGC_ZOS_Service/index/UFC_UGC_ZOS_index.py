@@ -267,11 +267,25 @@ class UFC_UGC_ZOS_index(MyQThread):
             lambda v: AsyPromise(
                 self.UFC_gas_path_system_obj.stop,
             ).then(
-                lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.stop)
+                lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.stop).then(
+                    lambda v22: AsyPromise(self.finished_stop)
+                ).catch(lambda e: logger.error(f"{e}"))
+
             ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
         return p
-
+    def finished_stop(self):
+        """
+        完成停止
+        :return:
+        """
+        #返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="UFC_UGC_ZOS_index", to="MainWindow_index", title="stop_gap_system_return",
+                                data="停止气路完成",
+                                time=time_util.get_format_from_time(time.time())))
     def calibration_handle(self):
         self.set_calibration_start_timer()
         p = AsyPromise(lambda r,e:r()).then().catch(lambda e: logger.error(f"{e}"))

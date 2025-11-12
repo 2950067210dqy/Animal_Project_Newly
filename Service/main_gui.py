@@ -19,6 +19,7 @@ from public.entity.enum.Public_Enum import AppState
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Crash_handle.CrashHandle import CrashHandler
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
+from public.util.time_util import time_util
 from theme.ThemeManager import ThemeManager
 # 过滤日志
 #logger = logger.bind(category="gui_logger")
@@ -83,28 +84,37 @@ def quit_qt_application():
     :return:
     """
     logger.error(f"{'-' * 40}quit Qt application{'-' * 40}")
-    modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
-    if modbus is not None:
-        logger.error("stop_modbus_close_application")
-        modbus.close()
+    # modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+    # if modbus is not None:
+    #     logger.error("stop_modbus_crash_application")
+    #     modbus.close()
+    # 不同进程的全局变量不同，所以让数据监控进程来关闭modbus
+    send_message_queue = global_setting.get_setting("send_message_queue", None)
+    if send_message_queue:
+        send_message_queue.put(
+            ObjectQueueItem(origin="main_gui", to="main_monitor_data", title="stop_modbus",
+
+                            time=time_util.get_format_from_time(time.time())))
 
     #
     # 等待5秒系统退出
-
-    step = 5
-    while step >= 0:
-        step -= 1
-        time.sleep(1)
+    time.sleep(5)
     sys.exit(0)
 
 def on_crash( error_msg):
     """处理崩溃事件"""
     logger.critical(f"Crash detected: {error_msg}...")
-    modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
-    if modbus is not None:
-        logger.error("stop_modbus_crash_application")
-        modbus.close()
+    # modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+    # if modbus is not None:
+    #     logger.error("stop_modbus_crash_application")
+    #     modbus.close()
+    # 不同进程的全局变量不同，所以让数据监控进程来关闭modbus
+    queue = global_setting.get_setting("queue", None)
+    if queue:
+        queue.put(
+            ObjectQueueItem(origin="main_gui", to="main_monitor_data", title="stop_modbus",
 
+                            time=time_util.get_format_from_time(time.time())))
     # 显示崩溃对话框
 
     msg_box = QMessageBox()

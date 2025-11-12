@@ -16,6 +16,7 @@ from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
 from public.entity.barrier.ActionCompleteBarrier import ActionCompleteBarrier
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Monitor_data_storage.DataStorage import store_data_with_result
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.number_util import number_util
@@ -338,6 +339,13 @@ class UFC_gas_path_system_close_thread(MyQThread):
         wait_UFC_stop_finish_event.clear()
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 已关闭")
+        # 返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index", title="stop_gap_system_return",
+                                data=" UFC 已关闭",
+                                time=time_util.get_format_from_time(time.time())))
         resolve()
 class UFC_gas_path_system_run_thread(MyQThread):
     """
@@ -671,6 +679,7 @@ class UFC_gas_path_system(Gas_path_system):
         resolve()
     pass
 
+
 class UGC_gas_path_system_run_thread(MyQThread):
     """
     UGC 气路系统运行线程
@@ -914,12 +923,23 @@ class UGC_gas_path_system(Gas_path_system):
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2.鼠笼气电磁阀关(sample 气)
-            lambda r:self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UGC 已停止{'.' * 100}"), resolve()
+            lambda r:AsyPromise(self.stop_finished).then(lambda r1:resolve()).catch(lambda e: reject(e))
         ).catch(lambda e: reject(e))
         pass
 
     pass
+    def stop_finished(self,resolve,reject):
+        #返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index", title="stop_gap_system_return",
+                                data=" UGC 已停止",
+                                time=time_util.get_format_from_time(time.time())))
+
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UGC 已停止{'.' * 100}")
+        resolve()
 class ZOS_gas_path_system_run_thread(MyQThread):
     """
     ZOS 气路系统运行线程
@@ -1164,6 +1184,13 @@ class ZOS_gas_path_system(Gas_path_system):
         self.zos_gas_path_system_run_thread.stop()
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS 已停止{'.' * 100}")
+        # 返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index", title="stop_gap_system_return",
+                                data=" ZOS 已停止",
+                                time=time_util.get_format_from_time(time.time())))
         resolve()
         pass
 

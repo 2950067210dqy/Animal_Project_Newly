@@ -780,6 +780,7 @@ def init_camera_and_image_handle_thread(serials):
 
 
 def main(q):
+    global_setting.set_setting("queue", q)
     app = QCoreApplication(sys.argv)
     # 加载日志配置
     # logger.remove(0)
@@ -802,7 +803,7 @@ def main(q):
     if read_queue_data_thread.isRunning():
         read_queue_data_thread.stop()
     read_queue_data_thread.start()
-    global_setting.set_setting("queue", q)
+
     return app.exec()
     # global camera_list
     # return camera_list,read_queue_data_thread,delete_file_thread,
@@ -841,27 +842,76 @@ def stop():
     logger.info(f"{'-' * 30}deep_camera_stop{'-' * 30}")
     logger.error("stop_deep_camera_thread")
     global delete_file_thread,camera_list
-    for camera_struct_l in camera_list:
+    for i,camera_struct_l in enumerate(camera_list):
         if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
             try:
-                if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                if camera_struct_l['camera'] is not None:
                     camera_struct_l['camera'].stop()
+                    # 返回响应
+                    queue = global_setting.get_setting("queue", None)
+                    if queue:
+                        logger.error(f"深度相机{i}已停止")
+                        queue.put(
+                            ObjectQueueItem(origin="main_deep_camera", to="MainWindow_index",
+                                            title="stop_deep_camera_return",
+                                            data=f"深度相机{i}已停止",
+                                            time=time_util.get_format_from_time(time.time())))
             except Exception as e:
                 logger.error(f"关闭实验监测deep_camera_camera_list错误，原因：{e}")
+                # 返回响应
+                queue = global_setting.get_setting("queue", None)
+                if queue:
+                    queue.put(
+                        ObjectQueueItem(origin="main_deep_camera", to="MainWindow_index",
+                                        title="stop_deep_camera_return",
+                                        data=f"深度相机{i}停止错误，原因：{e}",
+                                        time=time_util.get_format_from_time(time.time())))
         if len(camera_struct_l) != 0 and 'img_process' in camera_struct_l:
             try:
-                if camera_struct_l['img_process'] is not None and camera_struct_l['img_process'].isRunning():
+                if camera_struct_l['img_process'] is not None :
                     camera_struct_l['img_process'].stop()
+                    # 返回响应
+                    queue = global_setting.get_setting("queue", None)
+                    if queue:
+                        logger.error(f"深度相机-处理线程{i}已停止")
+                        queue.put(
+                            ObjectQueueItem(origin="main_deep_camera", to="MainWindow_index",
+                                            title="stop_deep_camera_return",
+                                            data=f"深度相机-处理线程{i}已停止",
+                                            time=time_util.get_format_from_time(time.time())))
             except Exception as e:
                 logger.error(f"关闭实验监测deep_camera_thread_list_img_process错误，原因：{e}")
-
+                # 返回响应
+                queue = global_setting.get_setting("queue", None)
+                if queue:
+                    queue.put(
+                        ObjectQueueItem(origin="main_deep_camera", to="MainWindow_index",
+                                        title="stop_deep_camera_return",
+                                        data=f"深度相机-处理线程{i}停止错误，原因：{e}",
+                                        time=time_util.get_format_from_time(time.time())))
 
     try:
-        if delete_file_thread is not None and delete_file_thread.isRunning():
+        if delete_file_thread is not None :
            delete_file_thread.stop()
+           # 返回响应
+           queue = global_setting.get_setting("queue", None)
+           if queue:
+               logger.error(f"深度相机-删除文件线程已停止")
+               queue.put(
+                   ObjectQueueItem(origin="main_deep_camera", to="MainWindow_index",
+                                   title="stop_deep_camera_return",
+                                   data=f"深度相机-删除文件线程已停止",
+                                   time=time_util.get_format_from_time(time.time())))
     except Exception as e:
         logger.error(f"关闭实验监测deep_camera_delete_file_thread错误，原因：{e}")
-
+        # 返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_deep_camera", to="MainWindow_index",
+                                title="stop_deep_camera_return",
+                                data=f"深度相机-删除文件线程停止失败，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
 
 if __name__ == "__main__":
     main()
