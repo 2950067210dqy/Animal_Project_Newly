@@ -672,7 +672,7 @@ def stop():
     for i, camera_struct_l in enumerate(camera_list):
         if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
             try:
-                if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                if camera_struct_l['camera'] is not None :
                     camera_struct_l['camera'].stop()
                     # 返回响应
                     queue = global_setting.get_setting("queue", None)
@@ -694,7 +694,7 @@ def stop():
                                         data=f"红外相机{i}停止失败：原因{e}",
                                         time=time_util.get_format_from_time(time.time())))
     try:
-        if delete_file_thread is not None and delete_file_thread.isRunning():
+        if delete_file_thread is not None :
             delete_file_thread.stop()
             # 返回响应
             queue = global_setting.get_setting("queue", None)
