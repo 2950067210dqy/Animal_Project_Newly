@@ -196,7 +196,7 @@ class CustomStatusBar(QStatusBar):
                 self.start_Experiment_Time_thread.is_paused_experiment=False
         else:
             self.start_Experiment_Time_thread.stop()
-            time.sleep(3)
+
             self.status_label.setText("未开始监测数据")
             self.status_label.setStyleSheet("QLabel { color: red; }")
 

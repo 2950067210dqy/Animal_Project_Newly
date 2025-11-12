@@ -583,17 +583,7 @@ class MainWindow_Index(ThemedWindow):
         self.setStyleSheet(global_setting.get_setting("theme_manager").get_style_sheet())
         pass
 
-    def open_monitor_data_window(self):
-        """
-        打開監控數據界面
-        :return:
-        """
-        # 打開窗口
-        for module in self.modules:
-            module: BaseModule
-            if module.name == "Main_New_Monitor_data":
-                module.click_method()
-                return
+
     def start_update_gui(self,resolve,reject):
         # 更新main_gui组件显示
         self.change_enable_component_app_state_signal.emit()
@@ -611,11 +601,21 @@ class MainWindow_Index(ThemedWindow):
                 # action_dict["action"].setDisabled(False)
         self.setEnabled(True)
         resolve()
-        #   延遲打開窗口
+    #   延遲打開窗口
     def start_open_window(self,resolve,reject):
         QTimer.singleShot(1 * 1000, self.open_monitor_data_window)
         resolve()
-
+    def open_monitor_data_window(self):
+        """
+        打開監控數據界面
+        :return:
+        """
+        # 打開窗口
+        for module in self.modules:
+            module: BaseModule
+            if module.name == "Main_New_Monitor_data":
+                module.click_method()
+                return
     def start_experiment(self):
 
         self.setEnabled(False)
@@ -856,17 +856,18 @@ class MainWindow_Index(ThemedWindow):
         for message_struct in message_structs:
             queue = global_setting.get_setting("queue")
             queue.put(message_struct)
-        AsyPromise(self.stop_store_info_Qtimer).then(
-            AsyPromise(self.show_stop_dialog).then(
 
-                AsyPromise(self.stop_update_gui).then(
+        AsyPromise(self.close_monitor_data_window).then(
+            AsyPromise(self.stop_store_info_Qtimer).then(
+                AsyPromise(self.show_stop_dialog).then(
 
-                    ).catch(lambda e: logger.error(e))
+                    AsyPromise(self.stop_update_gui).then(
 
-            ).catch(lambda e: logger.error(e))
-        ).catch(
-            lambda e:logger.error(e)
-        )
+                        ).catch(lambda e: logger.error(e))
+
+                ).catch(lambda e: logger.error(e))
+            ).catch(lambda e:logger.error(e))
+        ).catch(lambda e:logger.error(e) )
 
         # self.stop_store_info()
         pass
@@ -890,7 +891,7 @@ class MainWindow_Index(ThemedWindow):
                 action_dict["action"].setDisabled(True)
 
         self.setEnabled(True)
-
+        resolve()
         pass
 
     def show_stop_dialog(self,resolve,reject):
@@ -932,7 +933,23 @@ class MainWindow_Index(ThemedWindow):
                 'fold_path'] + os.path.join(
                 global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
                 f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
+            if self.stop_dialog is not None:
+                self.stop_dialog.insert_data_signal.emit(f"正在导出数据.... ")
             custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
+
+    def close_monitor_data_window(self,resolve,reject):
+        """
+        关闭監控數據界面
+        :return:
+        """
+        # 关闭窗口
+        for module in self.modules:
+            module: BaseModule
+            if module.name == "Main_New_Monitor_data":
+                module.close()
+                resolve()
+                return
+        resolve()
     def export_experiment_datas(self):
         """
         导出实验数据按钮函数
