@@ -128,13 +128,13 @@ class DbTransferExcel():
                         df.rename(columns=col_mapping, inplace=True)
                         df.to_excel(writer, sheet_name=sheet_name_CN, index=False)
         finally:
-            # 返回响应
-            queue = global_setting.get_setting("queue", None)
-            if queue:
-                queue.put(
-                    ObjectQueueItem(origin="DbTransferExcel", to="MainWindow_index",
-                                    title="stop_store_data_return",
-                                    data=f"成功导出数据",
-                                    time=time_util.get_format_from_time(time.time())))
+            # # 返回响应
+            # queue = global_setting.get_setting("queue", None)
+            # if queue:
+            #     queue.put(
+            #         ObjectQueueItem(origin="DbTransferExcel", to="MainWindow_index",
+            #                         title="stop_store_data_return",
+            #                         data=f"成功导出数据",
+            #                         time=time_util.get_format_from_time(time.time())))
             self.handler.stop()
     pass

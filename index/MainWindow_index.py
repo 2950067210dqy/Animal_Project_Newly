@@ -58,7 +58,7 @@ class read_queue_data_Thread(MyQThread):
         # 停止实验用到的 返回状态，当深度相机、红外相机、气路、鼠笼内、存储数据都发过返回消息则关闭关闭实验窗口
         self.old_Stop_experiment_status_text_reTurn =None
         self.old_stop_status_counts = 0
-        self.old_stop_status_max = 5
+        self.old_stop_status_max = 4
         pass
 
     def dosomething(self):
@@ -103,7 +103,7 @@ class read_queue_data_Thread(MyQThread):
                         if self.window is not None and self.window.start_dialog is not None :
 
                             self.window.start_dialog.update_progress_value(self.window.start_dialog.progress_max)
-                    case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_monitor_data_return"|"stop_store_data_return":
+                    case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_monitor_data_return":
                         if message.data and self.window:
                             #  更新气路运行消息
                             # 将运行信息放入status栏中
@@ -112,12 +112,14 @@ class read_queue_data_Thread(MyQThread):
                                 self.window.stop_dialog.insert_data_signal.emit(f"{message.data} ")
                                 # self.window.start_dialog.update_progress_value(1)
                             pass
-
-                            if self.old_Stop_experiment_status_text_reTurn is not None and message.title !=self.old_Stop_experiment_status_text_reTurn:
+                            # 当深度相机、红外相机、气路、鼠笼内、存储数据都发过返回消息则关闭关闭实验窗口
+                            if self.old_Stop_experiment_status_text_reTurn is  None:
+                                self.old_Stop_experiment_status_text_reTurn = message.title
+                                self.old_stop_status_counts += 1
+                            elif message.title !=self.old_Stop_experiment_status_text_reTurn:
                                 self.old_Stop_experiment_status_text_reTurn=message.title
                                 self.old_stop_status_counts += 1
-                            else:
-                                self.old_Stop_experiment_status_text_reTurn = message.title
+
                             if self.old_stop_status_counts >= self.old_stop_status_max:
                                 # 停止完成，关闭停止实验窗口
                                 self.old_Stop_experiment_status_text_reTurn = None
@@ -854,10 +856,12 @@ class MainWindow_Index(ThemedWindow):
         for message_struct in message_structs:
             queue = global_setting.get_setting("queue")
             queue.put(message_struct)
-        self.stop_store_info_Qtimer()
-        AsyPromise(self.show_stop_dialog).then(
+        AsyPromise(self.stop_store_info_Qtimer).then(
+            AsyPromise(self.show_stop_dialog).then(
+
                 AsyPromise(self.stop_update_gui).then(
 
+                    ).catch(lambda e: logger.error(e))
 
             ).catch(lambda e: logger.error(e))
         ).catch(
@@ -906,9 +910,9 @@ class MainWindow_Index(ThemedWindow):
             resolve()
         else:
             resolve()
-    def stop_store_info_Qtimer(self):
+    def stop_store_info_Qtimer(self,resolve,reject):
         QTimer.singleShot(100, self.stop_store_info)
-
+        resolve()
     def stop_store_info(self):
 
         # 停止实验 将文件夹的数据合并成一个数据文件
