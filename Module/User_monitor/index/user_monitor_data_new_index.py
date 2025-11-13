@@ -1,8 +1,10 @@
+import time
 import typing
 
-from PyQt6 import QtGui
+from PyQt6 import QtGui, QtWidgets
 from PyQt6.QtCore import QRect, QSize, Qt, QTimer
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy, QSplitter
+from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel, QSizePolicy, QSplitter, QHBoxLayout
+from loguru import logger
 
 from Module.User_monitor.ui.User_Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
 from Module.User_monitor.ui.user_monitor_data_new import Ui_monitor_data_new
@@ -11,9 +13,70 @@ from Module.User_monitor.ui.user_table_column_check_list_view import Table_Colum
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
+from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import Tutorial_Type
 from public.entity.experiment_setting_entity import Experiment_setting_entity
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
+from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
+from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
+
+
+class read_queue_data_Thread(MyQThread):
+    def __init__(self, name, window=None):
+        super().__init__(name)
+        self.queue = None
+        self.window: Monitor_data_new_index = window
+        pass
+
+    def stop(self):
+
+        super().stop()
+
+    def dosomething(self):
+        if not self.queue.empty():
+            # logger.error(f"{self.queue.qsize()}")
+            try:
+                message: ObjectQueueItem = self.queue.get()
+            except Exception as e:
+                logger.error(f"{self.name}发生错误{e}")
+                return
+                # logger.error(f"{self.name}_get_message:{message}|")
+            if message is not None and message.is_Empty():
+                return
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'monitor_data_new_index':
+                logger.error(f"{self.name}_get_message:{message}")
+                match message.title:
+                    case 'zero_calibration_finish':
+                        """
+                        零点标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_zero_calibration_btn_signal.emit()
+                            self.window.left_top_widget_content.list_widget.insertItem(0,
+                                                                                       f"{time_util.get_format_from_time(time.time())}-校零完成时间")
+                    case 'range_calibration_finish':
+                        """
+                        量程标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_range_calibration_btn_signal.emit()
+                            self.window.left_top_widget_content.list_widget.insertItem(0,
+                                                                                       f"{time_util.get_format_from_time(time.time())}-校量程完成时间")
+                    case _:
+                        pass
+
+
+
+
+            else:
+                # 把消息放回去
+                self.queue.put(message)
+
+        pass
+
+
+read_queue_data_thread = read_queue_data_Thread(name="monitor_data_new_index_read_queue_data_thread")
 
 
 class Monitor_data_new_index(ThemedWindow):
@@ -24,6 +87,11 @@ class Monitor_data_new_index(ThemedWindow):
                 widget.data_fetcher_thread.pause()
         pass
 
+    def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]):
+        global read_queue_data_thread
+        if read_queue_data_thread is not None:
+            read_queue_data_thread.stop()
+
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         for widget in self.left_top_widget_content._docks_widget:
             widget: Table_select_columns_paging_bottom
@@ -31,7 +99,6 @@ class Monitor_data_new_index(ThemedWindow):
                 widget.data_fetcher_thread.resume()
             elif widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.start()
-        pass
 
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
         pass
@@ -99,9 +166,6 @@ class Monitor_data_new_index(ThemedWindow):
         self.left_splitter: QSplitter = None
         self.right_splitter: QSplitter = None
 
-
-
-
         # 实例化ui
         self._init_ui(parent, geometry, title)
         # 实例化自定义ui
@@ -127,6 +191,13 @@ class Monitor_data_new_index(ThemedWindow):
         self.ui = Ui_monitor_data_new()
         self.ui.setupUi(self)
         self._retranslateUi()
+
+    def _init_function(self):
+        global read_queue_data_thread
+        read_queue_data_thread.window = self
+        read_queue_data_thread.queue = global_setting.get_setting("send_message_queue")
+        if read_queue_data_thread is not None and not read_queue_data_thread.isRunning():
+            read_queue_data_thread.start()
 
     def _init_customize_ui(self) -> None:
         # 删除原有的中央widget
@@ -214,7 +285,7 @@ class Monitor_data_new_index(ThemedWindow):
         splitter_style = """
             QSplitter::handle {
                 background-color: #cccccc;
-               
+
             }
             QSplitter::handle:hover {
                 background-color: #bbbbbb;
@@ -248,14 +319,12 @@ class Monitor_data_new_index(ThemedWindow):
                 if settings:
                     # logger.critical(f"monitor_data_new_index | experiment_setting:{settings}")
                     # 将参考气也放进去
-                    gids = [0] + [group.id for group in settings.groups if group.id in dict_ids['data']]
+                    gids = [8] + [group.id for group in settings.groups if group.id in dict_ids['data']]
                     # logger.critical(f"monitor_data_new_index | gids{gids}")
                     self.left_top_widget_content.create_tiled_docks(n=len(gids), gids=gids)
                 pass
             else:
                 pass
-
-
 
     def show_left_bottom_widget(self):
         """显示左下widget"""

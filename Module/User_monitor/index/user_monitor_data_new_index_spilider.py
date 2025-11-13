@@ -1,8 +1,9 @@
 import typing
 
-from PyQt6 import QtGui
+from PyQt6 import QtGui, QtWidgets
 from PyQt6.QtCore import QRect, QSize, Qt, QTimer
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy, QSplitter
+from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel, QSizePolicy, QSplitter, QHBoxLayout
+from loguru import logger
 
 from Module.User_monitor.ui.User_Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
 from Module.User_monitor.ui.user_monitor_data_new import Ui_monitor_data_new
