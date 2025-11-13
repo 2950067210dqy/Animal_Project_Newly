@@ -64,7 +64,7 @@ class Main_User_monitor_Module(BaseModule):
         pass
 
     def get_app_state(self) -> AppState:
-        return AppState.INITIALIZED
+        return AppState.MONITORING
     def get_name(self):
         """返回组件名称"""
         return "Main_User_monitor"

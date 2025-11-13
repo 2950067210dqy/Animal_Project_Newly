@@ -21,41 +21,46 @@ from theme.ThemeQt6 import ThemedWindow
 
 
 class DataFetcher(MyQThread):
-    data_fetched = pyqtSignal(dict)  # 信号传递数据（字典格式）
+    data_fetched = pyqtSignal(dict)  # 信号传递值
 
-    def __init__(self, name, gid, page_size, page, all_column_datas=[]):
+    def __init__(self, name,gid,page_size,page,all_column_datas=[]):
         super().__init__(name=name)
         self.gid = gid
-        self.page_size = page_size  # 每页条数（固定500）
-        self.page = page  # 当前页码
+        self.page_size = page_size
+        self.page = page
         self.all_column_datas = all_column_datas
-        self.handle: Monitor_Datas_Handle = None  # 数据库操 作实例
+
+        # 数据库操作类
+        self.handle: Monitor_Datas_Handle = None
 
     def stop(self):
         if self.handle is not None:
             self.handle.stop()
-            self.handle = None
+            self.handle=None
         super().stop()
+        # if self.handle is not None:
+        #     self.handle.stop()
 
     def pause(self):
         super().pause()
+        # if self.handle is not None:
+        #     self.handle.stop()
 
     def dosomething(self):
-        # 初始化数据库连接
+        # if self.handle is not None:
+        #     self.handle.stop()
         if self.handle is None:
-            self.handle = Monitor_Datas_Handle()
-        # 分页查询数据
-        datas = self.handle.query_epoch_data_all_tables_paging(
-            gid=self.gid,
-            page=self.page,
-            page_size=self.page_size,
-            all_column_datas=self.all_column_datas
-        )
-        # 若查询结果为空，返回空字典
+            self.handle = Monitor_Datas_Handle()  # # 创建数据库
+        data =[]
+
+
+        datas = self.handle.query_epoch_data_all_tables_paging(gid=self.gid,page=self.page,page_size=self.page_size,all_column_datas=self.all_column_datas)
         if datas is None:
-            datas = {}
+            datas = []
+
         self.data_fetched.emit(datas)
-        time.sleep(0.3)  # 避免请求过于频繁
+
+        time.sleep(0.3)  # 每秒获取一次数据
 
 
 class Table_select_columns_paging_bottom(ThemedWindow):
@@ -73,22 +78,28 @@ class Table_select_columns_paging_bottom(ThemedWindow):
 
     def _init_ui(self):
         self.setWindowTitle("带分页器的 QTableWidget（PyQt6）")
-        self.setMinimumWidth(1100)
 
-        # ---- 核心数据与分页参数 ----
-        self.all_columns = ["时间"]  # 表格列名（初始含时间列）
-        self.all_column_datas = []  # 列对应的数据源配置
-        self.total_items = 0  # 数据总条数
-        self.data = []  # 存储当前页数据
-        self.page_size = 500  # 固定每页500条（删除页大小调整功能）
-        self.current_page = 1  # 当前页码（1-based）
+        # ---- 数据和列定义 ----
+        self.all_columns = ["时间"]
+        self.all_column_datas = []
+        # 数据
+        self.total_items = 0  # 总条数
+        # [{表头1:数据，表头2:数据，}....]
+        self.data = []
 
-        # ---- 主布局 ----
+        # 分页参数（默认）
+        self.page_size = 500
+        self.current_page = 1  # 1-based page index
+
+        # ---- 主界面布局 ----
         central = QWidget()
         self.setCentralWidget(central)
         main_vbox = QVBoxLayout(central)
 
-        # ---- 分页器区域（仅保留4个核心按钮）----
+        self.setMinimumWidth(1100)
+
+        # 分页器区域（放在表格上方）
+        # Scroll area 包含 QTableWidget
         self.page_scroll_area = QScrollArea()
         self.page_scroll_area.setWidgetResizable(True)
         pager_widget = QWidget()
@@ -96,8 +107,7 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         pager_layout.setContentsMargins(0, 0, 0, 0)
         pager_layout.setSpacing(8)
         self.page_scroll_area.setWidget(pager_widget)
-
-        # 1. 核心分页按钮（首页/上一页/下一页/尾页）
+        # 分页控件：首页/上一页/下一页/尾页
         self.first_btn = QPushButton("首页")
         self.prev_btn = QPushButton("上一页")
         self.next_btn = QPushButton("下一页")
@@ -109,8 +119,8 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         self.last_btn.clicked.connect(lambda: self.go_to_page(self.total_pages))
 
         # 添加按钮到分页布局
-        for btn in (self.first_btn, self.prev_btn, self.next_btn, self.last_btn):
-            pager_layout.addWidget(btn)
+        for w in (self.first_btn, self.prev_btn, self.next_btn, self.last_btn):
+            pager_layout.addWidget(w)
 
         # 2. 分页信息显示（总条数/总页数/当前页）
         pager_layout.addStretch()  # 右对齐信息标签
@@ -158,9 +168,7 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         self.set_pager_enabled(False)
 
     def _init_function(self):
-        # 绑定导出按钮事件（保留原有功能）
-        self.export_button.clicked.connect(self.export_opera_data)
-        # 若原有校准按钮需保留，可在此补充绑定（示例代码中已注释，故暂不处理）
+        pass
 
     def export_opera_data(self):
         """导出操作日志功能（保留原有逻辑）"""
@@ -263,7 +271,7 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         self._update_nav_buttons()  # 同步按钮状态
 
     def update_page(self, result: dict):
-        """接收线程数据，更新表格内容（核心修改：鼠笼号强制转为整数）"""
+        """接收线程数据，更新表格内容（修改：预处理None值，使其参与后续计算）"""
         # 1. 提取结果中的列名与数据（兼容数据库返回格式）
         if "columns_title" not in result or "rows" not in result:
             logger.warning("数据格式错误：缺少 columns_title 或 rows 字段")
@@ -272,38 +280,39 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         page_records = result["rows"]
         self.total_items = result.get("total_items", 0)  # 更新总条数
 
-        # 2. 清空并重置表格
+        # 2. 预处理数据：处理None值和空行，使处理后的值能参与后续计算
+        processed_records = self._preprocess_data(page_records)
+
+        # 3. 清空并重置表格
         self.table.setRowCount(0)
         self.table.setColumnCount(len(self.all_columns))
         self.table.setHorizontalHeaderLabels(self.all_columns)
 
-        # 3. 填充表格数据（核心修改：增加鼠笼号整数格式化）
-        for row_idx, record in enumerate(page_records):
+        # 4. 填充表格数据（使用预处理后的数据）
+        for row_idx, record in enumerate(processed_records):
             self.table.insertRow(row_idx)
             col_idx = 0
-            for col_key, col_val in record.items():
-                final_val = ""  # 最终显示值，默认空（无空格）
 
-                # -------------------------- 核心逻辑：分情况处理值 --------------------------
-                # 情况1：当前是时间列（col_idx=0），按原有逻辑处理（None显示空）
+            for col_key, col_val in record.items():
+                final_val = ""  # 最终显示值
+
+                # -------------------------- 格式化显示值 --------------------------
+                # 情况1：当前是时间列（col_idx=0）
                 if col_idx == 0:
                     final_val = str(col_val) if col_val is not None else ""
 
                 # 情况2：数据列（col_idx>0）
                 else:
                     current_col_title = self.all_columns[col_idx]
-                    is_cage_column = "鼠笼号" in current_col_title  # 判断是否为鼠笼号列
+                    is_cage_column = "鼠笼号" in current_col_title
 
-                    # 子情况2.1：原始值非None → 分列处理
                     if col_val is not None:
                         if is_cage_column:
-                            # 鼠笼号列：强制转为整数（处理浮点数如1.0→1、字符串如"2.0"→2）
+                            # 鼠笼号列：强制转为整数
                             try:
-                                # 先转为数字类型（兼容int/float/字符串格式数字）
                                 num_val = float(col_val) if not isinstance(col_val, (int, float)) else col_val
-                                final_val = str(int(num_val))  # 强制转int（如2.5→2，根据业务合理）
+                                final_val = str(int(num_val))
                             except (ValueError, TypeError):
-                                # 无法转为数字的情况（如"未知"），直接显示原始值
                                 final_val = str(col_val).strip()
                         else:
                             # 非鼠笼号列：按原有逻辑格式化
@@ -313,33 +322,116 @@ class Table_select_columns_paging_bottom(ThemedWindow):
                                 else:
                                     final_val = f"{col_val:.2f}"  # 其他数字保留2位小数
                             else:
-                                final_val = str(col_val).strip()  # 非数字类型直接转字符串
-
-                    # 子情况2.2：原始值为None → 继承上一行同列内容
+                                final_val = str(col_val).strip()
                     else:
-                        # 检查上一行是否存在（row_idx > 0 说明有上一行）
-                        if row_idx > 0:
-                            prev_item = self.table.item(row_idx - 1, col_idx)
-                            # 若上一行单元格存在且有内容，直接继承（去除空格）
-                            if prev_item is not None and prev_item.text().strip() != "":
-                                final_val = prev_item.text().strip()
-                            # 上一行无有效内容 → 显示空（无空格）
-                            else:
-                                final_val = ""
-                        # 无上行数据（当前是第一行）→ 显示空（无空格）
-                        else:
-                            final_val = ""
+                        final_val = ""  # None值显示为空
 
-                # -------------------------- 统一：设置单元格值与对齐 --------------------------
+                # -------------------------- 设置单元格值与对齐 --------------------------
                 item = QTableWidgetItem(final_val)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
                 self.table.setItem(row_idx, col_idx, item)
                 col_idx += 1
 
-        # 4. 调整列宽与同步分页状态（原有逻辑不变）
+        # 5. 调整列宽与同步分页状态
         self.table.resizeColumnsToContents()
         self.info_label.setText(self._info_text())
         self._update_nav_buttons()
+
+    def _preprocess_data(self, page_records: list) -> list:
+        """预处理数据：处理None值和空行，返回处理后的数据列表"""
+        if not page_records:
+            return []
+
+        # 创建处理后的数据副本
+        processed_records = []
+        for record in page_records:
+            processed_records.append(dict(record))  # 深拷贝每一行
+
+        # 逐行处理
+        for row_idx, record in enumerate(processed_records):
+            # 检查当前行是否为空行（除时间列外的所有数据都为None或空）
+            is_empty_row = self._is_empty_row_in_data(record)
+
+            # 如果是空行，继承上一行的所有数据列值
+            if is_empty_row and row_idx > 0:
+                prev_record = processed_records[row_idx - 1]
+                col_keys = list(record.keys())[1:]  # 排除第一列（时间列）
+                for col_key in col_keys:
+                    record[col_key] = prev_record[col_key]
+
+            # 如果不是空行，处理单个None值
+            elif not is_empty_row:
+                col_idx = 0
+                for col_key, col_val in record.items():
+                    # 跳过时间列
+                    if col_idx == 0:
+                        col_idx += 1
+                        continue
+
+                    # 处理None值
+                    if col_val is None:
+                        current_col_title = self.all_columns[col_idx] if col_idx < len(self.all_columns) else ""
+                        is_cage_column = "鼠笼号" in current_col_title
+
+                        # 检查该列是否已经出现过有效数据
+                        if self._has_valid_data_before(processed_records, row_idx, col_key):
+                            # 如果前面已经有有效数据，计算前三项的平均值
+                            avg_val = self._get_average_from_processed_data(
+                                processed_records, row_idx, col_key, is_cage_column
+                            )
+
+                            # 更新当前记录的值
+                            if avg_val is not None:
+                                record[col_key] = avg_val
+                        # 如果前面全是None，保持当前的None值不变
+
+                    col_idx += 1
+
+        return processed_records
+
+    def _has_valid_data_before(self, processed_records: list, current_row_idx: int, col_key: str) -> bool:
+        """检查指定列在当前行之前是否已经出现过有效数据"""
+        for i in range(current_row_idx):
+            val = processed_records[i].get(col_key)
+            if val is not None:
+                try:
+                    float(val)  # 尝试转换为数字
+                    return True  # 找到了有效数据
+                except (ValueError, TypeError):
+                    continue
+        return False  # 前面全是None或无效数据
+
+    def _is_empty_row_in_data(self, record: dict) -> bool:
+        """判断数据记录中当前行是否为空行（除时间列外的所有数据都为None或空）"""
+        data_values = list(record.values())[1:]  # 排除第一列（时间列）
+        for val in data_values:
+            if val is not None and str(val).strip() != "":
+                return False
+        return True
+
+    def _get_average_from_processed_data(self, processed_records: list, current_row_idx: int,
+                                         col_key: str, is_cage_column: bool = False):
+        """从已处理的数据中获取指定列前三项的平均值"""
+        # 收集前面行的有效数值（最多前三行）
+        valid_values = []
+        for i in range(max(0, current_row_idx - 3), current_row_idx):
+            val = processed_records[i].get(col_key)
+            if val is not None:
+                try:
+                    num_val = float(val)
+                    valid_values.append(num_val)
+                except (ValueError, TypeError):
+                    continue  # 跳过无法转换的值
+
+        # 如果没有有效值，返回None
+        if not valid_values:
+            return None
+
+        # 计算平均值
+        avg = sum(valid_values) / len(valid_values)
+
+        # 如果是鼠笼号列，返回整数；否则返回浮点数
+        return int(round(avg)) if is_cage_column else avg
 
     def _update_nav_buttons(self):
         """根据当前页更新按钮启用状态（核心联动逻辑）"""
