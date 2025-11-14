@@ -1,11 +1,12 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSpinBox, QGroupBox, QScrollArea, \
+    QFrame, QGridLayout
 from PyQt6.QtCore import Qt, QTimer, QPointF, pyqtSignal
 from PyQt6.QtGui import QPainter, QPen, QColor, QFont
 import random
 import math
 from datetime import datetime
 
-from public.entity import BaseWidget
+from public.entity import BaseWidget, BaseFrame
 from public.config_class.global_setting import global_setting
 
 
@@ -21,13 +22,13 @@ class TrajectoryCanvas(BaseWidget):
         self.trajectory_points = []  # 存储轨迹点 [(x, y, timestamp), ...]
         self.current_position = QPointF(0, 0)
         self.is_tracking = False
-        self.canvas_width = 400
-        self.canvas_height = 300
+        self.canvas_width = 350
+        self.canvas_height = 250
 
         # 模拟老鼠运动参数
-        self.speed = random.uniform(1.0, 2.0)  # 随机速度
+        self.speed = random.uniform(0.8, 2.5)  # 随机速度
         self.direction = random.uniform(0, 2 * math.pi)  # 随机方向
-        self.direction_change_probability = 1  # 方向改变概率
+        self.direction_change_probability = 0.12  # 方向改变概率
 
         # 设置固定大小
         self.setFixedSize(self.canvas_width, self.canvas_height)
@@ -66,7 +67,7 @@ class TrajectoryCanvas(BaseWidget):
 
         # 随机改变方向
         if random.random() < self.direction_change_probability:
-            self.direction += random.uniform(-0.5, 0.5)
+            self.direction += random.uniform(-0.8, 0.8)
 
         # 计算新位置
         dx = self.speed * math.cos(self.direction)
@@ -76,13 +77,13 @@ class TrajectoryCanvas(BaseWidget):
         new_y = self.current_position.y() + dy
 
         # 边界检测和反弹
-        if new_x <= 10 or new_x >= self.canvas_width - 10:
+        if new_x <= 15 or new_x >= self.canvas_width - 15:
             self.direction = math.pi - self.direction
-            new_x = max(10, min(self.canvas_width - 10, new_x))
+            new_x = max(15, min(self.canvas_width - 15, new_x))
 
-        if new_y <= 10 or new_y >= self.canvas_height - 10:
+        if new_y <= 25 or new_y >= self.canvas_height - 15:
             self.direction = -self.direction
-            new_y = max(10, min(self.canvas_height - 10, new_y))
+            new_y = max(25, min(self.canvas_height - 15, new_y))
 
         self.current_position = QPointF(new_x, new_y)
 
@@ -90,9 +91,9 @@ class TrajectoryCanvas(BaseWidget):
         timestamp = datetime.now()
         self.trajectory_points.append((new_x, new_y, timestamp))
 
-        # 限制轨迹点数量（保留最近1000个点）
-        if len(self.trajectory_points) > 1000:
-            self.trajectory_points = self.trajectory_points[-1000:]
+        # 限制轨迹点数量（保留最近800个点）
+        if len(self.trajectory_points) > 800:
+            self.trajectory_points = self.trajectory_points[-800:]
 
         # 发送位置变化信号
         self.mouse_position_changed.emit(self.mouse_id, new_x, new_y)
@@ -110,9 +111,9 @@ class TrajectoryCanvas(BaseWidget):
         theme_manager = global_setting.get_setting("theme_manager")
         if theme_manager:
             theme_colors = theme_manager.get_themes_color()
-            text_color = QColor(theme_colors['--text'])
-            border_color = QColor(theme_colors['--border'])
-            highlight_color = QColor(theme_colors['--highlight'])
+            text_color = QColor(theme_colors.get('--text', '#E1E1E1'))
+            border_color = QColor(theme_colors.get('--border', '#555555'))
+            highlight_color = QColor(theme_colors.get('--highlight', '#1B2431'))
         else:
             text_color = QColor('#E1E1E1')
             border_color = QColor('#555555')
@@ -124,15 +125,17 @@ class TrajectoryCanvas(BaseWidget):
 
         # 绘制标题
         painter.setPen(text_color)
-        painter.setFont(QFont('Arial', 10))
-        painter.drawText(10, 20, f"{self.mouse_name} (ID: {self.mouse_id})")
+        painter.setFont(QFont('Arial', 9, QFont.Weight.Bold))
+        painter.drawText(10, 18, f"{self.mouse_name}")
 
         # 绘制轨迹线
         if len(self.trajectory_points) > 1:
-            trajectory_color = QColor(85, 170, 255, 180)  # 半透明蓝色
-            painter.setPen(QPen(trajectory_color, 2))
-
+            # 渐变轨迹效果
             for i in range(1, len(self.trajectory_points)):
+                alpha = int(255 * (i / len(self.trajectory_points)) * 0.7)  # 渐变透明度
+                trajectory_color = QColor(85, 170, 255, alpha)
+                painter.setPen(QPen(trajectory_color, 1.5))
+
                 prev_point = self.trajectory_points[i - 1]
                 curr_point = self.trajectory_points[i]
                 painter.drawLine(
@@ -142,32 +145,46 @@ class TrajectoryCanvas(BaseWidget):
 
         # 绘制老鼠当前位置
         if self.is_tracking:
-            mouse_color = QColor(255, 100, 100)  # 红色
+            mouse_color = QColor(255, 80, 80)  # 红色
+            pulse_color = QColor(255, 80, 80, 50)  # 脉冲效果
         else:
             mouse_color = QColor(150, 150, 150)  # 灰色
+            pulse_color = QColor(150, 150, 150, 30)
 
+        # 绘制脉冲效果
+        painter.setPen(QPen(pulse_color, 1))
+        painter.setBrush(pulse_color)
+        painter.drawEllipse(
+            self.current_position.x() - 8,
+            self.current_position.y() - 8,
+            16, 16
+        )
+
+        # 绘制老鼠主体
         painter.setPen(QPen(mouse_color, 2))
         painter.setBrush(mouse_color)
         painter.drawEllipse(
-            self.current_position.x() - 5,
-            self.current_position.y() - 5,
-            10, 10
+            self.current_position.x() - 4,
+            self.current_position.y() - 4,
+            8, 8
         )
 
         # 显示坐标
         painter.setPen(text_color)
-        painter.setFont(QFont('Arial', 8))
+        painter.setFont(QFont('Arial', 7))
         coord_text = f"({self.current_position.x():.1f}, {self.current_position.y():.1f})"
-        painter.drawText(10, self.canvas_height - 10, coord_text)
+        painter.drawText(10, self.canvas_height - 12, coord_text)
 
         # 显示轨迹点数量
         if self.trajectory_points:
-            point_count_text = f"轨迹点: {len(self.trajectory_points)}"
+            point_count_text = f"点数: {len(self.trajectory_points)}"
             painter.drawText(10, self.canvas_height - 25, point_count_text)
 
 
-class MouseCagePanel(BaseWidget):
+class MouseCagePanel(BaseFrame):
     """单个老鼠笼面板"""
+
+    cage_status_changed = pyqtSignal(int, str)  # cage_id, status
 
     def __init__(self, cage_id, mouse_count=1, parent=None):
         super().__init__(parent)
@@ -176,27 +193,42 @@ class MouseCagePanel(BaseWidget):
         self.trajectory_canvases = []
         self.tracking_timer = QTimer()
         self.tracking_timer.timeout.connect(self._update_all_mice)
-        self.tracking_timer.setInterval(50)  # 50ms更新一次
+        self.tracking_timer.setInterval(100)  # 100ms更新一次
+        self.is_tracking = False
 
         self._init_ui()
 
     def _init_ui(self):
         """初始化UI"""
         layout = QVBoxLayout()
+        layout.setSpacing(8)
 
         # 笼子标题和控制按钮
         header_layout = QHBoxLayout()
 
         cage_label = QLabel(f"笼子 #{self.cage_id} ({self.mouse_count} 只老鼠)")
-        cage_label.setFont(QFont('Arial', 12, QFont.Weight.Bold))
+        cage_label.setFont(QFont('Arial', 11, QFont.Weight.Bold))
         header_layout.addWidget(cage_label)
 
         header_layout.addStretch()
 
         # 控制按钮
-        self.start_btn = QPushButton("开始追踪")
-        self.stop_btn = QPushButton("停止追踪")
-        self.clear_btn = QPushButton("清除轨迹")
+        self.start_btn = QPushButton("开始")
+        self.stop_btn = QPushButton("停止")
+        self.clear_btn = QPushButton("清除")
+
+        # 按钮样式
+        button_style = """
+            QPushButton {
+                min-width: 60px;
+                min-height: 25px;
+                border-radius: 3px;
+                font-size: 9pt;
+            }
+        """
+        self.start_btn.setStyleSheet(button_style)
+        self.stop_btn.setStyleSheet(button_style)
+        self.clear_btn.setStyleSheet(button_style)
 
         self.start_btn.clicked.connect(self.start_tracking)
         self.stop_btn.clicked.connect(self.stop_tracking)
@@ -216,16 +248,9 @@ class MouseCagePanel(BaseWidget):
 
     def _create_canvas_grid(self):
         """创建轨迹画布网格布局"""
-        if self.mouse_count == 1:
+        if self.mouse_count <= 2:
             layout = QHBoxLayout()
-            canvas = TrajectoryCanvas(1, f"笼子{self.cage_id}-老鼠1")
-            canvas.mouse_position_changed.connect(self._on_mouse_position_changed)
-            self.trajectory_canvases.append(canvas)
-            layout.addWidget(canvas)
-            return layout
-        elif self.mouse_count == 2:
-            layout = QHBoxLayout()
-            for i in range(2):
+            for i in range(self.mouse_count):
                 canvas = TrajectoryCanvas(i + 1, f"笼子{self.cage_id}-老鼠{i + 1}")
                 canvas.mouse_position_changed.connect(self._on_mouse_position_changed)
                 self.trajectory_canvases.append(canvas)
@@ -233,7 +258,6 @@ class MouseCagePanel(BaseWidget):
             return layout
         else:
             # 多于2只老鼠时，使用网格布局
-            from PyQt6.QtWidgets import QGridLayout
             layout = QGridLayout()
             cols = 2 if self.mouse_count <= 4 else 3
 
@@ -250,17 +274,22 @@ class MouseCagePanel(BaseWidget):
         for canvas in self.trajectory_canvases:
             canvas.start_tracking()
         self.tracking_timer.start()
+        self.is_tracking = True
+        self.cage_status_changed.emit(self.cage_id, "tracking")
 
     def stop_tracking(self):
         """停止追踪所有老鼠"""
         self.tracking_timer.stop()
         for canvas in self.trajectory_canvases:
             canvas.stop_tracking()
+        self.is_tracking = False
+        self.cage_status_changed.emit(self.cage_id, "stopped")
 
     def clear_trajectory(self):
         """清除所有轨迹"""
         for canvas in self.trajectory_canvases:
             canvas.clear_trajectory()
+        self.cage_status_changed.emit(self.cage_id, "cleared")
 
     def _update_all_mice(self):
         """更新所有老鼠位置"""
@@ -269,5 +298,35 @@ class MouseCagePanel(BaseWidget):
 
     def _on_mouse_position_changed(self, mouse_id, x, y):
         """老鼠位置变化回调"""
-        # 这里可以添加位置数据的处理逻辑
+        # 可以在这里添加位置数据处理逻辑
         pass
+
+    def get_trajectory_data(self):
+        """获取轨迹数据"""
+        cage_data = {
+            "cage_id": self.cage_id,
+            "mouse_count": self.mouse_count,
+            "is_tracking": self.is_tracking,
+            "mice": []
+        }
+
+        for canvas in self.trajectory_canvases:
+            mouse_data = {
+                "mouse_id": canvas.mouse_id,
+                "mouse_name": canvas.mouse_name,
+                "current_position": {
+                    "x": canvas.current_position.x(),
+                    "y": canvas.current_position.y()
+                },
+                "trajectory_points": [
+                    {
+                        "x": point[0],
+                        "y": point[1],
+                        "timestamp": point[2].isoformat()
+                    }
+                    for point in canvas.trajectory_points
+                ]
+            }
+            cage_data["mice"].append(mouse_data)
+
+        return cage_data
