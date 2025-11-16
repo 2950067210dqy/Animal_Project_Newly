@@ -271,17 +271,31 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         self._update_nav_buttons()  # 同步按钮状态
 
     def update_page(self, result: dict):
-        """接收线程数据，更新表格内容（修改：预处理None值，使其参与后续计算）"""
+        """接收线程数据，更新表格内容（修改：预处理None值，使其参与后续计算，并过滤掉指定列）"""
         # 1. 提取结果中的列名与数据（兼容数据库返回格式）
         if "columns_title" not in result or "rows" not in result:
             logger.warning("数据格式错误：缺少 columns_title 或 rows 字段")
             return
-        self.all_columns = result["columns_title"]
+
+        original_columns = result["columns_title"]
         page_records = result["rows"]
         self.total_items = result.get("total_items", 0)  # 更新总条数
 
-        # 2. 预处理数据：处理None值和空行，使处理后的值能参与后续计算
-        processed_records = self._preprocess_data(page_records)
+        # 过滤掉第25、26、27列（索引24、25、26）
+        columns_to_remove = [24, 25, 26]  # 对应第25、26、27列
+
+        # 安全检查：确保索引不超出范围
+        safe_columns_to_remove = [i for i in columns_to_remove if i < len(original_columns)]
+
+        filtered_columns = []
+        for i, col in enumerate(original_columns):
+            if i not in safe_columns_to_remove:
+                filtered_columns.append(col)
+
+        self.all_columns = filtered_columns
+
+        # 2. 预处理数据：处理None值和空行，并过滤掉指定列
+        processed_records = self._preprocess_data(page_records, safe_columns_to_remove)
 
         # 3. 清空并重置表格
         self.table.setRowCount(0)
@@ -294,6 +308,10 @@ class Table_select_columns_paging_bottom(ThemedWindow):
             col_idx = 0
 
             for col_key, col_val in record.items():
+                # 安全检查：确保col_idx不超出范围
+                if col_idx >= len(self.all_columns):
+                    break
+
                 final_val = ""  # 最终显示值
 
                 # -------------------------- 格式化显示值 --------------------------
@@ -337,15 +355,23 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         self.info_label.setText(self._info_text())
         self._update_nav_buttons()
 
-    def _preprocess_data(self, page_records: list) -> list:
-        """预处理数据：处理None值和空行，返回处理后的数据列表"""
+    def _preprocess_data(self, page_records: list, columns_to_remove: list = None) -> list:
+        """预处理数据：处理None值和空行，并过滤掉指定列，返回处理后的数据列表"""
         if not page_records:
             return []
 
-        # 创建处理后的数据副本
+        if columns_to_remove is None:
+            columns_to_remove = []
+
+        # 创建处理后的数据副本，并过滤掉指定列
         processed_records = []
         for record in page_records:
-            processed_records.append(dict(record))  # 深拷贝每一行
+            # 过滤掉指定列
+            filtered_record = {}
+            for i, (key, value) in enumerate(record.items()):
+                if i not in columns_to_remove:
+                    filtered_record[key] = value
+            processed_records.append(filtered_record)
 
         # 逐行处理
         for row_idx, record in enumerate(processed_records):
@@ -370,7 +396,9 @@ class Table_select_columns_paging_bottom(ThemedWindow):
 
                     # 处理None值
                     if col_val is None:
-                        current_col_title = self.all_columns[col_idx] if col_idx < len(self.all_columns) else ""
+                        # 安全检查：确保col_idx不超出范围
+                        if col_idx < len(self.all_columns):
+                            current_col_title = self.all_columns[col_idx]
                         is_cage_column = "鼠笼号" in current_col_title
 
                         # 检查该列是否已经出现过有效数据
