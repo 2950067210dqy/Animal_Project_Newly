@@ -19,9 +19,9 @@ class Main_load_metadata_file_service(BaseService):
 class Main_load_metadata_file_widget(BaseInterfaceWidget):
     # 组件自定义界面
     def __init__(self):
-        super().__init__()
+        self._frame_obj = None  # 先初始化私有变量
+        super().__init__()  # 再调用父类初始化
         self.type = self.get_type()
-        self.frame_obj = self.create_middle_window()
         #  左侧窗口
         self.left_frame_obj = self.create_left_window()
         #  右侧窗口
@@ -29,12 +29,25 @@ class Main_load_metadata_file_widget(BaseInterfaceWidget):
         #  bottom窗口
         self.bottom_frame_obj = self.create_bottom_window()
 
+    @property
+    def frame_obj(self):
+        """懒加载属性，只有在访问时才创建界面"""
+        if self._frame_obj is None:
+            self._frame_obj = self.create_middle_window()
+        return self._frame_obj
+
+    @frame_obj.setter
+    def frame_obj(self, value):
+        """允许外部设置frame_obj"""
+        self._frame_obj = value
+
     def get_type(self):
         """获得类型 """
         return BaseInterfaceType.WINDOW
 
     def create_middle_window(self) -> BaseWindow:
         tab_window = MouseTrajectoryMainUI()
+        tab_window.showMaximized()  # 设置全屏显示
         return tab_window
 
     def create_left_window(self) -> BaseWindow:
@@ -48,6 +61,8 @@ class Main_load_metadata_file_widget(BaseInterfaceWidget):
     def create_bottom_window(self) -> BaseWindow:
         """创建并返回自定义的界面部件bottom WINDOW"""
         return None
+
+
 
 
 class Main_User_monitor_Module(BaseModule):
