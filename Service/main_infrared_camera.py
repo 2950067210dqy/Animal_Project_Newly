@@ -102,6 +102,10 @@ class read_queue_data_Thread(MyThread):
                     case 'pause':
                         pause()
                     case 'stop':
+                        data = message.data
+                        if data is not None:
+                            global_setting.set_setting("stop_experiment_time",
+                                                       data.get("stop_experiment_time", time.time()))
                         stop()
                     case 'experiment_setting':
                         data = message.data
@@ -130,9 +134,14 @@ class read_queue_data_Thread(MyThread):
 read_queue_data_thread = read_queue_data_Thread(name="main_infrared_camera_read_queue_data_thread")
 
 
+import msvcrt
+import shutil
+
+
+
 class coordinate_writing:
     """
-    将处理的坐标写入csv文件
+    将处理的温度数据写入csv文件，支持Windows下多设备并发访问
     """
 
     def __init__(self, path, camera_id):
@@ -141,30 +150,167 @@ class coordinate_writing:
         self.csv_file = None
         self.csv_writer = None
         self.folder_path = self.path
-        self.filename = self.folder_path + global_setting.get_setting("camera_config")['INFRARED_CAMERA'][
-            'tmp_filename']
+        self.original_filename = self.folder_path + global_setting.get_setting("camera_config")['INFRARED_CAMERA'][
+            'tmp_filename'] + f"_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}.{global_setting.get_setting('camera_config')['INFRARED_CAMERA']['tmp_extension']}"
+        self.filename = self.original_filename  # 当前使用的文件名
+        self.max_retries = 10  # 最大重试次数
+        self.retry_delay = 0.1  # 重试间隔（秒）
+        self.permission_counter = 0  # 权限文件计数器
+
+    def _lock_file(self, file):
+        """锁定文件"""
+        try:
+            msvcrt.locking(file.fileno(), msvcrt.LK_LOCK, 1)
+        except PermissionError:
+            return False
+        return True
+
+    def _unlock_file(self, file):
+        """解锁文件"""
+        try:
+            msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+        except PermissionError:
+            return False
+        return True
+
+    def _get_permission_filename(self, counter):
+        """
+        生成带有permission后缀的文件名
+        :param counter: 计数器
+        :return: 新文件名
+        """
+        base_name, ext = os.path.splitext(self.original_filename)
+        return f"{base_name}_permission_{counter}{ext}"
+
+    def _copy_to_permission_file(self):
+        """
+        复制当前文件到新的permission文件
+        :return: 新文件名
+        """
+        self.permission_counter += 1
+        new_filename = self._get_permission_filename(self.permission_counter)
+
+        try:
+            # 如果原文件存在，复制它
+            if os.path.exists(self.filename):
+                shutil.copy2(self.filename, new_filename)
+                logger.info(f"文件被占用，已复制到新文件: {new_filename}")
+            else:
+                logger.info(f"原文件不存在，创建新文件: {new_filename}")
+
+            # 更新当前使用的文件名
+            self.filename = new_filename
+            return new_filename
+
+        except Exception as e:
+            logger.error(f"复制文件失败: {e}")
+            raise
+
+    def _safe_file_operation(self, operation, mode='a'):
+        """
+        安全的文件操作，带重试机制和文件复制备份
+        :param operation: 要执行的操作函数
+        :param mode: 文件打开模式
+        :return: 操作结果
+        """
+        for attempt in range(self.max_retries):
+            try:
+                if not os.path.exists(self.folder_path):
+                    os.makedirs(self.folder_path)
+
+                with open(self.filename, mode=mode, newline='', encoding='utf-8') as file:
+                    # 获取文件锁
+                    if not self._lock_file(file):
+                        if attempt < self.max_retries - 1:
+                            logger.info(
+                                f"文件被占用，{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
+                            time.sleep(self.retry_delay)
+                            continue
+                        else:
+                            logger.error(f"文件访问失败，已重试{self.max_retries}次，尝试复制到新文件")
+                            # 达到最大重试次数，复制文件
+                            self._copy_to_permission_file()
+                            # 使用新文件重试一次
+                            with open(self.filename, mode=mode, newline='', encoding='utf-8') as new_file:
+                                if self._lock_file(new_file):
+                                    try:
+                                        result = operation(new_file)
+                                        return result
+                                    finally:
+                                        self._unlock_file(new_file)
+                                else:
+                                    logger.error(f"新文件 {self.filename} 也被占用，递归复制")
+                                    # 如果新文件也被占用，递归调用自己
+                                    return self._safe_file_operation(operation, mode)
+
+                    try:
+                        # 执行操作
+                        result = operation(file)
+                        return result
+                    finally:
+                        # 释放文件锁
+                        self._unlock_file(file)
+
+            except PermissionError as e:
+                if attempt < self.max_retries - 1:
+                    logger.info(f"文件被占用，{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
+                    time.sleep(self.retry_delay)
+                else:
+                    logger.error(f"文件访问失败，已重试{self.max_retries}次: {e}，尝试复制到新文件")
+                    # 达到最大重试次数，复制文件并重试
+                    self._copy_to_permission_file()
+                    return self._safe_file_operation(operation, mode)
+
+            except Exception as e:
+                logger.error(f"文件操作出错: {e}")
+
 
     def csv_create(self):
-        if not os.path.exists(self.folder_path):
-            os.makedirs(self.folder_path)
-        with open(self.filename, mode='w', newline='', encoding='utf-8') as file:
-            self.csv_file = file
-            self.csv_writer = csv.writer(self.csv_file)
-            self.csv_writer.writerow(["Timestamp", "tmp(℃)"])
+        """创建CSV文件并写入表头"""
+
+        def create_operation(file):
+            csv_writer = csv.writer(file)
+            csv_writer.writerow(["Timestamp", "tmp_hs_mean(摄氏度)"])
+
+        self._safe_file_operation(create_operation, mode='w')
 
     def csv_write(self, file_base_name, t):
-        if not os.path.exists(self.folder_path):
-            os.makedirs(self.folder_path)
-        with open(self.filename, mode='a', newline='', encoding='utf-8') as file:
-            self.csv_file = file
-            self.csv_writer = csv.writer(self.csv_file)
-            self.csv_writer.writerow([file_base_name, t])
+        """写入一行温度数据到CSV"""
+
+        def write_operation(file):
+            csv_writer = csv.writer(file)
+            csv_writer.writerow([file_base_name, t])
+
+        self._safe_file_operation(write_operation, mode='a')
+
+    def csv_write_batch(self, data_list):
+        """
+        批量写入温度数据，提高效率
+        :param data_list: 列表，每个元素是 (timestamp, temperature) 的元组
+        """
+
+        def batch_write_operation(file):
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(data_list)
+
+        self._safe_file_operation(batch_write_operation, mode='a')
 
     def csv_close(self):
+        """
+        关闭CSV文件（由于使用with语句，实际上不需要显式关闭）
+        保留此方法以保持向后兼容
+        """
         if self.csv_file is not None:
             self.csv_file.close()
             self.csv_file = None
             self.csv_writer = None
+
+    def get_current_filename(self):
+        """
+        获取当前正在使用的文件名
+        :return: 当前文件名
+        """
+        return self.filename
 
 
 class TIP:
@@ -391,7 +537,9 @@ class Thermal_process(MyThread):
     def stop(self):
         self.mi48.stop()
         cv.destroyAllWindows()
-        self.datasave.csv_close()
+
+        if self.datasave is not None :
+            self.datasave.csv_close()
         if self.vs is not None:
             self.vs.stop()
         super().stop()
@@ -487,19 +635,21 @@ class Delete_file(MyThread):
         total_size = 0
         total_nums = 0
         for root, dirs, files in os.walk(self.path):
-            # logger.warning(f"{root} | {dirs} | {files}")
-            if "tmp.csv" not in root:
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    try:
-                        size = os.path.getsize(file_path)  # 获取文件大小（字节）
-                        size = float(size / 1204 / 1024 / 1024)  # 将字节B转成GB
-                        total_size += size
-                        total_nums += 1
-                        os.remove(file_path)  # 删除文件
-                    except Exception as e:
-                        logger.error(
-                            f"infrared_camera Failed to delete {file_path}: reason:{e} |  异常堆栈跟踪：{traceback.print_exc()}")
+            # logger.warning(f"infrared {root} | {dirs} | {files}")
+            for file in files:
+                # 将记录数据的csv 文件不删除
+                if global_setting.get_setting("camera_config")['INFRARED_CAMERA']['tmp_filename'] in file:
+                    continue
+                file_path = os.path.join(root, file)
+                try:
+                    size = os.path.getsize(file_path)  # 获取文件大小（字节）
+                    size = float(size / 1204 / 1024 / 1024)  # 将字节B转成GB
+                    total_size += size
+                    total_nums += 1
+                    os.remove(file_path)  # 删除文件
+                except Exception as e:
+                    logger.error(
+                        f"infrared_camera Failed to delete {file_path}: reason:{e} |  异常堆栈跟踪：{traceback.print_exc()}")
         global frame_nums
         with lock:
             logger.warning(f"红外相机 | 删除文件总大小: {total_size} G-bytes | 删除文件总数量： {total_nums} | 此时相机拍摄的图像数量：{frame_nums}")

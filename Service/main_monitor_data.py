@@ -123,6 +123,10 @@ class read_queue_data_Thread(MyQThread):
                     case 'pause':
                         pause()
                     case 'stop':
+                        data = message.data
+                        if data is not None:
+                            global_setting.set_setting("stop_experiment_time",
+                                                       data.get("stop_experiment_time", time.time()))
                         stop()
                     case 'experiment_setting':
                         data = message.data

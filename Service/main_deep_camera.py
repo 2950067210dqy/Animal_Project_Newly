@@ -93,6 +93,10 @@ class read_queue_data_Thread(MyQThread):
                     case 'pause':
                         pause()
                     case 'stop':
+                        data = message.data
+                        if data is not None:
+                            global_setting.set_setting("stop_experiment_time",
+                                                       data.get("stop_experiment_time", time.time()))
                         stop()
                     case 'experiment_setting':
                         data = message.data
@@ -120,9 +124,14 @@ class read_queue_data_Thread(MyQThread):
 read_queue_data_thread = read_queue_data_Thread(name="main_deep_camera_read_queue_data_thread")
 
 
+import msvcrt
+import shutil
+
+
+
 class coordinate_writing:
     """
-    将处理的坐标写入csv文件
+    将处理的坐标写入csv文件,支持Windows下多设备并发访问
     """
 
     def __init__(self, path, camera_id):
@@ -131,30 +140,172 @@ class coordinate_writing:
         self.csv_file = None
         self.csv_writer = None
         self.folder_path = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['result_dir']
-        self.filename = self.folder_path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
-            'location_filename']
+        self.original_filename = self.folder_path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
+            'location_filename'] + f"__{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}.{global_setting.get_setting('camera_config')['DEEP_CAMERA']['location_extension']}"
+        self.filename = self.original_filename  # 当前使用的文件名
+        self.max_retries = 10  # 最大重试次数
+        self.retry_delay = 0.1  # 重试间隔（秒）
+        self.permission_counter = 0  # 权限文件计数器
+
+    def _lock_file(self, file):
+        """锁定文件"""
+        try:
+            msvcrt.locking(file.fileno(), msvcrt.LK_LOCK, 1)
+        except PermissionError:
+            return False
+        return True
+
+    def _unlock_file(self, file):
+        """解锁文件"""
+        try:
+            msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+        except PermissionError:
+            return False
+        return True
+
+    def _get_permission_filename(self, counter):
+        """
+        生成带有permission后缀的文件名
+        :param counter: 计数器
+        :return: 新文件名
+        """
+        base_name, ext = os.path.splitext(self.original_filename)
+        return f"{base_name}_permission_{counter}{ext}"
+
+    def _copy_to_permission_file(self):
+        """
+        复制当前文件到新的permission文件
+        :return: 新文件名
+        """
+        self.permission_counter += 1
+        new_filename = self._get_permission_filename(self.permission_counter)
+
+        try:
+            # 如果原文件存在，复制它
+            if os.path.exists(self.filename):
+                shutil.copy2(self.filename, new_filename)
+                logger.info(f"文件被占用，已复制到新文件: {new_filename}")
+            else:
+                logger.info(f"原文件不存在，创建新文件: {new_filename}")
+
+            # 更新当前使用的文件名
+            self.filename = new_filename
+            return new_filename
+
+        except Exception as e:
+            logger.error(f"复制文件失败: {e}")
+            raise
+
+    def _safe_file_operation(self, operation, mode='a'):
+        """
+        安全的文件操作,带重试机制和文件复制备份
+        :param operation: 要执行的操作函数
+        :param mode: 文件打开模式
+        :return: 操作结果
+        """
+        for attempt in range(self.max_retries):
+            try:
+                if not os.path.exists(self.folder_path):
+                    os.makedirs(self.folder_path)
+
+                with open(self.filename, mode=mode, newline='', encoding='utf-8') as file:
+                    # 获取文件锁
+                    if not self._lock_file(file):
+                        if attempt < self.max_retries - 1:
+                            logger.info(
+                                f"文件被占用,{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
+                            time.sleep(self.retry_delay)
+                            continue
+                        else:
+                            logger.error(f"文件访问失败,已重试{self.max_retries}次，尝试复制到新文件")
+                            # 达到最大重试次数，复制文件
+                            self._copy_to_permission_file()
+                            # 使用新文件重试一次
+                            with open(self.filename, mode=mode, newline='', encoding='utf-8') as new_file:
+                                if self._lock_file(new_file):
+                                    try:
+                                        result = operation(new_file)
+                                        return result
+                                    finally:
+                                        self._unlock_file(new_file)
+                                else:
+                                    logger.error(f"新文件 {self.filename} 也被占用，递归复制")
+                                    # 如果新文件也被占用，递归调用自己
+                                    return self._safe_file_operation(operation, mode)
+
+                    try:
+                        # 执行操作
+                        result = operation(file)
+                        return result
+                    finally:
+                        # 释放文件锁
+                        self._unlock_file(file)
+
+            except PermissionError as e:
+                if attempt < self.max_retries - 1:
+                    logger.info(f"文件被占用,{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
+                    time.sleep(self.retry_delay)
+                else:
+                    logger.error(f"文件访问失败,已重试{self.max_retries}次: {e}，尝试复制到新文件")
+                    # 达到最大重试次数，复制文件并重试
+                    self._copy_to_permission_file()
+                    return self._safe_file_operation(operation, mode)
+
+            except Exception as e:
+                logger.error(f"文件操作出错: {e}")
+
+
 
     def csv_create(self):
-        if not os.path.exists(self.folder_path):
-            os.makedirs(self.folder_path)
-        with open(self.filename, mode='w', newline='', encoding='utf-8') as file:
-            self.csv_file = file
-            self.csv_writer = csv.writer(self.csv_file)
-            self.csv_writer.writerow(["base_file_name", "X (m)", "Y (m)", "Z (m)"])
+        """创建CSV文件并写入表头"""
+
+        def create_operation(file):
+            csv_writer = csv.writer(file)
+            csv_writer.writerow(["base_file_name", "X (m)", "Y (m)", "Z (m)"])
+
+        self._safe_file_operation(create_operation, mode='w')
+
 
     def csv_write(self, file_base_name, x, y, z):
-        if not os.path.exists(self.folder_path):
-            os.makedirs(self.folder_path)
-        with open(self.filename, mode='a', newline='', encoding='utf-8') as file:
-            self.csv_file = file
-            self.csv_writer = csv.writer(self.csv_file)
-            self.csv_writer.writerow([file_base_name, x, y, z])
+        """写入一行数据到CSV"""
+
+        def write_operation(file):
+            csv_writer = csv.writer(file)
+            csv_writer.writerow([file_base_name, x, y, z])
+
+        self._safe_file_operation(write_operation, mode='a')
+
+
+    def csv_write_batch(self, data_list):
+        """
+        批量写入数据,提高效率
+        :param data_list: 列表,每个元素是 (file_base_name, x, y, z) 的元组
+        """
+
+        def batch_write_operation(file):
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(data_list)
+
+        self._safe_file_operation(batch_write_operation, mode='a')
+
 
     def csv_close(self):
+        """
+        关闭CSV文件(由于使用with语句,实际上不需要显式关闭)
+        保留此方法以保持向后兼容
+        """
         if self.csv_file is not None:
             self.csv_file.close()
             self.csv_file = None
             self.csv_writer = None
+
+
+    def get_current_filename(self):
+        """
+        获取当前正在使用的文件名
+        :return: 当前文件名
+        """
+        return self.filename
 
 
 class Detection:
@@ -211,7 +362,7 @@ class Detection:
             for result in results:
                 boxes = result.boxes.xyxy.cpu().numpy()
                 if len(boxes) == 0:
-                    x, y, z = 'NaN'
+                    x, y, z = None, None, None
                     self.data_save.csv_write(file_base_name, x, y, z)
                     self.img_save(imge, file_base_name)
                     # with lock:
@@ -272,6 +423,11 @@ class Img_process(MyQThread):
     将bmp文件和npm文件进行处理 线程处理
     """
 
+    def stop(self):
+        if self.dection is not None and self.dection.data_save is not None:
+            self.dection.data_save.csv_close()
+        super().stop()
+
     def __init__(self, path, camera_id):
         super().__init__(name=f"deep_camera_img_process_{camera_id}")
         self.path = path
@@ -282,7 +438,6 @@ class Img_process(MyQThread):
             os.makedirs(self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['color_dir'])
         if not os.path.exists(self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['depth_dir']):
             os.makedirs(self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['depth_dir'])
-        pass
 
     def clear_processed(self):
         """
@@ -290,11 +445,15 @@ class Img_process(MyQThread):
         :return:
         """
         log = []
-        # 保存更新后的日志
-        with open(self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['processed_log_filename'],
-                  'w') as f:
-            json.dump(log, f)
-        pass
+        processed_log_path = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
+            'processed_log_filename']
+        with processed_log_lock:
+            try:
+                with open(processed_log_path, 'w') as f:
+                    json.dump(log, f)
+                logger.info(f"deep_camera_{self.camera_id} | 已清空处理日志文件")
+            except Exception as e:
+                logger.error(f"deep_camera_{self.camera_id} | 清空日志文件失败: {e}")
 
     def mark_as_processed(self, filename):
         """
@@ -302,26 +461,29 @@ class Img_process(MyQThread):
         :param filename:
         :return:
         """
-        log = []
+        processed_log_path = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
+            'processed_log_filename']
 
-        # 尝试读取已存在的日志文件
-        if os.path.exists(
-                self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['processed_log_filename']):
-            try:
-                with open(self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
-                    'processed_log_filename'], 'r') as f:
-                    log = json.load(f)
-            except (json.JSONDecodeError, IOError):
-                log = []
+        with processed_log_lock:
+            log = []
+            # 尝试读取已存在的日志文件
+            if os.path.exists(processed_log_path):
+                try:
+                    with open(processed_log_path, 'r') as f:
+                        log = json.load(f)
+                except (json.JSONDecodeError, IOError) as e:
+                    logger.warning(f"deep_camera_{self.camera_id} | 读取日志文件失败，将创建新日志: {e}")
+                    log = []
 
-        # 避免重复添加
-        if filename not in log:
-            log.append(filename)
-
-        # 保存更新后的日志
-        with open(self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['processed_log_filename'],
-                  'w') as f:
-            json.dump(log, f)
+            # 避免重复添加
+            if filename not in log:
+                log.append(filename)
+                # 保存更新后的日志
+                try:
+                    with open(processed_log_path, 'w') as f:
+                        json.dump(log, f)
+                except Exception as e:
+                    logger.error(f"deep_camera_{self.camera_id} | 保存日志文件失败: {e}")
 
     def has_been_processed(self, filename):
         """
@@ -329,73 +491,134 @@ class Img_process(MyQThread):
         :param filename:
         :return:
         """
-        if not os.path.exists(
-                self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['processed_log_filename']):
-            return False
-        with open(self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['processed_log_filename'],
-                  'r') as f:
-            log = json.load(f)
-        return filename in log
+        processed_log_path = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
+            'processed_log_filename']
 
-    def dosomething(self) :
+        with processed_log_lock:
+            if not os.path.exists(processed_log_path):
+                return False
+            try:
+                with open(processed_log_path, 'r') as f:
+                    log = json.load(f)
+                return filename in log
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"deep_camera_{self.camera_id} | 读取日志文件失败: {e}")
+                return False
+
+    def get_processed_log(self):
+        """
+        获取已处理文件列表
+        :return: 已处理文件列表
+        """
+        processed_log_path = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
+            'processed_log_filename']
+
+        with processed_log_lock:
+            if not os.path.exists(processed_log_path):
+                # 创建空日志文件
+                try:
+                    with open(processed_log_path, 'w') as f:
+                        json.dump([], f)
+                except Exception as e:
+                    logger.error(f"deep_camera_{self.camera_id} | 创建日志文件失败: {e}")
+                return []
+
+            try:
+                with open(processed_log_path, 'r') as f:
+                    log = json.load(f)
+                return log
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"deep_camera_{self.camera_id} | 读取日志文件失败，返回空列表: {e}")
+                return []
+
+    def dosomething(self):
         with delete_process_lock:
             start_time = time.time()
             """处理文件夹中的文件"""
-            # color文件夹下的 对bmp文件名牌序
+            # color文件夹下的bmp文件按文件名排序
+            color_dir = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['color_dir']
 
-            files = sorted(f for f in os.listdir(
-                self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['color_dir']) if
-                           f.endswith(".bmp"))
+            if not os.path.exists(color_dir):
+                logger.warning(f"deep_camera_{self.camera_id} | 彩色图像目录不存在: {color_dir}")
+                time.sleep(float(global_setting.get_setting("camera_config")['DEEP_CAMERA']['process_delay']))
+                return
 
-            # 从日志文件中获取最后处理的文件名
-            last_processed_file = None
-            processed_log_path = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
-                'processed_log_filename']
-            if os.path.exists(processed_log_path):
-                with processed_log_lock:
-                    try:
-                        with open(processed_log_path, 'r') as f:
-                            log = json.load(f)
-                    except FileNotFoundError:
-                        # 如果文件不存在，则创建文件并写入默认内容
-                        with open(processed_log_path, 'w') as f:
-                            json.dump([], f)
-                if log:
-                    last_processed_file = log[-1]  # 获取最后处理的文件
+            files = sorted(f for f in os.listdir(color_dir) if f.endswith(".bmp"))
 
-            # 如果是增量处理，从上次未处理的文件开始
-            start_processing = False
+            if not files:
+                logger.debug(f"deep_camera_{self.camera_id} | 没有待处理的bmp文件")
+                time.sleep(float(global_setting.get_setting("camera_config")['DEEP_CAMERA']['process_delay']))
+                return
+
+            # 获取已处理文件列表
+            processed_log = self.get_processed_log()
+            processed_set = set(processed_log)  # 使用set提高查找效率
+
+            # 找到第一个未处理的文件索引
+            start_index = 0
+            if processed_log:
+                last_processed_file = processed_log[-1]
+                # 找到最后处理文件的位置
+                try:
+                    last_index = files.index(last_processed_file)
+                    start_index = last_index + 1  # 从下一个文件开始处理
+                    logger.debug(f"deep_camera_{self.camera_id} | 从文件 {last_processed_file} 之后继续处理")
+                except ValueError:
+                    # 如果最后处理的文件不在当前文件列表中，可能是文件已被删除
+                    # 此时需要清空日志或从头开始
+                    logger.warning(
+                        f"deep_camera_{self.camera_id} | 上次处理的文件 {last_processed_file} 不在当前列表中，清空日志")
+                    self.clear_processed()
+                    processed_set.clear()
+                    start_index = 0
+
             # 一次处理文件的数量
             handle_files_nums = 0
-            for file in files:
-                if last_processed_file:
-                    if not start_processing and file == last_processed_file:
-                        start_processing = True
-                    if not start_processing:
-                        continue  # 如果未到达上次处理的文件，跳过
+
+            for i in range(start_index, len(files)):
+                file = files[i]
+
+                # 双重检查：确保文件未被处理
+                if file in processed_set:
+                    logger.debug(f"deep_camera_{self.camera_id} | 文件 {file} 已处理，跳过")
+                    continue
+
                 base_name = os.path.splitext(file)[0]
-                # 在这里进行文件处理（可以替换为实际的处理函数）
-                bmp_path = os.path.join(
-                    self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['color_dir'], file)
+
+                # 构建文件路径
+                bmp_path = os.path.join(color_dir, file)
                 npy_path = os.path.join(
                     self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['depth_dir'],
-                    base_name + ".npy")
+                    base_name + ".npy"
+                )
 
-                self.dection.detect(bmp_path, npy_path, base_name)
+                # 检查对应的npy文件是否存在
+                if not os.path.exists(npy_path):
+                    logger.warning(f"deep_camera_{self.camera_id} | 深度文件不存在，跳过: {npy_path}")
+                    continue
 
-                # 处理完毕后，标记文件为已处理
-                with processed_log_lock:
+                try:
+                    # 进行文件处理
+                    self.dection.detect(bmp_path, npy_path, base_name)
+
+                    # 处理完毕后，标记文件为已处理
                     self.mark_as_processed(file)
-                handle_files_nums += 1
-            # 如果遍历完所有文件start_processing还是False 则processed_log日志文件出现问题，直接清空processed_log日志文件
-            if not start_processing:
-                self.clear_processed()
-            self.dection.data_save.csv_close()
+                    processed_set.add(file)  # 同步更新内存中的集合
+                    handle_files_nums += 1
+
+                except Exception as e:
+                    logger.error(f"deep_camera_{self.camera_id} | 处理文件 {file} 时出错: {e}")
+                    # 发生错误时仍然标记为已处理，避免反复处理同一个错误文件
+                    self.mark_as_processed(file)
+                    processed_set.add(file)
+
             end_time = time.time()
             logger.debug(
-                f"deep_camera_{self.camera_id} | image_process |  图像处理线程一次处理时间：{end_time - start_time}秒 | 共处理{handle_files_nums}个图像文件 | 此时总图像帧数量:{frame_nums}")
+                f"deep_camera_{self.camera_id} | image_process | 图像处理线程一次处理时间：{end_time - start_time:.2f}秒 | "
+                f"共处理{handle_files_nums}个图像文件 | 此时总图像帧数量:{frame_nums}"
+            )
+
         time.sleep(float(global_setting.get_setting("camera_config")['DEEP_CAMERA']['process_delay']))
-        pass
 
 
 class Delete_file(MyQThread):
@@ -414,10 +637,11 @@ class Delete_file(MyQThread):
         total_size = 0
         total_nums = 0
         for root, dirs, files in os.walk(self.path):
-            # logger.warning(f"{root} | {dirs} | {files}")
-            #  不删除
-            if "location.csv" not in root:
+            # logger.warning(f"deep_Camera {root} | {dirs} | {files}")
                 for file in files:
+                    # 将记录数据的csv 文件不删除
+                    if global_setting.get_setting("camera_config")['DEEP_CAMERA']['location_filename'] in file:
+                        continue
                     file_path = os.path.join(root, file)
                     try:
                         size = os.path.getsize(file_path)  # 获取文件大小（字节）
@@ -738,7 +962,6 @@ def init_camera_and_image_handle_thread(serials):
             logger.error(f"deep相机{serials[num]['mouse_cage_number']}初始化失败，失败原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
             # 所有线程停止
             delete_file_thread.stop()
-            delete_file_thread.terminal()
             for camera_struct_l in camera_list:
                 if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
                     camera_struct_l['camera'].stop()
@@ -758,7 +981,6 @@ def init_camera_and_image_handle_thread(serials):
                 f"deep 图像处理相机{serials[num]['mouse_cage_number']}初始化失败，失败原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
             # 所有线程停止
             delete_file_thread.stop()
-            delete_file_thread.terminal()
             for camera_struct_l in camera_list:
                 if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
                     camera_struct_l['camera'].stop()

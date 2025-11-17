@@ -842,14 +842,21 @@ class MainWindow_Index(ThemedWindow):
         self.status_bar.update_tip(f"正在关闭实验监测...")
         # self.stop_experiment_thread = Stop_experiment_thread(name="stop_experiment_thread",window=self)
         # self.stop_experiment_thread.start()
-
+        global_setting.set_setting("stop_experiment_time", time.time())
         send_message_queue = global_setting.get_setting("send_message_queue")
         send_message_queue.put( ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='stop',
+                                                data={
+                                                'stop_experiment_time': global_setting.get_setting("stop_experiment_time"),
+                                                },
                         time=time_util.get_format_from_time(time.time())))
         message_structs = [
-            ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='stop',
+            ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='stop',data={
+                                                'stop_experiment_time': global_setting.get_setting("stop_experiment_time"),
+                                                },
                             time=time_util.get_format_from_time(time.time())),
-            ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='stop',
+            ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='stop',data={
+                                                'stop_experiment_time': global_setting.get_setting("stop_experiment_time"),
+                                                },
                             time=time_util.get_format_from_time(time.time())),
 
         ]
@@ -874,7 +881,7 @@ class MainWindow_Index(ThemedWindow):
     def stop_update_gui(self,resolve,reject):
         logger.error("stop_update_gui")
         global_setting.set_setting("app_state", AppState.CONFIGURING)
-        global_setting.set_setting("stop_experiment_time", time.time())
+
 
 
 
