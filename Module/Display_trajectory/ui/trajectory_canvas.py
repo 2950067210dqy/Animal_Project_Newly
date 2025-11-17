@@ -3,12 +3,19 @@ import random
 import math
 import json
 import numpy as np
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, \
+    QGridLayout, QScrollArea
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QThread, pyqtSlot
 from PyQt6.QtGui import QPainter, QPen, QColor, QBrush, QFont
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime
+
+try:
+    from public.entity.BaseWidget import BaseWidget
+except ImportError:
+    # 如果无法导入BaseWidget，使用QWidget作为基类
+    BaseWidget = QWidget
 
 
 @dataclass
@@ -109,15 +116,20 @@ class RandomMouseProvider(MouseDataProvider):
                 box_width=random.uniform(15, 25),
                 box_height=random.uniform(15, 25)
             )
+
+
             detections.append(detection)
 
         return detections
 
+
     def start_detection(self):
         self.active = True
 
+
     def stop_detection(self):
         self.active = False
+
 
     def is_active(self) -> bool:
         return self.active
@@ -291,7 +303,7 @@ class YOLOMouseProvider(MouseDataProvider):
 class TrajectoryCanvas(QWidget):
     """轨迹绘制画布"""
 
-    def __init__(self, width=300, height=200):
+    def __init__(self, width=380, height=280):
         super().__init__()
         self.canvas_width = width
         self.canvas_height = height
@@ -372,10 +384,6 @@ class TrajectoryCanvas(QWidget):
             if len(self.trajectory_points[mouse_id]) > 1000:
                 self.trajectory_points[mouse_id] = self.trajectory_points[mouse_id][-500:]
 
-        # 清理不再检测到的老鼠（可选）
-        # 注意：YOLO可能有漏检，所以可能不需要立即清理
-        # self._cleanup_missing_mice(current_mouse_ids)
-
     def clear_trajectory(self):
         """清除轨迹"""
         self.trajectory_points = {}
@@ -413,9 +421,6 @@ class TrajectoryCanvas(QWidget):
 
         # 绘制当前老鼠位置
         self._draw_mice(painter)
-
-        # 绘制信息
-        self._draw_info(painter)
 
     def _draw_grid(self, painter):
         """绘制网格"""
@@ -490,25 +495,23 @@ class TrajectoryCanvas(QWidget):
             painter.drawEllipse(int(x - 6), int(y - 6), 12, 12)
 
             # 绘制老鼠ID
-            painter.setPen(QPen(QColor(255, 255, 255), 1))
-            painter.setFont(QFont("Arial", 8))
-            painter.drawText(int(x + 8), int(y - 8), f"#{mouse_id}")
+            text_x = int(x + 8)
+            text_y = int(y - 8)
+            id_text = f"#{mouse_id}"
 
-    def _draw_info(self, painter):
-        """绘制信息"""
-        painter.setPen(QPen(QColor(255, 255, 255), 1))
-        painter.setFont(QFont("Arial", 9))
+            # 黑色文字 + 白色描边
+            painter.setFont(QFont("Arial", 10, QFont.Weight.Bold))
 
-        info_text = f"老鼠数量: {len(self.mouse_positions)}"
-        if self.data_provider:
-            mode = "YOLO" if isinstance(self.data_provider, YOLOMouseProvider) else "随机"
-            info_text += f" | 模式: {mode}"
-            if self.data_provider.is_active():
-                info_text += " | 运行中"
-            else:
-                info_text += " | 已停止"
+            # 绘制白色描边（多次绘制形成描边效果）
+            painter.setPen(QPen(QColor(255, 255, 255), 3))
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if dx != 0 or dy != 0:
+                        painter.drawText(text_x + dx, text_y + dy, id_text)
 
-        painter.drawText(10, self.canvas_height - 10, info_text)
+            # 绘制黑色文字
+            painter.setPen(QPen(QColor(0, 0, 0), 1))
+            painter.drawText(text_x, text_y, id_text)
 
     def get_trajectory_data(self):
         """获取轨迹数据"""
@@ -524,10 +527,12 @@ class MouseCagePanel(QWidget):
 
     cage_status_changed = pyqtSignal(int, str)
 
-    def __init__(self, cage_id=1, mouse_count=1):
+    def __init__(self, cage_id=1, mouse_count=1, panel_width=400, panel_height=380):
         super().__init__()
         self.cage_id = cage_id
         self.mouse_count = mouse_count
+        self.panel_width = panel_width
+        self.panel_height = panel_height
         self.is_tracking_active = False
 
         self._init_ui()
@@ -536,31 +541,36 @@ class MouseCagePanel(QWidget):
     def _init_ui(self):
         """初始化UI"""
         layout = QVBoxLayout()
-        layout.setSpacing(5)
+        layout.setSpacing(2)
+        layout.setContentsMargins(5, 5, 5, 5)
 
         # 标题
         title_label = QLabel(f"笼子 #{self.cage_id}")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setStyleSheet("""
             QLabel {
-                font-size: 12pt;
+                font-size: 14pt;
                 font-weight: bold;
                 color: #E1E1E1;
                 background-color: #4A5568;
-                padding: 5px;
+                padding: 8px;
                 border-radius: 4px;
-                margin-bottom: 5px;
+                margin-bottom: 3px;
             }
         """)
         layout.addWidget(title_label)
 
         # 轨迹画布
-        self.trajectory_canvas = TrajectoryCanvas(width=320, height=200)
-        self.trajectory_canvas.set_random_mode(self.mouse_count)  # 默认使用随机模式
+        canvas_width = self.panel_width - 20
+        canvas_height = self.panel_height - 90
+
+        self.trajectory_canvas = TrajectoryCanvas(width=canvas_width, height=canvas_height)
+        self.trajectory_canvas.set_random_mode(self.mouse_count)
         layout.addWidget(self.trajectory_canvas)
 
         # 控制按钮
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(2)
 
         self.start_btn = QPushButton("开始")
         self.stop_btn = QPushButton("暂停")
@@ -569,10 +579,10 @@ class MouseCagePanel(QWidget):
 
         button_style = """
             QPushButton {
-                min-width: 50px;
-                min-height: 25px;
+                min-width: 65px;
+                min-height: 28px;
                 border-radius: 3px;
-                font-size: 9pt;
+                font-size: 10pt;
                 background-color: #4A5568;
                 color: #E1E1E1;
                 border: 1px solid #666;
@@ -605,8 +615,8 @@ class MouseCagePanel(QWidget):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet("""
             QLabel {
-                font-size: 9pt;
-                color: #A0AEC0;
+                font-size: 10pt;
+                color: #000000;
                 padding: 2px;
             }
         """)
@@ -620,7 +630,7 @@ class MouseCagePanel(QWidget):
                 background-color: #2D3748;
                 border: 2px solid #4A5568;
                 border-radius: 8px;
-                margin: 5px;
+                margin: 1px;
             }
         """)
 
@@ -628,7 +638,7 @@ class MouseCagePanel(QWidget):
         """设置定时器"""
         self.timer = QTimer()
         self.timer.timeout.connect(self._update_tracking)
-        self.timer.setInterval(100)  # 100ms更新一次
+        self.timer.setInterval(100)
 
     def start_tracking(self):
         """开始追踪"""
@@ -700,3 +710,244 @@ class MouseCagePanel(QWidget):
             'trajectory_data': self.trajectory_canvas.get_trajectory_data()
         }
 
+
+class MouseTrajectoryMainUI(BaseWidget):
+    """老鼠轨迹主界面"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.all_cage_panels = {}
+        self.visible_cage_panels = []
+        self.cage_count = 4
+        self.mice_per_cage = 1
+        self.current_page = 1
+        self.cages_per_page = 4
+        self.total_pages = 1
+
+        # 笼子面板尺寸
+        self.cage_panel_width = 400
+        self.cage_panel_height = 380
+
+        self.setWindowTitle("老鼠轨迹监控界面")
+        self._init_ui()
+
+    def _init_ui(self):
+        """初始化UI"""
+        layout = QVBoxLayout()
+        layout.setSpacing(2)
+
+        # 控制面板
+        control_panel = self._create_control_panel()
+        layout.addWidget(control_panel)
+
+        # 滚动区域用于显示笼子
+        self.scroll_area = QScrollArea()
+        self.scroll_widget = QWidget()
+        self.scroll_layout = QGridLayout(self.scroll_widget)
+        self.scroll_layout.setSpacing(8)
+        self.scroll_layout.setContentsMargins(10, 5, 10, 5)
+        self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.scroll_area.setWidget(self.scroll_widget)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("QScrollArea { border: none; }")
+
+        layout.addWidget(self.scroll_area)
+
+        self.setLayout(layout)
+
+        # 创建默认笼子
+        self._create_initial_cages()
+
+    def _create_control_panel(self):
+        """创建控制面板"""
+        group_box = QWidget()
+        layout = QHBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
+
+        # 笼子数量选择
+        layout.addWidget(QLabel("笼子数量:"))
+        self.cage_count_combo = QComboBox()
+        self.cage_count_combo.addItems([str(i) for i in range(1, 9)])
+        self.cage_count_combo.setCurrentIndex(3)
+        self.cage_count_combo.currentIndexChanged.connect(self._update_cage_count)
+        layout.addWidget(self.cage_count_combo)
+
+        layout.addStretch()
+
+        # 全局控制按钮
+        start_all_btn = QPushButton("全部开始")
+        stop_all_btn = QPushButton("全部停止")
+        clear_all_btn = QPushButton("全部清除")
+        self.prev_page_btn = QPushButton("上一页")
+        self.next_page_btn = QPushButton("下一页")
+        self.page_label = QLabel(f"{self.current_page} / {self.total_pages}")
+
+        button_style = """
+            QPushButton {
+                min-width: 80px;
+                min-height: 30px;
+                border-radius: 4px;
+                font-size: 10pt;
+                background-color: #4A5568;
+                color: #E1E1E1;
+                border: 1px solid #666;
+            }
+            QPushButton:hover {
+                background-color: #5A6578;
+            }
+            QPushButton:disabled {
+                background-color: #2D3748;
+                color: #718096;
+            }
+        """
+
+        for btn in [start_all_btn, stop_all_btn, clear_all_btn, self.prev_page_btn, self.next_page_btn]:
+            btn.setStyleSheet(button_style)
+
+        start_all_btn.clicked.connect(self.start_all_tracking)
+        stop_all_btn.clicked.connect(self.stop_all_tracking)
+        clear_all_btn.clicked.connect(self.clear_all_trajectory)
+        self.prev_page_btn.clicked.connect(self.on_prev_page)
+        self.next_page_btn.clicked.connect(self.on_next_page)
+
+        layout.addWidget(start_all_btn)
+        layout.addWidget(stop_all_btn)
+        layout.addWidget(clear_all_btn)
+        layout.addWidget(self.prev_page_btn)
+        layout.addWidget(self.next_page_btn)
+        layout.addWidget(self.page_label)
+
+        group_box.setLayout(layout)
+        return group_box
+
+    def _update_cage_count(self, index):
+        """更新笼子数量"""
+        self._clear_all_panels()
+        self.cage_count = index + 1
+        self.current_page = 1
+        self._create_initial_cages()
+
+    def _clear_all_panels(self):
+        """清除所有笼子面板"""
+        for panel in self.all_cage_panels.values():
+            panel.stop_tracking()
+            panel.setParent(None)
+
+        self.all_cage_panels.clear()
+        self.visible_cage_panels.clear()
+
+        for i in reversed(range(self.scroll_layout.count())):
+            item = self.scroll_layout.itemAt(i)
+            if item and item.widget():
+                item.widget().setParent(None)
+
+    def _create_initial_cages(self):
+        """创建初始笼子"""
+        for i in range(1, self.cage_count + 1):
+            if i not in self.all_cage_panels:
+                cage_panel = MouseCagePanel(
+                    cage_id=i,
+                    mouse_count=self.mice_per_cage,
+                    panel_width=self.cage_panel_width,
+                    panel_height=self.cage_panel_height
+                )
+                cage_panel.setFixedSize(self.cage_panel_width, self.cage_panel_height)
+                cage_panel.cage_status_changed.connect(self._on_cage_status_changed)
+                self.all_cage_panels[i] = cage_panel
+
+        self._update_cage_display()
+
+    def _update_cage_display(self):
+        """更新笼子显示"""
+        for panel in self.visible_cage_panels:
+            panel.setParent(None)
+        self.visible_cage_panels.clear()
+
+        for i in reversed(range(self.scroll_layout.count())):
+            item = self.scroll_layout.itemAt(i)
+            if item and item.widget():
+                item.widget().setParent(None)
+
+        self.total_pages = (self.cage_count + self.cages_per_page - 1) // self.cages_per_page
+
+        if self.current_page > self.total_pages:
+            self.current_page = self.total_pages
+
+        start_idx = (self.current_page - 1) * self.cages_per_page + 1
+        end_idx = min(start_idx + self.cages_per_page - 1, self.cage_count)
+
+        display_index = 0
+        for cage_id in range(start_idx, end_idx + 1):
+            if cage_id in self.all_cage_panels:
+                cage_panel = self.all_cage_panels[cage_id]
+                self.visible_cage_panels.append(cage_panel)
+
+                row = display_index // 2
+                col = display_index % 2
+                self.scroll_layout.addWidget(cage_panel, row, col, Qt.AlignmentFlag.AlignCenter)
+                display_index += 1
+
+        for col in range(2):
+            self.scroll_layout.setColumnStretch(col, 0)
+        self.scroll_layout.setRowStretch(0, 0)
+        self.scroll_layout.setRowStretch(1, 0)
+
+        self._update_pagination_controls()
+
+    def _update_pagination_controls(self):
+        """更新分页控件状态"""
+        show_pagination = self.cage_count > self.cages_per_page
+
+        self.prev_page_btn.setVisible(show_pagination)
+        self.next_page_btn.setVisible(show_pagination)
+        self.page_label.setVisible(show_pagination)
+
+        if show_pagination:
+            self.prev_page_btn.setEnabled(self.current_page > 1)
+            self.next_page_btn.setEnabled(self.current_page < self.total_pages)
+            self.page_label.setText(f"{self.current_page} / {self.total_pages}")
+
+    def _on_cage_status_changed(self, cage_id, status):
+        """笼子状态改变回调"""
+        print(f"笼子 {cage_id} 状态: {status}")
+
+    def start_all_tracking(self):
+        """开始所有笼子的追踪"""
+        for panel in self.all_cage_panels.values():
+            panel.start_tracking()
+
+    def stop_all_tracking(self):
+        """停止所有笼子的追踪"""
+        for panel in self.all_cage_panels.values():
+            panel.stop_tracking()
+
+    def clear_all_trajectory(self):
+        """清除所有轨迹"""
+        for panel in self.all_cage_panels.values():
+            panel.clear_trajectory()
+
+    def on_prev_page(self):
+        """上一页"""
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._update_cage_display()
+
+    def on_next_page(self):
+        """下一页"""
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self._update_cage_display()
+
+    def get_all_trajectory_data(self):
+        """获取所有轨迹数据"""
+        all_data = {
+            "cage_count": self.cage_count,
+            "mice_per_cage": self.mice_per_cage,
+            "cages": []
+        }
+
+        for cage_id in sorted(self.all_cage_panels.keys()):
+            cage_data = self.all_cage_panels[cage_id].get_trajectory_data()
+            all_data["cages"].append(cage_data)
+
+        return all_data

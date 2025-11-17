@@ -26,13 +26,18 @@ class MouseTrajectoryMainUI(BaseWidget):
         self.current_page = 1
         self.cages_per_page = 4
         self.total_pages = 1
+
+        # 笼子面板尺寸 - 调小一些
+        self.cage_panel_width = 400
+        self.cage_panel_height = 380
+
         self.setWindowTitle("老鼠轨迹监控界面")
         self._init_ui()
 
     def _init_ui(self):
         """初始化UI"""
         layout = QVBoxLayout()
-        layout.setSpacing(10)
+        layout.setSpacing(2)  # 进一步减小整体间隔
 
         # 控制面板
         control_panel = self._create_control_panel()
@@ -42,7 +47,8 @@ class MouseTrajectoryMainUI(BaseWidget):
         self.scroll_area = QScrollArea()
         self.scroll_widget = QWidget()
         self.scroll_layout = QGridLayout(self.scroll_widget)
-        self.scroll_layout.setSpacing(15)
+        self.scroll_layout.setSpacing(8)  # 减小网格布局间隔，从3改为8
+        self.scroll_layout.setContentsMargins(10, 5, 10, 5)  # 减小内容边距
         # 设置网格布局居中对齐
         self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll_area.setWidget(self.scroll_widget)
@@ -60,6 +66,7 @@ class MouseTrajectoryMainUI(BaseWidget):
         """创建控制面板"""
         group_box = QWidget()
         layout = QHBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)  # 减小控制面板边距
 
         # 笼子数量选择
         layout.addWidget(QLabel("笼子数量:"))
@@ -150,8 +157,10 @@ class MouseTrajectoryMainUI(BaseWidget):
         # 创建所有笼子面板但不显示
         for i in range(1, self.cage_count + 1):
             if i not in self.all_cage_panels:
-                cage_panel = MouseCagePanel(cage_id=i, mouse_count=self.mice_per_cage)
-                cage_panel.setFixedSize(350, 300)
+                cage_panel = MouseCagePanel(cage_id=i, mouse_count=self.mice_per_cage,
+                                            panel_width=self.cage_panel_width,
+                                            panel_height=self.cage_panel_height)
+                cage_panel.setFixedSize(self.cage_panel_width, self.cage_panel_height)
                 cage_panel.cage_status_changed.connect(self._on_cage_status_changed)
                 self.all_cage_panels[i] = cage_panel
 
@@ -181,7 +190,7 @@ class MouseTrajectoryMainUI(BaseWidget):
         start_idx = (self.current_page - 1) * self.cages_per_page + 1
         end_idx = min(start_idx + self.cages_per_page - 1, self.cage_count)
 
-        # 显示当前页的笼子面板
+        # 显示当前页的笼子面板，减小水平间距
         display_index = 0
         for cage_id in range(start_idx, end_idx + 1):
             if cage_id in self.all_cage_panels:
@@ -193,11 +202,11 @@ class MouseTrajectoryMainUI(BaseWidget):
                 self.scroll_layout.addWidget(cage_panel, row, col, Qt.AlignmentFlag.AlignCenter)
                 display_index += 1
 
-        # 设置列拉伸，使布局居中
+        # 设置列拉伸，减小水平间���
         for col in range(2):
-            self.scroll_layout.setColumnStretch(col, 1)
-        self.scroll_layout.setRowStretch(0, 1)
-        self.scroll_layout.setRowStretch(1, 1)
+            self.scroll_layout.setColumnStretch(col, 0)  # 改为0，不拉伸
+        self.scroll_layout.setRowStretch(0, 0)  # 改为0，不拉伸
+        self.scroll_layout.setRowStretch(1, 0)  # 改为0，不拉伸
 
         # 更新分页控件状态
         self._update_pagination_controls()
@@ -260,4 +269,3 @@ class MouseTrajectoryMainUI(BaseWidget):
             all_data["cages"].append(cage_data)
 
         return all_data
-
