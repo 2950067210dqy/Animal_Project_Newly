@@ -91,6 +91,31 @@ class Monitor_Datas_Handle():
         if self.experiment_setting is not None:
 
             gids = [group.id for group in self.experiment_setting.groups ]
+            # 实例化相机数据项项的数据表
+            for data_type in Modbus_Slave_Type.Cameras.value:
+                # 每个鼠笼都要实例化，除了参考气路
+                for carge_number in gids:
+                    for table_name_short in data_type.value['table']:
+                        # 列
+                        columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}
+                        # 表名称
+                        table_name = f"{data_type.value['name']}_{table_name_short}_cage_{carge_number}"
+                        # 创建表
+                        if not self.sqlite_manager.is_exist_table(table_name):
+                            self.sqlite_manager.create_table(table_name,
+                                                             columns)
+                            # logger.info(f"数据库{self.db_name}创建数据表{table_name}成功！")
+                        # 创建该表描述的表
+                        table_meta_name = f"{table_name}_meta"
+                        # 不存在则创建和插入
+                        if not self.sqlite_manager.is_exist_table(table_meta_name):
+                            self.sqlite_manager.create_meta_table(table_meta_name)
+                            # logger.info(f"数据库{self.db_name}创建表结构描述数据表{table_meta_name}成功！")
+                            # 插入描述信息
+                            for item in data_type.value['table'][table_name_short]['column']:
+                                self.sqlite_manager.insert_or_ignore(table_meta_name, item_name=item[0],
+                                                                     item_struct=item[2],
+                                                                     description=item[1])
             # 实例化每轮次数据表
             for data_type in Modbus_Slave_Type.Epochs.value:
                 # 添加cage_0 给参考气存储数据 这里的-1代表总轮次表，表名为Epoch_data_all 不带后面的cage_-1

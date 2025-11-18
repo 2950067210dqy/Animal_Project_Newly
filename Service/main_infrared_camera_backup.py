@@ -1,20 +1,23 @@
 # 加载日志配置
 import csv
 import multiprocessing
+import sys
 import threading
 import traceback
 from pathlib import Path
-from threading import Thread
 
 import numpy as np
+from PyQt6.QtCore import QCoreApplication
+from PyQt6.QtWidgets import QApplication
 from loguru import logger
 import cv2 as cv
 
 from public.component.dialog.index.infrared_camera_config_dialog_index import infrared_camera_config_dialog
+from public.config_class import global_load
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
-from public.entity.MyQThread import MyQThread
-
+from public.entity.MyQThread import MyQThread, MyThread
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 
 from public.util.folder_util import folder_util
 from public.util.json_util import json_util
@@ -61,8 +64,9 @@ TIP_SEGM_PARAM = {
 frame_nums = 0
 lock = threading.Lock()
 
-
-class read_queue_data_Thread(MyQThread):
+# 过滤日志
+# logger = logger.bind(category="infrared_camera_logger")
+class read_queue_data_Thread(MyThread):
     def __init__(self, name):
         super().__init__(name)
         self.queue = None
@@ -72,20 +76,54 @@ class read_queue_data_Thread(MyQThread):
     def dosomething(self):
         if not self.queue.empty():
             try:
-                message = self.queue.get()
+                message: ObjectQueueItem = self.queue.get()
             except Exception as e:
                 logger.error(f"{self.name}发生错误{e}")
                 return
-            if message is not None and isinstance(message, dict) and len(message) > 0 and 'to' in message and message[
-                'to'] == 'main_infrared_camera':
+            if message is not None and message.is_Empty():
+                return
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to=='main_infrared_camera':
                 logger.error(f"{self.name}_get_message:{message}")
-                if 'data' in message and message['data'] == 'stop':
-                    if self.camera_list is not None:
-                        for camera_struct_l in self.camera_list:
-                            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                                camera_struct_l['camera'].stop()
-                        print("main_infrared_camera stop")
+                match message.title:
+                    case 'stop_running_cameras':
+                        if self.camera_list is not None:
+                            for camera_struct_l in self.camera_list:
+                                if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                                    camera_struct_l['camera'].stop()
+
                         pass
+                    case 'start':
+                        data = message.data
+                        if data is not None:
+                            global_setting.set_setting("start_experiment_time", data.get("start_experiment_time",time.time()))
+                            global_setting.set_setting("pause_experiment_time", data.get("pause_experiment_time",[]))
+                            global_setting.set_setting("relieve_pause_experiment_time", data.get("relieve_pause_experiment_time",[]))
+                        start()
+                    case 'pause':
+                        pause()
+                    case 'stop':
+                        data = message.data
+                        if data is not None:
+                            global_setting.set_setting("stop_experiment_time",
+                                                       data.get("stop_experiment_time", time.time()))
+                        stop()
+                    case 'experiment_setting':
+                        data = message.data
+                        if data is not None:
+                            # 将实验设置存入全局变量
+                            global_setting.set_setting("experiment_setting", data.get("experiment_setting", None))
+                            global_setting.set_setting("experiment_setting_file",
+                                                       data.get("experiment_setting_file", ""))
+
+                        pass
+                    case 'camera_config':
+                        data = message.data
+                        if data is not None:
+                            init_camera_and_image_handle_thread(data)
+                        pass
+                    case _:
+                        pass
+
             else:
                 # 把消息放回去
                 self.queue.put(message)
@@ -96,9 +134,14 @@ class read_queue_data_Thread(MyQThread):
 read_queue_data_thread = read_queue_data_Thread(name="main_infrared_camera_read_queue_data_thread")
 
 
+import msvcrt
+import shutil
+
+
+
 class coordinate_writing:
     """
-    将处理的坐标写入csv文件
+    将处理的温度数据写入csv文件，支持Windows下多设备并发访问
     """
 
     def __init__(self, path, camera_id):
@@ -107,30 +150,167 @@ class coordinate_writing:
         self.csv_file = None
         self.csv_writer = None
         self.folder_path = self.path
-        self.filename = self.folder_path + global_setting.get_setting("camera_config")['INFRARED_CAMERA'][
-            'tmp_filename']
+        self.original_filename = self.folder_path + global_setting.get_setting("camera_config")['INFRARED_CAMERA'][
+            'tmp_filename'] + f"_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}.{global_setting.get_setting('camera_config')['INFRARED_CAMERA']['tmp_extension']}"
+        self.filename = self.original_filename  # 当前使用的文件名
+        self.max_retries = 10  # 最大重试次数
+        self.retry_delay = 0.1  # 重试间隔（秒）
+        self.permission_counter = 0  # 权限文件计数器
+
+    def _lock_file(self, file):
+        """锁定文件"""
+        try:
+            msvcrt.locking(file.fileno(), msvcrt.LK_LOCK, 1)
+        except PermissionError:
+            return False
+        return True
+
+    def _unlock_file(self, file):
+        """解锁文件"""
+        try:
+            msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+        except PermissionError:
+            return False
+        return True
+
+    def _get_permission_filename(self, counter):
+        """
+        生成带有permission后缀的文件名
+        :param counter: 计数器
+        :return: 新文件名
+        """
+        base_name, ext = os.path.splitext(self.original_filename)
+        return f"{base_name}_permission_{counter}{ext}"
+
+    def _copy_to_permission_file(self):
+        """
+        复制当前文件到新的permission文件
+        :return: 新文件名
+        """
+        self.permission_counter += 1
+        new_filename = self._get_permission_filename(self.permission_counter)
+
+        try:
+            # 如果原文件存在，复制它
+            if os.path.exists(self.filename):
+                shutil.copy2(self.filename, new_filename)
+                logger.info(f"文件被占用，已复制到新文件: {new_filename}")
+            else:
+                logger.info(f"原文件不存在，创建新文件: {new_filename}")
+
+            # 更新当前使用的文件名
+            self.filename = new_filename
+            return new_filename
+
+        except Exception as e:
+            logger.error(f"复制文件失败: {e}")
+            raise
+
+    def _safe_file_operation(self, operation, mode='a'):
+        """
+        安全的文件操作，带重试机制和文件复制备份
+        :param operation: 要执行的操作函数
+        :param mode: 文件打开模式
+        :return: 操作结果
+        """
+        for attempt in range(self.max_retries):
+            try:
+                if not os.path.exists(self.folder_path):
+                    os.makedirs(self.folder_path)
+
+                with open(self.filename, mode=mode, newline='', encoding='utf-8') as file:
+                    # 获取文件锁
+                    if not self._lock_file(file):
+                        if attempt < self.max_retries - 1:
+                            logger.info(
+                                f"文件被占用，{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
+                            time.sleep(self.retry_delay)
+                            continue
+                        else:
+                            logger.error(f"文件访问失败，已重试{self.max_retries}次，尝试复制到新文件")
+                            # 达到最大重试次数，复制文件
+                            self._copy_to_permission_file()
+                            # 使用新文件重试一次
+                            with open(self.filename, mode=mode, newline='', encoding='utf-8') as new_file:
+                                if self._lock_file(new_file):
+                                    try:
+                                        result = operation(new_file)
+                                        return result
+                                    finally:
+                                        self._unlock_file(new_file)
+                                else:
+                                    logger.error(f"新文件 {self.filename} 也被占用，递归复制")
+                                    # 如果新文件也被占用，递归调用自己
+                                    return self._safe_file_operation(operation, mode)
+
+                    try:
+                        # 执行操作
+                        result = operation(file)
+                        return result
+                    finally:
+                        # 释放文件锁
+                        self._unlock_file(file)
+
+            except PermissionError as e:
+                if attempt < self.max_retries - 1:
+                    logger.info(f"文件被占用，{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
+                    time.sleep(self.retry_delay)
+                else:
+                    logger.error(f"文件访问失败，已重试{self.max_retries}次: {e}，尝试复制到新文件")
+                    # 达到最大重试次数，复制文件并重试
+                    self._copy_to_permission_file()
+                    return self._safe_file_operation(operation, mode)
+
+            except Exception as e:
+                logger.error(f"文件操作出错: {e}")
+
 
     def csv_create(self):
-        if not os.path.exists(self.folder_path):
-            os.makedirs(self.folder_path)
-        with open(self.filename, mode='w', newline='', encoding='utf-8') as file:
-            self.csv_file = file
-            self.csv_writer = csv.writer(self.csv_file)
-            self.csv_writer.writerow(["Timestamp", "tmp(℃)"])
+        """创建CSV文件并写入表头"""
+
+        def create_operation(file):
+            csv_writer = csv.writer(file)
+            csv_writer.writerow(["Timestamp", "tmp_hs_mean(摄氏度)"])
+
+        self._safe_file_operation(create_operation, mode='w')
 
     def csv_write(self, file_base_name, t):
-        if not os.path.exists(self.folder_path):
-            os.makedirs(self.folder_path)
-        with open(self.filename, mode='a', newline='', encoding='utf-8') as file:
-            self.csv_file = file
-            self.csv_writer = csv.writer(self.csv_file)
-            self.csv_writer.writerow([file_base_name, t])
+        """写入一行温度数据到CSV"""
+
+        def write_operation(file):
+            csv_writer = csv.writer(file)
+            csv_writer.writerow([file_base_name, t])
+
+        self._safe_file_operation(write_operation, mode='a')
+
+    def csv_write_batch(self, data_list):
+        """
+        批量写入温度数据，提高效率
+        :param data_list: 列表，每个元素是 (timestamp, temperature) 的元组
+        """
+
+        def batch_write_operation(file):
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(data_list)
+
+        self._safe_file_operation(batch_write_operation, mode='a')
 
     def csv_close(self):
+        """
+        关闭CSV文件（由于使用with语句，实际上不需要显式关闭）
+        保留此方法以保持向后兼容
+        """
         if self.csv_file is not None:
             self.csv_file.close()
             self.csv_file = None
             self.csv_writer = None
+
+    def get_current_filename(self):
+        """
+        获取当前正在使用的文件名
+        :return: 当前文件名
+        """
+        return self.filename
 
 
 class TIP:
@@ -225,17 +405,17 @@ class TIP:
         return self.execute(thermal_data)
 
 
-class Thermal_process(Thread):
+class Thermal_process(MyThread):
     """
     温度处理线程
     """
 
     def __init__(self, path, id, serial_number):
-        super().__init__()
+        super().__init__(name=f"infrared_camera_img_process_{id}")
         self.serial_number = serial_number
         self.path = path
         self.id = id
-        self.running = None
+
 
         self.mi48 = None
         self.RA_Tmin = None
@@ -305,60 +485,68 @@ class Thermal_process(Thread):
         else:
             logger.info(f'infrared camera_{self.id} | {self.mi48.sn} connected to {connected_port}')
         logger.info(f'infrared camera_{self.id} | camera_info: {self.mi48.camera_info}')
+        try:
+            self.mi48.set_fps(args.fps)
+            self.mi48.regwrite(0xD0, 0x00)
+            self.mi48.disable_filter(f1=True, f2=True, f3=True)
+            self.mi48.enable_filter(f1=True, f2=True, f3=True)
+            self.mi48.regwrite(0xC2, 0x64)
+            self.mi48.set_emissivity(args.emissivity)
+            self.mi48.set_offset_corr(3)
+            self.mi48.start(stream=True, with_header=True)
 
-        self.mi48.set_fps(args.fps)
-        self.mi48.regwrite(0xD0, 0x00)
-        self.mi48.disable_filter(f1=True, f2=True, f3=True)
-        self.mi48.enable_filter(f1=True, f2=True, f3=True)
-        self.mi48.regwrite(0xC2, 0x64)
-        self.mi48.set_emissivity(args.emissivity)
-        self.mi48.set_offset_corr(3)
-        self.mi48.start(stream=True, with_header=True)
+            self.RA_Tmin = RollingAverageFilter(N=10)
+            self.RA_Tmax = RollingAverageFilter(N=10)
 
-        self.RA_Tmin = RollingAverageFilter(N=10)
-        self.RA_Tmax = RollingAverageFilter(N=10)
+            tip_param = {
+                'colormap': args.colormap,
+                'fpa_ncol_nrow': (self.mi48.cols, self.mi48.rows),
+                'image_scale': args.img_scale,
+            }
 
-        tip_param = {
-            'colormap': args.colormap,
-            'fpa_ncol_nrow': (self.mi48.cols, self.mi48.rows),
-            'image_scale': args.img_scale,
-        }
-        tip_param.update(TIP_SEGM_PARAM)
-        self.tip = TIP(tip_param)
+            tip_param.update(TIP_SEGM_PARAM)
+            self.tip = TIP(tip_param)
 
-        if args.cis_id is not None:
-            self.vs = VideoStream(src=args.cis_id).start()
-            self.test_frame = self.vs.read()
-        else:
-            self.vs = None
-            self.test_frame = None
+            if args.cis_id is not None:
+                self.vs = VideoStream(src=args.cis_id).start()
+                self.test_frame = self.vs.read()
+            else:
+                self.vs = None
+                self.test_frame = None
 
-        if self.test_frame is None:
-            self.vs = None
+            if self.test_frame is None:
+                self.vs = None
 
-        display_options = {
-            'window_coord': (0, 0),
-            'window_title': f'{self.mi48.camera_id} ({self.mi48.name}), {args.cis_id}',
-            'directory': r'data'
-        }
-        self.display = Display(display_options)
+            display_options = {
+                'window_coord': (0, 0),
+                'window_title': f'{self.mi48.camera_id} ({self.mi48.name}), {args.cis_id}',
+                'directory': r'data'
+            }
+            self.display = Display(display_options)
 
-        self.images = {'thermal': {}}
-        self.struct = {'thermal': {}}
+            self.images = {'thermal': {}}
+            self.struct = {'thermal': {}}
 
-        self.datasave = coordinate_writing(path=self.path, camera_id=self.id)
-        self.datasave.csv_create()
+            self.datasave = coordinate_writing(path=self.path, camera_id=self.id)
+            self.datasave.csv_create()
+        except Exception as e:
+            logger.error(f"红外相机{self.id}初始化错误！：原因：{e}")
+            return False
         return True
 
     def stop(self):
         self.mi48.stop()
         cv.destroyAllWindows()
-        self.datasave.csv_close()
+
+        if self.datasave is not None :
+            self.datasave.csv_close()
         if self.vs is not None:
             self.vs.stop()
-        self.running = False
+        super().stop()
 
     def run(self) -> None:
+        logger.warning(f"{self.name} thread has been started！")
+        self._running=True
         # 图片保存路径 如果不存在则创建
         pic_save_path = self.path + global_setting.get_setting("camera_config")['INFRARED_CAMERA']['pic_dir']
         if not os.path.exists(pic_save_path):
@@ -370,27 +558,34 @@ class Thermal_process(Thread):
                 if entry.is_file():
                     with lock:
                         frame_nums += 1
-        self.running = True
-        logger.info(f"红外相机{self.id}开始运行")
-        while self.running:
-            # while True:
-            # 如果初始化相机失败，则一直尝试初始化相机
+        while self._running:
+            self.mutex.lock()
+            if self._paused:
+                self.condition.wait(self.mutex)  # 等待条件变量
+            self.mutex.unlock()
+
+            # 执行一些工作（替代为你需要的任务）
+            self.dosomething(pic_save_path)
+    def dosomething(self,pic_save_path):
+        global frame_nums
+        # 如果初始化相机失败，则一直尝试初始化相机
+        if not self.init_state:
+            self.init_state = self.senxor_init()
             if not self.init_state:
-                self.init_state = self.senxor_init()
-                if not self.init_state:
-                    continue
-            with delete_process_lock:
-                start_time = time.time()
-                try:
-                    raw_data, header = self.mi48.read()
-                except Exception as e:
-                    logger.error(f"红外相机_{self.id} | 异常，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
-                    self.init_state = False
-                    self.init_error_log_show = False
-                    continue
-                if raw_data is None:
-                    logger.error(f"红外相机_{self.id} | raw_data is None")
-                    continue
+                return
+        with delete_process_lock:
+            start_time = time.time()
+            try:
+                raw_data, header = self.mi48.read()
+            except Exception as e:
+                logger.error(f"红外相机_{self.id} | 异常，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
+                self.init_state = False
+                self.init_error_log_show = False
+                return
+            if raw_data is None:
+                logger.error(f"红外相机_{self.id} | raw_data is None")
+                return
+            try:
                 frame = data_to_frame(raw_data, (self.mi48.cols, self.mi48.rows),
                                       hflip=False)  # hflip与USB正反有关，朝上要翻转为true
 
@@ -417,18 +612,20 @@ class Thermal_process(Thread):
                 end_time = time.time()
                 logger.debug(
                     f"infrared_camera_{self.id}| image_process  | 图像处理线程一次处理时间：{end_time - start_time}秒 | 此时总图像帧数量:{frame_nums}")
-            time.sleep(float(global_setting.get_setting("camera_config")['INFRARED_CAMERA']['delay']))
+            except Exception as e:
+                logger.error(f"红外相机_{self.id} |运行出现错误:{e}")
+        time.sleep(float(global_setting.get_setting("camera_config")['INFRARED_CAMERA']['delay']))
 
-        pass
+    pass
 
 
-class Delete_file(Thread):
+class Delete_file(MyThread):
     """
     清除文件线程
     """
 
     def __init__(self, path, start_time):
-        super().__init__()
+        super().__init__(name=f"infrared_camera_delete_file")
         self.path = path
         self.start_time = start_time
 
@@ -438,8 +635,11 @@ class Delete_file(Thread):
         total_size = 0
         total_nums = 0
         for root, dirs, files in os.walk(self.path):
-            # logger.warning(f"{root} | {dirs} | {files}")
+            # logger.warning(f"infrared {root} | {dirs} | {files}")
             for file in files:
+                # 将记录数据的csv 文件不删除
+                if global_setting.get_setting("camera_config")['INFRARED_CAMERA']['tmp_filename'] in file:
+                    continue
                 file_path = os.path.join(root, file)
                 try:
                     size = os.path.getsize(file_path)  # 获取文件大小（字节）
@@ -456,45 +656,31 @@ class Delete_file(Thread):
             frame_nums = 0
         return total_size
 
-    def stop(self):
-        self.running = False
 
-    def run(self) -> None:
+    def dosomething(self) :
         try:
-            logger.info(f"红外相机删除文件线程开始运行")
-            self.running = True
-            while self.running:
-                with delete_process_lock:
-                    # 获取现在时间与上次删除时间之差
-                    current_time = time.time()
-                    elapsed = current_time - self.start_time
-                    if elapsed >= float(global_setting.get_setting("camera_config")['DELETE']['interval_seconds']):
-                        # 尝试删除文件
-                        # 获取删除文件内的所有文件大小
-                        self.get_and_delete_files()
+            with delete_process_lock:
+                # 获取现在时间与上次删除时间之差
+                current_time = time.time()
+                elapsed = current_time - self.start_time
+                if elapsed >= float(global_setting.get_setting("camera_config")['DELETE']['interval_seconds']):
+                    # 尝试删除文件
+                    # 获取删除文件内的所有文件大小
+                    self.get_and_delete_files()
 
-                        logger.info(f"deep_camera 删除文件成功")
-                        self.start_time = time.time()
+                    logger.warning(f"infrared_camera 删除文件成功")
+                    self.start_time = time.time()
 
-                        pass
-                    # logger.info(f"时间差{time_util.get_format_minute_from_time(elapsed)}")
-                time.sleep(float(global_setting.get_setting("camera_config")['DELETE']['delay']))
+                    pass
+                # logger.info(f"时间差{time_util.get_format_minute_from_time(elapsed)}")
+            time.sleep(float(global_setting.get_setting("camera_config")['DELETE']['delay']))
         except Exception as e:
             logger.error(f"红外相机删除文件线程运行异常，异常原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
         pass
 
 
 def load_global_setting():
-    # 加载相机配置
-    config_file_path = os.getcwd() + "./config/camera_config.ini"
-
-    # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
-    config = ini_parser(config_file_path).read()
-    if (len(config) != 0):
-        logger.info("相机配置文件读取成功。")
-    else:
-        logger.error("相机配置文件读取失败。")
-    global_setting.set_setting("camera_config", config)
+    global_load.load_global_setting_without_Qt()
     # 记录运行时间的开始时间
     start_time = time.time()
     global_setting.set_setting("start_time", start_time)
@@ -502,7 +688,7 @@ def load_global_setting():
     # 记录运行时上一次删除文件时间
     last_delete_time = time.time()
     global_setting.set_setting("last_delete_time", last_delete_time)
-    return config
+
 
 
 def check_setting_cameras_each_number():
@@ -521,18 +707,22 @@ def check_setting_cameras_each_number():
     else:
         # 不存在配置文件
 
-
-        dialog_frame = infrared_camera_config_dialog(title="红外相机配置")
-        dialog_frame.camera_config_finished_signal.connect(init_camera_and_image_handle_thread)
-        dialog_frame.show_frame()
-
+        try:
+            logger.error("发送红外相机弹窗")
+            queue = global_setting.get_setting("queue",None)
+            if queue is not None:
+                queue.put(ObjectQueueItem(origin="main_infrared_camera",to="main_gui",title="infrared_camera_config_dialog",time=time_util.get_format_from_time(time.time())))
+        except Exception as e:
+            logger.error(f"<UNK>{e} |  <UNK>{traceback.print_exc()}")
 
         pass
 
 
 def init_camera_and_image_handle_thread(serials):
     global camera_list, read_queue_data_thread
-    # global_setting.get_setting("queue").put({'data':'stop','to':'main_infrared_camera'})
+    # global_setting.get_setting("queue").put(
+    #     ObjectQueueItem(title="stop_running_cameras", origin="main_infrared_camera", to="main_infrared_camera",
+    #                     time=time_util.get_format_from_time(time.time())))
     # 初始化保存路径
     path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
            global_setting.get_setting("camera_config")['INFRARED_CAMERA']['path']
@@ -542,6 +732,17 @@ def init_camera_and_image_handle_thread(serials):
     camera_config_temp = global_setting.get_setting("camera_config")
     camera_config_temp['INFRARED_CAMERA']['nums'] = camera_nums
     global_setting.set_setting("camera_config", camera_config_temp)
+
+    # 之前正在运行的相机thread全部结束
+    if len(camera_list) > 0:
+        for camera_struct_l in camera_list:
+            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+                try:
+                    if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
+                        camera_struct_l['camera'].stop()
+
+                except Exception as e:
+                    logger.error(f"关闭实验监测错误，原因：{e}")
     camera_list = []
     for num in range(camera_nums):
 
@@ -552,6 +753,7 @@ def init_camera_and_image_handle_thread(serials):
             camera = Thermal_process(
                 path=path + f"{global_setting.get_setting('camera_config')['INFRARED_CAMERA']['mouse_cage_prefix']}{serials[num]['mouse_cage_number']}/",
                 id=serials[num]['mouse_cage_number'], serial_number=serials[num]['serial'])
+            logger.debug(f"红外相机{num + 1}初始化成功 |  异常堆栈跟踪：{traceback.print_exc()}")
         except Exception as e:
             logger.error(f"红外相机{num + 1}初始化失败，失败原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
             # 所有线程停止
@@ -571,14 +773,17 @@ def init_camera_and_image_handle_thread(serials):
 
 
 def main(q):
+
+    app = QCoreApplication(sys.argv)
     # logger.remove(0)
-    logger.add(
-        "./log/infrared_camera/i_camera_{time:YYYY-MM-DD}.log",
-        rotation="00:00",
-        retention="30 days",
-        enqueue=True,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}"
-    )
+    # logger.add(
+    #     "./log/infrared_camera/i_camera_{time:YYYY-MM-DD}.log",
+    #     rotation="00:00",
+    #     retention="30 days",
+    #     enqueue=True,
+    #     format="{time:YYYY-MM-DD HH:mm:ss} | {level} |{process.name} | {thread.name} |  {name} : {module}:{line} | {message}",
+    #
+    # )
     logger.info(f"{'-' * 30}infrared_camera_start{'-' * 30}")
     logger.info(f"{__name__} | {os.path.basename(__file__)}|{os.getpid()}|{os.getppid()}")
     # 设置全局变量
@@ -588,18 +793,80 @@ def main(q):
     read_queue_data_thread.queue = q
     read_queue_data_thread.start()
     global_setting.set_setting("queue", q)
+
+    return app.exec()
+    # global camera_list
+    # return camera_list, read_queue_data_thread, delete_file_thread,
+def start():
+    logger.info(f"{'-' * 30}infrared_camera_run{'-' * 30}")
     # 初始化保存路径
     path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
            global_setting.get_setting("camera_config")['INFRARED_CAMERA']['path']
+    global delete_file_thread
     # 删除文件线程
     delete_file_thread = Delete_file(path=path, start_time=global_setting.get_setting("start_time"))
     delete_file_thread.start()
 
     # 根据设置的相机数量来连接
     check_setting_cameras_each_number()
-    global camera_list
-    return camera_list, read_queue_data_thread, delete_file_thread,
-
+def restart(q):
+    main(q)
+    start()
+def pause():
+    logger.info(f"{'-' * 30}infrared_camera_pause{'-' * 30}")
+    pass
+def stop():
+    # 所有红外相机线程停止
+    logger.info(f"{'-' * 30}infrared_camera_stop{'-' * 30}")
+    logger.error("stop_infrared_camera_thread")
+    for i, camera_struct_l in enumerate(camera_list):
+        if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
+            try:
+                if camera_struct_l['camera'] is not None :
+                    camera_struct_l['camera'].stop()
+                    # 返回响应
+                    queue = global_setting.get_setting("queue", None)
+                    if queue:
+                        logger.error(f"红外相机{i}已停止")
+                        queue.put(
+                            ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
+                                            title="stop_infrared_camera_return",
+                                            data=f"红外相机{i}已停止",
+                                            time=time_util.get_format_from_time(time.time())))
+            except Exception as e:
+                logger.error(f"关闭实验监测infrared_camera_camera_list错误，原因：{e}")
+                # 返回响应
+                queue = global_setting.get_setting("queue", None)
+                if queue:
+                    queue.put(
+                        ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
+                                        title="stop_infrared_camera_return",
+                                        data=f"红外相机{i}停止失败：原因{e}",
+                                        time=time_util.get_format_from_time(time.time())))
+    try:
+        if delete_file_thread is not None :
+            delete_file_thread.stop()
+            # 返回响应
+            queue = global_setting.get_setting("queue", None)
+            if queue:
+                logger.error(f"红外相机-文件删除线程已停止")
+                queue.put(
+                    ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
+                                    title="stop_infrared_camera_return",
+                                    data=f"红外相机-文件删除线程已停止",
+                                    time=time_util.get_format_from_time(time.time())))
+    except Exception as e:
+        logger.error(f"关闭实验监测infrared_camera_delete_file_thread错误，原因：{e}")
+        # 返回响应
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
+                                title="stop_infrared_camera_return",
+                                data=f"红外相机-文件线程线程停止失败，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
+    pass
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     main(q)
+    start()

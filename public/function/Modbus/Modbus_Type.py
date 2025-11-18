@@ -7,6 +7,32 @@ class Others_Tables(Enum):
     """
     其他数据项的数据库文件
     """
+    # 深度相机存储值
+    Mouse_deep_position_Data = {
+        "data": {
+            'function_code': 0,
+            'column': [
+                ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
+                ("recognize_time", "识别时间", " TIMESTAMP "),
+                ("x", "x轴", "  REAL "),
+                ("y", "y轴", "  REAL "),
+                ("z", "z轴", "  REAL "),
+                ("time", "获取时间", " TIMESTAMP ")
+            ],
+        }
+    }
+    # 红外相机存储值
+    Mouse_infrared_Data = {
+        "data": {
+            'function_code': 0,
+            'column': [
+                ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
+                ("recognize_time", "识别时间", " TIMESTAMP "),
+                ("tmp_hs_mean", "均值温度(摄氏度)", "  REAL "),
+                ("time", "获取时间", " TIMESTAMP ")
+            ],
+        }
+    }
     Zero_Carlibration_Data={
         "data": {
             'function_code': 0,
@@ -552,6 +578,22 @@ class Others(Enum):
     """
     其他数据项
     """
+    # 深度相机存储值
+    Mouse_deep_position = {
+        "name": "MouseDeepPosition",
+        "description": "老鼠的三维位置",
+        'address': 0x00,
+        'int': int(0x00),
+        'table': Others_Tables.Mouse_deep_position_Data.value
+    }
+    # 红外相机存储值
+    Mouse_infrared = {
+        "name": "MouseInfrared",
+        "description": "老鼠的红外温度",
+        'address': 0x00,
+        'int': int(0x00),
+        'table': Others_Tables.Mouse_infrared_Data.value
+    }
     Zero_Carlibration={
         "name": "ZeroCalibration",
         "description": "零点标定",
@@ -1192,6 +1234,10 @@ class Modbus_Slave_Send_Messages_All(Enum):
 
 
 class Modbus_Slave_Type(Enum):
+    #相机数据
+    Cameras = [
+        Others.Mouse_deep_position,Others.Mouse_infrared
+    ]
     #每轮次数据
     Epochs = [
         Others.Epoch

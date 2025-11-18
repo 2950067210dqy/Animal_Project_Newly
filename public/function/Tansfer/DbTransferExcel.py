@@ -85,7 +85,7 @@ class DbTransferExcel():
                 else:
                     cage_number=None
                 sheet_name_CN= ""
-                for modbus_type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value+Modbus_Slave_Type.Each_Mouse_Cage.value+Modbus_Slave_Type.Calibrations.value+Modbus_Slave_Type.Epochs.value:
+                for modbus_type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value+Modbus_Slave_Type.Each_Mouse_Cage.value+Modbus_Slave_Type.Calibrations.value+Modbus_Slave_Type.Epochs.value+Modbus_Slave_Type.Cameras.value:
                     if module_name_str == modbus_type.value['name']:
                         sheet_name_CN+=modbus_type.value['description']
                         break
