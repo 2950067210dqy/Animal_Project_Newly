@@ -539,8 +539,12 @@ class Add_message_thread(MyQThread):
                 pass
             for msg in send_messages:
                 self.send_thread.add_message(message=msg, urgent=False)
+            if self.mouse_cage_index is not None:
+                mouse_cage = gids[self.mouse_cage_index] if gids else 1
+            else:
+                mouse_cage = None
             #     # 等待从线程处理完当前批次
-            logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{self.mouse_cage_index if self.mouse_cage_index else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
+            logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
             logger.info(logo_text)
             queue = global_setting.get_setting("queue", None)
             if queue:
@@ -616,7 +620,7 @@ def barrier_action():
         mouse_cage_index=mouse_cage_index-1
         pass
     # logger.critical(f"barrier action  run :mouse_cage_index after:{mouse_cage_index}")
-    mouse_cage_number = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 8
+    mouse_cage_number = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
 
 
     start_time = global_setting.get_setting("start_time_messages_sent_epoch_for_running", time.time())
@@ -663,9 +667,9 @@ def barrier_action():
                             f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None else None})
     # 非参考气
     remarks_reference=""
-    if mouse_cage_number != 8:
+    if mouse_cage_number != int(global_setting.get_setting('configer')['mouse_cage']['reference']):
         # 获取参考气轮次的数据：
-        reference_data = handle.query_current_one_data(table_name="Epoch_data_cage_8")
+        reference_data = handle.query_current_one_data(table_name=f"Epoch_data_cage_{int(global_setting.get_setting('configer')['mouse_cage']['reference'])}")
         if reference_data is not None:
             # 获得所有参考备注
             remarks_reference = ";"

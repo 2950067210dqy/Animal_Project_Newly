@@ -427,7 +427,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         }
 
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC-运行 1. 切换{str(mouse_cage_number_addr_single ) + '号鼠笼' if mouse_cage_number_addr_single !=8 else str(mouse_cage_number_addr_single ) + '(参考气)'}")
+            f"{time_util.get_format_from_time(time.time())} | UFC-运行 1. 切换{str(mouse_cage_number_addr_single ) + '号鼠笼' if mouse_cage_number_addr_single !=8 else global_setting.get_setting('configer')['mouse_cage']['reference'] + '(参考气)'}")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2. 关闭上个鼠笼的气路或者关闭参考气

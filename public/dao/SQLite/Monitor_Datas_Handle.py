@@ -119,7 +119,7 @@ class Monitor_Datas_Handle():
             # 实例化每轮次数据表
             for data_type in Modbus_Slave_Type.Epochs.value:
                 # 添加cage_0 给参考气存储数据 这里的-1代表总轮次表，表名为Epoch_data_all 不带后面的cage_-1
-                for carge_number in [-1,8]+gids:
+                for carge_number in [-1,int(global_setting.get_setting('configer')['mouse_cage']['reference'])]+gids:
                     for table_name_short in data_type.value['table']:
                         # 列
                         columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}
@@ -170,7 +170,7 @@ class Monitor_Datas_Handle():
             # 实例化公共传感器数据的数据表
             for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage.value:
                 # 添加cage_8 给参考气存储数据
-                for carge_number in [8]+gids:
+                for carge_number in [int(global_setting.get_setting('configer')['mouse_cage']['reference'])]+gids:
                     for table_name_short in data_type.value['table']:
                         # 列
                         columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}
