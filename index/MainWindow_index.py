@@ -654,28 +654,28 @@ class MainWindow_Index(ThemedWindow):
                                                    'relieve_pause_experiment_time':global_setting.get_setting("relieve_pause_experiment_time")
                                                      },
                                                time=time_util.get_format_from_time(time.time())))
-        message_structs = [
-
-            ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='start',
-                            data={
-                                'start_experiment_time': global_setting.get_setting("start_experiment_time"),
-                                'pause_experiment_time': global_setting.get_setting("pause_experiment_time"),
-                                'relieve_pause_experiment_time': global_setting.get_setting(
-                                    "relieve_pause_experiment_time")
-                            },
-                            time=time_util.get_format_from_time(time.time())),
-            ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='start',
-                            data={
-                                'start_experiment_time': global_setting.get_setting("start_experiment_time"),
-                                'pause_experiment_time': global_setting.get_setting("pause_experiment_time"),
-                                'relieve_pause_experiment_time': global_setting.get_setting(
-                                    "relieve_pause_experiment_time")
-                            },
-                            time=time_util.get_format_from_time(time.time())),
-        ]
-        for message_struct in message_structs:
-            queue=global_setting.get_setting("queue")
-            queue.put(           message_struct)
+        # message_structs = [
+        #
+        #     ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='start',
+        #                     data={
+        #                         'start_experiment_time': global_setting.get_setting("start_experiment_time"),
+        #                         'pause_experiment_time': global_setting.get_setting("pause_experiment_time"),
+        #                         'relieve_pause_experiment_time': global_setting.get_setting(
+        #                             "relieve_pause_experiment_time")
+        #                     },
+        #                     time=time_util.get_format_from_time(time.time())),
+        #     ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='start',
+        #                     data={
+        #                         'start_experiment_time': global_setting.get_setting("start_experiment_time"),
+        #                         'pause_experiment_time': global_setting.get_setting("pause_experiment_time"),
+        #                         'relieve_pause_experiment_time': global_setting.get_setting(
+        #                             "relieve_pause_experiment_time")
+        #                     },
+        #                     time=time_util.get_format_from_time(time.time())),
+        # ]
+        # for message_struct in message_structs:
+        #     queue=global_setting.get_setting("queue")
+        #     queue.put(           message_struct)
         AsyPromise(self.start_update_gui).then(
             AsyPromise(self.show_open_dialog).then(
                 AsyPromise(self.start_open_window).then().catch(lambda e: logger.error(e))

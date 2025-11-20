@@ -506,7 +506,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
 
 
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        result_data['mouse_cage_number']= mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 8
+        result_data['mouse_cage_number']= mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
         logger.error(f"---------------鼠笼气路值：{result_data}")
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
@@ -760,7 +760,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
                 pass
 
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        result_data['mouse_cage_number'] =mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not  None else 8
+        result_data['mouse_cage_number'] =mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not  None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
             logger.info(f"数据存储成功，ID: {result.item_id}")
@@ -1026,7 +1026,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         #存储值
         result_data = r['data']
-        result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else 8
+        result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         logger.error(f"zos:{result_data}")
         if len(result_data['data'])>0:
