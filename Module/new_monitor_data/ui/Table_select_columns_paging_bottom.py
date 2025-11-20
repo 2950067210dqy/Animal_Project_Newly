@@ -168,12 +168,19 @@ class Table_select_columns_paging_bottom(ThemedWindow):
 
         # QTableWidget 初始无列
         self.table =CustomTableWidget()
+
+
         self.table.setMouseTracking(True)# 启用鼠标跟踪
         self.table.setColumnCount(0)
         self.table.setRowCount(0)
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        # 动态改变冻结列
+        self.table.set_frozen_columns_by_headers(
+            left_headers=["序号","鼠笼号"],  # 左侧冻结
+            right_headers=["获取时间"]  # 右侧冻结
+        )
         # 将表格放入滚动区域
         self.scroll_area.setWidget(self.table)
 
@@ -326,29 +333,29 @@ class Table_select_columns_paging_bottom(ThemedWindow):
 
         # 填充当前页的行
         for row_idx, record in enumerate(page_records):
-            record :dict
+            record: dict
             # logger.error(f"{record}")
             index = 0
             # 检查是否需要将整行设置为红色 remarks 存在则标红
             should_highlight_row = False
             if record.get("remarks") is not None and len(str(record.get("remarks")).strip()) > 3:
-                should_highlight_row=True
+                should_highlight_row = True
             for col_key, col_record in record.items():
                 # 将二氧化碳的值和氧气的值小数点后4位。
                 if "oxygen" in col_key or "CO2" in col_key:
                     # 区分校0和校span的氧气 因为他们的值有可能是字符串
-                    if isinstance(col_record,str):
-                        #校0和校span的氧气
+                    if isinstance(col_record, str):
+                        # 校0和校span的氧气
                         item = QTableWidgetItem(str(col_record) if not isinstance(col_record, str) else col_record)
                     else:
-                        item = QTableWidgetItem(f"{col_record:.04f}"  if col_record is not None else str(None))
+                        item = QTableWidgetItem(f"{col_record:.04f}" if col_record is not None else str(None))
                 else:
-                    item = QTableWidgetItem(str(col_record) if not isinstance(col_record,str) else col_record)
+                    item = QTableWidgetItem(str(col_record) if not isinstance(col_record, str) else col_record)
                 if should_highlight_row:
                     item.setForeground(QColor(255, 0, 0))  # 红色
                 item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
                 self.table.setItem(row_idx, index, item)
-                index+=1
+                index += 1
         self.table.resizeColumnsToContents()
         # self.current_page=result['page']
         self.total_items=result['total_items']

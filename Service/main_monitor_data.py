@@ -648,6 +648,7 @@ def barrier_action():
     store_Datas.append({'desc': '氧浓传感器span数值',
                         'value': results.get('SpanCalibration_data__oxygen_calibration_span_value') if results.get(
                             'SpanCalibration_data__oxygen_calibration_span_value') is not None else None})
+
     store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') if results.get(
                             f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') is not None else None   })
     store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
@@ -698,6 +699,16 @@ def barrier_action():
                      'value':reference_data.get(f'ZOS_oxygen_num')-results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')})
 
 
+            #求红外温度的平均值
+            temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean',None)
+            if temp_values is not None:
+                infrared_temp_average = None
+                #过滤掉None值
+                filter_temp_values = [x for x in results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean') if x is not None]
+                if len(filter_temp_values) !=0:
+                    infrared_temp_average = round(sum(filter_temp_values) / len(filter_temp_values),4)
+                store_Datas.append({'desc': '鼠笼红外温度(°C)',
+                                    'value': infrared_temp_average})
             pass
 
         store_Datas.append(
