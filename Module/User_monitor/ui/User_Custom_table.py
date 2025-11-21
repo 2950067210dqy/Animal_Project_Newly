@@ -567,3 +567,4 @@ class CustomTableWidget(BiDirectionalFrozenTable):
         dialog = CellDetailDialog(cell_value, row, column, column_name, self)
         dialog.exec()
 
+#
