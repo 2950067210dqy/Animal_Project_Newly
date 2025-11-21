@@ -142,6 +142,13 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+
+        # 动态改变冻结列
+        self.table.set_frozen_columns_by_headers(
+            left_headers=["序号", "鼠笼号"],  # 左侧冻结
+            right_headers=["获取时间"]  # 右侧冻结
+        )
+
         self.scroll_area.setWidget(self.table)
 
         # ---- 操作日志与导出区域（保留原有功能）----
