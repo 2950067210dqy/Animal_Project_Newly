@@ -182,7 +182,7 @@ class DataLoadThread(QThread):
             return None
 
     def find_trajectory_sheet(self, sheet_names):
-        """查��轨迹数据的sheet"""
+        """查找轨迹数据的sheet"""
         trajectory_keywords = [
             '轨迹', 'trajectory', 'track', '坐标', 'position',
             'movement', '移动', '路径', 'path', '数据'
