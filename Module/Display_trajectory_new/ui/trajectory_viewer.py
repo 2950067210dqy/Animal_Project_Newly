@@ -77,6 +77,7 @@ class DataLoadThread(QThread):
                 self.finished.emit(False, "未找到轨迹数据")
 
         except Exception as e:
+            logger.error(f"数据加载失败: {str(e)}")
             self.finished.emit(False, f"数据加载失败: {str(e)}")
 
     def detect_sheets(self, file_path):
@@ -88,7 +89,7 @@ class DataLoadThread(QThread):
                 return xl_file.sheet_names
             return []
         except Exception as e:
-            print(f"检测sheet失败: {e}")
+            logger.error(f"检测sheet失败: {e}")
             return []
 
     def load_trajectory_data(self, file_path, sheet_name=None):
@@ -117,11 +118,11 @@ class DataLoadThread(QThread):
                     trajectory_sheet = self.find_trajectory_sheet(xl_file.sheet_names)
                     if trajectory_sheet:
                         df = pd.read_excel(file_path, sheet_name=trajectory_sheet)
-                        print(f"自动选择轨迹sheet: {trajectory_sheet}")
+                        logger.info(f"自动选择轨迹sheet: {trajectory_sheet}")
                     else:
                         # 如果没找到，使用第一个sheet
                         df = pd.read_excel(file_path, sheet_name=0)
-                        print("使用第一个sheet作为轨迹数据")
+                        logger.info("使用第一个sheet作为轨迹数据")
 
             elif file_ext in ['.db', '.sqlite', '.sqlite3']:
                 # SQLite数据库处理
@@ -136,7 +137,7 @@ class DataLoadThread(QThread):
 
             return df
         except Exception as e:
-            print(f"加载轨迹数据失败: {e}")
+            logger.error(f"加载轨迹数据失败: {e}")
             return None
 
     def load_temperature_data(self, file_path, sheet_name=None):
@@ -154,7 +155,7 @@ class DataLoadThread(QThread):
                     temperature_sheet = self.find_temperature_sheet(xl_file.sheet_names)
                     if temperature_sheet:
                         df = pd.read_excel(file_path, sheet_name=temperature_sheet)
-                        print(f"自动选择温度sheet: {temperature_sheet}")
+                        logger.info(f"自动选择温度sheet: {temperature_sheet}")
                     else:
                         # 尝试在轨迹sheet中查找温度数据
                         trajectory_sheet = self.find_trajectory_sheet(xl_file.sheet_names)
@@ -162,7 +163,7 @@ class DataLoadThread(QThread):
                             temp_df = pd.read_excel(file_path, sheet_name=trajectory_sheet)
                             if self.has_temperature_column(temp_df):
                                 df = temp_df
-                                print("在轨迹sheet中找到温度数据")
+                                logger.info("在轨迹sheet中找到温度数据")
             elif file_ext in ['.csv']:
                 # CSV文件中查找温度数据
                 encodings = ['utf-8', 'gbk', 'gb2312', 'utf-8-sig']
@@ -177,11 +178,11 @@ class DataLoadThread(QThread):
 
             return df
         except Exception as e:
-            print(f"加载温度数据失败: {e}")
+            logger.error(f"加载温度数据失败: {e}")
             return None
 
     def find_trajectory_sheet(self, sheet_names):
-        """查找轨迹数据的sheet"""
+        """查��轨迹数据的sheet"""
         trajectory_keywords = [
             '轨迹', 'trajectory', 'track', '坐标', 'position',
             'movement', '移动', '路径', 'path', '数据'
@@ -313,9 +314,9 @@ class TrajectoryViewer(BaseWindow):
 
             main_layout.addWidget(splitter)
 
-            print("TrajectoryViewer 3D UI初始化完成")
+            logger.info("TrajectoryViewer 3D UI初始化完成")
         except Exception as e:
-            print(f"TrajectoryViewer UI初始化失败: {e}")
+            logger.error(f"TrajectoryViewer UI初始化失败: {e}")
             import traceback
             traceback.print_exc()
 
@@ -324,7 +325,7 @@ class TrajectoryViewer(BaseWindow):
         try:
             pass
         except Exception as e:
-            print(f"自定义UI初始化失败: {e}")
+            logger.error(f"自定义UI初始化失败: {e}")
         finally:
             super()._init_customize_ui()
 
@@ -334,21 +335,21 @@ class TrajectoryViewer(BaseWindow):
             self.setup_connections()
             self.setup_initial_state()
         except Exception as e:
-            print(f"功能初始化失败: {e}")
+            logger.error(f"功能初始化失败: {e}")
 
     def _init_style_sheet(self):
         """加载qss样式表"""
         try:
             self.setStyleSheet(self.get_basic_stylesheet())
         except Exception as e:
-            print(f"基础样式表加载失败: {e}")
+            logger.error(f"基础样式表加载失败: {e}")
 
     def _init_custom_style_sheet(self):
         """加载自定义qss样式表"""
         try:
             pass
         except Exception as e:
-            print(f"自定义样式表加载失败: {e}")
+            logger.error(f"自定义样式表加载失败: {e}")
 
     def get_basic_stylesheet(self):
         """获取基础样式表"""
@@ -588,9 +589,9 @@ class TrajectoryViewer(BaseWindow):
             self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
 
             layout.addWidget(self.canvas)
-            print("matplotlib 3D图表创建成功")
+            logger.info("matplotlib 3D图表创建成功")
         except Exception as e:
-            print(f"创建matplotlib图表失败: {e}")
+            logger.error(f"创建matplotlib图表失败: {e}")
             placeholder = QLabel("3D图表区域\n(matplotlib加载失败)")
             placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
             placeholder.setStyleSheet("background-color: white; border: 1px solid #ccc; font-size: 16px;")
@@ -866,7 +867,7 @@ class TrajectoryViewer(BaseWindow):
                 self.info_text.hide()
                 self.info_toggle_btn.setText("▶ 系统日志")
         except Exception as e:
-            print(f"切换信息面板失败: {e}")
+            logger.error(f"切换信息面板失败: {e}")
 
     def update_progress_label(self):
         """更新进度标签显示"""
@@ -876,7 +877,7 @@ class TrajectoryViewer(BaseWindow):
                 total = len(self.current_x_data)
                 self.progress_label.setText(f"{current} / {total}")
         except Exception as e:
-            print(f"更新进度标签失败: {e}")
+            logger.error(f"更新进度标签失败: {e}")
 
     def setup_connections(self):
         """设置信号连接"""
@@ -912,9 +913,9 @@ class TrajectoryViewer(BaseWindow):
             self.fullscreen_btn.clicked.connect(self.toggle_fullscreen)
             self.export_btn.clicked.connect(self.export_plot)
 
-            print("信号连接设置成功")
+            logger.info("信号连接设置成功")
         except Exception as e:
-            print(f"设置信号连接失败: {e}")
+            logger.error(f"设置信号连接失败: {e}")
 
     def setup_initial_state(self):
         """设置初始状态"""
@@ -922,9 +923,9 @@ class TrajectoryViewer(BaseWindow):
             self.log_message("老鼠轨迹分析系统 3D版本启动完成")
             self.init_empty_3d_plot()
             self.load_available_cages()
-            print("初始状态设置完成")
+            logger.info("初始状态设置完成")
         except Exception as e:
-            print(f"设置初始状态失败: {e}")
+            logger.error(f"设置初始状态失败: {e}")
 
     def load_available_cages(self):
         """加载可用的笼子"""
@@ -1278,8 +1279,6 @@ class TrajectoryViewer(BaseWindow):
         except Exception as e:
             self.log_message(f"初始化3D图表失败: {e}", "ERROR")
 
-        # 修复：重写动画控制相关方法，使用QTimer而非matplotlib.animation
-
     def start_animation(self):
         """开始动画 - 使用QTimer控制"""
         try:
@@ -1401,8 +1400,6 @@ class TrajectoryViewer(BaseWindow):
         except Exception as e:
             self.log_message(f"重置动画失败: {e}", "ERROR")
 
-        # 修复：重写滑块事件处理方法
-
     def on_speed_changed(self):
         """速度改变 - 修复：不重新创建动画，只更新定时器间隔"""
         try:
@@ -1512,9 +1509,9 @@ class TrajectoryViewer(BaseWindow):
                 ax.set_xlabel('X Position')
                 ax.set_ylabel('Y Position')
                 ax.set_zlabel('Z Position')
-            self.canvas.draw()
+                self.canvas.draw()
         except Exception as e:
-            print(f"初始化3D图表失败: {e}")
+            logger.error(f"初始化3D图表失败: {e}")
 
     def reset_view(self):
         """重置3D视图"""
@@ -1581,7 +1578,7 @@ class TrajectoryViewer(BaseWindow):
                 if hasattr(self, 'ax'):
                     self.ax.tick_params(labelsize=font_size - 1)
         except Exception as e:
-            print(f"窗口调整失败: {e}")
+            logger.error(f"窗口调整失败: {e}")
 
     def log_message(self, message, level="INFO"):
         """记录日志消息"""
@@ -1592,9 +1589,14 @@ class TrajectoryViewer(BaseWindow):
                 self.info_text.append(formatted_message)
                 scrollbar = self.info_text.verticalScrollBar()
                 scrollbar.setValue(scrollbar.maximum())
-            print(formatted_message)
+            if level == "INFO":
+                logger.info(message)
+            elif level == "ERROR":
+                logger.error(message)
+            else:
+                logger.warning(message)
         except Exception as e:
-            print(f"记录日志失败: {e}")
+            logger.error(f"记录日志失败: {e}")
 
     def closeEvent(self, event):
         """关闭事件处理"""
@@ -1615,5 +1617,3 @@ class TrajectoryViewer(BaseWindow):
         except Exception as e:
             self.log_message(f"关闭失败: {e}", "ERROR")
             event.accept()
-
-
