@@ -636,7 +636,195 @@ class SQLiteManager:
     def close(self):
         """关闭数据库连接（在上下文管理模式下，这个方法主要用于兼容性）"""
         logger.info("使用上下文管理器模式，连接会自动关闭")
+    """
+    @author wangjie
+    @create_time 2025-11-27
+    @start
+    """
+    def get_trajectory_xyz_data_by_table(self, table_name, start_time=None, end_time=None, limit=None):
+        """
+        从指定表获取时间和XYZ坐标数据
 
+        Args:
+            table_name (str): 表名
+            start_time (str, optional): 开始时间
+            end_time (str, optional): 结束时间
+            limit (int, optional): 限制返回条数
+
+        Returns:
+            list: 包含 [time, x, y, z] 的数据列表
+        """
+        try:
+            conditions = []
+            params = []
+
+            if start_time:
+                conditions.append("time >= ?")
+                params.append(start_time)
+
+            if end_time:
+                conditions.append("time <= ?")
+                params.append(end_time)
+
+            where_clause = ""
+            if conditions:
+                where_clause = "WHERE " + " AND ".join(conditions)
+
+            limit_clause = ""
+            if limit:
+                limit_clause = f"LIMIT {limit}"
+
+            sql = f'SELECT time, x, y, z FROM "{table_name}" {where_clause} ORDER BY time {limit_clause}'
+
+            with self.execute_transaction() as cursor:
+                cursor.execute(sql, params)
+                return cursor.fetchall()
+
+        except Exception as e:
+            logger.error(f"从表 {table_name} 获取XYZ轨迹数据失败: {e}")
+            return []
+
+    def get_table_data_count(self, table_name, start_time=None, end_time=None):
+        """
+        获取指定表的数据条数
+
+        Args:
+            table_name (str): 表名
+            start_time (str, optional): 开始时间
+            end_time (str, optional): 结束时间
+
+        Returns:
+            int: 数据条数
+        """
+        try:
+            conditions = []
+            params = []
+
+            if start_time:
+                conditions.append("time >= ?")
+                params.append(start_time)
+
+            if end_time:
+                conditions.append("time <= ?")
+                params.append(end_time)
+
+            where_clause = ""
+            if conditions:
+                where_clause = "WHERE " + " AND ".join(conditions)
+
+            sql = f'SELECT COUNT(*) FROM "{table_name}" {where_clause}'
+
+            with self.execute_transaction() as cursor:
+                cursor.execute(sql, params)
+                result = cursor.fetchone()
+                return result[0] if result else 0
+
+        except Exception as e:
+            logger.error(f"获取表 {table_name} 数据条数失败: {e}")
+            return 0
+
+    def check_table_exists(self, table_name):
+        """
+        检查表是否存在
+
+        Args:
+            table_name (str): 表名
+
+        Returns:
+            bool: 表是否存在
+        """
+        try:
+            with self.execute_transaction() as cursor:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"检查表 {table_name} 是否存在失败: {e}")
+            return False
+
+
+    def  get_all_tables(self):
+        """
+        获取数据库中所有表名
+
+        Returns:
+            list: 表名列表
+        """
+        try:
+            with self.execute_transaction() as cursor:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = cursor.fetchall()
+                return [table[0] for table in tables]
+        except Exception as e:
+            logger.error(f"获取所有表名失败: {e}")
+            return []
+    """
+    @author wangjie
+    @create_time 2025-11-27
+    @end
+    """
+
+
+    """
+    @author wangjie
+    @create_time 2025-12-01
+    @start
+    """
+
+    def get_trajectory_xyz_data(self, table_name, limit=None, valid_only=True):
+        """
+        获取指定表的XYZ轨迹数据
+
+        Args:
+            table_name (str): 表名
+            limit (int, optional): 限制返回的数据条数
+            valid_only (bool): 是否只返回有效数据（XYZ都不为null）
+
+        Returns:
+            list: XYZ轨迹数据列表
+        """
+        try:
+            conditions = []
+
+            # 只有在valid_only为True时才添加有效性条件
+            if valid_only:
+                conditions.extend([
+                    '"X (m)" IS NOT NULL',
+                    '"Y (m)" IS NOT NULL',
+                    '"Z (m)" IS NOT NULL'
+                ])
+
+            where_clause = ""
+            if conditions:
+                where_clause = "WHERE " + " AND ".join(conditions)
+
+            limit_clause = ""
+            if limit:
+                limit_clause = f"LIMIT {limit}"
+
+            # 只查询存在的列，不查询time列
+            sql = f'SELECT image_name, "X (m)", "Y (m)", "Z (m)" FROM "{table_name}" {where_clause} ORDER BY image_name {limit_clause}'
+
+            logger.info(f"🔍 执行SQL: {sql}")
+
+            with self.execute_transaction() as cursor:
+                cursor.execute(sql)
+                result = cursor.fetchall()
+                logger.info(f"📊 查询到 {len(result)} 条数据")
+
+                # 确保返回的是列表，即使是空的
+                return result if result is not None else []
+
+        except Exception as e:
+            logger.error(f"从表 {table_name} 获取XYZ轨迹数据失败: {e}")
+            import traceback
+            traceback.print_exc()
+            # 确保始终返回空列表而不是None
+            return []
+    """
+    @author wangjie
+    @create_time 2025-12-02
+    @end
+    """
 
 # 权限控制类也需要相应修改
 class ReadOnlyUser(SQLiteManager):
