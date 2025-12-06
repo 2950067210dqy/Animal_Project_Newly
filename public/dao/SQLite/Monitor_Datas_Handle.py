@@ -592,3 +592,245 @@ class Monitor_Datas_Handle():
         return results, columns
 
         pass
+
+    """
+    @author wangjie
+    @create_time 2025-11-27
+    @start
+    """
+    def get_available_cages(self):
+        """
+        获取数据库中存在的鼠笼编号列表
+
+        Returns:
+            list: 排序后的鼠笼编号列表
+        """
+        try:
+            logger.info("=== 开始获取可用鼠笼列表 ===")
+
+            # 获取所有表名
+            tables = self.sqlite_manager.get_all_tables()
+            logger.info(f"数据库中总共找到 {len(tables)} 个表:")
+            for table in tables:
+                logger.info(f"  表名: {table}")
+
+            cage_numbers = []
+            for table_name in tables:
+                logger.info(f"检查表: {table_name}")
+
+                if table_name.startswith("MouseDeepPosition_data_cage_") and not table_name.endswith("_meta"):
+                    logger.info(f"  匹配的鼠笼表: {table_name}")
+                    # 提取鼠笼编号
+                    cage_number = table_name.replace("MouseDeepPosition_data_cage_", "")
+                    logger.info(f"  提取的鼠笼编号字符串: '{cage_number}'")
+
+                    try:
+                        cage_num = int(cage_number)
+                        cage_numbers.append(cage_num)
+                        logger.info(f"  成功转换为数字: {cage_num}")
+                    except ValueError as e:
+                        logger.error(f"  无法转换为数字: {e}")
+                        continue
+
+            result = sorted(cage_numbers)
+            logger.info(f"最终找到的鼠笼编号: {result}")
+            return result
+
+        except Exception as e:
+            logger.error(f"获取可用鼠笼列表失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    # def get_trajectory_data(self, cage_id, start_time=None, end_time=None, limit=None):
+    #     """
+    #     获取指定鼠笼的轨迹数据
+    #
+    #     Args:
+    #         cage_id (int): 鼠笼编号
+    #         start_time (str, optional): 开始时间，格式: 'YYYY-MM-DD HH:MM:SS'
+    #         end_time (str, optional): 结束时间，格式: 'YYYY-MM-DD HH:MM:SS'
+    #         limit (int, optional): 限制返回的数据条数
+    #
+    #     Returns:
+    #         dict: 包含轨迹数据的字典
+    #     """
+    #     try:
+    #         print(f"=== 开始获取鼠笼 {cage_id} 的轨迹数据 ===")
+    #
+    #         table_name = f"MouseDeepPosition_data_cage_{cage_id}"
+    #
+    #         # 检查表是否存在
+    #         if not self.sqlite_manager.check_table_exists(table_name):
+    #             return {
+    #                 'success': False,
+    #                 'data': [],
+    #                 'total_count': 0,
+    #                 'message': f'鼠笼 {cage_id} 的数据表不存在'
+    #             }
+    #
+    #         # 获取总数据条数
+    #         total_count = self.sqlite_manager.get_table_data_count(table_name, start_time, end_time)
+    #         print(f"表 {table_name} 中符合条件的数据总数: {total_count}")
+    #
+    #         # 获取XYZ轨迹数据
+    #         rows = self.sqlite_manager.get_trajectory_xyz_data_by_table(
+    #             table_name, start_time=start_time, end_time=end_time, limit=limit
+    #         )
+    #
+    #         print(f"实际获取到 {len(rows)} 条轨迹数据")
+    #
+    #         # 转换数据格式
+    #         trajectory_data = []
+    #         for row in rows:
+    #             time_val, x, y, z = row
+    #             trajectory_data.append([
+    #                 time_val,
+    #                 float(x) if x is not None else 0.0,
+    #                 float(y) if y is not None else 0.0,
+    #                 float(z) if z is not None else 0.0
+    #             ])
+    #
+    #         if len(trajectory_data) > 0:
+    #             print(f"数据示例 - 前3条:")
+    #             for i, data_point in enumerate(trajectory_data[:3]):
+    #                 print(
+    #                     f"  {i + 1}: 时间={data_point[0]}, x={data_point[1]:.2f}, y={data_point[2]:.2f}, z={data_point[3]:.2f}")
+    #
+    #         return {
+    #             'success': True,
+    #             'data': trajectory_data,
+    #             'total_count': total_count,
+    #             'message': f'成功获取 {len(trajectory_data)} 条轨迹数据'
+    #         }
+    #
+    #     except Exception as e:
+    #         error_msg = f"获取轨迹数据失败: {e}"
+    #         print(error_msg)
+    #         import traceback
+    #         traceback.print_exc()
+    #         return {
+    #             'success': False,
+    #             'data': [],
+    #             'total_count': 0,
+    #             'message': error_msg
+    #         }
+    """
+    @author wangjie
+    @create_time 2025-11-27
+    @end
+    """
+
+
+    """
+    @author wangjie
+    @create_time 2025-12-01
+    @start
+    """
+    def get_trajectory_data(self, cage_id, limit=None):
+        """
+        获取指定鼠笼的轨迹数据
+
+        Args:
+            cage_id (int): 鼠笼编号
+            limit (int, optional): 限制返回的数据条数
+
+        Returns:
+            dict: 包含轨迹数据和相关信息的字典
+        """
+        try:
+            logger.info(f"=== 开始获取鼠笼 {cage_id} 的轨迹数据 ===")
+
+            table_name = f"MouseDeepPosition_data_cage_{cage_id}"
+
+            # 检查表是否存在
+            if not self.sqlite_manager.check_table_exists(table_name):
+                return {
+                    'success': False,
+                    'data': [],
+                    'total_count': 0,
+                    'message': f'鼠笼 {cage_id} 的数据表不存在'
+                }
+
+            # 获取总数据条数
+            total_count = self.sqlite_manager.get_table_data_count(table_name)
+            logger.info(f"表 {table_name} 中的数据总数: {total_count}")
+
+            # 获取XYZ轨迹数据 - 注意这里不要查询time列
+            rows = self.sqlite_manager.get_trajectory_xyz_data(table_name, limit=limit)
+
+            # 防御性检查：确保 rows 不是 None
+            if rows is None:
+                logger.error("⚠️ 警告：查询返回了 None")
+                rows = []
+
+            logger.info(f"实际获取到 {len(rows)} 条轨迹数据")
+
+            # 转换数据格式
+            trajectory_data = []
+            valid_count = 0
+            null_count = 0
+
+            for row in rows:
+                try:
+                    image_name, x, y, z = row
+
+                    # 处理null值
+                    x_val = float(x) if x is not None else None
+                    y_val = float(y) if y is not None else None
+                    z_val = float(z) if z is not None else None
+
+                    if x_val is not None and y_val is not None and z_val is not None:
+                        valid_count += 1
+                    else:
+                        null_count += 1
+
+                    trajectory_data.append([
+                        image_name,
+                        x_val,
+                        y_val,
+                        z_val
+                    ])
+                except Exception as row_error:
+                    logger.error(f"处理数据行时出错: {row}, 错误: {row_error}")
+                    continue
+
+            logger.info(f"📊 数据统计: 总共 {len(trajectory_data)} 条, 有效 {valid_count} 条, null {null_count} 条")
+
+            if len(trajectory_data) > 0:
+                logger.info(f"数据示例 - 前3条:")
+                for i, data_point in enumerate(trajectory_data[:3]):
+                    try:
+                        x_str = f"{data_point[1]:.3f}" if data_point[1] is not None else "null"
+                        y_str = f"{data_point[2]:.3f}" if data_point[2] is not None else "null"
+                        z_str = f"{data_point[3]:.3f}" if data_point[3] is not None else "null"
+                        logger.info(f"  {i + 1}: 图像={data_point[0]}, x={x_str}, y={y_str}, z={z_str}")
+                    except Exception as e:
+                        logger.error(f"  {i + 1}: 数据格式错误: {data_point}")
+
+            return {
+                'success': True,
+                'data': trajectory_data,
+                'total_count': len(trajectory_data),
+                'valid_count': valid_count,
+                'null_count': null_count,
+                'message': f'成功获取 {len(trajectory_data)} 条轨迹数据 (有效: {valid_count}, 无效: {null_count})'
+            }
+
+        except Exception as e:
+            error_msg = f"获取轨迹数据失败: {e}"
+            logger.error(error_msg)
+            import traceback
+            traceback.print_exc()
+            return {
+                'success': False,
+                'data': [],
+                'total_count': 0,
+                'message': error_msg
+            }
+
+    """
+    @author wangjie
+    @create_time 2025-12-01
+    @end
+    """

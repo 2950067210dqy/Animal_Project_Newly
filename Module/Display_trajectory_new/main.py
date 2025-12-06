@@ -1,10 +1,11 @@
-from Module.Display_trajectory_new.ui.trajectory_viewer import TrajectoryViewer
+from Module.Display_trajectory_new.ui.main_window import TrajectoryViewer
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
 from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
 from PyQt6.QtWidgets import QApplication
+from loguru import logger
 
 
 class Main_load_metadata_file_service(BaseService):
@@ -15,14 +16,14 @@ class Main_load_metadata_file_service(BaseService):
 
     def start(self, resolve, reject):
         try:
-            print("老鼠轨迹监测服务启动中...")
+            logger.info("老鼠轨迹监测服务启动中...")
             resolve()
         except Exception as e:
-            print(f"服务启动失败: {e}")
+            logger.error(f"服务启动失败: {e}")
             reject()
 
     def stop(self):
-        print("老鼠轨迹监测服务已停止")
+        logger.info("老鼠轨迹监测服务已停止")
 
 
 class Main_load_metadata_file_widget(BaseInterfaceWidget):
@@ -30,29 +31,29 @@ class Main_load_metadata_file_widget(BaseInterfaceWidget):
 
     def __init__(self):
         super().__init__()
-        print("正在初始化轨迹监测界面组件...")
+        logger.info("正在初始化轨迹监测界面组件...")
 
         try:
             self.type = self.get_type()
 
             # 确保 QApplication 存在
             if QApplication.instance() is None:
-                print("警告: QApplication 实例不存在")
+                logger.warning("警告: QApplication 实例不存在")
 
             # 创建主窗口
-            print("正在创建轨迹查看器窗口...")
+            logger.info("正在创建轨迹查看器窗口...")
             self.frame_obj = self.create_middle_window()
-            print(f"轨迹查看器窗口创建成功: {type(self.frame_obj)}")
+            logger.info(f"轨迹查看器窗口创建成功: {type(self.frame_obj)}")
 
             # 其他窗口
             self.left_frame_obj = self.create_left_window()
             self.right_frame_obj = self.create_right_window()
             self.bottom_frame_obj = self.create_bottom_window()
 
-            print("轨迹监测界面组件初始化完成")
+            logger.info("轨迹监测界面组件初始化完成")
 
         except Exception as e:
-            print(f"轨迹监测界面组件初始化失败: {e}")
+            logger.error(f"轨迹监测界面组件初始化失败: {e}")
             import traceback
             traceback.print_exc()
             raise
@@ -64,17 +65,17 @@ class Main_load_metadata_file_widget(BaseInterfaceWidget):
     def create_middle_window(self) -> BaseWindow:
         """创建主窗口"""
         try:
-            print("开始创建 TrajectoryViewer 实例...")
+            logger.info("开始创建 TrajectoryViewer 实例...")
             trajectory_viewer = TrajectoryViewer()
-            print("TrajectoryViewer 实例创建成功")
+            logger.info("TrajectoryViewer 实例创建成功")
             return trajectory_viewer
         except Exception as e:
-            print(f"创建 TrajectoryViewer 失败: {e}")
+            logger.error(f"创建 TrajectoryViewer 失败: {e}")
             import traceback
             traceback.print_exc()
 
             # 如果创建失败，返回一个简单的测试窗口
-            print("使用备用测试窗口...")
+            logger.info("使用备用测试窗口...")
             from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
 
             class TestWindow(BaseWindow):
@@ -110,7 +111,7 @@ class Main_User_monitor_Module(BaseModule):
 
     def __init__(self):
         super().__init__()
-        print("正在初始化老鼠轨迹监测模块...")
+        logger.info("正在初始化老鼠轨迹监测模块...")
 
         try:
             self.name = self.get_name()
@@ -119,17 +120,17 @@ class Main_User_monitor_Module(BaseModule):
             self.app_state = self.get_app_state()
 
             # 创建服务
-            print("正在创建服务...")
+            logger.info("正在创建服务...")
             self.service = self.create_service()
 
             # 创建界面组件
-            print("正在创建界面组件...")
+            logger.info("正在创建界面组件...")
             self.interface_widget = self.get_interface_widget()
 
-            print(f"老鼠轨迹监测模块初始化完成: {self.title}")
+            logger.info(f"老鼠轨迹监测模块初始化完成: {self.title}")
 
         except Exception as e:
-            print(f"老鼠轨迹监测模块初始化失败: {e}")
+            logger.error(f"老鼠轨迹监测模块初始化失败: {e}")
             import traceback
             traceback.print_exc()
             raise
@@ -156,7 +157,7 @@ class Main_User_monitor_Module(BaseModule):
             service.module = self  # 可以通过引用将组件功能传递给service
             return service
         except Exception as e:
-            print(f"创建服务失败: {e}")
+            logger.error(f"创建服务失败: {e}")
             raise
 
     def get_interface_widget(self) -> BaseInterfaceWidget:
@@ -166,7 +167,7 @@ class Main_User_monitor_Module(BaseModule):
             widget_builder.module = self  # 可以通过引用将组件功能传递给界面构建器
             return widget_builder
         except Exception as e:
-            print(f"创建界面组件失败: {e}")
+            logger.error(f"创建界面组件失败: {e}")
             import traceback
             traceback.print_exc()
             raise
