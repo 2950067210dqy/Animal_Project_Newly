@@ -143,7 +143,8 @@ class ContentWindow(ThemedWindow):
             if len(self.setting_data.groups) > 0:
                 for index, group in enumerate(self.setting_data.groups):
                     group: Group
-                    self.add_group_view(f"动物分组/通道: {group.name}",group)
+                    status_text = "已启用" if group.is_selected else "未启用"
+                    self.add_group_view(f"动物分组/通道: {group.name} {status_text}", group)
                     pass
                 self.model.setHorizontalHeaderLabels([f"一共 {len(self.setting_data.groups)}个分组/通道"])
             else:

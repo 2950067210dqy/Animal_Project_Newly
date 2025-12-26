@@ -5,7 +5,7 @@ from PyQt6 import QtGui
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIntValidator
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QScrollArea, QListWidget, \
-    QApplication, QPushButton, QMenu, QListWidgetItem, QMessageBox, QDockWidget
+    QApplication, QPushButton, QMenu, QListWidgetItem, QMessageBox, QDockWidget, QCheckBox
 
 from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.config_class.global_setting import global_setting
@@ -92,29 +92,40 @@ class GroupWindow(ThemedWindow):
         # 连接右键菜单事件
         self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_widget.customContextMenuRequested.connect(self.show_context_menu)
-    def init_group(self,is_update=True):
+    def init_group(self, is_update=True):
         """
-
               :param is_update:是否触发content等其他界面的数据更新
               :return:
         """
         # 里面装的是Experiment_setting_entity
-        self.setting_data:Experiment_setting_entity = global_setting.get_setting("experiment_setting_new",None)
+        self.setting_data: Experiment_setting_entity = global_setting.get_setting("experiment_setting_new", None)
         self.list_widget.clear()
+        # ========== 新增：先断开旧的信号绑定，避免重复 ==========
+        try:
+            self.list_widget.itemChanged.disconnect(self.update_group_check_state)
+        except:
+            pass
         if self.setting_data is not None:
-            if len(self.setting_data.groups)>0:
+            if len(self.setting_data.groups) > 0:
                 self.title_label.setText(f"一共 {len(self.setting_data.groups)}个 分组/通道")
                 for index, group in enumerate(self.setting_data.groups):
-                    group:Group
-                    item = QListWidgetItem(f"动物分组/通道: {group.name}")
-                    item.setToolTip(f"动物分组/通道: {group.name}")
+                    group: Group
+                    status_text = "已启用" if group.is_selected else "未启用"
+                    item = QListWidgetItem(f"动物分组/通道: {group.name} {status_text}")
+                    item.setToolTip(f"动物分组/通道: {group.name} {status_text}")  # Tooltip也同步
                     item.setData(Qt.ItemDataRole.UserRole, group)  # 设置自定义数据
+                    # 1. 开启列表项的复选框功能（原生支持，无需自定义Widget）
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    # 2. 设置复选框初始状态（同步Group的is_selected）
+                    item.setCheckState(Qt.CheckState.Checked if group.is_selected else Qt.CheckState.Unchecked)
                     self.list_widget.addItem(item)
                     pass
             else:
                 self.title_label.setText("无分组/通道")
+        # ========== 修改：信号绑定移到循环外 + 触发右侧刷新 ==========
+        self.list_widget.itemChanged.connect(self.update_group_check_state)
         pass
-       #更新content页面
+        # 更新content页面
         if is_update:
             self.update_content_signal.emit(False)
     def add_group(self):
@@ -128,7 +139,7 @@ class GroupWindow(ThemedWindow):
                 init_index=max(int_group_names)+1
             for i in range(int(channel_number)):
                 if self.setting_data is not None:
-                    self.setting_data.groups.append(Group(id =init_index+i ,name=str(init_index+i),create_time=datetime.now(),update_time=datetime.now()))
+                    self.setting_data.groups.append(Group(id =init_index+i ,name=str(init_index+i),create_time=datetime.now(),update_time=datetime.now(),is_selected=False))
                 pass
             global_setting.set_setting("experiment_setting_new",self.setting_data)
             self.init_group()
@@ -168,6 +179,28 @@ class GroupWindow(ThemedWindow):
                     self.setting_data.animalGroupRecords.remove(group_animal_record)
         global_setting.set_setting("experiment_setting_new",self.setting_data)
         self.init_group()
+
+    def update_group_check_state(self, item):
+        """
+        列表项复选框状态变化时，同步更新全局变量中的Group.is_selected
+        :param item: 触发变化的列表项
+        """
+        group: Group = item.data(Qt.ItemDataRole.UserRole)
+        if not group:
+            return
+        # 从全局变量获取最新数据（师兄要求的for循环）
+        global_setting_data: Experiment_setting_entity = global_setting.get_setting("experiment_setting_new", None)
+        if global_setting_data:
+            for g_in_global in global_setting_data.groups:
+                if g_in_global.id == group.id:
+                    # 更新勾选状态
+                    g_in_global.is_selected = (item.checkState() == Qt.CheckState.Checked)
+                    g_in_global.update_time = datetime.now()
+                    break
+            # 保存到全局变量
+            global_setting.set_setting("experiment_setting_new", global_setting_data)
+        # ========== 新增：触发右侧界面刷新 ==========
+        self.update_content_signal.emit(True)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
