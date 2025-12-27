@@ -9,7 +9,8 @@ class Setting_Table(Enum):
             ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
             ("name", "名称", " TEXT "),
             ("create_time", "获取时间", " TIMESTAMP "),
-            ("update_time", "获取时间", " TIMESTAMP ")
+            ("update_time", "获取时间", " TIMESTAMP "),
+            ("is_selected", "是否启用", " BOOLEAN DEFAULT FALSE ")
         ],
         "foreign_key": None
     }

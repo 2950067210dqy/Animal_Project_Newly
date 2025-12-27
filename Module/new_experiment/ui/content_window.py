@@ -143,7 +143,8 @@ class ContentWindow(ThemedWindow):
             if len(self.setting_data.groups) > 0:
                 for index, group in enumerate(self.setting_data.groups):
                     group: Group
-                    self.add_group_view(f"动物分组/通道: {group.name}",group)
+                    status_text = "已启用" if group.is_selected else "未启用"
+                    self.add_group_view(f"动物分组/通道: {group.name} {status_text}", group)
                     pass
                 self.model.setHorizontalHeaderLabels([f"一共 {len(self.setting_data.groups)}个分组/通道"])
             else:
@@ -291,7 +292,7 @@ class ContentWindow(ThemedWindow):
                 if self.setting_data is not None:
                     self.setting_data.groups.append(
                         Group(id=init_index+i, name=str(init_index+i), create_time=datetime.now(),
-                              update_time=datetime.now())
+                              update_time=datetime.now(), is_selected=False)
                     )
 
             global_setting.set_setting("experiment_setting_new", self.setting_data)
@@ -547,6 +548,12 @@ class ContentWindow(ThemedWindow):
     def apply_experiment(self):
         """应用实验"""
         if not self.setting_data.is_emtpy():
+            # 新增：检查是否有启用的通道
+            enabled_groups = [g for g in self.setting_data.groups if g.is_selected]
+            if len(enabled_groups) == 0:
+                msg_box = InfoDialog(title="应用实验", info="请至少启用一个分组/通道!", icon=QMessageBox.Icon.Warning)
+                msg_box.exec()
+                return
             # 导入了且修改了模板 先保存模板
             if self.is_update and self.is_import:
                 dialog = Save_Experiment_Dialog(title="保存模板",text="当前模板存在修改操作，请选择：")
@@ -591,7 +598,15 @@ class ContentWindow(ThemedWindow):
             self.is_update = False
             # 将实验设置存入全局变量
             self.setting_data.groups = self.setting_data.groups
-            global_setting.set_setting("experiment_setting", self.setting_data)
+            # 修改：只保存启用的通道
+            enabled_setting_data = copy.deepcopy(self.setting_data)
+            enabled_setting_data.groups = enabled_groups
+            enabled_group_ids = [g.id for g in enabled_groups]
+            enabled_setting_data.animalGroupRecords = [
+                record for record in self.setting_data.animalGroupRecords
+                if record.gid in enabled_group_ids
+            ]
+            global_setting.set_setting("experiment_setting", enabled_setting_data)
             global_setting.set_setting("experiment_setting_file", self.setting_file_path)
             send_message_queue = global_setting.get_setting("send_message_queue")
             send_message_queue.put(ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_monitor_data', title='experiment_setting',data={'experiment_setting':self.setting_data,"experiment_setting_file":self.setting_file_path},
