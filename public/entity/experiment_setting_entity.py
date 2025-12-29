@@ -67,21 +67,24 @@ class Group:
                  id: int=None,
                  name: str=None,
                  create_time: datetime=None,
-                 update_time: datetime=None):
+                 update_time: datetime=None,
+                 is_selected: bool=False): # 新增勾选状态属性，默认未勾选
         """
 
         :param id: 序号
         :param name: 分组/通道名称
         :param create_time: 创建时间
         :param update_time: 更新时间
+        :param is_selected: 是否被勾选
         """
         self.id = id  # 序号
         self.name = name  # 名称
         self.create_time = create_time  # 获取时间
         self.update_time = update_time  # 更新时间
+        self.is_selected = is_selected  # 新增:勾选状态
 
     def __repr__(self):
-        return (f"Record(id={self.id}, name='{self.name}', "
+        return (f"Record(id={self.id}, name='{self.name}', is_selected={self.is_selected},"
                 f"create_time='{self.create_time}', update_time='{self.update_time}')")
 class AnimalGroupRecord:
     """
