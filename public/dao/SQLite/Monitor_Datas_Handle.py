@@ -25,6 +25,8 @@ class Monitor_Datas_Handle():
         self.sqlite_manager: SQLiteManager = None
         self.init_construct(db_name)
 
+        self.conn = None  # 为检测结果处理准备连接
+
     def init_construct(self,db_name):
         if db_name is None:
             self.db_name = self.create_db_not_time()
@@ -39,6 +41,8 @@ class Monitor_Datas_Handle():
 
     def stop(self):
         self.sqlite_manager.close()
+        if self.conn:
+            self.conn.close()
     def create_db_not_time(self):
         """创建数据库 不按时间分库，直接一个实验一个库"""
         # 获取实验配置文件名称
@@ -834,3 +838,48 @@ class Monitor_Datas_Handle():
     @create_time 2025-12-01
     @end
     """
+
+    """
+    @author wangjie
+    @create_time 2025-12-29
+    @start
+    """
+    def get_trajectory_data(self):
+        """获取轨迹数据"""
+        try:
+            cursor = self.conn.cursor()
+            query = """
+                    SELECT image_name, \
+                           median_X, \
+                           median_Y, \
+                           median_Z,
+                           center_X, \
+                           center_Y, \
+                           center_Z, \
+                           confidence, \
+                           num_contour_points
+                    FROM trajectory_data
+                    ORDER BY image_name \
+                    """
+            cursor.execute(query)
+            rows = cursor.fetchall()
+
+            # 转换为字典列表
+            columns = ['image_name', 'median_X', 'median_Y', 'median_Z',
+                       'center_X', 'center_Y', 'center_Z', 'confidence', 'num_contour_points']
+
+            result = []
+            for row in rows:
+                result.append(dict(zip(columns, row)))
+
+            return result
+        except Exception as e:
+            logger.error(f"获取轨迹数据失败: {e}")
+            return []
+
+    """
+    @author wangjie
+    @create_time 2025-12-29
+    @end
+    """
+

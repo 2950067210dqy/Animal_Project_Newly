@@ -3,6 +3,7 @@ import sys
 import threading
 import traceback
 from datetime import datetime
+from typing import Optional, Tuple
 
 from PyQt6.QtCore import QCoreApplication
 from PyQt6.QtWidgets import QApplication
@@ -315,14 +316,25 @@ class Detection:
     """
     使用yolo模型探查坐标
     """
+    # ==== 算法参数 ====
+    TARGET_CLASSES = [0]
+    CONF_THRESHOLD = 0.6
 
+    # 离群剔除率 (0.1 表示剔除最小的10%和最大的10%)
+    OUTLIER_RATE = 0.1
+
+    USE_CONVEX_HULL = False
+    GRABCUT_ITER = 2
+    MAX_CONTOUR_SIDE = 128
+    SMOOTH_KERNEL = 9
     def __init__(self, path, camera_id):
         self.path = path
         self.camera_id = camera_id
         self.model = YOLO( os.getcwd() +'./model/best.pt')
-
+        self.grabcut_iterations = max(1, int(self.GRABCUT_ITER))
         self.data_save:Monitor_Datas_Handle = None
         self.intrinsics, self.unit = self.get_intrinsics(intrinsics)
+
 
     def get_intrinsics(self, intrinsics):
         with open(intrinsics, "r") as f:
@@ -339,13 +351,360 @@ class Detection:
         depth_intrin.coeffs = intrinsics_data["coeffs"]
         unit = intrinsics_data["units"]
         return depth_intrin, unit
+    def depth_to_xyz(self, depth_image: np.ndarray, u: int, v: int, use_3x3: bool = True):
+        """
+        根据像素坐标 (u,v) 与深度图，计算对应的 3D 坐标 (X,Y,Z)（单位：米）
+        """
+        h, w = depth_image.shape[:2]
 
+        # 防止越界
+        u = int(np.clip(u, 1, w - 2))
+        v = int(np.clip(v, 1, h - 2))
+
+        if use_3x3:
+            # 取 3x3 区域的有效深度平均值，进一步抗噪
+            patch = depth_image[v-1:v+2, u-1:u+2]
+            valid = patch[patch > 0]
+            if valid.size == 0:
+                return None, None, None
+            depth_raw = float(valid.mean())
+        else:
+            depth_raw = float(depth_image[v, u])
+            if depth_raw <= 0:
+                return None, None, None
+
+        # 转换为米
+        depth_m = depth_raw * self.unit
+
+        # 使用 RealSense SDK 反投影
+        point_3d = rs.rs2_deproject_pixel_to_point(self.intrinsics, [u, v], depth_m)
+        x, y, z = map(lambda val: round(float(val), 3), point_3d)
+        return x, y, z
+    def _segment_mouse_mask(self, roi: np.ndarray):
+        """Use GrabCut to segment the mouse region inside ROI."""
+        h, w = roi.shape[:2]
+        if h < 5 or w < 5:
+            return None
+        roi_proc = roi
+        scale = 1.0
+        if self.MAX_CONTOUR_SIDE:
+            max_side = max(h, w)
+            if max_side > self.MAX_CONTOUR_SIDE:
+                scale = self.MAX_CONTOUR_SIDE / max_side
+                new_w = max(1, int(round(w * scale)))
+                new_h = max(1, int(round(h * scale)))
+                roi_proc = cv2.resize(roi, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        proc_h, proc_w = roi_proc.shape[:2]
+        mask = np.zeros((proc_h, proc_w), np.uint8)
+        bgd_model = np.zeros((1, 65), np.float64)
+        fgd_model = np.zeros((1, 65), np.float64)
+        rect = (1, 1, max(proc_w - 2, 1), max(proc_h - 2, 1))
+
+        try:
+            cv2.grabCut(
+                roi_proc,
+                mask,
+                rect,
+                bgd_model,
+                fgd_model,
+                self.grabcut_iterations,
+                cv2.GC_INIT_WITH_RECT,
+            )
+        except cv2.error as exc:
+            print(f"[WARN] GrabCut 失败: {exc}")
+            return None
+
+        mask = np.where(
+            (mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0
+        ).astype(np.uint8)
+
+        if scale != 1.0:
+            mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+
+        return self._postprocess_mask(mask)
+
+    def _threshold_mouse_mask(self, roi: np.ndarray):
+        """Fallback threshold segmentation when GrabCut fails."""
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        candidates = []
+
+        def _collect(mask):
+            ratio = float(cv2.countNonZero(mask)) / mask.size
+            score = abs(ratio - 0.25)
+            valid = 0.02 <= ratio <= 0.75
+            candidates.append((not valid, score, mask))
+
+        _, otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _collect(otsu)
+        _collect(cv2.bitwise_not(otsu))
+
+        adapt = cv2.adaptiveThreshold(
+            blurred,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            31,
+            3,
+        )
+        _collect(adapt)
+        _collect(cv2.bitwise_not(adapt))
+
+        candidates.sort(key=lambda item: (item[0], item[1]))
+        mask = candidates[0][2]
+
+        return self._postprocess_mask(mask)
+
+    def _postprocess_mask(self, mask: np.ndarray):
+        mask = mask.astype(np.uint8, copy=False)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        if self.SMOOTH_KERNEL >= 3:
+            blur = cv2.GaussianBlur(
+                mask, (self.SMOOTH_KERNEL, self.SMOOTH_KERNEL), 0
+            )
+            _, mask = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY)
+        return mask
+
+    def _extract_mouse_contour(self, bgr_image, box):
+        if box is None:
+            return None, None
+
+        x1, y1, x2, y2 = box
+        h, w = bgr_image.shape[:2]
+        x1 = int(np.clip(x1, 0, w - 1))
+        x2 = int(np.clip(x2, 1, w))
+        y1 = int(np.clip(y1, 0, h - 1))
+        y2 = int(np.clip(y2, 1, h))
+        if x2 <= x1 or y2 <= y1:
+            return None, None
+
+        roi = bgr_image[y1:y2, x1:x2]
+        if roi.size == 0:
+            return None, None
+
+        mask_roi = self._segment_mouse_mask(roi)
+        if mask_roi is None:
+            mask_roi = self._threshold_mouse_mask(roi)
+        if mask_roi is None:
+            return None, None
+
+        contours, _ = cv2.findContours(mask_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None, None
+
+        contour = max(contours, key=cv2.contourArea)
+        area = cv2.contourArea(contour)
+        if area < 0.005 * roi.shape[0] * roi.shape[1]:
+            return None, None
+
+        if self.USE_CONVEX_HULL:
+            contour = cv2.convexHull(contour)
+        else:
+            peri = cv2.arcLength(contour, True)
+            epsilon = max(0.5, 0.005 * peri)
+            contour = cv2.approxPolyDP(contour, epsilon=epsilon, closed=True)
+
+        full_mask = np.zeros(bgr_image.shape[:2], dtype=np.uint8)
+        mask_roi_full = full_mask[y1:y2, x1:x2]
+        cv2.drawContours(mask_roi_full, [contour], -1, 255, thickness=-1)
+
+        global_contour = contour + np.array([[[x1, y1]]])
+        overlay = bgr_image.copy()
+        cv2.drawContours(overlay, [global_contour], -1, (0, 255, 255), 2)
+
+        return overlay, full_mask
+
+    def _depth_from_mask(
+            self,
+            depth_image: np.ndarray,
+            mask: np.ndarray,
+            mode: str = "filtered_median",
+            target: Optional[Tuple[int, int]] = None,
+    ):
+        """
+        计算掩膜区域的代表深度。
+        mode="filtered_median": 排序 -> 剔除首尾 X% -> 计算剩余部分的中位值 -> 找最接近该值的像素坐标
+        mode="closest": 找离 target 最近的有效像素
+        """
+        if mask is None or depth_image is None:
+            return None
+
+        if mask.shape != depth_image.shape:
+            try:
+                mask = cv2.resize(
+                    mask,
+                    (depth_image.shape[1], depth_image.shape[0],depth_image.shape[2]),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+            except Exception:
+                return None
+
+        # 提取掩膜内的有效深度值
+        valid = (mask > 0) & (depth_image > 0)
+        if not np.any(valid):
+            return None
+
+        # depth_values: 所有有效深度值 (一维数组)
+        # coords: 对应的 (v, u) 坐标索引 (N, 2)
+        depth_values = depth_image[valid].astype(np.float32)
+        coords = np.column_stack(np.nonzero(valid))
+
+        if depth_values.size == 0:
+            return None
+
+        idx = 0
+        if mode == "closest" and target is not None:
+            # 几何最近点逻辑 (不变)
+            tu, tv = target
+            tv = int(np.clip(tv, 0, depth_image.shape[0] - 1))
+            tu = int(np.clip(tu, 0, depth_image.shape[1] - 1))
+            deltas = coords - np.array([tv, tu])
+            distances = deltas[:, 0] * deltas[:, 0] + deltas[:, 1] * deltas[:, 1]
+            idx = int(np.argmin(distances))
+
+        else:
+            # === 修改核心逻辑: 剔除首尾 + 取剩余部分中位值 ===
+
+            # 1. 排序所有深度值
+            n_points = len(depth_values)
+            sorted_indices = np.argsort(depth_values)
+            sorted_depths = depth_values[sorted_indices]
+
+            # 2. 计算剔除的索引范围
+            trim_count = int(n_points * self.outlier_rejection_rate)
+            start_idx = trim_count
+            end_idx = n_points - trim_count
+
+            if end_idx <= start_idx:
+                # 如果点太少不够剔除，退化为直接取整体中位数
+                middle_idx = n_points // 2
+                idx = sorted_indices[middle_idx]
+            else:
+                # 3. 提取剩余部分
+                filtered_depths = sorted_depths[start_idx:end_idx]
+
+                # 4. 计算剩余部分的中位值 (Scalar Value)
+                median_val = np.median(filtered_depths)
+
+                # 5. 寻找原始像素中，深度最接近这个 median_val 的点
+                #    (这样做是为了返回一个真实存在的像素坐标 (u,v)，以便反投影)
+                diffs = np.abs(depth_values - median_val)
+                idx = int(np.argmin(diffs))
+
+        # 取出选定像素的坐标
+        v, u = coords[idx]
+
+        # 反投影得到 3D 坐标
+        xyz = self.projector.depth_to_xyz(depth_image, u=int(u), v=int(v), use_3x3=True)
+        if xyz is None:
+            return None
+        return xyz, (int(u), int(v))
+
+    def _nearest_valid_depth_point(self, depth, cx, cy):
+        """
+        找到离指定点最近的有效深度值点
+
+        Args:
+            depth: 深度图 (H, W)
+            cx, cy: 中心坐标
+
+        Returns:
+            (x, y) 最近的有效深度点坐标
+        """
+        # ✅ 确保输入是2D数组
+        if len(depth.shape) != 2:
+            logger.warning(f"⚠️ 深度图维度错误: {depth.shape}")
+            return (cx, cy)
+
+        h, w = depth.shape
+
+        # ✅ 边界检查
+        if cx < 0 or cx >= w or cy < 0 or cy >= h:
+            return (cx, cy)
+
+        # ✅ 检查当前点是否有效
+        if depth[int(cy), int(cx)] > 0:
+            return (int(cx), int(cy))
+
+        # ✅ 搜索有效点 - 使用正确的形状转换
+        search_radius = 50
+        y_min = max(0, int(cy) - search_radius)
+        y_max = min(h, int(cy) + search_radius)
+        x_min = max(0, int(cx) - search_radius)
+        x_max = min(w, int(cx) + search_radius)
+
+        # 获取搜索区域
+        region = depth[y_min:y_max, x_min:x_max]
+
+        # ✅ 找到所有有效点（深度值 > 0）
+        valid_mask = region > 0
+
+        if not np.any(valid_mask):
+            # 没有找到有效点，扩大搜索范围
+            logger.warning(f"⚠️ 在半径{search_radius}内未找到有效深度点 ({cx}, {cy})")
+            return (int(cx), int(cy))
+
+        # ✅ 获取有效点的坐标 - 这是关键修复
+        valid_coords = np.argwhere(valid_mask)  # 返回 (N, 2) 形状
+
+        if len(valid_coords) == 0:
+            return (int(cx), int(cy))
+
+        # 计算每个有效点到中心的距离
+        center_in_region = np.array([int(cy) - y_min, int(cx) - x_min])
+
+        # ✅ 正确的广播操作
+        distances = np.linalg.norm(valid_coords - center_in_region, axis=1)
+
+        # 找到最近点
+        nearest_idx = np.argmin(distances)
+        nearest_y, nearest_x = valid_coords[nearest_idx]
+
+        # 转换回原始坐标系
+        result_y = nearest_y + y_min
+        result_x = nearest_x + x_min
+
+        logger.debug(f"📍 找到最近有效深度点: ({result_x}, {result_y})")
+        return (int(result_x), int(result_y))
     def img_save(self, image, timestamp):
         img = global_setting.get_setting("camera_config")['DEEP_CAMERA']['result_dir'] + \
               global_setting.get_setting("camera_config")['DEEP_CAMERA']['result_img_dir']
         if not os.path.exists(self.path + img):
             os.makedirs(self.path + img)
         cv2.imwrite(self.path + img + "{0}.bmp".format(timestamp), image)
+    def store_data(self,imge,base_name:str = None,is_exist_depth:int =0,median_x:float=None,median_Y:float=None,median_Z:float=None,center_x:float=None,center_y:float=None,center_z:float=None):
+        # 写入 数据库
+        if self.data_save is None:
+            self.data_save = Monitor_Datas_Handle()  # 创建数据库
+        # 存储值----------------------------------------------------
+        return_data_struct = {}
+        return_data_struct['module_name'] = 'DetectionResults'
+        return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        return_data_struct['table_name'] = next(iter(Others_Tables.Detection_Results_Data.value.keys()))
+        return_data_struct['mouse_cage_number'] = self.camera_id
+        return_data_struct['data'] = [
+
+            {'desc': '图像名称', 'value': base_name},
+            {'desc':'深度图像是否存在','value':is_exist_depth},
+            {'desc': '中位数X', 'value': median_x},
+            {'desc': '中位数Y', 'value': median_Y},
+            {'desc': '中位数Z', 'value': median_Z},
+            {'desc': '中心X', 'value': center_x},
+            {'desc': '中心Y', 'value': center_y},
+            {'desc': '中心Z', 'value': center_z},
+        ]
+        return_data_struct['slave_id'] = 0
+        return_data_struct['function_code'] = 0
+        status, msg = self.data_save.insert_data(return_data_struct)
+        if not status:
+            logger.error(f"深度相机{self.camera_id}存储数据错误：{msg}")
+        self.img_save(imge, base_name)
 
     def detect(self, color_image, depth_frame, file_base_name):
         if os.path.exists(color_image) and os.path.isfile(color_image) and os.path.exists(
@@ -360,83 +719,92 @@ class Detection:
                 logger.error(
                     f"camera_{self.camera_id}图像处理程序读取{file_base_name}.bmp文件出错，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
                 return
-            results = self.model(imge, classes=[0], verbose=False)
+            results = self.model(
+                imge,
+                classes=self.TARGET_CLASSES,
+                conf=self.CONF_THRESHOLD,
+                verbose=False,
+            )
+            # results = self.model(imge, classes=[0], verbose=False)
             # 处理检测结果
+            wrote_any = False
+            final_box = None
+            final_xyz = (None, None, None)
+            final_contour_data = None
+            final_depth_point = None
+
             for result in results:
-                boxes = result.boxes.xyxy.cpu().numpy()
-                if len(boxes) == 0:
-                    x, y, z = None, None, None
-                    # 写入 数据库
-                    if self.data_save is None:
-                        self.data_save = Monitor_Datas_Handle()  # 创建数据库
-                    # 存储值----------------------------------------------------
-                    return_data_struct = {}
-                    return_data_struct['module_name'] = 'MouseDeepPosition'
-                    return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                    return_data_struct['table_name'] = next(iter(Others_Tables.Mouse_deep_position_Data.value.keys()))
-                    return_data_struct['mouse_cage_number'] = self.camera_id
-                    return_data_struct['data'] = [
-                        {'desc': '识别时间', 'value': file_base_name},
-                        {'desc': 'x轴', 'value': x},
-                        {'desc': 'y轴', 'value': y},
-                        {'desc': 'z轴', 'value': z},
-                    ]
-                    return_data_struct['slave_id'] = 0
-                    return_data_struct['function_code'] = 0
-                    status, msg = self.data_save.insert_data(return_data_struct)
-                    if not status:
-                        logger.error(f"深度相机{self.camera_id}存储数据错误：{msg}")
-                    self.img_save(imge, file_base_name)
-                    # with lock:
-                    #     logger.info(
-                    #         f'深度相机camera_{self.camera_id}的图像{file_base_name}处理结果保存成功 | x, y, z = NaN')
+                boxes = result.boxes
+                if boxes is None or boxes.xyxy is None or len(boxes) == 0:
+                    logger.debug(f"{'3' * 100}")
+                    self.store_data(imge, file_base_name)
                     continue
-                # 获取检测框坐标
-                x1, y1, x2, y2 = map(int, boxes[0])
-                center_x = (x1 + x2) // 2
-                center_y = (y1 + y2) // 2
+
+                box = boxes.xyxy[0].cpu().numpy()
+                x1, y1, x2, y2 = map(int, box)
+                cx = (x1 + x2) // 2
+                cy = (y1 + y2) // 2
+
                 # 获取深度坐标
+                depth =None
                 try:
-                    if file_base_name + ".npy" in file_locks:
-                        with file_locks[file_base_name + ".npy"]:
-                            depth = np.load(depth_frame)
+                    if file_base_name + ".png" in file_locks:
+                        with file_locks[file_base_name + ".png"]:
+                            depth = cv2.imread(depth_frame, cv2.IMREAD_UNCHANGED)
                     else:
-                        depth = np.load(depth_frame)
+                        depth = cv2.imread(depth_frame, cv2.IMREAD_UNCHANGED)
                 except Exception as e:
                     logger.error(
-                        f"camera_{self.camera_id}图像处理程序读取{file_base_name}.npy文件出错，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
+                        f"camera_{self.camera_id}图像处理程序读取{file_base_name}.png文件出错，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
                     return
-                    #  读取到的深度信息/1000 为真实的深度信息，单位为m
-                depth = depth[center_y, center_x] * self.unit
-                # depth = float(depth)   # 转换为米
-                point_3d = rs.rs2_deproject_pixel_to_point(self.intrinsics, [center_x, center_y], depth)
-                # print(f"point_3d{point_3d}")
-                x, y, z = map(lambda v: round(v, 3), point_3d)
+                if depth is None:
+                    logger.debug(f"{'2' * 100}")
+                    self.store_data(imge, file_base_name)
+                    continue
+                logger.error(f"depth_ndim:{depth.ndim}")
+                if depth.ndim != 3:
+                    logger.debug(f"{'0' * 100}")
+                    self.store_data(imge, file_base_name)
+                    continue
 
-                # 写入 数据库
-                if self.data_save is None:
-                    self.data_save = Monitor_Datas_Handle()  # 创建数据库
-                # 存储值----------------------------------------------------
-                return_data_struct = {}
-                return_data_struct['module_name'] = 'MouseDeepPosition'
-                return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                return_data_struct['table_name'] = next(iter(Others_Tables.Mouse_deep_position_Data.value.keys()))
-                return_data_struct['mouse_cage_number'] = self.camera_id
-                return_data_struct['data'] = [
-                    {'desc': '识别时间', 'value': file_base_name},
-                    {'desc': 'x轴', 'value': x},
-                    {'desc': 'y轴', 'value': y},
-                    {'desc': 'z轴', 'value': z},
-                ]
-                return_data_struct['slave_id'] = 0
-                return_data_struct['function_code'] = 0
-                status,msg = self.data_save.insert_data(return_data_struct)
-                if not status:
-                    logger.error(f"深度相机{self.camera_id}存储数据错误：{msg}")
+                contour_data = self._extract_mouse_contour(imge, (x1, y1, x2, y2))
+                overlay_img, mask_img = contour_data if contour_data else (None, None)
 
-                # 可视化
-                imge = self.draw_overlay(imge, x1, y1, x2, y2, center_x, center_y, x, y, z)
-                self.img_save(imge, file_base_name)
+                center_point = None
+                center_xyz = None
+                median_xyz = None
+                median_point = None
+
+                if mask_img is not None:
+                    # 使用过滤+中位值模式
+                    median_result = self._depth_from_mask(depth, mask_img, mode="filtered_median")
+                    if median_result is not None:
+                        median_xyz, median_point = median_result
+
+                    # 同时也保留几何中心作为参考
+                    center_mask_result = self._depth_from_mask(
+                        depth,
+                        mask_img,
+                        mode="closest",
+                        target=(cx, cy),
+                    )
+                    if center_mask_result is not None:
+                        center_xyz, center_point = center_mask_result
+
+                # 降级方案：如果没有掩膜，就用几何中心
+                if center_xyz is None or center_point is None:
+                    fallback_point = self._nearest_valid_depth_point(depth, cx, cy)
+                    if fallback_point is not None:
+                        cu, cv = fallback_point
+                        xyz = self.depth_to_xyz(depth, cu, cv, use_3x3=True)
+                        if xyz is not None:
+                            center_xyz = xyz
+                            center_point = (cu, cv)
+
+                logger.debug(f"{'1'*100}")
+                self.store_data(imge, file_base_name,1,median_xyz[0] if median_xyz else None,median_xyz[1] if median_xyz else None,median_xyz[2] if median_xyz else None ,center_xyz[0] if center_xyz else None,center_xyz[1] if center_xyz else None,center_xyz[2] if center_xyz else None)
+
+
                 # with lock:
                 #     logger.info(
                 #         f'深度相机camera_{self.camera_id}的图像{file_base_name}处理结果保存成功. | x, y, z ={x},{y},{z}')
@@ -445,7 +813,7 @@ class Detection:
                 logger.error(f"deep_camera_{self.camera_id} | {file_base_name}.bmp文件不存在")
                 pass
             if os.path.exists(depth_frame) or os.path.isfile(depth_frame):
-                logger.error(f"deep_camera_{self.camera_id} | {file_base_name}.npy文件不存在")
+                logger.error(f"deep_camera_{self.camera_id} | {file_base_name}.png文件不存在")
                 pass
 
     # 绘制可视化信息
@@ -627,30 +995,30 @@ class Img_process(MyQThread):
 
                 # 构建文件路径
                 bmp_path = os.path.join(color_dir, file)
-                npy_path = os.path.join(
+                png_path = os.path.join(
                     self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['depth_dir'],
-                    base_name + ".npy"
+                    base_name + ".png"
                 )
 
-                # 检查对应的npy文件是否存在
-                if not os.path.exists(npy_path):
-                    logger.warning(f"deep_camera_{self.camera_id} | 深度文件不存在，跳过: {npy_path}")
+                # 检查对应的png文件是否存在
+                if not os.path.exists(png_path):
+                    logger.warning(f"deep_camera_{self.camera_id} | 深度文件不存在，跳过: {png_path}")
                     continue
 
-                try:
-                    # 进行文件处理
-                    self.dection.detect(bmp_path, npy_path, base_name)
+                # try:
+                # 进行文件处理
+                self.dection.detect(bmp_path, png_path, base_name)
 
-                    # 处理完毕后，标记文件为已处理
-                    self.mark_as_processed(file)
-                    processed_set.add(file)  # 同步更新内存中的集合
-                    handle_files_nums += 1
+                # 处理完毕后，标记文件为已处理
+                self.mark_as_processed(file)
+                processed_set.add(file)  # 同步更新内存中的集合
+                handle_files_nums += 1
 
-                except Exception as e:
-                    logger.error(f"deep_camera_{self.camera_id} | 处理文件 {file} 时出错: {e}")
-                    # 发生错误时仍然标记为已处理，避免反复处理同一个错误文件
-                    self.mark_as_processed(file)
-                    processed_set.add(file)
+                # except Exception as e:
+                #     logger.error(f"deep_camera_{self.camera_id} | 处理文件 {file} 时出错: {e}")
+                #     # 发生错误时仍然标记为已处理，避免反复处理同一个错误文件
+                #     self.mark_as_processed(file)
+                #     processed_set.add(file)
 
             end_time = time.time()
             logger.debug(
@@ -679,8 +1047,9 @@ class Delete_file(MyQThread):
         for root, dirs, files in os.walk(self.path):
             # logger.warning(f"deep_Camera {root} | {dirs} | {files}")
                 for file in files:
-                    # 将记录数据的csv 文件不删除
-                    if global_setting.get_setting("camera_config")['DEEP_CAMERA']['location_filename'] in file:
+                    # 将记录数据的csv 文件不删除 以及 png
+                    if global_setting.get_setting("camera_config")['DEEP_CAMERA']['location_filename'] in file and file.split(".")[1] in [ 'png']:
+
                         continue
                     file_path = os.path.join(root, file)
                     try:
@@ -688,8 +1057,8 @@ class Delete_file(MyQThread):
                         size = float(size / 1204 / 1024 / 1024)  # 将字节B转成GB
                         total_size += size
                         total_nums += 1
-                        if file.split(".")[1] in ['bmp', 'npy']:
-                            # 对bmp和npy文件锁删除
+                        if file.split(".")[1] in ['bmp', 'png']:
+                            # 对bmp和png文件锁删除
                             if file in file_locks:
                                 with file_locks[file]:
                                     os.remove(file_path)  # 删除文件
@@ -808,10 +1177,15 @@ class RealSenseProcessor(MyQThread):
         directory_depth = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['depth_dir']
         if not os.path.exists(directory_depth):
             os.makedirs(directory_depth)  # 递归创建目录
-        np.save(directory_depth + f"/{timestrf}.npy", depth_image)
+        # np.save(directory_depth + f"/{timestrf}.png", depth_image)
         #  为文件添加线程锁
-        file_locks[f'{timestrf}.npy'] = threading.Lock()
-
+        file_locks[f'{timestrf}.png'] = threading.Lock()
+        # 深度信息图片png保存
+        cv2.imwrite(
+            directory_depth + f"/{timestrf}.png",
+            depth_image,
+            [cv2.IMWRITE_PNG_COMPRESSION, 3]  # 压缩级别 0-9
+        )
 
     def stop(self):
         if self.pipeline is not None and self.init_state:
@@ -905,6 +1279,9 @@ class RealSenseProcessor(MyQThread):
         # 转换图像格式
         color_image = np.asanyarray(color_frame.get_data())
         depth_image = np.asanyarray(depth_frame.get_data())
+        # 1) PNG（16 位）
+
+
         self.img_save(color_image, depth_image)
         with lock:
             frame_nums += 1

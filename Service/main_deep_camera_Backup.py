@@ -2,6 +2,7 @@ import json
 import sys
 import threading
 import traceback
+from datetime import datetime
 
 from PyQt6.QtCore import QCoreApplication
 from PyQt6.QtWidgets import QApplication
@@ -12,8 +13,10 @@ from public.component.dialog.index.deep_camera_config_dialog_index import deep_c
 from public.config_class import global_load
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
+from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread, MyThread
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
+from public.function.Modbus.Modbus_Type import Others_Tables
 from public.util.folder_util import folder_util
 from public.util.json_util import json_util
 
@@ -129,196 +132,206 @@ import shutil
 
 
 
-class coordinate_writing:
-    """
-    将处理的坐标写入csv文件,支持Windows下多设备并发访问
-    """
-
-    def __init__(self, path, camera_id):
-        self.path = path
-        self.camera_id = camera_id
-        self.csv_file = None
-        self.csv_writer = None
-        self.folder_path = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['result_dir']
-        self.original_filename = self.folder_path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
-            'location_filename'] + f"__{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}.{global_setting.get_setting('camera_config')['DEEP_CAMERA']['location_extension']}"
-        self.filename = self.original_filename  # 当前使用的文件名
-        self.max_retries = 10  # 最大重试次数
-        self.retry_delay = 0.1  # 重试间隔（秒）
-        self.permission_counter = 0  # 权限文件计数器
-
-    def _lock_file(self, file):
-        """锁定文件"""
-        try:
-            msvcrt.locking(file.fileno(), msvcrt.LK_LOCK, 1)
-        except PermissionError:
-            return False
-        return True
-
-    def _unlock_file(self, file):
-        """解锁文件"""
-        try:
-            msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
-        except PermissionError:
-            return False
-        return True
-
-    def _get_permission_filename(self, counter):
-        """
-        生成带有permission后缀的文件名
-        :param counter: 计数器
-        :return: 新文件名
-        """
-        base_name, ext = os.path.splitext(self.original_filename)
-        return f"{base_name}_permission_{counter}{ext}"
-
-    def _copy_to_permission_file(self):
-        """
-        复制当前文件到新的permission文件
-        :return: 新文件名
-        """
-        self.permission_counter += 1
-        new_filename = self._get_permission_filename(self.permission_counter)
-
-        try:
-            # 如果原文件存在，复制它
-            if os.path.exists(self.filename):
-                shutil.copy2(self.filename, new_filename)
-                logger.info(f"文件被占用，已复制到新文件: {new_filename}")
-            else:
-                logger.info(f"原文件不存在，创建新文件: {new_filename}")
-
-            # 更新当前使用的文件名
-            self.filename = new_filename
-            return new_filename
-
-        except Exception as e:
-            logger.error(f"复制文件失败: {e}")
-            raise
-
-    def _safe_file_operation(self, operation, mode='a'):
-        """
-        安全的文件操作,带重试机制和文件复制备份
-        :param operation: 要执行的操作函数
-        :param mode: 文件打开模式
-        :return: 操作结果
-        """
-        for attempt in range(self.max_retries):
-            try:
-                if not os.path.exists(self.folder_path):
-                    os.makedirs(self.folder_path)
-
-                with open(self.filename, mode=mode, newline='', encoding='utf-8') as file:
-                    # 获取文件锁
-                    if not self._lock_file(file):
-                        if attempt < self.max_retries - 1:
-                            logger.info(
-                                f"文件被占用,{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
-                            time.sleep(self.retry_delay)
-                            continue
-                        else:
-                            logger.error(f"文件访问失败,已重试{self.max_retries}次，尝试复制到新文件")
-                            # 达到最大重试次数，复制文件
-                            self._copy_to_permission_file()
-                            # 使用新文件重试一次
-                            with open(self.filename, mode=mode, newline='', encoding='utf-8') as new_file:
-                                if self._lock_file(new_file):
-                                    try:
-                                        result = operation(new_file)
-                                        return result
-                                    finally:
-                                        self._unlock_file(new_file)
-                                else:
-                                    logger.error(f"新文件 {self.filename} 也被占用，递归复制")
-                                    # 如果新文件也被占用，递归调用自己
-                                    return self._safe_file_operation(operation, mode)
-
-                    try:
-                        # 执行操作
-                        result = operation(file)
-                        return result
-                    finally:
-                        # 释放文件锁
-                        self._unlock_file(file)
-
-            except PermissionError as e:
-                if attempt < self.max_retries - 1:
-                    logger.info(f"文件被占用,{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
-                    time.sleep(self.retry_delay)
-                else:
-                    logger.error(f"文件访问失败,已重试{self.max_retries}次: {e}，尝试复制到新文件")
-                    # 达到最大重试次数，复制文件并重试
-                    self._copy_to_permission_file()
-                    return self._safe_file_operation(operation, mode)
-
-            except Exception as e:
-                logger.error(f"文件操作出错: {e}")
-
-
-
-    def csv_create(self):
-        """创建CSV文件并写入表头"""
-
-        def create_operation(file):
-            csv_writer = csv.writer(file)
-            csv_writer.writerow(["base_file_name", "X (m)", "Y (m)", "Z (m)"])
-
-        self._safe_file_operation(create_operation, mode='w')
-
-
-    def csv_write(self, file_base_name, x, y, z):
-        """写入一行数据到CSV"""
-
-        def write_operation(file):
-            csv_writer = csv.writer(file)
-            csv_writer.writerow([file_base_name, x, y, z])
-
-        self._safe_file_operation(write_operation, mode='a')
-
-
-    def csv_write_batch(self, data_list):
-        """
-        批量写入数据,提高效率
-        :param data_list: 列表,每个元素是 (file_base_name, x, y, z) 的元组
-        """
-
-        def batch_write_operation(file):
-            csv_writer = csv.writer(file)
-            csv_writer.writerows(data_list)
-
-        self._safe_file_operation(batch_write_operation, mode='a')
-
-
-    def csv_close(self):
-        """
-        关闭CSV文件(由于使用with语句,实际上不需要显式关闭)
-        保留此方法以保持向后兼容
-        """
-        if self.csv_file is not None:
-            self.csv_file.close()
-            self.csv_file = None
-            self.csv_writer = None
-
-
-    def get_current_filename(self):
-        """
-        获取当前正在使用的文件名
-        :return: 当前文件名
-        """
-        return self.filename
+# class coordinate_writing:
+#     """
+#     将处理的坐标写入csv文件,支持Windows下多设备并发访问
+#     """
+#
+#     def __init__(self, path, camera_id):
+#         self.path = path
+#         self.camera_id = camera_id
+#         self.csv_file = None
+#         self.csv_writer = None
+#         self.folder_path = self.path + global_setting.get_setting("camera_config")['DEEP_CAMERA']['result_dir']
+#         self.original_filename = self.folder_path + global_setting.get_setting("camera_config")['DEEP_CAMERA'][
+#             'location_filename'] + f"__{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}.{global_setting.get_setting('camera_config')['DEEP_CAMERA']['location_extension']}"
+#         self.filename = self.original_filename  # 当前使用的文件名
+#         self.max_retries = 10  # 最大重试次数
+#         self.retry_delay = 0.1  # 重试间隔（秒）
+#         self.permission_counter = 0  # 权限文件计数器
+#
+#     def _lock_file(self, file):
+#         """锁定文件"""
+#         try:
+#             msvcrt.locking(file.fileno(), msvcrt.LK_LOCK, 1)
+#         except PermissionError:
+#             return False
+#         return True
+#
+#     def _unlock_file(self, file):
+#         """解锁文件"""
+#         try:
+#             msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+#         except PermissionError:
+#             return False
+#         return True
+#
+#     def _get_permission_filename(self, counter):
+#         """
+#         生成带有permission后缀的文件名
+#         :param counter: 计数器
+#         :return: 新文件名
+#         """
+#         base_name, ext = os.path.splitext(self.original_filename)
+#         return f"{base_name}_permission_{counter}{ext}"
+#
+#     def _copy_to_permission_file(self):
+#         """
+#         复制当前文件到新的permission文件
+#         :return: 新文件名
+#         """
+#         self.permission_counter += 1
+#         new_filename = self._get_permission_filename(self.permission_counter)
+#
+#         try:
+#             # 如果原文件存在，复制它
+#             if os.path.exists(self.filename):
+#                 shutil.copy2(self.filename, new_filename)
+#                 logger.info(f"文件被占用，已复制到新文件: {new_filename}")
+#             else:
+#                 logger.info(f"原文件不存在，创建新文件: {new_filename}")
+#
+#             # 更新当前使用的文件名
+#             self.filename = new_filename
+#             return new_filename
+#
+#         except Exception as e:
+#             logger.error(f"复制文件失败: {e}")
+#             raise
+#
+#     def _safe_file_operation(self, operation, mode='a'):
+#         """
+#         安全的文件操作,带重试机制和文件复制备份
+#         :param operation: 要执行的操作函数
+#         :param mode: 文件打开模式
+#         :return: 操作结果
+#         """
+#         for attempt in range(self.max_retries):
+#             try:
+#                 if not os.path.exists(self.folder_path):
+#                     os.makedirs(self.folder_path)
+#
+#                 with open(self.filename, mode=mode, newline='', encoding='utf-8') as file:
+#                     # 获取文件锁
+#                     if not self._lock_file(file):
+#                         if attempt < self.max_retries - 1:
+#                             logger.info(
+#                                 f"文件被占用,{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
+#                             time.sleep(self.retry_delay)
+#                             continue
+#                         else:
+#                             logger.error(f"文件访问失败,已重试{self.max_retries}次，尝试复制到新文件")
+#                             # 达到最大重试次数，复制文件
+#                             self._copy_to_permission_file()
+#                             # 使用新文件重试一次
+#                             with open(self.filename, mode=mode, newline='', encoding='utf-8') as new_file:
+#                                 if self._lock_file(new_file):
+#                                     try:
+#                                         result = operation(new_file)
+#                                         return result
+#                                     finally:
+#                                         self._unlock_file(new_file)
+#                                 else:
+#                                     logger.error(f"新文件 {self.filename} 也被占用，递归复制")
+#                                     # 如果新文件也被占用，递归调用自己
+#                                     return self._safe_file_operation(operation, mode)
+#
+#                     try:
+#                         # 执行操作
+#                         result = operation(file)
+#                         return result
+#                     finally:
+#                         # 释放文件锁
+#                         self._unlock_file(file)
+#
+#             except PermissionError as e:
+#                 if attempt < self.max_retries - 1:
+#                     logger.info(f"文件被占用,{self.retry_delay}秒后重试... (尝试 {attempt + 1}/{self.max_retries})")
+#                     time.sleep(self.retry_delay)
+#                 else:
+#                     logger.error(f"文件访问失败,已重试{self.max_retries}次: {e}，尝试复制到新文件")
+#                     # 达到最大重试次数，复制文件并重试
+#                     self._copy_to_permission_file()
+#                     return self._safe_file_operation(operation, mode)
+#
+#             except Exception as e:
+#                 logger.error(f"文件操作出错: {e}")
+#
+#
+#
+#     def csv_create(self):
+#         """创建CSV文件并写入表头"""
+#
+#         def create_operation(file):
+#             csv_writer = csv.writer(file)
+#             csv_writer.writerow(["base_file_name", "X (m)", "Y (m)", "Z (m)"])
+#
+#         self._safe_file_operation(create_operation, mode='w')
+#
+#
+#     def csv_write(self, file_base_name, x, y, z):
+#         """写入一行数据到CSV"""
+#
+#         def write_operation(file):
+#             csv_writer = csv.writer(file)
+#             csv_writer.writerow([file_base_name, x, y, z])
+#
+#         self._safe_file_operation(write_operation, mode='a')
+#
+#
+#     def csv_write_batch(self, data_list):
+#         """
+#         批量写入数据,提高效率
+#         :param data_list: 列表,每个元素是 (file_base_name, x, y, z) 的元组
+#         """
+#
+#         def batch_write_operation(file):
+#             csv_writer = csv.writer(file)
+#             csv_writer.writerows(data_list)
+#
+#         self._safe_file_operation(batch_write_operation, mode='a')
+#
+#
+#     def csv_close(self):
+#         """
+#         关闭CSV文件(由于使用with语句,实际上不需要显式关闭)
+#         保留此方法以保持向后兼容
+#         """
+#         if self.csv_file is not None:
+#             self.csv_file.close()
+#             self.csv_file = None
+#             self.csv_writer = None
+#
+#
+#     def get_current_filename(self):
+#         """
+#         获取当前正在使用的文件名
+#         :return: 当前文件名
+#         """
+#         return self.filename
 
 
 class Detection:
     """
     使用yolo模型探查坐标
     """
+    # ==== 算法参数 ====
+    TARGET_CLASSES = [0]
+    CONF_THRESHOLD = 0.6
 
+    # 离群剔除率 (0.1 表示剔除最小的10%和最大的10%)
+    OUTLIER_RATE = 0.1
+
+    USE_CONVEX_HULL = False
+    GRABCUT_ITER = 2
+    MAX_CONTOUR_SIDE = 128
+    SMOOTH_KERNEL = 9
     def __init__(self, path, camera_id):
         self.path = path
         self.camera_id = camera_id
         self.model = YOLO( os.getcwd() +'./model/best.pt')
-        self.data_save = coordinate_writing(path=path, camera_id=camera_id)
-        self.data_save.csv_create()
+
+        self.data_save:Monitor_Datas_Handle = None
         self.intrinsics, self.unit = self.get_intrinsics(intrinsics)
 
     def get_intrinsics(self, intrinsics):
@@ -357,13 +370,38 @@ class Detection:
                 logger.error(
                     f"camera_{self.camera_id}图像处理程序读取{file_base_name}.bmp文件出错，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
                 return
-            results = self.model(imge, classes=[0], verbose=False)
+            results = self.model(
+                imge,
+                classes=self.TARGET_CLASSES,
+                conf=self.CONF_THRESHOLD,
+                verbose=False,
+            )
+            # results = self.model(imge, classes=[0], verbose=False)
             # 处理检测结果
             for result in results:
                 boxes = result.boxes.xyxy.cpu().numpy()
                 if len(boxes) == 0:
                     x, y, z = None, None, None
-                    self.data_save.csv_write(file_base_name, x, y, z)
+                    # 写入 数据库
+                    if self.data_save is None:
+                        self.data_save = Monitor_Datas_Handle()  # 创建数据库
+                    # 存储值----------------------------------------------------
+                    return_data_struct = {}
+                    return_data_struct['module_name'] = 'MouseDeepPosition'
+                    return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                    return_data_struct['table_name'] = next(iter(Others_Tables.Mouse_deep_position_Data.value.keys()))
+                    return_data_struct['mouse_cage_number'] = self.camera_id
+                    return_data_struct['data'] = [
+                        {'desc': '识别时间', 'value': file_base_name},
+                        {'desc': 'x轴', 'value': x},
+                        {'desc': 'y轴', 'value': y},
+                        {'desc': 'z轴', 'value': z},
+                    ]
+                    return_data_struct['slave_id'] = 0
+                    return_data_struct['function_code'] = 0
+                    status, msg = self.data_save.insert_data(return_data_struct)
+                    if not status:
+                        logger.error(f"深度相机{self.camera_id}存储数据错误：{msg}")
                     self.img_save(imge, file_base_name)
                     # with lock:
                     #     logger.info(
@@ -391,8 +429,26 @@ class Detection:
                 # print(f"point_3d{point_3d}")
                 x, y, z = map(lambda v: round(v, 3), point_3d)
 
-                # 写入
-                self.data_save.csv_write(file_base_name, x, y, z)
+                # 写入 数据库
+                if self.data_save is None:
+                    self.data_save = Monitor_Datas_Handle()  # 创建数据库
+                # 存储值----------------------------------------------------
+                return_data_struct = {}
+                return_data_struct['module_name'] = 'MouseDeepPosition'
+                return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                return_data_struct['table_name'] = next(iter(Others_Tables.Mouse_deep_position_Data.value.keys()))
+                return_data_struct['mouse_cage_number'] = self.camera_id
+                return_data_struct['data'] = [
+                    {'desc': '识别时间', 'value': file_base_name},
+                    {'desc': 'x轴', 'value': x},
+                    {'desc': 'y轴', 'value': y},
+                    {'desc': 'z轴', 'value': z},
+                ]
+                return_data_struct['slave_id'] = 0
+                return_data_struct['function_code'] = 0
+                status,msg = self.data_save.insert_data(return_data_struct)
+                if not status:
+                    logger.error(f"深度相机{self.camera_id}存储数据错误：{msg}")
 
                 # 可视化
                 imge = self.draw_overlay(imge, x1, y1, x2, y2, center_x, center_y, x, y, z)
@@ -425,7 +481,7 @@ class Img_process(MyQThread):
 
     def stop(self):
         if self.dection is not None and self.dection.data_save is not None:
-            self.dection.data_save.csv_close()
+            self.dection.data_save.stop()
         super().stop()
 
     def __init__(self, path, camera_id):
