@@ -328,6 +328,7 @@ def test_integrated_monitor():
         custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | p_deep_camera | {module}:{function}:{line} | {message} </level>",
         enable_console=True
     )
+
     monitor.start_worker(
         target_func=main_deep_camera.main,
         restart_target_func=main_deep_camera.restart,

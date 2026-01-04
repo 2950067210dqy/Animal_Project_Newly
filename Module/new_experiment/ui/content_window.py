@@ -470,7 +470,12 @@ class ContentWindow(ThemedWindow):
         if reply == QMessageBox.StandardButton.Yes:
             # 如果用户确定，
             self.setting_data = Experiment_setting_entity()
+            self.is_import = False  # 新增：重置导入状态
+            self.import_file_path = ""  # 新增：重置导入文件路径
+            self.setting_file_path = ""  # 新增：重置设置文件路径
+            self.is_update = False  # 新增：重置修改状态
             global_setting.set_setting("experiment_setting_new", self.setting_data)
+            self.template_file_path_label.setText("未导入实验模板文件")  # 新增：重置标签文本
             self.init_content(is_update=True)
             pass
         else:

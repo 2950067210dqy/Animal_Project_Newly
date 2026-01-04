@@ -7,20 +7,38 @@ class Others_Tables(Enum):
     """
     其他数据项的数据库文件
     """
-    # 深度相机存储值
-    Mouse_deep_position_Data = {
+    # 轨迹相机存储值
+    Detection_Results_Data = {
         "data": {
             'function_code': 0,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-                ("recognize_time", "识别时间", " TIMESTAMP "),
-                ("x", "x轴", "  REAL "),
-                ("y", "y轴", "  REAL "),
-                ("z", "z轴", "  REAL "),
-                ("time", "获取时间", " TIMESTAMP ")
+                ("image_name", "图像名称", " TEXT "),
+                ("is_exist_depth_image", "深度图像是否存在", " INTEGER "),
+                ("median_x", "中位数X", " REAL "),
+                ("median_y", "中位数Y", " REAL "),
+                ("median_z", "中位数Z", " REAL "),
+                ("center_x", "中心X", " REAL "),
+                ("center_y", "中心Y", " REAL "),
+                ("center_z", "中心Z", " REAL "),
+                ("time", "获取时间", " TIMESTAMP DEFAULT CURRENT_TIMESTAMP ")
             ],
         }
     }
+    # # 深度相机存储值
+    # Mouse_deep_position_Data = {
+    #     "data": {
+    #         'function_code': 0,
+    #         'column': [
+    #             ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
+    #             ("recognize_time", "识别时间", " TIMESTAMP "),
+    #             ("x", "x轴", "  REAL "),
+    #             ("y", "y轴", "  REAL "),
+    #             ("z", "z轴", "  REAL "),
+    #             ("time", "获取时间", " TIMESTAMP ")
+    #         ],
+    #     }
+    # }
     # 红外相机存储值
     Mouse_infrared_Data = {
         "data": {
@@ -579,14 +597,22 @@ class Others(Enum):
     """
     其他数据项
     """
-    # 深度相机存储值
-    Mouse_deep_position = {
-        "name": "MouseDeepPosition",
-        "description": "老鼠的三维位置",
+    # 检测结果
+    Detection_Results = {
+        "name": "DetectionResults",
+        "description": "目标检测结果",
         'address': 0x00,
         'int': int(0x00),
-        'table': Others_Tables.Mouse_deep_position_Data.value
+        'table': Others_Tables.Detection_Results_Data.value
     }
+    # # 深度相机存储值
+    # Mouse_deep_position = {
+    #     "name": "MouseDeepPosition",
+    #     "description": "老鼠的三维位置",
+    #     'address': 0x00,
+    #     'int': int(0x00),
+    #     'table': Others_Tables.Mouse_deep_position_Data.value
+    # }
     # 红外相机存储值
     Mouse_infrared = {
         "name": "MouseInfrared",
@@ -1235,9 +1261,11 @@ class Modbus_Slave_Send_Messages_All(Enum):
 
 
 class Modbus_Slave_Type(Enum):
+    #轨迹数据
+
     #相机数据
     Cameras = [
-        Others.Mouse_deep_position,Others.Mouse_infrared
+        Others.Detection_Results,Others.Mouse_infrared
     ]
     #每轮次数据
     Epochs = [
