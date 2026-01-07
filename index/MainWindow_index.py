@@ -384,81 +384,123 @@ class MainWindow_Index(ThemedWindow):
         # 创建 QToolBar
         self.toolbar = QToolBar("Toolbar")
         self.addToolBar(self.toolbar)
-        # 创建动作（Action）
-        name ="窗口变换"
-        obj_name ="window_exchange"
-        action_one = QAction(name, self)
-        action_one.setObjectName(obj_name)
-        action_one.setToolTip(name)
-        action_one.triggered.connect(self.exchange_widget_and_window)
-        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_one,"app_state":AppState.INITIALIZED,'tip':"单击此按钮会将打开的窗口变成内嵌抽屉页。"})
-        name = "更改主题颜色"
-        obj_name = "toggle_mode"
-        action_two= QAction(name, self)
-        action_two.setObjectName(obj_name)
-        action_two.setToolTip(name)
-        action_two.triggered.connect(self.toggle_theme)
-        self.tool_bar_actions.append({"name":name,"obj_name":obj_name,"action":action_two,"app_state":AppState.INITIALIZED,'tip':"单击此按钮会将程序的主题颜色变换黑色和白色"})
-        name = "开始实验"
-        obj_name = "start_experiment"
-        action_three = QAction(name, self)
-        action_three.setObjectName(obj_name)
-        action_three.setToolTip(name)
-        action_three.triggered.connect(self.start_experiment)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_three,"app_state":AppState.CONFIGURING,'tip':"单击此按钮会将开始实验，但是必须等待配置完成才能单击该按钮。"})
-        name = "暂停实验"
-        obj_name = "pause_experiment"
-        action_four = QAction(name, self)
-        action_four.setObjectName(obj_name)
-        action_four.setToolTip(name)
-        action_four.setDisabled(True)
-        action_four.triggered.connect(self.pause_experiment)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_four,"app_state":AppState.CONFIGURING,'tip':"单击此按钮会将暂停实验，必须在实验中才能单击该按钮。"})
 
-        name = "停止实验"
-        obj_name = "stop_experiment"
-        action_five = QAction(name, self)
-        action_five.setObjectName(obj_name)
-        action_five.setToolTip(name)
-        action_five.triggered.connect(self.stop_experiment)
-        action_five.setDisabled(True)
-        self.tool_bar_actions.append({"name": name,"obj_name":obj_name, "action": action_five,"app_state":AppState.CONFIGURING,'tip':"单击此按钮会将停止实验，并将实验数据保存。"})
+        # 定义工具栏按钮数据
+        toolbar_buttons = [
+            {
+                "name": "窗口变换",
+                "short_name": "变换",
+                "obj_name": "window_exchange",
+                "icon": "⇄",  # 或使用图标文件: ":/icons/exchange.png"
+                "callback": self.exchange_widget_and_window,
+                "app_state": AppState.INITIALIZED,
+                "tip": "单击此按钮会将打开的窗口变成内嵌抽屉页。",
+                "disabled": False,
+                "separator_before": False,
+                "separator_after": True
+            },
+            {
+                "name": "更改主题颜色",
+                "short_name": "主题",
+                "obj_name": "toggle_mode",
+                "icon": "🌓",
+                "callback": self.toggle_theme,
+                "app_state": AppState.INITIALIZED,
+                "tip": "单击此按钮会将程序的主题颜色变换黑色和白色",
+                "disabled": False,
+                "separator_before": False,
+                "separator_after": True
+            },
+            {
+                "name": "开始实验",
+                "short_name": "开始",
+                "obj_name": "start_experiment",
+                "icon": "▶",
+                "callback": self.start_experiment,
+                "app_state": AppState.CONFIGURING,
+                "tip": "单击此按钮会将开始实验，但是必须等待配置完成才能单击该按钮。",
+                "disabled": False,
+                "separator_before": False,
+                "separator_after": False
+            },
+            {
+                "name": "暂停实验",
+                "short_name": "暂停",
+                "obj_name": "pause_experiment",
+                "icon": "⏸",
+                "callback": self.pause_experiment,
+                "app_state": AppState.CONFIGURING,
+                "tip": "单击此按钮会将暂停实验，必须在实验中才能单击该按钮。",
+                "disabled": True,
+                "separator_before": False,
+                "separator_after": False
+            },
+            {
+                "name": "停止实验",
+                "short_name": "停止",
+                "obj_name": "stop_experiment",
+                "icon": "⏹",
+                "callback": self.stop_experiment,
+                "app_state": AppState.CONFIGURING,
+                "tip": "单击此按钮会将停止实验，并将实验数据保存。",
+                "disabled": True,
+                "separator_before": False,
+                "separator_after": True
+            },
+            {
+                "name": "导出实验数据",
+                "short_name": "导出",
+                "obj_name": "export_experiment_datas",
+                "icon": "💾",
+                "callback": self.export_experiment_datas,
+                "app_state": AppState.MONITORING,
+                "tip": "单击此按钮会将将实验数据保存。",
+                "disabled": True,
+                "separator_before": False,
+                "separator_after": True
+            },
+            {
+                "name": "重置教程页",
+                "short_name": "重置教程",
+                "obj_name": "reset_guidance",
+                "icon": "🔄",
+                "callback": self.reset_guidance,
+                "app_state": AppState.INITIALIZED,
+                "tip": "单击此按钮会将重置教程。",
+                "disabled": True,
+                "separator_before": False,
+                "separator_after": True
+            }
+        ]
 
-        name = "导出实验数据"
-        obj_name = "export_experiment_datas"
-        action_six = QAction(name, self)
-        action_six.setObjectName(obj_name)
-        action_six.setToolTip(name)
-        action_six.triggered.connect(self.export_experiment_datas)
-        action_six.setDisabled(True)
-        self.tool_bar_actions.append(
-            {"name": name, "obj_name": obj_name, "action": action_six, "app_state": AppState.MONITORING,
-             'tip': "单击此按钮会将将实验数据保存。"})
+        # 创建动作并添加到工具栏
+        for button_config in toolbar_buttons:
+            if button_config["separator_before"]:
+                self.toolbar.addSeparator()
 
-        name = "重置教程页"
-        obj_name = "reset_guidance"
-        action_final = QAction(name, self)
-        action_final.setObjectName(obj_name)
-        action_final.setToolTip(name)
-        action_final.triggered.connect(self.reset_guidance)
-        action_final.setDisabled(True)
-        self.tool_bar_actions.append(
-            {"name": name, "obj_name": obj_name, "action": action_final, "app_state": AppState.INITIALIZED,
-             'tip': "单击此按钮会将重置教程。"})
+            action = QAction(button_config["short_name"], self)
+            action.setObjectName(button_config["obj_name"])
+            action.setToolTip(button_config["tip"])
+            action.triggered.connect(button_config["callback"])
+            # 设置图标
+            if button_config["icon"]:
+                action.setText(button_config["icon"] + " " + button_config["short_name"])
 
-        # 将动作添加到工具栏
-        self.toolbar.addAction(action_one)
-        self.toolbar.addSeparator()
-        self.toolbar.addAction(action_two)
-        self.toolbar.addSeparator()
-        self.toolbar.addAction(action_three)
-        self.toolbar.addAction(action_four)
-        self.toolbar.addAction(action_five)
-        self.toolbar.addSeparator()
-        self.toolbar.addAction(action_six)
-        self.toolbar.addSeparator()
-        self.toolbar.addAction(action_final)
-        self.toolbar.addSeparator()
+            if button_config["disabled"]:
+                action.setDisabled(True)
+
+            self.tool_bar_actions.append({
+                "name": button_config["name"],
+                "obj_name": button_config["obj_name"],
+                "action": action,
+                "app_state": button_config["app_state"],
+                "tip": button_config["tip"]
+            })
+
+            self.toolbar.addAction(action)
+
+            if button_config["separator_after"]:
+                self.toolbar.addSeparator()
     def create_menu_bar(self):
     # 创建菜单
         for menu_dict in self.menu_name:

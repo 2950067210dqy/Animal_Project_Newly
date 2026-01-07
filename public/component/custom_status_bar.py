@@ -148,7 +148,7 @@ class CustomStatusBar(QStatusBar):
             self.progress_bar.setValue(0)
             # self.addWidget(self.progress_bar)  # 将进度条添加为永久小部件
 
-        self.tip_btn = QPushButton("教程帮助")
+        self.tip_btn = QPushButton("🧭教程帮助")
         self.tip_btn.setStyleSheet("QPushButton { font-weight:bolder; font-size: 15px;padding: 5px; }")
         self.tip_btn.clicked.connect(self.main_gui.restart_tutorial)
 

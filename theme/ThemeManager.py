@@ -265,6 +265,7 @@ class ThemeManager(QObject):
                 color: {theme['--text_hover']};
             }}
             QToolBar {{
+                font-size: 17px;
                 padding: 10px;
                 background-color: {theme['--primary']};
                 color: {theme['--text']};
