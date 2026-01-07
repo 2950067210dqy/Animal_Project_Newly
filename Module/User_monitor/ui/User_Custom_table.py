@@ -1,8 +1,8 @@
-from PyQt6.QtCore import Qt, QTimer, QPoint
-from PyQt6.QtWidgets import QTableWidget, QToolTip, QAbstractItemView, QTableWidgetItem, QHeaderView
-from PyQt6.QtGui import QCursor, QBrush, QPen
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtWidgets import QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView
+from PyQt6.QtGui import QCursor
 
-from Module.new_monitor_data.ui.TableCellDetailDialog import CellDetailDialog
+from Module.new_monitor_data.ui.custom.table.TableCellDetailDialog import CellDetailDialog
 
 
 class BiDirectionalFrozenTable(QTableWidget):

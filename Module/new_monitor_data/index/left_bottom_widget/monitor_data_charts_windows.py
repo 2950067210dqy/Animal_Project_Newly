@@ -1,17 +1,15 @@
 import copy
-import math
 import time
 import typing
 from enum import Enum
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import Qt, QRect, QTimer, QLine, pyqtSignal
-from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel, QHBoxLayout, QButtonGroup, QRadioButton, \
-    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame, QApplication
+from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QButtonGroup, QRadioButton, \
+    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame
 from loguru import logger
 
-from Module.new_monitor_data.ui.Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
+from Module.new_monitor_data.ui.custom.table.Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
 from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.component.dock_widget.DraggableWindow import DemoDraggableDockWidget
 from public.config_class.global_setting import global_setting
@@ -20,8 +18,8 @@ from public.entity.BaseWidget import BaseWidget
 from public.entity.BaseWindow import BaseWindow
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.time_util import time_util
-from theme.ThemeQt6 import ThemedWindow, ThemedWidget
-
+from theme.ThemeQt6 import ThemedWidget
+# 暂时隐藏！！！！！！！！！！！！！！！！！！！！！！！！！！！ 没有用到这个页面
 class Show_Type(Enum):
     ALL = 0
     EACH = 1
@@ -55,7 +53,7 @@ class Show_Type(Enum):
         if other is None:
             return False
         return self.value != other.value
-class MonitorDataWindows(ThemedWidget):
+class MonitorDataChartsWindows(ThemedWidget):
     enabled_zero_calibration_btn_signal =pyqtSignal()
     enabled_range_calibration_btn_signal =pyqtSignal()
     def resizeEvent(self, a0: typing.Optional[QtGui.QResizeEvent]):

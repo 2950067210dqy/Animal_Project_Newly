@@ -11,9 +11,6 @@ from theme.ThemeManager import ThemeManager
 
 
 def load_global_setting():
-    # """应用程序设置管理器"""
-    app_setting = AppSettings()
-    global_setting.set_setting("app_setting", app_setting)
     config_path = "/config"
     # 加载配置
     config_file_path = os.getcwd() + config_path + "/gui_config.ini"
@@ -24,6 +21,11 @@ def load_global_setting():
     else:
         logger.error("gui配置文件读取失败。")
     global_setting.set_setting("configer", configer)
+
+    # """应用程序设置管理器"""
+    app_setting = AppSettings()
+    global_setting.set_setting("app_setting", app_setting)
+
     # 加载相机配置
     config_file_path = os.getcwd() + config_path + "/camera_config.ini"
     # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
@@ -63,9 +65,6 @@ def load_global_setting():
     global_setting.set_setting("app_state", AppState.INITIALIZED)
     pass
 def load_global_setting_without_Qt():
-    # """应用程序设置管理器"""
-    app_setting = AppSettings()
-    global_setting.set_setting("app_setting", app_setting)
     config_path = "/config"
     # 加载配置
     config_file_path = os.getcwd() + config_path + "/gui_config.ini"
@@ -76,6 +75,11 @@ def load_global_setting_without_Qt():
     else:
         logger.error("gui配置文件读取失败。")
     global_setting.set_setting("configer", configer)
+
+    # """应用程序设置管理器"""
+    app_setting = AppSettings()
+    global_setting.set_setting("app_setting", app_setting)
+
     # 加载相机配置
     config_file_path = os.getcwd() + config_path + "/camera_config.ini"
     # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}
@@ -113,9 +117,6 @@ def load_global_setting_without_Qt():
     global_setting.set_setting("app_state", AppState.INITIALIZED)
     pass
 def load_global_setting_without_Qt_for_subprocess():
-    # """应用程序设置管理器"""
-    app_setting = AppSettings()
-    global_setting.set_setting("app_setting", app_setting)
     config_path = "/config"
     # 加载配置
     config_file_path = "../" + config_path + "/gui_config.ini"
@@ -126,6 +127,11 @@ def load_global_setting_without_Qt_for_subprocess():
     else:
         logger.error("gui配置文件读取失败。")
     global_setting.set_setting("configer", configer)
+
+    # """应用程序设置管理器"""
+    app_setting = AppSettings()
+    global_setting.set_setting("app_setting", app_setting)
+
     # 加载相机配置
     config_file_path = "../"  + config_path + "/camera_config.ini"
     # 串口配置数据{"section":{"key1":value1,"key2":value2,....}，...}

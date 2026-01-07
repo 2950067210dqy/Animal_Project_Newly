@@ -32,7 +32,7 @@ class communication(threading.Thread):
         self.index = index
         self.category = category
 
-        self.port = "COM5"
+        self.port = "COM3"
         self.ser = None  # 串口类
         self.running = True  # 控制线程运行的标志
         # 串口接收实例化

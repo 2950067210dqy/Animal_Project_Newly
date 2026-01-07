@@ -4,9 +4,9 @@ import typing
 from PyQt6 import QtGui
 from PyQt6.QtCore import Qt, QRect
 from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel
+from PyQt6.QtWidgets import QDockWidget, QWidget
 
-from Module.new_monitor_data.ui.Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
+from Module.new_monitor_data.ui.custom.table.Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
 from theme.ThemeQt6 import ThemedWindow
 
 
