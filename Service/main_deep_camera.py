@@ -736,7 +736,7 @@ class Detection:
             for result in results:
                 boxes = result.boxes
                 if boxes is None or boxes.xyxy is None or len(boxes) == 0:
-                    logger.debug(f"{'3' * 100}")
+                    # logger.debug(f"{'3' * 100}")
                     self.store_data(imge, file_base_name)
                     continue
 
@@ -758,12 +758,12 @@ class Detection:
                         f"camera_{self.camera_id}图像处理程序读取{file_base_name}.png文件出错，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
                     return
                 if depth is None:
-                    logger.debug(f"{'2' * 100}")
+                    # logger.debug(f"{'2' * 100}")
                     self.store_data(imge, file_base_name)
                     continue
-                logger.error(f"depth_ndim:{depth.ndim}")
+                # logger.error(f"depth_ndim:{depth.ndim}")
                 if depth.ndim != 3:
-                    logger.debug(f"{'0' * 100}")
+                    # logger.debug(f"{'0' * 100}")
                     self.store_data(imge, file_base_name)
                     continue
 
@@ -801,7 +801,7 @@ class Detection:
                             center_xyz = xyz
                             center_point = (cu, cv)
 
-                logger.debug(f"{'1'*100}")
+                # logger.debug(f"{'1'*100}")
                 self.store_data(imge, file_base_name,1,median_xyz[0] if median_xyz else None,median_xyz[1] if median_xyz else None,median_xyz[2] if median_xyz else None ,center_xyz[0] if center_xyz else None,center_xyz[1] if center_xyz else None,center_xyz[2] if center_xyz else None)
 
 
