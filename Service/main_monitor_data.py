@@ -783,10 +783,13 @@ def barrier_action():
             temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean',None)
             if temp_values is not None:
                 infrared_temp_average = None
-                #过滤掉None值
-                filter_temp_values = [x for x in results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean') if x is not None]
-                if len(filter_temp_values) !=0:
-                    infrared_temp_average = round(sum(filter_temp_values) / len(filter_temp_values),4)
+                # 过滤掉None值
+                if type(temp_values) is list:
+                    filter_temp_values = [x for x in temp_values if x is not None]
+                    if len(filter_temp_values) != 0:
+                        infrared_temp_average = round(sum(filter_temp_values) / len(filter_temp_values), 4)
+                else:
+                    infrared_temp_average = temp_values
                 store_Datas.append({'desc': '鼠笼红外温度(°C)',
                                     'value': infrared_temp_average})
             pass
