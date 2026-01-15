@@ -77,7 +77,7 @@ class Main_New_Monitor_data_Module(BaseModule):
         return "数据监控"
     def get_menu_name(self):
         """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""
-        return {"id":1,"text":"实验"}
+        return {"id":2,"text":"实验检测"}
         pass
 
     def create_service(self) -> BaseService:

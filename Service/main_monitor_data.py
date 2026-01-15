@@ -15,7 +15,6 @@ from PyQt6.QtCore import QThread, QTimer, QCoreApplication
 
 from loguru import logger
 
-from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import O2CorrectionManager
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 
 from public.config_class import global_load
@@ -217,9 +216,6 @@ class Store_Thread(MyQThread):
             if self.handle is None:
                 self.handle = Monitor_Datas_Handle()  # 创建数据库
 
-            # [新增] 存储前最后检查和修正
-            data = self._apply_o2_correction_before_storage(data)
-
             success,error = self.handle.insert_data(data)
 
 
@@ -229,29 +225,6 @@ class Store_Thread(MyQThread):
             logger.error(f"{self.name}存储错误：{e}")
 
         return success, error
-    def _apply_o2_correction_before_storage(self, data):
-        """
-        存储前对氧气值进行最后检查和修正
-        """
-        try:
-            if isinstance(data, dict):
-                # 检查是否是ZOS相关数据
-                if data.get('module_name') == 'ZOS' and data.get('data') is not None:
-                    for item in data['data']:
-                        if isinstance(item, dict):
-                            desc = item.get('desc', '')
-                            value = item.get('value')
-
-                            # 如果是氧气测量值，进行模型修正
-                            if '氧气' in desc and '修正前' not in desc and value is not None:
-                                corrected_value = apply_o2_model_correction(value)
-                                item['value'] = corrected_value
-                                logger.info(f"存储前O2修正: {value} → {corrected_value}")
-
-        except Exception as e:
-            logger.error(f"存储前O2修正失败: {e}")
-
-        return data
 
     def _send_storage_result(self, data_item, success, error):
         """发送存储结果到对应的结果队列"""
@@ -289,8 +262,7 @@ class Send_thread(MyQThread):
     请求数据线程
     """
 
-    def __init__(self, name=None, modbus=None,
-                 ):
+    def __init__(self, name=None, modbus=None,):
         super().__init__(name)
 
         self.modbus: ModbusRTUMasterNew= global_setting.get_setting("modbus", None)
@@ -415,7 +387,6 @@ class Send_thread(MyQThread):
                                                                                      send_message['slave_id'],
                                                                                      function_code=
                                                                                      send_message['function_code'], )
-                            return_data = self._apply_gas_model_correction(return_data)
                             # end_time = time.time()
                             # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
                             return_data['data'].append({'desc': '备注', 'value': None})
@@ -494,30 +465,9 @@ class Send_thread(MyQThread):
 
             time.sleep(float(global_setting.get_setting('monitor_data')['SEND']['delay']))
 
-    def _apply_gas_model_correction(self, return_data):
-        """修正氧气值（鼠笼内传感器）"""
-        try:
-            if isinstance(return_data, dict) and return_data.get('data'):
-                for item in return_data['data']:
-                    if isinstance(item, dict):
-                        desc = item.get('desc', '')
-                        value = item.get('value')
 
-                        # 修正氧气
-                        if '氧' in desc and '修正前' not in desc and value is not None:
-                            try:
-                                # ===== 使用统一的O2修正管理器 =====
-                                corrected = O2CorrectionManager.calibrate_and_compensate(value)
-                                corrected = O2CorrectionManager.apply_model_correction(corrected)
-                                item['value'] = corrected
-                                logger.info(f"鼠笼内O2修正: {value} → {corrected}")
-                            except Exception as e:
-                                logger.error(f"鼠笼内O2修正失败: {e}")
 
-        except Exception as e:
-            logger.error(f"气体模型修正异常: {e}")
 
-        return return_data
 
 
 class Add_message_thread(MyQThread):
@@ -652,20 +602,6 @@ store_thread:Store_Thread = None
 # 发送报文线程
 send_thread :Send_thread= None
 add_message_thread:Add_message_thread = None
-def apply_o2_model_correction(oxygen_value):
-    """
-    在barrier_action和其他地方使用的O2修正函数
-
-    :param oxygen_value: 输入的氧气值
-    :return: 修正后的氧气值
-    """
-    try:
-        # ===== 使用统一的O2修正管理器 =====
-        corrected = O2CorrectionManager.apply_model_correction(oxygen_value)
-        return corrected
-    except Exception as e:
-        logger.error(f"O2模型修正异常: {e}，使用原值")
-        return oxygen_value
 #一轮模块发送报文结束
 def barrier_action():
     end_time = time.time()
@@ -724,18 +660,11 @@ def barrier_action():
             f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_origin_num') is not None else None})
     store_Datas.append({'desc': 'CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
                             f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None })
-    # 获取原始氧气值
-    oxygen_origin = results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_num')
-    oxygen_measured = results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')
-
-    # ===== 使用统一的O2修正管理器 =====
-    oxygen_corrected = O2CorrectionManager.apply_model_correction(
-        oxygen_measured) if oxygen_measured is not None else None
-
-    # 存储数据
-    store_Datas.append({'desc': '补偿前氧气传感器测量值(%)', 'value': oxygen_origin})
-    store_Datas.append({'desc': '氧气传感器测量值(%)', 'value': oxygen_corrected})
-    store_Datas.append({'desc': '模型修正前氧气值(%)', 'value': oxygen_measured})
+    store_Datas.append({'desc': '补偿前氧气传感器测量值(%)', 'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_num') is not None else None })
+    store_Datas.append({'desc': '氧气传感器测量值(%)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None else None})
     # 非参考气
     remarks_reference=""
     if mouse_cage_number != int(global_setting.get_setting('configer')['mouse_cage']['reference']):
@@ -754,28 +683,20 @@ def barrier_action():
                 {'desc': '参考气CO2(%)',
                  'value': reference_data.get(f'UGC_CO2_num') if reference_data.get(
                             f'UGC_CO2_num') is not None else None })
-            # 参考气氧气值也需要修正
-            reference_oxygen_raw = reference_data.get(f'ZOS_oxygen_num')
-            reference_oxygen_corrected = apply_o2_model_correction(
-                reference_oxygen_raw) if reference_oxygen_raw is not None else None
-
             store_Datas.append(
                 {'desc': '参考气氧气测量值(%)',
-                 'value': reference_oxygen_corrected})  # 使用修正后的参考气氧气值
+                 'value': reference_data.get(f'ZOS_oxygen_num') if reference_data.get(
+                            f'ZOS_oxygen_num') is not None else None })
 
-            # 计算CO2生产量和耗氧量时，使用修正后的氧气值
-            if results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None and reference_data.get(
-                    f'UGC_CO2_num') is not None:
+            if results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None and reference_data.get(f'UGC_CO2_num') is not None:
                 store_Datas.append(
                     {'desc': 'CO2生产量(%)',
-                     'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') - reference_data.get(
-                         f'UGC_CO2_num')})
-
-            # 耗氧量计算使用修正后的值
-            if oxygen_corrected is not None and reference_oxygen_corrected is not None:
+                     'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') -reference_data.get(f'UGC_CO2_num')})
+            if results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None and reference_data.get(f'ZOS_oxygen_num') is not None:
                 store_Datas.append(
                     {'desc': '耗氧量(%)',
-                     'value': reference_oxygen_corrected - oxygen_corrected})
+                     'value':reference_data.get(f'ZOS_oxygen_num')-results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')})
+
 
             #求红外温度的平均值
             temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean',None)

@@ -73,7 +73,7 @@ class Main_New_experiment_Module(BaseModule):
         return "新建实验"
     def get_menu_name(self):
         """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""
-        return {"id":0,"text":"文件"}
+        return {"id":0,"text":"创建实验"}
         pass
 
     def create_service(self) -> BaseService:
