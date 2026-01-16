@@ -34,7 +34,7 @@ class Main_Monitor_data_widget(BaseInterfaceWidget):
 
     def get_type(self):
         """获得类型 """
-        return BaseInterfaceType.WINDOW
+        return BaseInterfaceType.WIDGET
 
     def create_middle_window(self) -> BaseWindow:
         tab_window = Tab_2()

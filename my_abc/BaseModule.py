@@ -2,7 +2,7 @@
 import queue
 from abc import abstractmethod, ABC
 
-from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea, QHBoxLayout, QMainWindow
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea, QHBoxLayout, QMainWindow, QApplication
 
 from index import Content_index
 from index.Content_index import content_index
@@ -95,8 +95,28 @@ class BaseModule(ABC):
         pass
     # 点击的方法
     def click_method(self):
+        # ✅ 第一步：立即清空所有旧内容
+        if self.main_gui and hasattr(self.main_gui, 'tab_widget'):
+            # 清空所有tab
+            while self.main_gui.tab_widget.count() > 0:
+                widget = self.main_gui.tab_widget.widget(0)
+                self.main_gui.tab_widget.removeTab(0)
+                if widget:
+                    widget.deleteLater()
+
+            # 清空活动模块列表
+            self.main_gui.active_module_widgets.clear()
+
+            # ✅ 强制立即刷新界面
+            QApplication.processEvents()
+
+        # ✅ 第二步：重新创建 interface_widget
+        self.interface_widget = None
+        self.interface_widget = self.get_interface_widget()
+
+        # ✅ 第三步：执行服务启动和界面调整
         AsyPromise(self.start_service).then(
-            lambda r:AsyPromise(self.adjustGUIPolicy).then()
+            lambda r: AsyPromise(self.adjustGUIPolicy).then()
         )
         # self.start_service()
         # self.adjustGUIPolicy()
@@ -118,14 +138,13 @@ class BaseModule(ABC):
         # 根据type来确定相关策略
         if self.interface_widget.type == BaseInterfaceType.WIDGET or self.interface_widget.type == BaseInterfaceType.FRAME:
 
-
+            # 创建新内容容器
             tab_content = QWidget()
-            tab_content.setObjectName(f"tab_content_{self.menu_name['text']}_{self.name}")
+            tab_content.setObjectName(f"content_{self.menu_name['text']}_{self.name}")
             tab_layout = QVBoxLayout(tab_content)
-            tab_layout.setObjectName(f"tab_content_{self.menu_name['text']}_{self.name}_layout")
+            tab_layout.setContentsMargins(0, 0, 0, 0)
 
-            # 创建一个内容小部件并填充内容
-
+            # 创建内容框架
             tab_frame = content_index()
 
 
@@ -206,9 +225,12 @@ class BaseModule(ABC):
 
             # 将 scroll_area 添加进去
             tab_layout.addWidget(tab_frame)
-            self.main_gui.tab_widget.addTab(tab_content,self.title)
+            # 添加到主界面
+            self.main_gui.tab_widget.addTab(tab_content, "")
+            self.main_gui.tab_widget.tabBar().hide()  # 隐藏tab栏
+            self.main_gui.tab_widget.setCurrentWidget(tab_content)
 
-            # 将界面放入正在显示界面
+            # 添加到活动模块列表
             if self not in self.main_gui.active_module_widgets:
                 self.main_gui.active_module_widgets.append(self)
             pass

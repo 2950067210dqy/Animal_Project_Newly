@@ -57,7 +57,7 @@ class Main_New_experiment_widget(BaseInterfaceWidget):
 
     def get_type(self):
         """获得类型 """
-        return BaseInterfaceType.WINDOW
+        return BaseInterfaceType.WIDGET
 
     def create_middle_window(self) -> BaseWindow:
 
@@ -100,7 +100,7 @@ class Main_New_experiment_Module(BaseModule):
         return "打开实验文件"
     def get_menu_name(self):
         """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""
-        return {"id":1,"text":"设备信息"}
+        return {"id":0,"text":"创建实验"}
         pass
 
     def create_service(self) -> BaseService:

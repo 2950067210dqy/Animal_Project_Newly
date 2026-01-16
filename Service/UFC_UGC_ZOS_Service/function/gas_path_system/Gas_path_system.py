@@ -27,178 +27,7 @@ wait_UFC_start_finish_event = threading.Event()
 # 等待ufc 停止完
 wait_UFC_stop_finish_event = threading.Event()
 
-import numpy as np
-import os
-import threading
 
-# 全局O2模型缓存
-_o2_model = None
-_model_lock = threading.Lock()
-
-# O2三点测量缓存
-o2_measurement_cache = {}
-o2_cache_lock = threading.Lock()
-
-
-def get_o2_model():
-    """改进版：增强错误处理"""
-    global _o2_model
-    if _o2_model is None:
-        with _model_lock:
-            if _o2_model is None:
-                try:
-                    import lightgbm as lgb
-                    model_path = os.path.join(os.path.dirname(__file__), '..', '..', 'model', 'o2_steady_model.txt')
-
-                    if not os.path.exists(model_path):
-                        logger.critical(f"O2模型文件缺失: {model_path}")
-                        logger.warning("将在无模型修正的情况下运行，精度将大幅下降")
-                        return None
-
-                    _o2_model = lgb.Booster(model_file=model_path)
-                    logger.info(f"O2稳态模型加载成功: {model_path}")
-
-                except ImportError:
-                    logger.error("lightgbm库未安装，请执行: pip install lightgbm")
-                except Exception as e:
-                    logger.error(f"O2模型加载失败: {e}")
-
-    return _o2_model
-
-
-def predict_steady_o2(o2_5s, o2_10s, o2_15s):
-    """
-    基于三个时间点的氧气值进行稳态预测
-    :param o2_5s: 第5秒的O2值（已校准和压力补偿）
-    :param o2_10s: 第10秒的O2值（已校准和压力补偿）
-    :param o2_15s: 第15秒的O2值（已校准和压力补偿）
-    :return: 预测的稳态氧气值（%）
-    """
-    try:
-        model = get_o2_model()
-        if model is None:
-            logger.warning("O2模型未加载，使用第15秒的值作为稳态值")
-            return o2_15s
-
-        # 构建三值输入：[[o2_5s, o2_10s, o2_15s]]
-        X = np.array([[o2_5s, o2_10s, o2_15s]]).astype(np.float32)
-
-        # 模型预测
-        o2_steady = model.predict(X)[0]
-
-        # 范围检查（确保在0-100%之间）
-        if o2_steady < 0:
-            o2_steady = 0
-        elif o2_steady > 100:
-            o2_steady = 100
-
-        # 记录日志
-        logger.info(f"O2稳态预测: [5s={o2_5s:.2f}%, 10s={o2_10s:.2f}%, 15s={o2_15s:.2f}%] → steady={o2_steady:.2f}%")
-
-        return round(o2_steady, 6)
-
-    except Exception as e:
-        logger.error(f"O2稳态预测失败: {e}，使用第15秒的值")
-        return o2_15s
-
-
-class O2CorrectionManager:
-    @staticmethod
-    def calibrate_and_compensate(oxygen_raw, vzero=None, k=None, air_pressure=None):
-        """增强版：明确气压来源"""
-        try:
-            if oxygen_raw is None:
-                return None
-
-            if vzero is None:
-                vzero = global_setting.get_setting("Vzero", 0)
-            if k is None:
-                k = global_setting.get_setting("K", 1)
-            if air_pressure is None:
-                # 优先级：UGC测量 > 1104环境模块 > 标准大气压
-                air_pressure = (
-                        global_setting.get_setting("air_pressure") or
-                        global_setting.get_setting("air_pressure_1104") or
-                        None
-                )
-
-            # 第一步：校准
-            oxygen_calibrated = round((oxygen_raw - vzero) * k, 6)
-
-            # 第二步：气压补偿
-            if air_pressure is not None:
-                standard_atm = float(
-                    global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['standard_atmospheric_pressure'])
-                o2_coeff = float(
-                    global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['oxygen_compensation_coefficient'])
-
-                oxygen_value = (oxygen_calibrated / (1 + air_pressure / standard_atm)) * o2_coeff
-                oxygen_value = round(oxygen_value, 6)
-
-                # ✓ 记录日志，便于追溯
-                logger.debug(f"O2补偿: raw={oxygen_raw} → calibrated={oxygen_calibrated} → "
-                             f"compensated={oxygen_value} (air_pressure={air_pressure}kPa)")
-            else:
-                oxygen_value = oxygen_calibrated
-                logger.warning("缺少气压数据，跳过补偿")
-
-            return oxygen_value
-
-        except Exception as e:
-            logger.error(f"O2校准补偿失败: {e}")
-            return oxygen_raw
-
-    @staticmethod
-    def predict_steady_o2_three_point(o2_5s, o2_10s, o2_15s):
-        """
-        基于三个时间点的O2值进行稳态预测
-        :param o2_5s: 第5秒的O2值（已校准和补偿）
-        :param o2_10s: 第10秒的O2值（已校准和补偿）
-        :param o2_15s: 第15秒的O2值（已校准和补偿）
-        :return: 预测的稳态O2值
-        """
-        try:
-            model = get_o2_model()
-            if model is None:
-                logger.warning("O2模型未加载，使用第15秒的值作为稳态值")
-                return o2_15s
-
-            # 构建三值输入
-            X = np.array([[o2_5s, o2_10s, o2_15s]]).astype(np.float32)
-            o2_steady = model.predict(X)[0]
-
-            # 范围检查
-            o2_steady = max(0, min(100, o2_steady))
-
-            logger.info(f"O2稳态预测: [5s={o2_5s:.2f}%, 10s={o2_10s:.2f}%, 15s={o2_15s:.2f}%] → steady={o2_steady:.2f}%")
-
-            return round(o2_steady, 6)
-
-        except Exception as e:
-            logger.error(f"O2稳态预测失败: {e}，使用第15秒的值")
-            return o2_15s
-
-    @staticmethod
-    def apply_model_correction(oxygen_value):
-        """
-        应用模型修正（当没有三点数据时使用）
-        """
-        try:
-            model = get_o2_model()
-            if model is None:
-                return oxygen_value
-
-            # 单点预测（作为降级方案）
-            X = np.array([[oxygen_value]]).astype(np.float32)
-            o2_corrected = model.predict(X)[0]
-
-            o2_corrected = max(0, min(100, o2_corrected))
-            logger.info(f"O2模型修正: {oxygen_value:.4f} → {o2_corrected:.4f}")
-            return round(o2_corrected, 6)
-
-        except Exception as e:
-            logger.warning(f"O2模型修正失败，使用原值: {e}")
-            return oxygen_value
 
 logger = logger.bind(category="monitor_data_logger")
 class Gas_path_system:
@@ -1156,411 +985,97 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
 
-        # 获取当前鼠笼号
-        mouse_cage_number = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None \
-            else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
-
-        # 初始化O2采样缓存
-        with o2_cache_lock:
-            if mouse_cage_number not in o2_measurement_cache:
-                o2_measurement_cache[mouse_cage_number] = {
-                    'start_time': time.time(),
-                    'o2_5s': None,
-                    'o2_10s': None,
-                    'o2_15s': None
-                }
-                logger.info(f"初始化鼠笼{mouse_cage_number}的O2采样缓存")
-
-        # 启动三点采样流程
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 鼠笼{mouse_cage_number}开始三点O2采样")
-
-        # 链式调用三点采样（修正版）
-        AsyPromise(self.read_o2_at_5s, port=port, mouse_cage_number=mouse_cage_number).then(
-            lambda r: AsyPromise(self.read_o2_at_10s, port=port, mouse_cage_number=mouse_cage_number)
-        ).then(
-            lambda r: AsyPromise(self.read_o2_at_15s, port=port, mouse_cage_number=mouse_cage_number)
-        ).then(
-            lambda r: AsyPromise(self.predict_and_store_steady_o2,
-                                 port=port, mouse_cage_number=mouse_cage_number)
-        ).then(
-            lambda r: AsyPromise(self.check_senior_state, port=port, r=r)
-        ).then(
-            lambda r: AsyPromise(self._update_cage_index_and_barrier,
-                                 mouse_cage_index=mouse_cage_index,
-                                 mouse_cages_inc=mouse_cages_inc)
-        ).catch(lambda e: logger.error(f"ZOS三点采样流程失败: {e}"))
-
+            f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的氧浓度")
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            # 2.传感器故障检测 如果在非调零状态下，氧浓度异常，小于某一个阈值（如1%），检查传感器状态
+            lambda r:AsyPromise(self.check_senior_state,port=port,r=r)
+        ).catch(lambda e: logger.error(e))
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
-        # self.update_status_main_signal_gui_update.send(
-        #     f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的氧浓度")
-        # self.send_thread.send_message = self.send_message
-        # AsyPromise(self.send_thread.Send).then(
-        #     # 2.传感器故障检测 如果在非调零状态下，氧浓度异常，小于某一个阈值（如1%），检查传感器状态
-        #     lambda r:AsyPromise(self.check_senior_state,port=port,r=r)
-        # ).catch(lambda e: logger.error(e))
-        # time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
-        # # # 让鼠笼内的传感器开始运行
-        # # ufc_ugc_zos_barrier = global_setting.get_setting("ufc_ugc_zos_barrier")
-        # # if ufc_ugc_zos_barrier is not None:
-        # #     logger.debug(f"ufc_ugc_zos_barrier_ZOS run one batch done ! ")
-        # #     ufc_ugc_zos_barrier.wait()
-        # # 将鼠笼下标循环前移动
-        # 
-        # mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-        # # logger.critical(f"zos run :mouse_cage_index before:{mouse_cage_index}")
-        # mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        # if mouse_cage_index is not None:
-        #     if mouse_cage_index == len(mouse_cages_inc) - 1:
-        #         # 最后一个鼠笼 则下一个为参考气路
-        #         mouse_cage_index = None
-        #     else:
-        #         mouse_cage_index = mouse_cage_index + 1
-        #     pass
-        # else:
-        #     # 当前为参考气 则下一个为第一个鼠笼
-        #     mouse_cage_index = 0
-        #     pass
-        # global_setting.set_setting("cage_number_list_index", mouse_cage_index)
-        # # logger.critical(f"zos run :mouse_cage_index after:{mouse_cage_index}")
-        # barrier = global_setting.get_setting("barrier")
-        # if barrier is not None:
-        #     logger.debug(f"barrier_ZOS run one batch done ! ")
-        #     barrier.wait()
-        # pass
+        # # 让鼠笼内的传感器开始运行
+        # ufc_ugc_zos_barrier = global_setting.get_setting("ufc_ugc_zos_barrier")
+        # if ufc_ugc_zos_barrier is not None:
+        #     logger.debug(f"ufc_ugc_zos_barrier_ZOS run one batch done ! ")
+        #     ufc_ugc_zos_barrier.wait()
+        # 将鼠笼下标循环前移动
 
-    def check_senior_state(self, resolve, reject, port, r):
-        """
-        检查传感器状态，存储最终数据，并进行故障检测。
-        去除冗余：直接使用缓存中的稳态值，不再重复进行单点修正。
-        """
-        try:
-            # 1. 获取基本信息
-            mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-            mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-
-            # 确定当前鼠笼号
-            current_cage_num = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(
-                global_setting.get_setting('configer')['mouse_cage']['reference'])
-
-            # 2. 获取最终的稳态O2值 (这是核心去冗余步骤)
-            # 尝试获取基于5s/10s/15s计算出的稳态值
-            final_o2_value = None
-
-            with o2_cache_lock:
-                cache_data = o2_measurement_cache.get(current_cage_num)
-                if cache_data:
-                    # 尝试重新快速计算稳态值 (开销极小)，确保使用的是三点模型结果
-                    # 注意：这里假设 o2_5s 等在之前的步骤中已经经过了 calibrate_and_compensate
-                    o2_5s = cache_data.get('o2_5s')
-                    o2_10s = cache_data.get('o2_10s')
-                    o2_15s = cache_data.get('o2_15s')
-
-                    if o2_5s is not None and o2_10s is not None and o2_15s is not None:
-                        final_o2_value = O2CorrectionManager.predict_steady_o2_three_point(o2_5s, o2_10s, o2_15s)
-                        logger.info(f"check_senior_state 使用三点稳态值: {final_o2_value}")
-                    elif o2_15s is not None:
-                        # 如果数据不全，使用第15秒的值（它已经是校准过的）
-                        final_o2_value = o2_15s
-                        logger.warning(f"check_senior_state 数据不全，降级使用15s值: {final_o2_value}")
-
-            # 如果缓存里完全没数据 (异常情况)，尝试从当前 r 包里提取并做单点修正
-            if final_o2_value is None:
-                logger.warning("缓存缺失，回退到单点修正模式")
-                raw_data = r.get('data', {}).get('data', [])
-                for item in raw_data:
-                    if item.get('desc') == '氧气传感器测量值(%)':
-                        raw_val = float(item.get('value', 0))
-                        final_o2_value = O2CorrectionManager.calibrate_and_compensate(raw_val)
+        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+        # logger.critical(f"zos run :mouse_cage_index before:{mouse_cage_index}")
+        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
+        if mouse_cage_index is not None:
+            if mouse_cage_index == len(mouse_cages_inc) - 1:
+                # 最后一个鼠笼 则下一个为参考气路
+                mouse_cage_index = None
+            else:
+                mouse_cage_index = mouse_cage_index + 1
+            pass
+        else:
+            # 当前为参考气 则下一个为第一个鼠笼
+            mouse_cage_index = 0
+            pass
+        global_setting.set_setting("cage_number_list_index", mouse_cage_index)
+        # logger.critical(f"zos run :mouse_cage_index after:{mouse_cage_index}")
+        barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            logger.debug(f"barrier_ZOS run one batch done ! ")
+            barrier.wait()
+        pass
+    def check_senior_state(self,resolve,reject,port,r):
+        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
+        #存储值
+        result_data = r['data']
+        result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+        result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        logger.error(f"zos:{result_data}")
+        if len(result_data['data'])>0:
+            oxygen_value = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='氧气传感器测量值(%)']
+            if len(oxygen_value)>0:
+                oxygen_value = oxygen_value[0]
+                # 氧浓度V应校准为（V-Vzero）* K
+                oxygen_value =round((oxygen_value-global_setting.get_setting("Vzero",0))*global_setting.get_setting("K",1),6)
+                #  当前气压值 然后进行补偿o2
+                air_pressure=global_setting.get_setting("air_pressure",None )
+                # 如果没有压力数据则补偿前后数据一样
+                result_data["data"].append({"desc": "补偿前氧气传感器测量值(%)", "value": oxygen_value})
+                if air_pressure is not None:
+                    # 补偿后的氧气 = （测量的氧气/（1+（ugc测量的压力值）/标准大气压值））*补偿系数
+                    oxygen_value = (oxygen_value/(1+air_pressure/float(global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['standard_atmospheric_pressure'])))*float(global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['oxygen_compensation_coefficient'])
+                    pass
+                for i in range(len(result_data)):
+                    if result_data['data'][i]['desc']=='氧气传感器测量值(%)':
+                        logger.warning(f"'氧气传感器测量值(%)经过校准后得:{oxygen_value}")
+                        result_data['data'][i]['value'] = oxygen_value
                         break
 
-            # 3. 准备存储数据
-            result_data = r.get('data', {})
-            if not result_data:
-                # 防止 r['data'] 为空的情况
-                result_data = {'data': []}
-
-            result_data['mouse_cage_number'] = current_cage_num
-            result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-
-            # 4. 更新数据包中的值为最终修正值
-            updated = False
-            if final_o2_value is not None:
-                for item in result_data.get('data', []):
-                    if item.get('desc') == '氧气传感器测量值(%)':
-                        item['value'] = final_o2_value
-                        updated = True
-                        break
-
-                # 如果原包里没有这个字段，手动添加（防止数据丢失）
-                if not updated:
-                    result_data.setdefault('data', []).append({
-                        'desc': '氧气传感器测量值(%)',
-                        'value': final_o2_value
-                    })
-
-            # 5. 存储数据
-            logger.info(f"ZOS最终存储数据 (Cage {current_cage_num}): O2={final_o2_value}")
-            result = store_data_with_result(result_data, need_result=True, timeout=5)
-            if result and result.success:
-                logger.info(f"数据存储成功，ID: {result.item_id}")
-            else:
-                logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
-
-            # 6. 传感器故障监测 (去除Regex解析，直接使用数值)
-            if final_o2_value is not None:
-                threshold = float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['threshold'])
-
-                if final_o2_value < threshold:
-                    logger.warning(f"ZOS-运行 异常: 氧浓度({final_o2_value}%) < 阈值({threshold}%)")
-
-                    # 发送查询状态指令
-                    self.send_message = {
-                        'port': port,
-                        'data': number_util.set_int_to_4_bytes_list(f"00000002"),
-                        'slave_id': '4',
-                        'function_code': '2',
-                        'timeout': 1
-                    }
-                    self.update_status_main_signal_gui_update.send(
-                        f"{time_util.get_format_from_time(time.time())} | ZOS-运行 2. 氧浓度({final_o2_value}%)异常，检查传感器状态")
-                    self.send_thread.send_message = self.send_message
-                    self.send_thread.Send_no_promise()
-
-        except Exception as e:
-            logger.error(f"check_senior_state 发生错误: {e}")
-
-        finally:
-            resolve()
-
-    def read_o2_at_5s(self, resolve, reject, port, mouse_cage_number):
-        """第5秒读取O2值"""
-        try:
-            with o2_cache_lock:
-                start_time = o2_measurement_cache[mouse_cage_number]['start_time']
-
-            # 计算需要等待的时间
-            wait_time = 5 - (time.time() - start_time)
-            if wait_time > 0:
-                time.sleep(wait_time)
-
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | ZOS 读取第5秒O2值")
-
-            # 发送读取指令
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list("00000002"),
-                'slave_id': '4',
-                'function_code': '4',
-                'timeout': 1
-            }
-            self.send_thread.send_message = self.send_message
-
-            AsyPromise(self.send_thread.Send).then(
-                lambda r: self._extract_and_store_o2_value(r, '5s', mouse_cage_number, resolve, reject)
-            ).catch(lambda e: reject(e))
-        except Exception as e:
-            logger.error(f"read_o2_at_5s异常: {e}")
-            reject(e)
-
-    def read_o2_at_10s(self, resolve, reject, port, mouse_cage_number):
-        """第10秒读取O2值"""
-        try:
-            with o2_cache_lock:
-                start_time = o2_measurement_cache[mouse_cage_number]['start_time']
-
-            # 计算需要等待的时间
-            wait_time = 10 - (time.time() - start_time)
-            if wait_time > 0:
-                time.sleep(wait_time)
-
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | ZOS 读取第10秒O2值")
-
-            # 发送读取指令
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list("00000002"),
-                'slave_id': '4',
-                'function_code': '4',
-                'timeout': 1
-            }
-            self.send_thread.send_message = self.send_message
-
-            AsyPromise(self.send_thread.Send).then(
-                lambda r: self._extract_and_store_o2_value(r, '10s', mouse_cage_number, resolve, reject)
-            ).catch(lambda e: reject(e))
-        except Exception as e:
-            logger.error(f"read_o2_at_10s异常: {e}")
-            reject(e)
-
-    def read_o2_at_15s(self, resolve, reject, port, mouse_cage_number):
-        """第15秒读取O2值"""
-        try:
-            with o2_cache_lock:
-                start_time = o2_measurement_cache[mouse_cage_number]['start_time']
-
-            # 计算需要等待的时间
-            wait_time = 15 - (time.time() - start_time)
-            if wait_time > 0:
-                time.sleep(wait_time)
-
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | ZOS 读取第15秒O2值")
-
-            # 发送读取指令
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list("00000002"),
-                'slave_id': '4',
-                'function_code': '4',
-                'timeout': 1
-            }
-            self.send_thread.send_message = self.send_message
-
-            AsyPromise(self.send_thread.Send).then(
-                lambda r: self._extract_and_store_o2_value(r, '15s', mouse_cage_number, resolve, reject)
-            ).catch(lambda e: reject(e))
-        except Exception as e:
-            logger.error(f"read_o2_at_15s异常: {e}")
-            reject(e)
-
-    def _extract_and_store_o2_value(self, response, time_point, mouse_cage_number, resolve, reject):
-        """
-        从响应中提取O2值，进行校准和压力补偿，存储到缓存
-        :param response: 发送指令的响应
-        :param time_point: 时间点标识 ('5s', '10s', '15s')
-        :param mouse_cage_number: 鼠笼号
-        """
-        try:
-            result_data = response.get('data', {})
-
-            # 从响应数据中找到氧气传感器测量值
-            o2_raw = None
-            data_list = result_data.get('data', []) if isinstance(result_data, dict) else []
-
-            for data_struct in data_list:
-                if data_struct.get('desc') == '氧气传感器测量值(%)':
-                    o2_raw = float(data_struct.get('value', 0))
-                    break
-
-            if o2_raw is None:
-                logger.warning(f"未从{time_point}响应中找到O2值")
-                reject(f"缺少{time_point}的O2值")
-                return
-
-            # 第一步：校准 = (raw - Vzero) * K
-            Vzero = global_setting.get_setting("Vzero", 0)
-            K = global_setting.get_setting("K", 1)
-            o2_calibrated = round((o2_raw - Vzero) * K, 6)
-
-            # 第二步：气压补偿
-            air_pressure = global_setting.get_setting("air_pressure", None)
-            if air_pressure is not None:
-                standard_atm = float(
-                    global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['standard_atmospheric_pressure'])
-                o2_compensation_coeff = float(
-                    global_setting.get_setting("UFC_UGC_ZOS_config")['PARAM']['oxygen_compensation_coefficient'])
-
-                o2_compensated = (o2_calibrated / (1 + air_pressure / standard_atm)) * o2_compensation_coeff
-                o2_value = round(o2_compensated, 6)
-            else:
-                o2_value = o2_calibrated
-
-            # 存储到缓存
-            with o2_cache_lock:
-                if mouse_cage_number in o2_measurement_cache:
-                    o2_measurement_cache[mouse_cage_number][f'o2_{time_point}'] = o2_value
-                    logger.info(
-                        f"鼠笼{mouse_cage_number} {time_point}O2值: raw={o2_raw:.2f}, 校准={o2_calibrated:.2f}, 补偿={o2_value:.2f}")
-            # 第二步：立即存储中间数据（持久化）
-            intermediate_data = {
-                'module_name': 'ZOS_Intermediate',
-                'mouse_cage_number': mouse_cage_number,
-                'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-                'data': [
-                    {'desc': f'氧气传感器测量值(%)_{time_point}_原始', 'value': o2_raw},
-                    {'desc': f'氧气传感器测量值(%)_{time_point}_修正', 'value': o2_value}
-                ]
-            }
-            store_data_with_result(intermediate_data, need_result=False, timeout=2)
-
-            logger.info(
-                f"鼠笼{mouse_cage_number} {time_point}O2值: raw={o2_raw:.2f} → corrected={o2_value:.2f}")
-            resolve(response)
-        except Exception as e:
-            logger.error(f"提取{time_point}O2值失败: {e}")
-            reject(e)
-
-    def _update_cage_index_and_barrier(self, resolve, reject, mouse_cage_index, mouse_cages_inc):
-        """更新鼠笼下标并等待barrier"""
-        try:
-            if mouse_cage_index is not None:
-                if mouse_cage_index == len(mouse_cages_inc) - 1:
-                    mouse_cage_index = None
-                else:
-                    mouse_cage_index = mouse_cage_index + 1
-            else:
-                mouse_cage_index = 0
-
-            global_setting.set_setting("cage_number_list_index", mouse_cage_index)
-            logger.debug(f"ZOS运行完成，下一轮鼠笼下标: {mouse_cage_index}")
-
-            barrier = global_setting.get_setting("barrier")
-            if barrier is not None:
-                logger.debug(f"barrier_ZOS run one batch done!")
-                barrier.wait()
-
-            resolve()  # 必须调用 resolve
-        except Exception as e:
-            logger.error(f"更新鼠笼下标失败: {e}")
-            reject(e)
-
-    def predict_and_store_steady_o2(self, resolve, reject, port, mouse_cage_number):
-        """预测稳态O2值并存储"""
-        try:
-            with o2_cache_lock:
-                cache_data = o2_measurement_cache.get(mouse_cage_number)
-                if cache_data is None:
-                    logger.warning(f"缺少鼠笼{mouse_cage_number}的O2缓存")
-                    resolve(None)
-                    return
-
-                o2_5s = cache_data.get('o2_5s')
-                o2_10s = cache_data.get('o2_10s')
-                o2_15s = cache_data.get('o2_15s')
-
-            if o2_5s is not None and o2_10s is not None and o2_15s is not None:
-                o2_steady = O2CorrectionManager.predict_steady_o2_three_point(
-                    o2_5s, o2_10s, o2_15s)
-
-                logger.info(f"鼠笼{mouse_cage_number}稳态O2: {o2_steady}%")
-
-                result_data = {
-                    'module_name': 'ZOS',
-                    'mouse_cage_number': mouse_cage_number,
-                    'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-                    'data': [
-                        {'desc': '氧气传感器测量值(%)_5s', 'value': o2_5s},
-                        {'desc': '氧气传感器测量值(%)_10s', 'value': o2_10s},
-                        {'desc': '氧气传感器测量值(%)_15s', 'value': o2_15s},
-                        {'desc': '氧气传感器测量值(%)_稳态', 'value': o2_steady}
-                    ]
+        result = store_data_with_result(result_data, need_result=True, timeout=5)
+        if result and result.success:
+            logger.info(f"数据存储成功，ID: {result.item_id}")
+        else:
+            logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
+        """2.传感器故障监测"""
+        m = re.search(r"氧传感器测量值\(%\)\s*:\s*([0-9]+(?:\.[0-9]+)?)", r['message'])
+        if m:
+            value_str = m.group(1)
+            value = float(value_str)
+            #如果在非调零状态下，氧浓度异常，小于某一个阈值（如1%），检查传感器状态
+            if value <float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['threshold']):
+                # 3.循环读取CO2浓度
+                self.send_message = {
+                    'port': port,
+                    'data': number_util.set_int_to_4_bytes_list(f"00000002"),
+                    'slave_id': '4',
+                    'function_code': '2',
+                    'timeout': 1
                 }
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | ZOS-运行 2. 氧浓度({value}%)异常，小于阈值（{float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['threshold'])}%），检查传感器状态")
+                self.send_thread.send_message = self.send_message
+                self.send_thread.Send_no_promise()
+        resolve()
 
-                result = store_data_with_result(result_data, need_result=True, timeout=5)
-                if result and result.success:
-                    logger.info(f"稳态O2数据存储成功，ID: {result.item_id}")
-                else:
-                    logger.error(f"稳态O2数据存储失败: {result.error if result else '未知错误'}")
-            else:
-                logger.warning(f"缺少完整的O2三点数据: 5s={o2_5s}, 10s={o2_10s}, 15s={o2_15s}")
-
-            resolve(None)  # 必须调用 resolve
-        except Exception as e:
-            logger.error(f"稳态O2预测失败: {e}")
-            reject(e)
+        pass
 
 class ZOS_gas_path_system(Gas_path_system):
     """
