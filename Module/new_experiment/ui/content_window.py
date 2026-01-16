@@ -28,7 +28,7 @@ from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
 from public.util.class_util import class_util
 
-
+from loguru import logger
 
 
 
@@ -634,14 +634,16 @@ class ContentWindow(ThemedWindow):
             self.main_gui.status_bar.update_setting_file_name(f"当前实验文件: {self.setting_file_path}")
             msg_box = InfoDialog(title="应用实验", info="应用成功!", icon=QMessageBox.Icon.Information)
             msg_box.exec()
-            # 關閉窗口
-            self.parent().close()
-            # 跳轉窗口
-            for module in self.main_gui.modules:
-                module: BaseModule
-                if module.name =="Main_experiment_setting":
-                    module.click_method()
-                    return
+            # # 關閉窗口
+            # self.parent().close()
+            # # 跳轉窗口
+            # for module in self.main_gui.modules:
+            #     module: BaseModule
+            #     if module.name =="Main_experiment_setting":
+            #         module.click_method()
+            #         return
+            # ✅ 【修改】只做导航，不做关闭操作
+            self._navigate_to_experiment_setting()
 
 
         else:
@@ -686,6 +688,20 @@ class ContentWindow(ThemedWindow):
             self.template_file_path_label.setText(self.template_file_path_label.text() + "*")
             self.is_update = True
 
+    def _navigate_to_experiment_setting(self):
+        """导航到实验设置界面"""
+        # 找到目标模块
+        target_module = None
+        for module in self.main_gui.modules:
+            if module.name == "Main_experiment_setting":
+                target_module = module
+                break
+
+        if target_module and hasattr(target_module, 'click_method'):
+            # 直接调用 click_method（已改进的版本会自动清理信号）
+            target_module.click_method()
+        else:
+            logger.warning(f"警告：未找到 Main_experiment_setting 模块")
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ContentWindow()

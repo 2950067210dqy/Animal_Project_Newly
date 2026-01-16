@@ -2,6 +2,7 @@
 import queue
 from abc import abstractmethod, ABC
 
+from PyQt6 import QtWidgets
 from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea, QHBoxLayout, QMainWindow, QApplication
 
 from index import Content_index
@@ -13,7 +14,7 @@ from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import Frame_state, BaseInterfaceType, AppState
 from public.function.promise.AsyPromise import AsyPromise
 from theme.ThemeQt6 import ThemedWindow
-
+from loguru import logger
 
 class BaseModule(ABC):
 
@@ -95,9 +96,25 @@ class BaseModule(ABC):
         pass
     # 点击的方法
     def click_method(self):
-        # ✅ 第一步：立即清空所有旧内容
+        """导航到新模块"""
+        # 第一步：安全地清空所有旧内容
         if self.main_gui and hasattr(self.main_gui, 'tab_widget'):
-            # 清空所有tab
+            # 获取所有当前的 widgets
+            widgets_to_remove = []
+            for i in range(self.main_gui.tab_widget.count()):
+                widget = self.main_gui.tab_widget.widget(i)
+                if widget:
+                    widgets_to_remove.append(widget)
+
+            # 清理前先断开所有信号
+            for widget in widgets_to_remove:
+                try:
+                    # 递归断开所有子 widget 的信号
+                    self._disconnect_all_signals(widget)
+                except Exception as e:
+                    logger.error(f"断开信号失败: {e}")
+
+            # 然后删除 widgets
             while self.main_gui.tab_widget.count() > 0:
                 widget = self.main_gui.tab_widget.widget(0)
                 self.main_gui.tab_widget.removeTab(0)
@@ -107,19 +124,47 @@ class BaseModule(ABC):
             # 清空活动模块列表
             self.main_gui.active_module_widgets.clear()
 
-            # ✅ 强制立即刷新界面
+            # 强制立即刷新界面
             QApplication.processEvents()
 
-        # ✅ 第二步：重新创建 interface_widget
+        # 第二步：重新创建 interface_widget
         self.interface_widget = None
         self.interface_widget = self.get_interface_widget()
 
-        # ✅ 第三步：执行服务启动和界面调整
+        # 第三步：执行服务启动和界面调整
         AsyPromise(self.start_service).then(
             lambda r: AsyPromise(self.adjustGUIPolicy).then()
         )
         # self.start_service()
         # self.adjustGUIPolicy()
+
+    def _disconnect_all_signals(self, widget):
+        """递归断开 widget 及其所有子 widget 的所有信号"""
+        if widget is None:
+            return
+
+        try:
+            # 获取所有子 widgets
+            children = widget.findChildren(QtWidgets.QWidget)
+            for child in children:
+                try:
+                    # 断开该 widget 的所有信号连接
+                    child.blockSignals(True)
+                    child.disconnect()
+                    child.blockSignals(False)
+                except:
+                    pass
+
+            # 断开父 widget 的所有信号连接
+            try:
+                widget.blockSignals(True)
+                widget.disconnect()
+                widget.blockSignals(False)
+            except:
+                pass
+
+        except Exception as e:
+            logger.error(f"清理信号错误: {e}")
     def start_service(self,resolve,reject):
         """开始服务"""
         if self.service is not None:
