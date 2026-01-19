@@ -4,6 +4,7 @@
 import struct
 import time
 
+
 from loguru import logger
 
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids, Modbus_Slave_Type
@@ -1647,26 +1648,47 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
     def parser_function_code_4(self):
         function_desc = """
                                读传感器测量值
-                               参数长度：5
+                               参数长度：80
                                 """
-        pack_struct = "B " * 5
+        pack_struct = "B " * 80
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['氧气传感器测量值(%)']
+        port_types = ['补偿前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)','流量(sccm)']
+        values = []
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
-                case 2:
+                case 4,9,14,19,24,29,34,39,44,49,54,59,64,69,74:
+                    oxygen_num=  float(
+                            str(self.response_struct['data'][i - 4]) + "." + str(self.response_struct['data'][i-3]).zfill(2)+str(self.response_struct['data'][i-2]).zfill(2))
+                    air_pressure_num =  round(float(
+                            str(self.response_struct['data'][i - 1]) + "." +str(self.response_struct['data'][i])),3)
+                    values.append((oxygen_num, air_pressure_num))
+                    if i ==74:
+                        return_datas.append({
+                            "desc": port_types[j],
+                            'value': values
+                        }
+                        )
+                        j += 1
+                case 78:
+                    # 流量测量值 四字节IEEE754码
+                    # 首先将其展开为二进制数，
+                    data_str = "".join(self.int_to_8bit_binary(
+                        num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
+                                  self.response_struct['data'][i - 1], self.response_struct['data'][i]]))
+
+                    # # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
+                    value = self.ieee754_single_to_float(data_str)
                     return_datas.append({
                         "desc": port_types[j],
-                        'value': float(
-                            str(self.response_struct['data'][i - 2]) + "." + str(self.response_struct['data'][i-1])+str(self.response_struct['data'][i]))
+                        'value': value
                     }
                     )
                     j += 1
-
+                    pass
                 case _:
                     pass
         return_data_str = ""

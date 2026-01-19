@@ -293,7 +293,7 @@ def test_integrated_monitor():
     monitor.register_callback('on_high_memory', on_high_memory)
     monitor.register_exception_callback(on_any_exception)
 
-    # 创建工作进程的日志配置
+    # # 创建工作进程的日志配置 调试专用 记得注释
     # p_response_comm_config = monitor.create_process_log_config(
     #     "p_response_comm",
     #     log_level="DEBUG",

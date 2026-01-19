@@ -91,8 +91,9 @@ class Others_Tables(Enum):
                 ("UGC_CO2_num", "CO2(%)", " REAL "),
                 ("reference_CO2_num", "参考气CO2(%)", " INTEGER "),
                 ("CO2_output_num", "CO2生产量(%)", " REAL "),
-                ("ZOS_oxygen_origin_num", "补偿前氧气传感器测量值(%)", " REAL "),
+                ("ZOS_oxygen_origin_nums", "补偿前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", " TEXT "),
                 ("ZOS_oxygen_num", "氧气传感器测量值(%)", " REAL "),
+                ("ZOS_flow_nums", "ZOS_流量(sccm)", " REAL "),
                 ("reference_oxygen_num", "参考气氧气测量值(%)", " INTEGER "),
                 ("oxygen_consumption_num", "耗氧量(%)", " REAL "),
                 ("ENM_temperature_num", "温度测量值(°C)", " REAL "),
@@ -296,8 +297,9 @@ class Modbus_Slave_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("oxygen_num", "氧气传感器测量值(%)", " REAL "),
-                ("oxygen_origin_num", "补偿前氧气传感器测量值(%)", " REAL "),
+                ("oxygen_origin_nums", "补偿前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", " TEXT "),
                 ("oxygen_consumption_num", "氧气消耗量(%)", " REAL "),
+                ("flow_nums", "流量(sccm)", " REAL "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
