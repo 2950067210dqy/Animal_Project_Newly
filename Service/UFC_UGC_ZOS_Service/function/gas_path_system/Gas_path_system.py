@@ -1207,6 +1207,8 @@ class ZOS_gas_path_system(Gas_path_system):
         self.read_pressure_nums = None
         # ZOS通道压力初始化读取压力值的当前次数
         self.circular_nums = 0
+        # 是否停止
+        self.is_stop = False
         pass
     def update(self):
         super().update()
@@ -1360,21 +1362,26 @@ class ZOS_gas_path_system(Gas_path_system):
         self.circular_nums = 0
         while (
                 (
-                       self.circular_nums <= int(
-                    global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])
-                )
-               or
-                (
-                        self.read_pressure_nums is None
+                        (
+                                self.circular_nums <= int(
+                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])
+                        )
                         or
-                        self.read_pressure_nums >=float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
-                        or
-                        self.read_pressure_nums <= float(
+                        (
+                                self.read_pressure_nums is None
+                                or
+                                self.read_pressure_nums >= float(
+                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) + float(
+                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
+                                or
+                                self.read_pressure_nums <= float(
                             global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) - float(
                             global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
 
+                        )
                 )
-
+                and
+                    not self.is_stop
         ):
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | ZOS-启动 4) ZOS通道压力初始化:【3】. 循循环读取压力值 （推荐每1秒读取一次）（读取5次） 循环读取{'鼠笼' + str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的压力值，当前：{self.circular_nums}/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])}S")
@@ -1424,7 +1431,7 @@ class ZOS_gas_path_system(Gas_path_system):
         :return:
         """
         experiment_settings = global_setting.get_setting("experiment_setting", None)
-
+        self.is_stop =False
         gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
         global_setting.set_setting("mouse_cages", gids)
         # global_setting.set_setting("mouse_cages_2byte_str",data)
@@ -1498,6 +1505,7 @@ class ZOS_gas_path_system(Gas_path_system):
         """
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在停止{'.'*100}")
         self.zos_gas_path_system_run_thread.stop()
+        self.is_stop = True
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS 已停止{'.' * 100}")
         # 返回响应
