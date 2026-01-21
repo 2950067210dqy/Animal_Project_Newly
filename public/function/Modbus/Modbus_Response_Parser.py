@@ -1668,7 +1668,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                             str(self.response_struct['data'][i - 4]) + "." + str(self.response_struct['data'][i-3]).zfill(2)+str(self.response_struct['data'][i-2]).zfill(2))
                     air_pressure_num =  round(float(
                             str(self.response_struct['data'][i - 1]) + "." +str(self.response_struct['data'][i])),3)
-                    values.append((oxygen_num, air_pressure_num))
+                    values.append([oxygen_num, air_pressure_num])
                     if i ==74:
                         return_datas.append({
                             "desc": port_types[j],
