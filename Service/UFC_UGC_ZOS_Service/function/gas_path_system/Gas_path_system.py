@@ -1446,6 +1446,7 @@ class ZOS_gas_path_system(Gas_path_system):
                 # 2.处理压力值
                 lambda r: AsyPromise(self.handle_pressure_value_by_zos_start, port=port, r=r)
             ).catch(lambda e: logger.error(e))
+
             time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay']))
             self.circular_nums+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])
         AsyPromise(self.start_success).then(lambda r:resolve()).reject(lambda e: logger.error(e))
@@ -1462,9 +1463,12 @@ class ZOS_gas_path_system(Gas_path_system):
 
             if len(values)>0 :
                 pressure_values = values[0]
-                logger.warning(f" ZOS-启动 4) ZOS通道压力初始化:【3】. 循循环读取压力值 （推荐每1秒读取一次）（读取5次） 循环读取{'鼠笼' + str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的压力值，当前：{self.circular_nums}/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])}S,当前压力值:{pressure_values}")
+                warning_msg = f" ZOS-启动 4) ZOS通道压力初始化:【3】. 循环读取压力值 （推荐每1秒读取一次）（读取5次） 循环读取{'鼠笼' + str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的压力值，当前：{self.circular_nums}/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])}S,当前压力值:{pressure_values}"
+                logger.warning(warning_msg)
                 # 读取压力值
                 self.read_pressure_nums = pressure_values
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | ZOS通道压力初始化,读取{'鼠笼' + str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的压力值，当前：{self.circular_nums}/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])}S,当前压力值:{pressure_values}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default'])} ± {float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])} KPa")
         resolve()
 
 

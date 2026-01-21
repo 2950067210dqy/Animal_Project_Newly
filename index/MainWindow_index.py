@@ -726,7 +726,7 @@ class MainWindow_Index(ThemedWindow):
         pass
     def show_open_dialog(self,resolve,reject):
         # 弹窗最晚持续时间
-        start_times = float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])/float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])+20
+        start_times = float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])/float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])*2*8+20
         if self.start_dialog is None:
             self.start_dialog = AnimatedLoadingDialog(countdown_seconds=start_times,title="开始实验",message="正在启动气路...")
         else:
