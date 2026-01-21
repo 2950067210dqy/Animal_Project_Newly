@@ -809,25 +809,41 @@ class UGC_gas_path_system(Gas_path_system):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UGC 正在启动")
 
-        # 1.开泵抽气（正式开机）
+
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             reject()
+        # 1.读取系统状态
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("0004FF00"),
+            'data': number_util.set_int_to_4_bytes_list("0"),
             'slave_id': '3',
-            'function_code': '5',
+            'function_code': '1',
             'timeout': 1
         }
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UGC 正在启动-1.开泵抽气（正式开机）")
+            f"{time_util.get_format_from_time(time.time())} | UGC 正在启动-1.读取系统状态")
         self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            lambda r: resolve()
-        ).catch(lambda e: reject(e))
+        result_data,parser_message=self.send_thread.Send_no_promise()
+        datas = result_data.get("data")
+        if datas and len(datas) > 1:
+            state_value = None
+            for data in datas:
+                desc = data.get("desc")
+                if desc and desc == "CO2阀门状态":
+                    # 获得气压的数据
+                    state_value = int(data.get("value"))
+                    if state_value ==0:
+                        error_data= "UGC阀门状态：OFF"
+                        logger.error(error_data)
+                        reject(error_data)
+                    else:
+                        ok_data = "UGC阀门状态：ON"
+                        logger.info(ok_data)
+        resolve()
+
 
         pass
         pass
@@ -859,33 +875,48 @@ class UGC_gas_path_system(Gas_path_system):
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 1.鼠笼气电磁阀开(sample 气)(开机默认打开)")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            # #2.鼠笼气电磁阀关(sample 气)
-            # lambda r: AsyPromise(self.close_mouse_cage_valve,port=port)
             # 2.循环读取CO2浓度
-            lambda r: AsyPromise(self.circular_running).then(lambda r1:resolve()
+            lambda r: AsyPromise(self.open_valve_remove_gas,port=port).then(lambda r1:resolve()
             ).catch(lambda e: reject(e))
         ).catch(lambda e: reject(e))
         pass
-    # def close_mouse_cage_valve(self,resolve,reject,port):
-    #     # 2.鼠笼气电磁阀关(sample 气)
-    #     time.sleep(0.01)
-    #     self.send_message = {
-    #         'port': port,
-    #         'data': number_util.set_int_to_4_bytes_list("00000000"),
-    #         'slave_id': '3',
-    #         'function_code': '5',
-    #         'timeout': 1
-    #     }
-    #     self.update_status_main_signal_gui_update.send(
-    #         f"{time_util.get_format_from_time(time.time())} | UGC-运行 2.鼠笼气电磁阀关(sample 气)(开机默认打开)")
-    #     self.send_thread.send_message = self.send_message
-    #     AsyPromise(self.send_thread.Send).then(
-    #         # 3.循环读取CO2浓度
-    #         lambda r: AsyPromise(self.circular_running)
-    #     ).catch(lambda e: reject(e))
-    #
-    #     pass
+    def close_mouse_cage_valve(self,resolve,reject,port):
+        # 2.鼠笼气电磁阀关(sample 气)
+        time.sleep(0.01)
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("00000000"),
+            'slave_id': '3',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UGC-停止 2.鼠笼气电磁阀关(sample 气)")
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            # 3.完成关闭
+            lambda r: AsyPromise(self.stop_finished).then(lambda r1:resolve()
+            ).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
 
+        pass
+    def open_valve_remove_gas(self,resolve,reject,port):
+        # 2.开泵抽气（正式开机）
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("0004FF00"),
+            'slave_id': '3',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UGC 运行-2.开泵抽气（正式开机）")
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            # 3.循环读取CO2浓度
+            lambda r: AsyPromise(self.circular_running).then(lambda r1: resolve()
+                                                             ).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
     def circular_running(self, resolve, reject):
         # 3.循环读取CO2浓度
         time.sleep(0.01)
@@ -922,7 +953,7 @@ class UGC_gas_path_system(Gas_path_system):
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2.鼠笼气电磁阀关(sample 气)
-            lambda r:AsyPromise(self.stop_finished).then(lambda r1:resolve()).catch(lambda e: reject(e))
+            lambda r:AsyPromise(self.close_mouse_cage_valve,port=port).then(lambda r1:resolve()).catch(lambda e: reject(e))
         ).catch(lambda e: reject(e))
         pass
 
@@ -1247,10 +1278,27 @@ class ZOS_gas_path_system(Gas_path_system):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | 正在启动 ZOS: 3）ZOS 启动...")
         AsyPromise(self.send_thread.Send).then(
-            #4) ZOS通道压力初始化
-            lambda r: AsyPromise(self.circular_once_start_zos_pressure_init,port=port).then(lambda r: resolve()
+            #4) 完成启动
+            lambda r: AsyPromise(self.start_success).then(lambda r: resolve()
                                                                ).catch(lambda e: logger.error(e))
         ).catch(lambda e: logger.error(e))
+    def start_zos_cage_pressure_init(self,resolve,reject):
+        """
+        开始 ZOS通道压力初始化
+        :param resolve:
+        :param reject:
+        :return:
+        """
+        time.sleep(0.01)
+        self.is_stop = False
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 通道压力初始化")
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+        AsyPromise(self.circular_once_start_zos_pressure_init, port=port).then(lambda r: resolve()
+                                                                               ).catch(lambda e: logger.error(e))
+        resolve()
     def circular_once_start_zos_pressure_init(self,resolve,reject,port):
         # 4) ZOS通道压力初始化
         self.update_status_main_signal_gui_update.send(
@@ -1430,12 +1478,7 @@ class ZOS_gas_path_system(Gas_path_system):
         启动气路
         :return:
         """
-        experiment_settings = global_setting.get_setting("experiment_setting", None)
-        self.is_stop =False
-        gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
-        global_setting.set_setting("mouse_cages", gids)
-        # global_setting.set_setting("mouse_cages_2byte_str",data)
-        global_setting.set_setting("mouse_cages_2byte_str", String_util.array_to_binary_string(gids))
+
 
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在启动")
