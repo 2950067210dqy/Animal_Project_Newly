@@ -1,9 +1,10 @@
 #程序自检
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox
 
-from deleted_moudle.UFC_UGC_ZOS_Test.config_class.global_setting import global_setting
+
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.config_class.App_Setting import AppSettings
+from public.config_class.global_setting import global_setting
 from public.entity.BaseDialog import BaseDialog
 from public.entity.enum.Public_Enum import Tutorial_Type
 from theme.ThemeQt6 import ThemedWindow, ThemedDialog
