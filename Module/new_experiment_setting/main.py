@@ -60,7 +60,7 @@ class Main_experiment_setting(BaseModule):
         return AppState.APPLYING
 
     def get_name(self):
-        return "New_main_New_Monitor_data"
+        return "New_main_experiment_setting"
 
     def get_title(self):
         return "串口配置"

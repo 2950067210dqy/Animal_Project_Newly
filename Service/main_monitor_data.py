@@ -80,7 +80,7 @@ class read_queue_data_Thread(MyQThread):
             except Exception as e:
                 logger.error(f"{self.name}发生错误{e}")
                 return
-            # logger.error(f"{self.name}_get_message:{message}|")
+            logger.error(f"{self.name}_get_message:{message}|")
             if message is not None and message.is_Empty():
                 return
             if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'main_monitor_data':
@@ -92,7 +92,7 @@ class read_queue_data_Thread(MyQThread):
                             self.send_thread.add_message(message=message.data, urgent=True, origin=message.origin)
                             pass
                     case 'set_port':
-                        global port_use
+                        global port_use,send_thread
                         port_use=message.data
                         global_setting.set_setting("port", port_use)
                         modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
@@ -105,6 +105,8 @@ class read_queue_data_Thread(MyQThread):
                             modbus = ModbusRTUMasterNew(port_use, baudrate=115200, timeout=float(
                                 global_setting.get_setting('monitor_data')['Serial']['timeout']), )
                             global_setting.set_setting("modbus", modbus)
+                        if send_thread is not None:
+                            send_thread.set_modbus(modbus)
                     case 'start':
                         data = message.data
                         if data is not None:
@@ -133,14 +135,23 @@ class read_queue_data_Thread(MyQThread):
                         data = message.data
                         if data is not None:
                             # 将实验设置存入全局变量
+
                             global_setting.set_setting("experiment_setting", data.get("experiment_setting", None))
                             global_setting.set_setting("experiment_setting_file",
                                                        data.get("experiment_setting_file", ""))
-
+                            global experiment_settings,gids
+                            experiment_settings = global_setting.get_setting("experiment_setting", None)
+                            gids = [group.id for group in
+                                    experiment_settings.groups] if experiment_settings is not None else []
                         pass
                     case 'stop_modbus':
                         logger.critical(f"{self.name},stop_modbus")
                         stop_modbus()
+                    case "start_all_modules_detection":
+                        """
+                        开始检测所有模块是否在线
+                        """
+                        all_modules_check_online_state()
                     case _:
                         pass
 
@@ -155,6 +166,73 @@ class read_queue_data_Thread(MyQThread):
 
 
 read_queue_data_thread = read_queue_data_Thread(name="main_monitor_data_read_queue_data_thread")
+
+
+def  all_modules_check_online_state():
+    port = global_setting.get_setting("port")
+    global gids,send_thread
+    gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+    mouse_cage_index =None
+    for i in range(len(gids)+1):
+        # 鼠笼内的模块 参考气路则不运行：
+        if mouse_cage_index is not None:
+            all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index)
+        #气路
+        all_modules_check_online_state_Not_Each_Mouse_Cage(port,mouse_cage_index)
+        # print(f"send_messages:{send_messages}")
+        # 将鼠笼下标循环前移动
+        if mouse_cage_index is not None:
+            if mouse_cage_index == len(gids) - 1:
+                # 最后一个鼠笼 则下一个为参考气路
+                mouse_cage_index = None
+            else:
+                mouse_cage_index = mouse_cage_index + 1
+            pass
+        else:
+            # 当前为参考气 则下一个为第一个鼠笼
+            mouse_cage_index = 0
+            pass
+    pass
+def all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index):
+    # 每个笼子里的传感器的send_messages
+
+    send_messages = []
+    for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Module_Info.value:
+        """debugger专用 需要哪个模块的数据监控就放进去"""
+        # 所有消息
+        for message_struct in data_type.value['send_messages']:
+
+            message_temp = copy.deepcopy(message_struct.message)
+            message_temp['port'] = port
+
+            # logger.critical(f"add_message_thread_mouse_cage_index:{self.mouse_cage_index}")
+
+            mouse_cage = gids[mouse_cage_index] if gids else 1
+            message_temp['slave_id'] = copy.copy(
+                format(int(message_temp['slave_id'], 16) + 16 * mouse_cage, '02X'))
+            send_messages.append({'message': message_temp})
+
+
+        pass 
+    for msg in send_messages:
+        send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
+    if mouse_cage_index is not None:
+        mouse_cage = gids[mouse_cage_index] if gids else 1
+    else:
+        mouse_cage = None
+    logo_text = f"{time_util.get_format_from_time(time.time())} | 设备在线检测 鼠笼内模块 | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
+    logger.info(logo_text)
+    pass
+
+def all_modules_check_online_state_Not_Each_Mouse_Cage(port,mouse_cage_index):
+    pass
+
+
+
+
+
+
+
 
 """
 数据存储区域 start
@@ -343,7 +421,7 @@ class Send_thread(MyQThread):
                 try:
                     with self.priority_queue_lock:
                         message = self.priority_queue.get_nowait()
-                    send_message = message['message']
+                    send_message = message['message']['message']
 
                     logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
                     response, response_hex, send_state, return_data= self.modbus.send_command(
@@ -354,7 +432,7 @@ class Send_thread(MyQThread):
                         is_parse_response=False
                     )
                     # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
-
+                    parser_message=""
                     if send_state:
                         return_data, parser_message = self.modbus.parse_response(response=response,
                                                                                  response_hex=response.hex(),
@@ -372,14 +450,23 @@ class Send_thread(MyQThread):
                                 if desc and desc == "大气压测量值(KPa)":
                                     global_setting.set_setting("air_pressure_1104", float(data.get("value")))
                                     break
-                        # 把返回数据返回给源头
+
+
+                    # 把返回数据返回给源头
+                    message_struct=None
+                    if message['origin'] == "New_main_experiment_setting":
+                        message_struct = ObjectQueueItem(to=message['origin'],
+                                                         data=return_data,
+                                                         title="Each_Mouse_Cage_detect_finished",
+                                                         origin='main_monitor_data')
+                    elif send_state:
                         message_struct = ObjectQueueItem(to=message['origin'],
                                                          data=parser_message,
                                                          origin='main_monitor_data')
-
+                    if message_struct is not None:
                         global_setting.get_setting("send_message_queue").put(message_struct)
                         logger.debug(f"main_monitor_data将响应报文的解析数据返回源头：{message_struct}")
-                        pass
+
                 except queue.Empty:
                     self.priority_queue_empty=True
                     pass
@@ -617,6 +704,14 @@ class Add_message_thread(MyQThread):
             batch_complete_event.wait()
 
             logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
+
+
+
+
+
+
+
+
 
 def copy_experiment_setting_file():
     #将实验配置存储到该实验的文件夹中去
@@ -903,11 +998,17 @@ def main(q,send_message_q):
     global_setting.set_setting("messages_sent_epoch_for_running",0)
     #每轮运行开始的时间 在气路启动后和一轮结束后会重新赋值
     global_setting.set_setting("start_time_messages_sent_epoch_for_running",time.time())
-    global read_queue_data_thread
+    global read_queue_data_thread,send_thread
 
     read_queue_data_thread.queue = send_message_q
 
     read_queue_data_thread.start()
+
+    # 发送报文线程
+    send_thread = Send_thread(name="monitor_data_send_message")
+    send_thread.start()
+    read_queue_data_thread.send_thread = send_thread
+
     # return store_thread,send_thread,read_queue_data_thread,add_message_thread,ufc_ugc_zos,ufc_ugc_zos_thread
     # 系统退出
     return app.exec()
@@ -939,10 +1040,7 @@ def start():
     store_thread = Store_Thread(name="monitor_data_store_message")
     store_thread.start()
 
-    # 发送报文线程
-    send_thread = Send_thread(name="monitor_data_send_message")
-    send_thread.start()
-    read_queue_data_thread.send_thread = send_thread
+
 
     global port_use
     add_message_thread = Add_message_thread("monitor_data_add_message", send_thread, port_use)

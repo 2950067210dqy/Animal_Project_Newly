@@ -693,7 +693,7 @@ class ContentWindow(ThemedWindow):
         # 找到目标模块
         target_module = None
         for module in self.main_gui.modules:
-            if module.name == "New_main_New_Monitor_data":
+            if module.name == "New_main_experiment_setting":
                 target_module = module
                 break
 
