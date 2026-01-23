@@ -171,7 +171,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         }
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            lambda r:AsyPromise(self.open_zos_valve).then(
+            lambda r:AsyPromise(self.wait_flow_config_auto_config).then(
                 lambda r:resolve(r)
             ).catch(lambda e: reject(e))
         ).catch(lambda e: reject(e))
@@ -179,36 +179,24 @@ class UFC_gas_path_system_start_thread(MyQThread):
 
         pass
         pass
-    def open_zos_valve(self,resolve, reject):
-
+    def wait_flow_config_auto_config(self,resolve, reject):
+        """
+        UFC-启动 3.1 等待气泵和流量控制器开启  一般60秒
+        :param resolve:
+        :param reject:
+        :return:
+        """
         # 等待时间
         time_index = 0
-        while time_index<float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']):
+        while time_index < float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']):
             self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC-启动 3.1 等待气泵和流量控制器开启，此过程需{time_index}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])}秒，等待流量控制器自动配置及运行")
+                f"{time_util.get_format_from_time(time.time())} | UFC-启动 3.1 等待气泵和流量控制器开启，此过程需{time_index}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])}秒，等待流量控制器自动配置及运行")
             time_index += 1
             time.sleep(1)
-        # 4. 打开zos采样阀
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC-启动 4.打开ZOS采样阀")
-        port = global_setting.get_setting("port", None)
-        if port is None:
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
-            reject()
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("000900ff"),
-            'slave_id': '2',
-            'function_code': '5',
-            'timeout': 1
-        }
-        self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            AsyPromise(self.finsh_start).then(
-                lambda r: resolve(r)
-            ).catch(lambda e: reject(e))
-        ).catch(lambda e:logger.error(e))
+        AsyPromise(self.finsh_start).then(
+            lambda r: resolve(r)
+        ).catch(lambda e: reject(e))
+
     def finsh_start(self,resolve, reject):
 
         self.parent_class.ufc_start_time_state = True
@@ -724,10 +712,30 @@ class UFC_gas_path_system(Gas_path_system):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 开始运行{'.'*100}")
 
-        AsyPromise(self.circular_running).then(lambda r:resolve(r)).catch(lambda e:logger.error(e))
+        AsyPromise(self.open_zos_valve).then(lambda r:resolve(r)).catch(lambda e:logger.error(e))
 
 
         pass
+    def open_zos_valve(self,resolve, reject):
+        #  UFC-运行 0）打开ZOS采样阀
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UFC-运行 0）打开ZOS采样阀")
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+            reject()
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("000900ff"),
+            'slave_id': '2',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            AsyPromise(self.circular_running).then(lambda r: resolve(r)).catch(lambda e: logger.error(e))
+        ).catch(lambda e:logger.error(e))
     def circular_running(self,resolve,reject):
         # 循环运行
         time.sleep(0.01)
