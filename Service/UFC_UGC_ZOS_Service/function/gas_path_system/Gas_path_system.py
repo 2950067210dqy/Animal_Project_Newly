@@ -1089,8 +1089,8 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
                 ).catch(lambda e: logger.error(e))
                 return
-            # 从我们之前选择的运行鼠笼拿出来 每次循环访问一个
-            AsyPromise(self.switch_mouse_cage_gas,port=port,mouse_cages_inc=mouse_cages_inc).then(
+            # 因为UFC运行的时候同步切换了ZOS的通道，所以到ZOS运行时就不用在切换了，直接读
+            AsyPromise(self.circular_read,port=port,mouse_cages_inc=mouse_cages_inc).then(
 
             ).catch(lambda e:logger.error(e))
             pass
@@ -1256,7 +1256,9 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         else:
             logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
 
-        resolve()
+        AsyPromise(self.finsh_one_batch, port=None, mouse_cages_inc=mouse_cages_inc).then(
+            lambda r:resolve()
+        ).catch(lambda e: logger.error(e))
 
     def finsh_one_batch(self,resolve,reject,port,mouse_cages_inc):
         """
