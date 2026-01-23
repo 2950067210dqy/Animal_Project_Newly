@@ -1658,7 +1658,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['补偿前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)','流量(sccm)']
+        port_types = ['预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)','流量(sccm)']
         values = []
         j = 0
         for i in range(len(self.response_struct['data'])):

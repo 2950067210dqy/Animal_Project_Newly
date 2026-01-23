@@ -1226,14 +1226,14 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         logger.error(f"zos:{result_data}")
         if len(result_data['data'])>0:
-            values = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='补偿前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)']
+            values = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)']
             flow_nums =[data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='流量(sccm)']
             if len(values)>0 and len(flow_nums)>0:
                 oxygen_and_pressure_values = values[0]
                 # 流量计值
                 flow_num = flow_nums[0]
                 result_data["data"].append({"desc": "流量(sccm)", "value": flow_num})
-                result_data["data"].append({"desc": "补偿前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", "value": str(oxygen_and_pressure_values)})
+                result_data["data"].append({"desc": "预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", "value": str(oxygen_and_pressure_values)})
                 # 得到15秒的氧气值和压力值
                 oxygen__values, pressure_values = map(list, zip(*oxygen_and_pressure_values))
 
@@ -1585,19 +1585,19 @@ class ZOS_gas_path_system(Gas_path_system):
                                 self.circular_nums <= int(
                             global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])
                         )
-                        # or
-                        # (
-                        #         self.read_pressure_nums is None
-                        #         or
-                        #         self.read_pressure_nums >= float(
-                        #     global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) + float(
-                        #     global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
-                        #         or
-                        #         self.read_pressure_nums <= float(
-                        #     global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) - float(
-                        #     global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
-                        #
-                        # )
+                        or
+                        (
+                                self.read_pressure_nums is None
+                                or
+                                self.read_pressure_nums >= float(
+                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) + float(
+                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
+                                or
+                                self.read_pressure_nums <= float(
+                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) - float(
+                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
+
+                        )
                 )
                 and
                     not self.is_stop
