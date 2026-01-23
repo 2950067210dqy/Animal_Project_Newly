@@ -15,6 +15,7 @@ from PyQt6.QtCore import QThread, QTimer, QCoreApplication
 
 from loguru import logger
 
+
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 
 from public.config_class import global_load
@@ -216,6 +217,9 @@ class Store_Thread(MyQThread):
             if self.handle is None:
                 self.handle = Monitor_Datas_Handle()  # 创建数据库
 
+
+
+
             success,error = self.handle.insert_data(data)
 
 
@@ -225,6 +229,29 @@ class Store_Thread(MyQThread):
             logger.error(f"{self.name}存储错误：{e}")
 
         return success, error
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def _send_storage_result(self, data_item, success, error):
         """发送存储结果到对应的结果队列"""
@@ -262,7 +289,8 @@ class Send_thread(MyQThread):
     请求数据线程
     """
 
-    def __init__(self, name=None, modbus=None,):
+    def __init__(self, name=None, modbus=None,
+                 ):
         super().__init__(name)
 
         self.modbus: ModbusRTUMasterNew= global_setting.get_setting("modbus", None)
@@ -387,6 +415,7 @@ class Send_thread(MyQThread):
                                                                                      send_message['slave_id'],
                                                                                      function_code=
                                                                                      send_message['function_code'], )
+
                             # end_time = time.time()
                             # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
                             return_data['data'].append({'desc': '备注', 'value': None})
@@ -464,6 +493,27 @@ class Send_thread(MyQThread):
                             total_messages_processed += 1
 
             time.sleep(float(global_setting.get_setting('monitor_data')['SEND']['delay']))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -602,6 +652,20 @@ store_thread:Store_Thread = None
 # 发送报文线程
 send_thread :Send_thread= None
 add_message_thread:Add_message_thread = None
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #一轮模块发送报文结束
 def barrier_action():
     end_time = time.time()
@@ -660,11 +724,20 @@ def barrier_action():
             f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_origin_num') is not None else None})
     store_Datas.append({'desc': 'CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
                             f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None })
-    store_Datas.append({'desc': '补偿前氧气传感器测量值(%)', 'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_num') if results.get(
-                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_num') is not None else None })
+    store_Datas.append({'desc': '补偿前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)', 'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_nums') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_nums') is not None else None })
     store_Datas.append({'desc': '氧气传感器测量值(%)',
                         'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') if results.get(
                             f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None else None})
+
+    store_Datas.append({'desc': 'ZOS_流量(sccm)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__flow_nums') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__flow_nums') is not None else None})
+
+
+
+
+
     # 非参考气
     remarks_reference=""
     if mouse_cage_number != int(global_setting.get_setting('configer')['mouse_cage']['reference']):
@@ -683,16 +756,26 @@ def barrier_action():
                 {'desc': '参考气CO2(%)',
                  'value': reference_data.get(f'UGC_CO2_num') if reference_data.get(
                             f'UGC_CO2_num') is not None else None })
+
+
+
+
+
             store_Datas.append(
                 {'desc': '参考气氧气测量值(%)',
                  'value': reference_data.get(f'ZOS_oxygen_num') if reference_data.get(
                             f'ZOS_oxygen_num') is not None else None })
 
             if results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None and reference_data.get(f'UGC_CO2_num') is not None:
+
+
                 store_Datas.append(
                     {'desc': 'CO2生产量(%)',
                      'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') -reference_data.get(f'UGC_CO2_num')})
             if results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None and reference_data.get(f'ZOS_oxygen_num') is not None:
+
+
+
                 store_Datas.append(
                     {'desc': '耗氧量(%)',
                      'value':reference_data.get(f'ZOS_oxygen_num')-results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')})
@@ -702,10 +785,13 @@ def barrier_action():
             temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean',None)
             if temp_values is not None:
                 infrared_temp_average = None
-                #过滤掉None值
-                filter_temp_values = [x for x in results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean') if x is not None]
-                if len(filter_temp_values) !=0:
-                    infrared_temp_average = round(sum(filter_temp_values) / len(filter_temp_values),4)
+                # 过滤掉None值
+                if type(temp_values) is list:
+                    filter_temp_values = [x for x in temp_values if x is not None]
+                    if len(filter_temp_values) != 0:
+                        infrared_temp_average = round(sum(filter_temp_values) / len(filter_temp_values), 4)
+                else:
+                    infrared_temp_average = temp_values
                 store_Datas.append({'desc': '鼠笼红外温度(°C)',
                                     'value': infrared_temp_average})
             pass

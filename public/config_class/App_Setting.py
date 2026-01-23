@@ -4,6 +4,7 @@ from pathlib import Path
 from loguru import logger
 
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
+from public.config_class.global_setting import global_setting
 from public.entity.enum.Public_Enum import Tutorial_Type
 
 
@@ -12,14 +13,14 @@ class AppSettings:
 
     def __init__(self):
         # 获取应用程序数据目录
-        self.app_data_dir = Path.home() / ".my_app_data"
+        self.app_data_dir = Path.home() / f".{global_setting.get_setting('configer').get('basic').get('name')}" / "app_setting"
         self.settings_file = self.app_data_dir / "settings.json"
         self.ensure_data_dir()
         self.settings = self.load_settings()
 
     def ensure_data_dir(self):
         """确保数据目录存在"""
-        self.app_data_dir.mkdir(exist_ok=True)
+        self.app_data_dir.mkdir(parents=True,exist_ok=True)
 
     def load_settings(self):
         """加载设置"""
@@ -34,7 +35,6 @@ class AppSettings:
         return {
             "first_run": True,
             "tutorial_completed": False,
-            "guide_type": Tutorial_Type.ARROW_GUIDE,  # 默认引导类型
         }
 
     def save_settings(self):

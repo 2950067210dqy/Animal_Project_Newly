@@ -3,29 +3,20 @@
 当垂直滚动条滑到底部时自动加载下一页。
 """
 import sys
-import random
 import time
 
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton,
-    QScrollArea, QTableWidget, QTableWidgetItem, QMessageBox, QLabel, QSpinBox, QHBoxLayout, QListWidget, QFileDialog,
-    QSlider
+    QApplication, QWidget, QVBoxLayout, QPushButton,
+    QScrollArea, QTableWidget, QTableWidgetItem, QMessageBox, QLabel, QSpinBox, QHBoxLayout
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from loguru import logger
 
-from Module.new_monitor_data.ui.Custom_table import CustomTableWidget
-from public.component.dialog.custom.InfoDialog import InfoDialog
+from Module.new_monitor_data.ui.custom.table.Custom_table import CustomTableWidget
 from public.config.Data_Column import Data_column_list
-from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
-from public.entity.BaseWindow import BaseWindow
 from public.entity.MyQThread import MyQThread
-from public.entity.dict.AdvancedFuzzyDict import FuzzyDict
-from public.entity.queue.ObjectQueueItem import ObjectQueueItem
-from public.util.time_util import time_util
-from theme.ThemeQt6 import ThemedWidget, ThemedWindow
+from theme.ThemeQt6 import ThemedWindow
 
 
 class DataFetcher(MyQThread):
@@ -68,7 +59,7 @@ class DataFetcher(MyQThread):
 
         self.data_fetched.emit(datas)
 
-        time.sleep(0.3)  # 每秒获取一次数据
+        time.sleep(3)  # 每秒获取一次数据
 class Table_select_columns_paging_bottom(ThemedWindow):
     def hide(self):
         if self.data_fetcher_thread is not None:
@@ -103,7 +94,7 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         main_vbox = QVBoxLayout(central)
 
         self.setMinimumWidth(1100)
-
+        # self.setMinimumHeight(500)
 
         # 分页器区域（放在表格上方）
         # Scroll area 包含 QTableWidget
@@ -262,7 +253,7 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         # self.update_page()
 
         if self.data_fetcher_thread is None :
-            self.data_fetcher_thread = DataFetcher(name="tab_2_tab_0_table_data_fetch_thread",gid = self.gid,page=self.current_page,page_size=self.page_size)
+            self.data_fetcher_thread = DataFetcher(name=f"new_monitor_data_table_mouse_cage_{self.gid}_data_fetch_thread",gid = self.gid,page=self.current_page,page_size=self.page_size)
             self.data_fetcher_thread.data_fetched.connect(self.update_page)
         self.data_fetcher_thread.all_column_datas = self.all_column_datas
         if not self.data_fetcher_thread.isRunning():

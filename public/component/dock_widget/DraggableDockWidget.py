@@ -258,19 +258,19 @@ class TabNavigator(ThemedWidget):
         main_layout.setContentsMargins(8, 6, 8, 6)
         main_layout.setSpacing(8)
 
-        # 标题
-        title_label = QLabel("📋 导航:")
-        title_label.setStyleSheet("""
-            QLabel {
-                color: #495057;
-                font-weight: bold;
-                font-size: 12px;
-                background: transparent;
-                border: none;
-                padding: 4px;
-            }
-        """)
-        main_layout.addWidget(title_label)
+        # # 标题
+        # title_label = QLabel("📋 导航:")
+        # title_label.setStyleSheet("""
+        #     QLabel {
+        #         color: #495057;
+        #         font-weight: bold;
+        #         font-size: 12px;
+        #         background: transparent;
+        #         border: none;
+        #         padding: 4px;
+        #     }
+        # """)
+        # main_layout.addWidget(title_label)
 
         # Tab按钮容器（支持横向滚动）
         self.scroll_area = QScrollArea()

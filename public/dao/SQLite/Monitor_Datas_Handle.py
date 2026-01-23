@@ -579,6 +579,60 @@ class Monitor_Datas_Handle():
         return result
 
         pass
+    def query_epoch_data_all_tables_expect_text_column(self,gid:int=0,
+            page_size: int = 100)-> dict:
+        """
+        :param gid 鼠笼/通道几的数据  如果为-1 则获取总表Epoch_data_all的数据
+        :param page_size 容量多少
+        :return:把传入的表按 time 字段联立并分页返回结果，返回字典包含:
+          - total_items: 总行数（time 的并集大小）
+          - columns: 列名列表（与 rows 中 dict 的 key 对应）
+          - rows: 列表，每行为 dict（key=列名, value=值）
+
+        从 SQLite 数据库中找出epoch_Data的最新数量数据除了文字列；
+
+
+        注意事项：
+
+            SQLite 没有 FULL OUTER JOIN，所以用 UNION 把各表的 time 合并成一个派生表 all_times，然后 LEFT JOIN 每个表；
+            为防止 SQL 注入与标识符冲突，对表名与列名使用双引号转义（quote_ident）；
+            统计总条数时使用 SELECT COUNT(*) FROM ( ... UNION ... )；
+            LIMIT / OFFSET 用于分页（page 从 1 开始）。如果数据量很大，COUNT 与 UNION 可能较慢，建议为 time 列建索引或在后端分片
+
+        """
+        # 如果为-1 则获取总表Epoch_data_all的数据
+        if gid == -1:
+            table_name = f"Epoch_data_all"
+            pass
+        else:
+            table_name = f"Epoch_data_cage_{gid}"
+        result = self.sqlite_manager.query_Epoch_datas( table_name, page=1, page_size=page_size, order_asc=True )
+        result_title = []
+
+        # 找到中文列名
+        for columns in result["columns"]:
+
+            columns_query =self.sqlite_manager.query_conditions(table_name=f"{table_name}_meta", conditions=f" where item_name='{columns}'")
+            if columns_query and len(columns_query) > 0:
+                result_title.append(columns_query[0][2])
+        result["columns_title"]=result_title
+        # print("参与联立的表:", tables)
+        # print(
+        #     f"总条数: {result['total_items']}, 总页数: {result['total_pages']}, 当前页: {result['page']}, 每页: {result['page_size']}")
+        # print("列:", result["columns"])
+        # print("示例行（最多 10 行）:")
+        # for i, row in enumerate(result["rows"][:10]):
+        #     print(i + 1, row)
+        # logger.critical(result)
+        if len(result) == 0:
+            return {}
+        # caculation_handle = DataCaculation(sqlite_manager = self.sqlite_manager)
+        #
+        # return_results = caculation_handle.caculate_data(columns=all_column_datas,datas=result)
+
+        return result
+
+        pass
     def query_monitor_data_all_tables(self, all_column_datas=[]) -> dict:
         pass
 

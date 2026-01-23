@@ -1,24 +1,18 @@
 import typing
 
-from PyQt6 import QtGui, QtWidgets
-from PyQt6.QtCore import QRect, QSize, Qt, QTimer
-from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel, QSizePolicy
-from loguru import logger
+from PyQt6 import QtGui
+from PyQt6.QtCore import QRect, QSize, QTimer
+from PyQt6.QtWidgets import QDockWidget, QSizePolicy
 
-from Module.new_experiment.ui.group_window import GroupWindow
-from Module.new_monitor_data.ui.Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
+from Module.new_monitor_data.ui.custom.table.Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
 from Module.new_monitor_data.ui.monitor_data_new import Ui_monitor_data_new
-from Module.new_monitor_data.ui.monitor_data_windows import MonitorDataWindows
-from Module.new_monitor_data.ui.table_column_check_list_view import Table_Column_check_list_view
+from Module.new_monitor_data.index.right_top_widget.table_column_check_list_view import Table_Column_check_list_view
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
-from public.component.dock_widget import CustomQDockWidget
 from public.component.dock_widget.DraggableWindow import DemoDraggableDockWidget
-from public.component.paging_exportcsv_table_widget import TableWidgetPaging
 from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
 from public.entity.enum.Public_Enum import Tutorial_Type
 from public.entity.experiment_setting_entity import Experiment_setting_entity
-from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
 from theme.ThemeQt6 import ThemedWindow
 
 

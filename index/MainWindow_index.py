@@ -297,11 +297,6 @@ class MainWindow_Index(ThemedWindow):
         # tool——bar-action 工具栏的action [{'obj_name':'','name';",'action':QAction,'tip':''}]
         self.tool_bar_actions = []
         self.menu_bar_actions = []
-        # 添加动态工具栏相关属性
-        self.dynamic_tool_bar_actions = []
-        self.dynamic_toolbar_separators = []
-        self.static_toolbar_actions = []
-        self.current_active_menu_id = None
         # 模块
         self.modules =[]
         # 正在显示的Widget
@@ -386,84 +381,114 @@ class MainWindow_Index(ThemedWindow):
         pass
     # 创建工具栏
     def create_tool_bar(self):
-        """创建工具栏"""
+        # 创建 QToolBar
         self.toolbar = QToolBar("Toolbar")
         self.addToolBar(self.toolbar)
 
-        # 初始化动态内容相关列表
-        self.dynamic_tool_bar_actions = []
-        self.dynamic_toolbar_separators = []
-        self.current_active_menu_id = None
-
-        # ==================== 创建通用功能按钮 ====================
-
-        static_buttons = [
+        # 定义工具栏按钮数据
+        toolbar_buttons = [
             {
                 "name": "窗口变换",
+                "short_name": "变换",
                 "obj_name": "window_exchange",
-                "method": self.exchange_widget_and_window,
+                "icon": "⇄",  # 或使用图标文件: ":/icons/exchange.png"
+                "callback": self.exchange_widget_and_window,
                 "app_state": AppState.INITIALIZED,
-                "tip": "单击此按钮会将打开的窗口变成内嵌抽屉页。"
+                "tip": "单击此按钮会将打开的窗口变成内嵌抽屉页。",
+                "disabled": False,
+                "separator_before": False,
+                "separator_after": True
             },
             {
                 "name": "更改主题颜色",
+                "short_name": "主题",
                 "obj_name": "toggle_mode",
-                "method": self.toggle_theme,
+                "icon": "🌓",
+                "callback": self.toggle_theme,
                 "app_state": AppState.INITIALIZED,
-                "tip": "单击此按钮会将程序的主题颜色变换黑色和白色"
+                "tip": "单击此按钮会将程序的主题颜色变换黑色和白色",
+                "disabled": False,
+                "separator_before": False,
+                "separator_after": True
             },
             {
                 "name": "开始实验",
+                "short_name": "开始",
                 "obj_name": "start_experiment",
-                "method": self.start_experiment,
+                "icon": "▶",
+                "callback": self.start_experiment,
                 "app_state": AppState.CONFIGURING,
-                "tip": "单击此按钮会将开始实验，但是必须等待配置完成才能单击该按钮。"
+                "tip": "单击此按钮会将开始实验，但是必须等待配置完成才能单击该按钮。",
+                "disabled": False,
+                "separator_before": False,
+                "separator_after": False
             },
             {
                 "name": "暂停实验",
+                "short_name": "暂停",
                 "obj_name": "pause_experiment",
-                "method": self.pause_experiment,
+                "icon": "⏸",
+                "callback": self.pause_experiment,
                 "app_state": AppState.CONFIGURING,
                 "tip": "单击此按钮会将暂停实验，必须在实验中才能单击该按钮。",
-                "disabled": True
+                "disabled": True,
+                "separator_before": False,
+                "separator_after": False
             },
             {
                 "name": "停止实验",
+                "short_name": "停止",
                 "obj_name": "stop_experiment",
-                "method": self.stop_experiment,
+                "icon": "⏹",
+                "callback": self.stop_experiment,
                 "app_state": AppState.CONFIGURING,
                 "tip": "单击此按钮会将停止实验，并将实验数据保存。",
-                "disabled": True
+                "disabled": True,
+                "separator_before": False,
+                "separator_after": True
             },
             {
                 "name": "导出实验数据",
+                "short_name": "导出",
                 "obj_name": "export_experiment_datas",
-                "method": self.export_experiment_datas,
+                "icon": "💾",
+                "callback": self.export_experiment_datas,
                 "app_state": AppState.MONITORING,
                 "tip": "单击此按钮会将将实验数据保存。",
-                "disabled": True
+                "disabled": True,
+                "separator_before": False,
+                "separator_after": True
             },
             {
                 "name": "重置教程页",
+                "short_name": "重置教程",
                 "obj_name": "reset_guidance",
-                "method": self.reset_guidance,
+                "icon": "🔄",
+                "callback": self.reset_guidance,
                 "app_state": AppState.INITIALIZED,
                 "tip": "单击此按钮会将重置教程。",
-                "disabled": True
+                "disabled": True,
+                "separator_before": False,
+                "separator_after": True
             }
         ]
 
-        # 创建静态按钮
-        for i, button_config in enumerate(static_buttons):
-            action = QAction(button_config["name"], self)
-            action.setObjectName(button_config["obj_name"])
-            action.setToolTip(button_config["name"])
-            action.triggered.connect(button_config["method"])
+        # 创建动作并添加到工具栏
+        for button_config in toolbar_buttons:
+            if button_config["separator_before"]:
+                self.toolbar.addSeparator()
 
-            if button_config.get("disabled", False):
+            action = QAction(button_config["short_name"], self)
+            action.setObjectName(button_config["obj_name"])
+            action.setToolTip(button_config["tip"])
+            action.triggered.connect(button_config["callback"])
+            # 设置图标
+            if button_config["icon"]:
+                action.setText(button_config["icon"] + " " + button_config["short_name"])
+
+            if button_config["disabled"]:
                 action.setDisabled(True)
 
-            # 添加到工具栏动作列表
             self.tool_bar_actions.append({
                 "name": button_config["name"],
                 "obj_name": button_config["obj_name"],
@@ -472,180 +497,37 @@ class MainWindow_Index(ThemedWindow):
                 "tip": button_config["tip"]
             })
 
-            # 添加到工具栏
             self.toolbar.addAction(action)
 
-            # 记录静态按钮（用于插入动态按钮时定位）
-            if i == 0:
-                self.static_toolbar_actions.append(action)
-
-            # 在某些按钮后添加分隔符
-            if button_config["obj_name"] in ["window_exchange", "toggle_mode", "stop_experiment",
-                                             "export_experiment_datas"]:
+            if button_config["separator_after"]:
                 self.toolbar.addSeparator()
-
-        self.hide_common_tools()
-
-
     def create_menu_bar(self):
-        """创建菜单栏 - 触发工具栏切换"""
+    # 创建菜单
         for menu_dict in self.menu_name:
-            # 创建菜单动作
-            action = QAction(menu_dict['text'], self)
-            action.setObjectName(f"menu_{menu_dict['id']}")
-            action.setToolTip(menu_dict.get('tip', ""))
-
-            # 连接到工具栏切换方法
-            action.triggered.connect(lambda checked, menu_id=menu_dict['id']: self.switch_toolbar_content(menu_id))
-
-            # 添加到菜单栏
-            self.menuBar().addAction(action)
-
-            # 存储菜单动作信息
-            self.menu_bar_actions.append({
-                "name": menu_dict['text'],
-                "obj_name": f"menu_{menu_dict['id']}",
-                "action": action,
-                "menu_id": menu_dict['id'],
-                "app_state": AppState.INITIALIZED
-            })
-
-    def switch_toolbar_content(self, menu_id):
-        """根据菜单ID切换工具栏内容"""
-        # 清除当前工具栏的动态内容
-        self.clear_dynamic_toolbar_content()
-
-        # 记录当前激活的菜单
-        self.current_active_menu_id = menu_id
-
-        # 找到对应的菜单配置
-        current_menu_config = None
-        for menu_dict in self.menu_name:
-            if menu_dict.get('id') == menu_id:
-                current_menu_config = menu_dict
-                break
-
-        # 检查是否需要隐藏通用工具
-        hide_common_tools = current_menu_config.get('hide_common_tools', False) if current_menu_config else False
-
-        # 控制通用工具的显示/隐藏
-        if hide_common_tools:
-            self.hide_common_tools()
-        else:
-            self.show_common_tools()
-
-        # 找到属于这个菜单的所有模块
-        menu_modules = []
-        for module in self.modules:
-            module: BaseModule
-            module_menu_name = module.menu_name
-            if (module_menu_name is not None and
-                    "id" in module_menu_name and
-                    module_menu_name["id"] == menu_id):
-                menu_modules.append(module)
-
-        # 按模块标题排序
-        menu_modules.sort(key=lambda x: x.title)
-
-        # 确定插入位置
-        insert_position = self.get_dynamic_content_insert_position(hide_common_tools)
-
-        # 为每个模块创建工具栏按钮
-        for module in menu_modules:
-            module.set_main_gui(main_gui=self)
-            name = module.title
-            obj_name = f"dynamic_{module.name}"
-            action = QAction(name, self)
-            action.setObjectName(obj_name)
-            action.setToolTip(f"{name}")
-            action.triggered.connect(module.click_method)
-
-            # 添加到动态工具栏动作列表
-            self.dynamic_tool_bar_actions.append({
-                "name": name,
-                "obj_name": obj_name,
-                "action": action,
-                "app_state": module.app_state,
-                "menu_id": menu_id
-            })
-
-            # 插入到适当位置
-            if insert_position:
-                self.toolbar.insertAction(insert_position, action)
-            else:
-                self.toolbar.addAction(action)
-
-        # 添加分隔符（只有在显示通用工具且有动态内容时才添加）
-        if menu_modules and not hide_common_tools and self.static_toolbar_actions:
-            separator = self.toolbar.insertSeparator(self.static_toolbar_actions[0])
-            self.dynamic_toolbar_separators.append(separator)
-
-        # 更新菜单栏按钮的激活状态
-        self.update_menu_bar_active_state(menu_id)
-
-    def clear_dynamic_toolbar_content(self):
-        """清除工具栏中的动态内容"""
-        # 移除所有动态动作
-        for action_dict in self.dynamic_tool_bar_actions:
-            self.toolbar.removeAction(action_dict["action"])
-
-        # 移除所有动态分隔符
-        for separator in self.dynamic_toolbar_separators:
-            self.toolbar.removeAction(separator)
-
-        # 清空列表
-        self.dynamic_tool_bar_actions.clear()
-        self.dynamic_toolbar_separators.clear()
-
-        # 确保通用工具可见（当切换到其他菜单时）
-        self.show_common_tools()
-
-    def hide_common_tools(self):
-        """隐藏通用工具按钮"""
-        for action_dict in self.tool_bar_actions:
-            action_dict["action"].setVisible(False)
-
-        # 隐藏所有工具栏分隔符（除了动态分隔符）
-        for action in self.toolbar.actions():
-            if action.isSeparator() and action not in self.dynamic_toolbar_separators:
-                action.setVisible(False)
-
-    def show_common_tools(self):
-        """显示通用工具按钮"""
-        for action_dict in self.tool_bar_actions:
-            action_dict["action"].setVisible(True)
-
-        # 显示所有工具栏分隔符
-        for action in self.toolbar.actions():
-            if action.isSeparator():
-                action.setVisible(True)
-
-    def get_dynamic_content_insert_position(self, hide_common_tools):
-        """获取动态内容插入位置"""
-        if hide_common_tools:
-            # 如果隐藏通用工具，插入到工具栏开始位置（第一个动作）
-            actions = self.toolbar.actions()
-            return actions[0] if actions else None
-        else:
-            # 如果显示通用工具，插入到第一个静态按钮之前
-            if self.static_toolbar_actions:
-                return self.static_toolbar_actions[0]
-            return None
-
-    def update_menu_bar_active_state(self, active_menu_id):
-        """更新菜单栏按钮的激活状态"""
-        for action_dict in self.menu_bar_actions:
-            action = action_dict["action"]
-            menu_id = action_dict.get("menu_id")
-
-            if menu_id == active_menu_id:
-                # 设置为激活状态（可以通过样式表来显示不同的外观）
-                action.setCheckable(True)
-                action.setChecked(True)
-            else:
-                action.setCheckable(True)
-                action.setChecked(False)
-
+            # 创建文件菜单
+            menu = self.menuBar().addMenu(menu_dict['text'])
+            menu.setToolTip(menu_dict.get('tip',""))
+            # 从module加载组件...
+            for module in self.modules:
+                module:BaseModule
+                module_menu_name = module.menu_name
+                module_title = module.title
+                if module_menu_name is not None and module_menu_name != "" and "id" in module_menu_name and "id" in menu_dict and menu_dict["id"] == module_menu_name["id"]:
+                    # 创建menu action
+                    module.set_main_gui(main_gui=self)
+                    action = QAction(module_title, self)
+                    action.setObjectName(f"{module.name}")
+                    # 创建点击事件
+                    # action.triggered.connect(module.start_service)
+                    action.triggered.connect(module.click_method)
+                    # action.triggered.connect( module.adjustGUIPolicy)
+                    # action.triggered.connect( module.interface_widget.show)
+                    self.menu_bar_actions.append(
+                        {"name": module_title, "obj_name": f"{module.name}", "action": action, "app_state": module.app_state})
+                    # 将操作添加到文件菜单
+                    menu.addAction(action)
+                    menu.addSeparator()  # 添加分隔线
+        pass
     def _retranslateUi(self, **kwargs):
         _translate = QtCore.QCoreApplication.translate
         self.setWindowTitle(_translate(self.objectName(),global_setting.get_setting("configer")["window"]["title"]))
@@ -843,14 +725,16 @@ class MainWindow_Index(ThemedWindow):
         ).catch(lambda e: logger.error(e))
         pass
     def show_open_dialog(self,resolve,reject):
+        # 弹窗最晚持续时间
+        start_times = float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])/float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])*2*8+20
         if self.start_dialog is None:
-            self.start_dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+15,title="开始实验",message="正在启动气路...")
+            self.start_dialog = AnimatedLoadingDialog(countdown_seconds=start_times,title="开始实验",message="正在启动气路...")
         else:
             self.start_dialog.reset_progress()
             self.start_dialog.clear_list_data()
             self.start_dialog.deleteLater()
             self.start_dialog = AnimatedLoadingDialog(
-                countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+15,
+                countdown_seconds=start_times,
                 title="开始实验", message="正在启动气路...")
 
         # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)

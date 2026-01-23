@@ -1,8 +1,8 @@
-from PyQt6.QtCore import Qt, QTimer, QPoint
-from PyQt6.QtWidgets import QTableWidget, QToolTip, QAbstractItemView, QTableWidgetItem, QHeaderView
-from PyQt6.QtGui import QCursor, QBrush, QPen
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtWidgets import QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView
+from PyQt6.QtGui import QCursor
 
-from Module.new_monitor_data.ui.TableCellDetailDialog import CellDetailDialog
+from Module.new_monitor_data.ui.custom.table.TableCellDetailDialog import CellDetailDialog
 
 
 class BiDirectionalFrozenTable(QTableWidget):
@@ -79,8 +79,8 @@ class BiDirectionalFrozenTable(QTableWidget):
         self.left_frozen_indices.sort()
         self.right_frozen_indices.sort()
 
-        print(f"左侧冻结列索引: {self.left_frozen_indices}")
-        print(f"右侧冻结列索引: {self.right_frozen_indices}")
+        # print(f"左侧冻结列索引: {self.left_frozen_indices}")
+        # print(f"右侧冻结列索引: {self.right_frozen_indices}")
 
     def _create_frozen_tables(self):
         """根据冻结列数量创建冻结表格"""
