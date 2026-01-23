@@ -1163,13 +1163,16 @@ class ZOS_gas_path_system_run_thread(MyQThread):
                     logger.warning(f'参考气的氧气传感器测量值(%)经过校准后得:{pred}，得到的预测因子为：{factor}')
                     # 更新预测因子
                     self.factor = factor
-                for i in range(len(result_data)):
+
+                for i in range(len(result_data['data'])):
                     if result_data['data'][i]['desc'] == '氧气传感器测量值(%)':
                         result_data['data'][i]['value'] =pred
                         break
+                else:
+                    result_data["data"].append({"desc": "氧气传感器测量值(%)",
+                                                "value": pred})
 
-
-
+        logger.info(f"result_data:{result_data}")
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
             logger.info(f"数据存储成功，ID: {result.item_id}")
@@ -1249,13 +1252,15 @@ class ZOS_gas_path_system(Gas_path_system):
     def judge_zos_start_status(self,resolve,reject,r):
 
         if "ZOS状态状态：运行" in r['message']:
+            if not self.zos_start_status:
+                # 3）ZOS启动 只运行一次
+                AsyPromise(self.start_zos).then(
+                    lambda r2: resolve()
+                ).catch(lambda e: logger.error(e))
             self.zos_start_status = True
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | ZOS 启动状态:{'运行' if self.zos_start_status else '停止（预热）'}{r}-end.")
-            # 3）ZOS启动
-            AsyPromise(self.start_zos).then(
-               lambda r2: resolve()
-            ).catch(lambda e: logger.error(e))
+
         else:
             self.zos_start_status = False
             self.update_status_main_signal_gui_update.send(
@@ -1317,7 +1322,7 @@ class ZOS_gas_path_system(Gas_path_system):
                 # 当前为参考气 则下一个为第一个鼠笼
                 mouse_cage_index = 0
                 pass
-        AsyPromise(self.start_success).then(lambda r:resolve()).catch(lambda e: logger.error(e))
+
     def switch_mouse_cage_gas_by_zos_start(self,resolve,reject,port,mouse_cages_inc):
         """
         4) ZOS通道压力初始化:【1】 切换鼠笼气路
@@ -1414,19 +1419,19 @@ class ZOS_gas_path_system(Gas_path_system):
                                 self.circular_nums <= int(
                             global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])
                         )
-                        or
-                        (
-                                self.read_pressure_nums is None
-                                or
-                                self.read_pressure_nums >= float(
-                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) + float(
-                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
-                                or
-                                self.read_pressure_nums <= float(
-                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) - float(
-                            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
-
-                        )
+                        # or
+                        # (
+                        #         self.read_pressure_nums is None
+                        #         or
+                        #         self.read_pressure_nums >= float(
+                        #     global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) + float(
+                        #     global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
+                        #         or
+                        #         self.read_pressure_nums <= float(
+                        #     global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']) - float(
+                        #     global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_threshold'])
+                        #
+                        # )
                 )
                 and
                     not self.is_stop
@@ -1449,7 +1454,7 @@ class ZOS_gas_path_system(Gas_path_system):
 
             time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay']))
             self.circular_nums+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])
-        AsyPromise(self.start_success).then(lambda r:resolve()).reject(lambda e: logger.error(e))
+
     def handle_pressure_value_by_zos_start(self,resolve,reject,port,r):
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
