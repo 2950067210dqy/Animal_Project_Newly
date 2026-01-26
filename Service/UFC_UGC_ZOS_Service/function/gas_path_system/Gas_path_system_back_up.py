@@ -296,7 +296,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         # ).catch(lambda e: logger.error(e))
         AsyPromise(self.ufc_start).then(
             self.stop()
-        ).catch(lambda e:logger.error(e))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         pass
         pass
 
@@ -380,7 +380,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
             AsyPromise(self.finsh_start).then(
                 lambda r: resolve(r)
             ).catch(lambda e: reject(e))
-        ).catch(lambda e:logger.error(e))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
     def finsh_start(self,resolve, reject):
 
         self.parent_class.ufc_start_time_state = True
@@ -500,8 +500,8 @@ class UFC_gas_path_system_close_thread(MyQThread):
         AsyPromise(self.send_thread.Send).then(
             AsyPromise(self.finish_close).then(
                 lambda r:resolve()
-            ).catch(lambda e:logger.error(e))
-        ).catch(lambda e:logger.error(e))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
     def finish_close(self,resolve,reject):
         # 释放 正在等待ufc启动的地方
@@ -557,7 +557,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             # 从我们之前选择的运行鼠笼拿出来 每次循环访问一个
             AsyPromise(self.switch_mouse_cage_gas,port=port,mouse_cages_inc=mouse_cages_inc).then(
 
-            ).catch(lambda e:logger.error(e))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
             pass
         else:
             self.update_status_main_signal_gui_update.send(
@@ -565,7 +565,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             logger.error("UFC运行失败，未选择实例化实验设置的mouse_cages！")
             AsyPromise(self.finsh_one_batch,port=None, mouse_cages_inc=mouse_cages_inc).then(
 
-            ).catch(lambda e:logger.error(e))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
 
 
@@ -819,7 +819,7 @@ class UFC_gas_path_system(Gas_path_system):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 开始运行{'.'*100}")
 
-        AsyPromise(self.circular_running).then(lambda r:resolve(r)).catch(lambda e:logger.error(e))
+        AsyPromise(self.circular_running).then(lambda r:resolve(r)).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
 
         pass
@@ -1618,7 +1618,7 @@ class ZOS_gas_path_system(Gas_path_system):
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在启动 1.读取系统状态")
         AsyPromise(self.send_thread.Send).then(
                 lambda r:AsyPromise(self.judge_zos_start_status,r=r).then(lambda r:resolve()
-            ).catch(lambda e:logger.error(e))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         ).catch(lambda e:reject(e))
 
         pass

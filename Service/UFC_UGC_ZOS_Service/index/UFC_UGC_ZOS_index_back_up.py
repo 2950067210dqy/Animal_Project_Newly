@@ -342,8 +342,8 @@ class UFC_UGC_ZOS_index(MyQThread):
                 AsyPromise(self.UGC_gas_path_system_obj.start,).then(
                     AsyPromise(self.set_start_timers)
                 ).catch(lambda e:logger.error(f"{e}"))
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+            ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
         #等开始状态都结束
         if self.monitor_start_state_Thread is  None:
@@ -376,8 +376,8 @@ class UFC_UGC_ZOS_index(MyQThread):
                 self.UGC_gas_path_system_obj.run,
             ).then(
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.run)
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+            ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
         # 運行結束回調
         if self.auto_run_thread is not None and self.auto_run_thread.isRunning():
@@ -401,8 +401,8 @@ class UFC_UGC_ZOS_index(MyQThread):
                 self.UFC_gas_path_system_obj.stop,
             ).then(
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.stop)
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+            ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
         return p
         pass
@@ -419,8 +419,8 @@ class UFC_UGC_ZOS_index(MyQThread):
         p=AsyPromise(self.Zero_carlibration_obj.calibrate).then(
             lambda v: AsyPromise(
                 self.Range_carlibration_obj.calibrate
-            ).then().catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+            ).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
         return p
         pass
@@ -434,7 +434,7 @@ class UFC_UGC_ZOS_index(MyQThread):
     #状态检测
     def gas_state_check(self):
         p= AsyPromise(self.UFC_gas_state_check_obj.state_check).then(
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
         return p
         pass

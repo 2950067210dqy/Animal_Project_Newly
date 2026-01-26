@@ -61,6 +61,10 @@ class MyQThread(QThread):
         self.condition.wakeAll()  # 可能需要唤醒线程以便其能正常退出
         self.mutex.unlock()
         # self.terminate()
+    def deleteLater(self):
+        self.stop()
+        self.quit()
+        self.wait()
 
     def __del__(self):
         logger.debug(f"线程{self.name}被销毁!")
