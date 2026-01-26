@@ -271,7 +271,11 @@ class UFC_UGC_ZOS_index(MyQThread):
             self.monitor_start_state_Thread.stop()
             self.monitor_start_state_Thread.deleteLater()
             self.monitor_start_state_Thread = None
-        # 如果此时正在启动就关闭，就需要把启动的时候被阻塞的线程给唤醒然后给stop掉
+        # 如果此时正在启动就关闭，就需要把启动的时候一直在循环的线程和被阻塞的线程给唤醒然后给stop掉
+        if self.ZOS_gas_path_system_obj is not None:
+            self.ZOS_gas_path_system_obj.is_stop=True
+        if self.UFC_gas_path_system_obj is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_start_thread is not None:
+            self.UFC_gas_path_system_obj.ufc_gas_path_system_start_thread.is_stop=True
         global auto_wait_event,stop_flag
         stop_flag = True
         auto_wait_event.set()

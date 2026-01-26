@@ -80,6 +80,8 @@ class UFC_gas_path_system_start_thread(MyQThread):
     def __init__(self,name,update_status_main_signal_gui_update,parent_class):
         #基类
         self.parent_class = parent_class
+        #停止
+        self.is_stop=False
         # 更新主线程状态栏消息信号
         self.update_status_main_signal_gui_update: _PNamespaceSignal = update_status_main_signal_gui_update
         # 发送的数据结构
@@ -129,6 +131,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         pass
 
     def ufc_start(self, resolve, reject):
+        self.is_stop=False
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 启动-2.UFC启动")
@@ -189,6 +192,8 @@ class UFC_gas_path_system_start_thread(MyQThread):
         # 等待时间
         time_index = 0
         while time_index < float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']):
+            if self.is_stop:
+                reject()
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | UFC-启动 3.1 等待气泵和流量控制器开启，此过程需{time_index}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])}秒，等待流量控制器自动配置及运行")
             time_index += 1
@@ -758,6 +763,7 @@ class UFC_gas_path_system(Gas_path_system):
             self.ufc_gas_path_system_run_thread.deleteLater()
             self.ufc_gas_path_system_run_thread=None
         if self.ufc_gas_path_system_start_thread is not None:
+            self.ufc_gas_path_system_start_thread.is_stop=True
             self.ufc_gas_path_system_start_thread.stop()
             self.ufc_gas_path_system_start_thread.deleteLater()
             self.ufc_gas_path_system_start_thread=None
@@ -1411,7 +1417,9 @@ class ZOS_gas_path_system(Gas_path_system):
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         # 循环所有的通道进行压力初始化
         while mouse_cage_index is None or mouse_cage_index != len(mouse_cages_inc) :
-
+            # 如果被停止
+            if self.is_stop:
+                reject()
             AsyPromise(self.switch_mouse_cage_gas_UFC,port=port,mouse_cages_inc=mouse_cages_inc).then().catch(lambda e: logger.error(f"{e}"))
 
             if mouse_cage_index is not None:
