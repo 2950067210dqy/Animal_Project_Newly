@@ -3,7 +3,7 @@ import json
 import math
 import time
 import typing
-import threading  # 新增
+import threading
 
 from PyQt6.QtGui import QDoubleValidator, QColor
 from loguru import logger
@@ -20,7 +20,6 @@ from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus import Modbus_Type
 from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
-from public.function.Modbus.Modbus import ModbusRTUMaster
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeQt6 import ThemedWindow
 from PyQt6 import QtGui, QtCore
@@ -32,12 +31,7 @@ from PyQt6.QtWidgets import (
 )
 from public.util.time_util import time_util
 
-# ========== 常量定义 ==========
-
-
-
 # ========== 线程相关 ==========
-
 class read_queue_data_Thread(MyQThread):
     """读取队列数据的线程"""
 
@@ -45,6 +39,7 @@ class read_queue_data_Thread(MyQThread):
         super().__init__(name)
         self.queue = None
         self.Each_Mouse_Cage_detect_finished_signal: pyqtSignal = None
+        self.Not_Each_Mouse_Cage_detect_finished_signal : pyqtSignal = None
 
     def dosomething(self):
         if not self.queue.empty():
@@ -64,6 +59,12 @@ class read_queue_data_Thread(MyQThread):
                         if self.Each_Mouse_Cage_detect_finished_signal is not None:
                             self.Each_Mouse_Cage_detect_finished_signal.emit(message.data)
                         # logger.info(f"{self.name}_get_message_datas,{message.data}")
+                    case "Not_Each_Mouse_Cage_detect_finished":
+                        """
+                        气路模块解析
+                        """
+                        if self.Not_Each_Mouse_Cage_detect_finished_signal is not None:
+                            self.Not_Each_Mouse_Cage_detect_finished_signal.emit(message.data)
                     case _:
                         pass
             else:
@@ -80,6 +81,7 @@ read_queue_data_thread = read_queue_data_Thread(name="new_experiment_setting_tab
 class Tab_1(ThemedWindow):
     update_group_activation_signal = pyqtSignal(dict)
     Each_Mouse_Cage_detect_finished_signal = pyqtSignal(dict)
+    Not_Each_Mouse_Cage_detect_finished_signal = pyqtSignal(dict)
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         """窗口显示事件"""
         logger.warning("tab1——show")
@@ -126,6 +128,8 @@ class Tab_1(ThemedWindow):
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
 
+        self.mouse_cage_modules_status = None
+        self.reference_modules_status = None  # 专门用于参考气路
         if parent is not None:
             self.setParent(parent)
             self.setWindowFlags(QtCore.Qt.WindowType.Widget)
@@ -354,17 +358,25 @@ class Tab_1(ThemedWindow):
     def _init_function(self):
         """初始化功能"""
         self.init_btn_func()
-        self.update_group_activation_signal.connect(self.update_group_activation)
         self.Each_Mouse_Cage_detect_finished_signal.connect(self.each_Mouse_Cage_detect_update_state)
+        self.Not_Each_Mouse_Cage_detect_finished_signal.connect(self.not_each_Mouse_Cage_detect_update_state)
         global read_queue_data_thread
         read_queue_data_thread.update_group_activation_signal = self.update_group_activation_signal
         read_queue_data_thread.queue = global_setting.get_setting("send_message_queue")
         if read_queue_data_thread is not None and not read_queue_data_thread.isRunning():
             read_queue_data_thread.Each_Mouse_Cage_detect_finished_signal = self.Each_Mouse_Cage_detect_finished_signal
             read_queue_data_thread.start()
-    def each_Mouse_Cage_detect_update_state(self,state_data):
+        if read_queue_data_thread is not None and not read_queue_data_thread.isRunning():
+            read_queue_data_thread.Not_Each_Mouse_Cage_detect_finished_signal = self.Not_Each_Mouse_Cage_detect_finished_signal
+            read_queue_data_thread.start()
+
+    def each_Mouse_Cage_detect_update_state(self, state_data):
         logger.critical(f"TAB1_get_message_datas,{state_data}")
         pass
+
+    def not_each_Mouse_Cage_detect_update_state(self,state_data):
+        pass
+
     def init_btn_func(self):
         """初始化按钮功能"""
         refresh_port_btn: QPushButton = self.findChild(QPushButton, "tab_1_refresh_port_btn")
@@ -536,172 +548,9 @@ class Tab_1(ThemedWindow):
         send_message_queue = global_setting.get_setting("send_message_queue", None)
         if send_message_queue:
             send_message_queue.put(
-                ObjectQueueItem(origin="New_main_experiment_setting", to="main_monitor_data", title="start_all_modules_detection",
+      ObjectQueueItem(origin="New_main_experiment_setting", to="main_monitor_data", title="start_all_modules_detection",
 
                                 time=time_util.get_format_from_time(time.time())))
-
-
-
-
-
-
-
-
-    def send_detection_to_single_module(self, group_id, module_name, module_addr):
-        """向单个笼子的单个模块发送检测报文"""
-        try:
-            if group_id not in self.cage_enabled_status:
-                logger.warning(f"笼子 {group_id} 不在已启用列表中")
-                return
-
-            if group_id not in self.detecting_groups:
-                logger.warning(f"笼子 {group_id} 不在检测追踪中")
-                return
-
-            module_info = self.detecting_groups[group_id]['modules_status'].get(module_name)
-            if not module_info:
-                logger.warning(f"笼子 {group_id} 的模块 {module_name} 不在追踪中")
-                return
-
-            # 如果已收到响应，跳过重复发送
-            if module_info['response_received']:
-                logger.debug(f"笼子 {group_id} 的模块 {module_name} 已收到响应，跳过")
-                return
-
-            # 清空该模块的旧响应
-            with self.response_lock:
-                response_key = f"{group_id}_{module_name}"
-                if response_key in self.group_responses:
-                    del self.group_responses[response_key]
-                self.pending_requests.add(response_key)
-
-            # 更新发送计数
-            module_info['send_count'] += 1
-            send_count = module_info['send_count']
-            max_retries = module_info['max_retries']
-
-            logger.info(
-                f"向笼子 {group_id} 的模块 {module_name} 发送检测报文 "
-                f"(第 {send_count}/{max_retries} 次)"
-            )
-
-            # ==================== 构造检测报文 ====================
-            # slave_id = 笼子号*16 + 模块地址
-            slave_id = group_id * 16 + module_addr
-
-            self.send_message = {
-                'port': self.send_message['port'],
-                'slave_id': format(slave_id, '02X'),
-                'function_code': '03',
-                'data': ['00', '00', '00', '04'],
-                'group_id': group_id,
-                'module_name': module_name,
-            }
-
-            # 发送报文
-            self.send_data()
-
-            # ==================== 设置模块的超时检查 ====================
-            response_key = f"{group_id}_{module_name}"
-
-            if response_key in self.detection_timers and self.detection_timers[response_key]:
-                self.detection_timers[response_key].stop()
-
-            timer = QTimer()
-            timer.setSingleShot(True)
-            timer.timeout.connect(
-                lambda: self.check_module_response_timeout(group_id, module_name)
-            )
-            timer.start(module_info['timeout'])
-            self.detection_timers[response_key] = timer
-
-        except Exception as e:
-            logger.error(
-                f"向笼子 {group_id} 的模块 {module_name} 发送检测报文出错: {e}",
-                exc_info=True
-            )
-
-
-    def update_group_activation(self, response_data):
-        """
-        处理笼子的模块检测响应
-        改进：支持多模块检测，每个笼子可能有多个模块响应
-        """
-        try:
-            logger.debug(f"处理响应数据: {response_data}")
-
-            # ==================== 提取响应数据 ====================
-            group_id = None
-            module_name = None
-
-            if isinstance(response_data, dict):
-                if 'group_id' in response_data:
-                    group_id = response_data['group_id']
-                elif 'slave_id' in response_data:
-                    slave_id_int = int(response_data['slave_id'], 16) if isinstance(response_data['slave_id'], str) else \
-                    response_data['slave_id']
-                    group_id = slave_id_int // 16
-
-                module_name = response_data.get('module_name', 'UNKNOWN')
-
-            if group_id is None or module_name is None:
-                logger.warning(f"无法从响应中提取笼子号或模块名: {response_data}")
-                return
-
-            logger.info(f"收到笼子 {group_id} 的模块 {module_name} 的响应")
-
-            # ==================== 验证笼子 ====================
-            if group_id not in self.cage_enabled_status:
-                logger.warning(f"笼子 {group_id} 不在已启用列表中")
-                return
-
-            if group_id not in self.detecting_groups:
-                logger.warning(f"笼子 {group_id} 不在检测状态中")
-                return
-
-            # ==================== 验证模块 ====================
-            module_info = self.detecting_groups[group_id]['modules_status'].get(module_name)
-            if not module_info:
-                logger.warning(f"笼子 {group_id} 的模块 {module_name} 不在追踪中")
-                return
-
-            # ==================== 存储响应 ====================
-            response_key = f"{group_id}_{module_name}"
-            with self.response_lock:
-                self.group_responses[response_key] = response_data
-                self.pending_requests.discard(response_key)
-
-            # ==================== 更新模块状态 ====================
-            module_info['response_received'] = True
-            module_info['status'] = 'detected'
-
-            # 停止该模块的超时计时器
-            if response_key in self.detection_timers and self.detection_timers[response_key]:
-                self.detection_timers[response_key].stop()
-                del self.detection_timers[response_key]
-
-            # ==================== 更新检测到的模块集合 ====================
-            self.detecting_groups[group_id]['detected_modules'].add(module_name)
-
-            # 初始化笼子的模块状态字典
-            if group_id not in self.cage_modules_status:
-                self.cage_modules_status[group_id] = {}
-
-            self.cage_modules_status[group_id][module_name] = response_data
-
-            logger.info(
-                f"✓ 笼子 {group_id} 的模块 {module_name} 检测成功！ "
-                f"已检测模块: {self.detecting_groups[group_id]['detected_modules']}"
-            )
-
-            # ==================== 更新UI ====================
-            self.update_cage_ui_status(group_id, 'detecting')
-
-            # ==================== 检查检测完成 ====================
-            self.check_all_responses_received()
-
-        except Exception as e:
-            logger.error(f"处理响应出错: {e}", exc_info=True)
 
     def show_warning(self, title: str, message: str):
         """显示警告对话框"""
@@ -1092,7 +941,7 @@ class Tab_1(ThemedWindow):
 
         # 第4个 GroupBox（滑块）
         group_box4 = QGroupBox(
-            f"{module_value['desc']}-{module_value['config'][1]['value'][1]['desc']}"
+ f"{module_value['desc']}-{module_value['config'][1]['value'][1]['desc']}"
         )
         group_box4.setContentsMargins(10, 10, 10, 10)
         scroll_area_layout.addWidget(group_box4)
