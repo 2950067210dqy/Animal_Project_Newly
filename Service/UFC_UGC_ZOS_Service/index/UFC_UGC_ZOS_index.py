@@ -107,7 +107,6 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.UFC_gas_state_check_obj: UFC_Gas_State_Check = None
 
         self.zos_start_timer: PeriodicTimer = None
-        self.ufc_start_timer: PeriodicTimer = None
         self.calibration_start_timer: PeriodicTimer = None
         self.gas_state_check_timer: PeriodicTimer = None
         self.monitor_start_state_Thread: MyQThread = None
@@ -468,8 +467,7 @@ class UFC_UGC_ZOS_index(MyQThread):
     def close_timers(self):
         if self.zos_start_timer is not None :
             self.zos_start_timer.stop()
-        if self.ufc_start_timer is not None:
-            self.ufc_start_timer.stop()
+
         if self.calibration_start_timer is not None:
             self.calibration_start_timer.stop()
         if self.gas_state_check_timer is not None  :
