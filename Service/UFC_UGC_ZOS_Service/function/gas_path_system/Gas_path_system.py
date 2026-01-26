@@ -123,7 +123,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         #     lambda r: AsyPromise(self.ufc_start).then(
         #         self.stop()
         #     )
-        # ).catch(lambda e: logger.error(f"{e}"))
+        # ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         AsyPromise(self.ufc_start).then(
             self.stop()
         ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
@@ -156,6 +156,8 @@ class UFC_gas_path_system_start_thread(MyQThread):
         pass
 
     def gas_and_flow_rate_start(self, resolve, reject):
+        if self.is_stop:
+            reject()
         time.sleep(0.01)
         # 3气泵和流量控制器开启
         self.update_status_main_signal_gui_update.send(
@@ -189,6 +191,8 @@ class UFC_gas_path_system_start_thread(MyQThread):
         :param reject:
         :return:
         """
+        if self.is_stop:
+            reject()
         # 等待时间
         time_index = 0
         while time_index < float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']):
@@ -203,7 +207,8 @@ class UFC_gas_path_system_start_thread(MyQThread):
         ).catch(lambda e: reject(e))
 
     def finsh_start(self,resolve, reject):
-
+        if self.is_stop:
+            reject()
         self.parent_class.ufc_start_time_state = True
         # logger.critical(f"ufc_finish_start:{self.parent_class.ufc_start_time_state}")
         # 释放 正在等待ufc启动的地方
@@ -373,7 +378,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
                 logger.error("UFC运行失败，未选择串口！")
                 AsyPromise(self.finsh_one_batch, port=None, mouse_cages_inc=mouse_cages_inc).then(
 
-                ).catch(lambda e: logger.error(f"{e}"))
+                ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
                 return
             # 从我们之前选择的运行鼠笼拿出来 每次循环访问一个
             AsyPromise(self.switch_mouse_cage_gas_UFC,port=port,mouse_cages_inc=mouse_cages_inc).then(
@@ -425,8 +430,8 @@ class UFC_gas_path_system_run_thread(MyQThread):
             # 2. ZOS 切换鼠笼气路
             lambda r: AsyPromise(self.switch_mouse_cage_gas_by_zos_start, port=port, mouse_cages_inc=mouse_cages_inc).then(
                 lambda r:resolve()
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
     def switch_mouse_cage_gas_by_zos_start(self, resolve, reject, port, mouse_cages_inc):
         """
@@ -461,8 +466,8 @@ class UFC_gas_path_system_run_thread(MyQThread):
             # 2. 关闭ufc上个鼠笼的气路或者关闭参考气
             lambda r: AsyPromise(self.close_last_mouse_cage_gas_UFC, port=port, mouse_cages_inc=mouse_cages_inc).then(
                 lambda r: resolve()
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
     def close_last_mouse_cage_gas_UFC(self,resolve,reject,port,mouse_cages_inc):
         """
          UFC 2. ufc关闭上个鼠笼的气路或者关闭参考气
@@ -501,7 +506,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         #2.1 关闭zos上个鼠笼的气路或者关闭参考气
         AsyPromise(self.close_last_mouse_cage_gas_by_zos_start, port=port, mouse_cages_inc=mouse_cages_inc).then(
            lambda r:resolve()
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
 
         pass
@@ -543,7 +548,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
         AsyPromise(self.read_flow_rate_value_circulation, port=port, mouse_cages_inc=mouse_cages_inc).then(
             lambda r: resolve()
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
 
     def read_flow_rate_value_circulation(self,resolve,reject,port,mouse_cages_inc):
@@ -588,7 +593,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
 #       #等待60秒 ！弃用
         AsyPromise(self.finsh_one_batch, port=port, mouse_cages_inc=mouse_cages_inc).then(
             lambda r: resolve()
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
     def finsh_one_batch(self,resolve,reject,port,mouse_cages_inc):
         """
@@ -739,7 +744,7 @@ class UFC_gas_path_system(Gas_path_system):
         }
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            lambda _:AsyPromise(self.circular_running).then(lambda r: resolve(r)).catch(lambda e: logger.error(f"{e}"))
+            lambda _:AsyPromise(self.circular_running).then(lambda r: resolve(r)).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
     def circular_running(self,resolve,reject):
         # 循环运行
@@ -903,6 +908,7 @@ class UGC_gas_path_system(Gas_path_system):
         启动气路
         :return:
         """
+
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UGC 正在启动")
 
@@ -1110,7 +1116,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
                 logger.error("ZOS运行失败，未选择串口！")
                 AsyPromise(self.finsh_one_batch, port=None, mouse_cages_inc=mouse_cages_inc).then(
 
-                ).catch(lambda e: logger.error(f"{e}"))
+                ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
                 return
             # 因为UFC运行的时候同步切换了ZOS的通道，所以到ZOS运行时就不用在切换了，直接读
             AsyPromise(self.circular_read,port=port,mouse_cages_inc=mouse_cages_inc).then(
@@ -1164,8 +1170,8 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             # 2. 关闭上个鼠笼的气路或者关闭参考气
             lambda r: AsyPromise(self.close_last_mouse_cage_gas, port=port, mouse_cages_inc=mouse_cages_inc).then(
                 lambda r:resolve()
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
     def close_last_mouse_cage_gas(self,resolve,reject,port,mouse_cages_inc):
         """
          ZOS-运行 2. 关闭上个鼠笼的气路或者关闭参考气
@@ -1204,7 +1210,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
         AsyPromise(self.circular_read, port=port, mouse_cages_inc=mouse_cages_inc).then(
            lambda r:resolve()
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
     def circular_read(self,resolve,reject,port,mouse_cages_inc):
         """
         ZOS-运行 3. 循环读氧气值
@@ -1231,7 +1237,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         AsyPromise(self.send_thread.Send).then(
             # 2.处理15秒的氧气值
             lambda r: AsyPromise(self.handle_oxygen_value, port=port, r=r)
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
     def handle_oxygen_value(self,resolve,reject,port,r):
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
@@ -1281,7 +1287,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
         AsyPromise(self.finsh_one_batch, port=None, mouse_cages_inc=mouse_cages_inc).then(
             lambda r:resolve()
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
     def finsh_one_batch(self,resolve,reject,port,mouse_cages_inc):
         """
@@ -1354,13 +1360,14 @@ class ZOS_gas_path_system(Gas_path_system):
     def judge_zos_start_status(self,resolve,reject,r):
         if r is None or r.get('message',"") is None:
             reject("报文响应为 None")
-
+        if self.is_stop:
+            reject()
         if "ZOS状态状态：运行" in r.get('message',""):
             if not self.zos_start_status:
                 # 3）ZOS启动 只运行一次
                 AsyPromise(self.start_zos).then(
                     lambda r2: resolve()
-                ).catch(lambda e: logger.error(f"{e}"))
+                ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
             self.zos_start_status = True
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | ZOS 启动状态:{'运行' if self.zos_start_status else '停止（预热）'}{r}-end.")
@@ -1372,6 +1379,8 @@ class ZOS_gas_path_system(Gas_path_system):
             resolve()
     def start_zos(self,resolve,reject):
         # 3）ZOS启动
+        if self.is_stop:
+            reject()
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
@@ -1389,8 +1398,8 @@ class ZOS_gas_path_system(Gas_path_system):
         AsyPromise(self.send_thread.Send).then(
             #4) 完成启动
             lambda r: AsyPromise(self.start_success).then(lambda r: resolve()
-                                                               ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+                                                               ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
     def start_zos_cage_pressure_init(self,resolve,reject):
         """
         开始 ZOS通道压力初始化
@@ -1405,8 +1414,10 @@ class ZOS_gas_path_system(Gas_path_system):
         if port is None:
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+        if self.is_stop:
+            reject()
         AsyPromise(self.circular_once_start_zos_pressure_init, port=port).then(lambda r: resolve()
-                                                                               ).catch(lambda e: logger.error(f"{e}"))
+                                                                               ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         resolve()
     def circular_once_start_zos_pressure_init(self,resolve,reject,port):
         # 4) ZOS通道压力初始化
@@ -1416,11 +1427,13 @@ class ZOS_gas_path_system(Gas_path_system):
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         # 循环所有的通道进行压力初始化
+        if self.is_stop:
+            reject()
         while mouse_cage_index is None or mouse_cage_index != len(mouse_cages_inc) :
             # 如果被停止
             if self.is_stop:
                 reject()
-            AsyPromise(self.switch_mouse_cage_gas_UFC,port=port,mouse_cages_inc=mouse_cages_inc).then().catch(lambda e: logger.error(f"{e}"))
+            AsyPromise(self.switch_mouse_cage_gas_UFC,port=port,mouse_cages_inc=mouse_cages_inc).then().catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
             if mouse_cage_index is not None:
                 mouse_cage_index = mouse_cage_index + 1
@@ -1438,6 +1451,8 @@ class ZOS_gas_path_system(Gas_path_system):
         :param mouse_cages_inc:
         :return:
         """
+        if self.is_stop:
+            reject()
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         logger.critical(f"mouse_cages_inc:{mouse_cages_inc},mouse_cage_index:{mouse_cage_index}")
         if mouse_cage_index is not None:
@@ -1463,8 +1478,8 @@ class ZOS_gas_path_system(Gas_path_system):
             # 2. 关闭上个鼠笼的气路或者关闭参考气
             lambda r: AsyPromise(self.switch_mouse_cage_gas_by_zos_start, port=port, mouse_cages_inc=mouse_cages_inc).then(
                 lambda r: resolve()
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
     def switch_mouse_cage_gas_by_zos_start(self,resolve,reject,port,mouse_cages_inc):
         """
@@ -1475,6 +1490,8 @@ class ZOS_gas_path_system(Gas_path_system):
         :param mouse_cages_inc:
         :return:
         """
+        if self.is_stop:
+            reject()
         mouse_cage_index = global_setting.get_setting("cage_number_list_index",None)
         if mouse_cage_index is not None:
             mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index]-1
@@ -1499,8 +1516,8 @@ class ZOS_gas_path_system(Gas_path_system):
             # 2. 关闭上个鼠笼的气路或者关闭参考气
             lambda r: AsyPromise(self.close_last_mouse_cage_gas_UFC, port=port, mouse_cages_inc=mouse_cages_inc).then(
                 lambda r:resolve()
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
     def close_last_mouse_cage_gas_UFC(self, resolve, reject, port, mouse_cages_inc):
         """
          UFC 2. 关闭上个鼠笼的气路或者关闭参考气
@@ -1511,6 +1528,8 @@ class ZOS_gas_path_system(Gas_path_system):
         :param port:
         :return:
         """
+        if self.is_stop:
+            reject()
         time.sleep(0.01)
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         # 当前为参考气 则关闭最后一个鼠笼
@@ -1537,7 +1556,7 @@ class ZOS_gas_path_system(Gas_path_system):
         # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
         AsyPromise(self.close_last_mouse_cage_gas_by_zos_start, port=port, mouse_cages_inc=mouse_cages_inc).then(
             lambda r: resolve()
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
         pass
     def close_last_mouse_cage_gas_by_zos_start(self,resolve,reject,port,mouse_cages_inc):
@@ -1551,6 +1570,8 @@ class ZOS_gas_path_system(Gas_path_system):
         :param port:
         :return:
         """
+        if self.is_stop:
+            reject()
         time.sleep(0.01)
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         # 当前为参考气 则关闭最后一个鼠笼
@@ -1579,7 +1600,7 @@ class ZOS_gas_path_system(Gas_path_system):
         # 3 循环读取压力值 （推荐每1秒读取一次）（读取5次）
         AsyPromise(self.circular_read_pressure_num_by_zos_start, port=port, mouse_cages_inc=mouse_cages_inc).then(
            lambda r:resolve()
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
 
 
@@ -1593,7 +1614,8 @@ class ZOS_gas_path_system(Gas_path_system):
         :return:
         """
 
-
+        if self.is_stop:
+            reject()
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
 
         # 当前循环5次 每秒1次 并且压力值稳定了否则继续循环
@@ -1618,9 +1640,10 @@ class ZOS_gas_path_system(Gas_path_system):
 
                         )
                 )
-                and
-                    not self.is_stop
+
         ):
+            if  self.is_stop:
+                reject()
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | ZOS-启动 4) ZOS通道压力初始化:【3】. 循循环读取压力值 （推荐每1秒读取一次）（读取5次） 循环读取{'鼠笼' + str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的压力值，当前：{self.circular_nums}/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])}S")
             # 3.循环读取CO2浓度
@@ -1635,12 +1658,14 @@ class ZOS_gas_path_system(Gas_path_system):
             AsyPromise(self.send_thread.Send).then(
                 # 2.处理压力值
                 lambda r: AsyPromise(self.handle_pressure_value_by_zos_start, port=port, r=r)
-            ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
             time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay']))
             self.circular_nums+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])
 
     def handle_pressure_value_by_zos_start(self,resolve,reject,port,r):
+        if self.is_stop:
+            reject()
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         #读取值
@@ -1665,6 +1690,8 @@ class ZOS_gas_path_system(Gas_path_system):
     def start_success(self,resolve,reject):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS 启动完成。")
+        if self.is_stop:
+            reject()
         resolve()
 
     def start(self,resolve,reject):

@@ -103,7 +103,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         #     lambda r: AsyPromise(self.ufc_start).then(
         #         self.stop()
         #     )
-        # ).catch(lambda e: logger.error(f"{e}"))
+        # ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         AsyPromise(self.ufc_start).then(
             self.stop()
         )
@@ -322,7 +322,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             AsyPromise(self.send_thread.Send).then(
                 # 3 循环读取流量值 （推荐每2秒读取一次）（原定为15秒）
                 lambda r:AsyPromise(self.read_flow_rate_value_circulation,port=port,mouse_cages_inc=mouse_cages_inc)
-            ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
             pass
         pass
@@ -349,7 +349,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
 
         #4.关闭x号鼠笼
-        AsyPromise(self.close_ufc_mouse_cage_gas, port=port, mouse_cages_inc=mouse_cages_inc).then().catch(lambda e: logger.error(f"{e}"))
+        AsyPromise(self.close_ufc_mouse_cage_gas, port=port, mouse_cages_inc=mouse_cages_inc).then().catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
     def close_ufc_mouse_cage_gas(self,resolve,reject,port,mouse_cages_inc):
         """
         #4关闭x号鼠笼
@@ -727,7 +727,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         AsyPromise(self.send_thread.Send).then(
             # 2.传感器故障检测 如果在非调零状态下，氧浓度异常，小于某一个阈值（如1%），检查传感器状态
             lambda r:AsyPromise(self.check_senior_state,port=port,r=r)
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
         pass
     def check_senior_state(self,resolve,reject,port,r):

@@ -720,9 +720,9 @@ class MainWindow_Index(ThemedWindow):
             queue.put(           message_struct)
         AsyPromise(self.start_update_gui).then(
             lambda _:AsyPromise(self.show_open_dialog).then(
-                lambda _:AsyPromise(self.start_open_window).then().catch(lambda e: logger.error(f"{e}"))
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+                lambda _:AsyPromise(self.start_open_window).then().catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         pass
     def show_open_dialog(self,resolve,reject):
         # 弹窗最晚持续时间
@@ -915,9 +915,9 @@ class MainWindow_Index(ThemedWindow):
 
                     lambda _:AsyPromise(self.stop_update_gui).then(
 
-                        ).catch(lambda e: logger.error(f"{e}"))
+                        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
-                ).catch(lambda e: logger.error(f"{e}"))
+                ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
             ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误") )
 

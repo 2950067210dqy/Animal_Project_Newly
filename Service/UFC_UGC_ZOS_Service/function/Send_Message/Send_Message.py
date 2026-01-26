@@ -47,22 +47,22 @@ class Send_Message:
 
                 # 如果发送状态为True，返回成功结果
                 if send_state:
-                    logger.info(f"第 {attempt + 1} 次尝试发送成功")
+                    logger.info(f"第 {attempt + 1} 次尝试发送报文{self.send_message['slave_id']}{self.send_message['function_code']}{self.send_message['data']}成功")
                     return response, response_hex, send_state, return_data
                 else:
-                    logger.warning(f"第 {attempt + 1} 次尝试发送失败，send_state=False")
+                    logger.warning(f"第 {attempt + 1} 次尝试发送报文{self.send_message['slave_id']}{self.send_message['function_code']}{self.send_message['data']}失败，send_state=False")
                     if attempt < max_retries:
-                        logger.info(f"准备进行第 {attempt + 2} 次重试...")
+                        logger.info(f"准备进行第 {attempt + 2} 次重试发送报文{self.send_message['slave_id']}{self.send_message['function_code']}{self.send_message['data']}...")
                         time.sleep(0.1)  # 重试前短暂延迟
                     else:
                         # 最后一次尝试也失败了
-                        logger.error(f"经过 {max_retries + 1} 次尝试，发送仍然失败")
+                        logger.error(f"经过 {max_retries + 1} 次尝试，发送报文{self.send_message['slave_id']}{self.send_message['function_code']}{self.send_message['data']}仍然失败")
                         return response, response_hex, send_state, return_data
 
             except Exception as e:
-                logger.error(f"第 {attempt + 1} 次发送尝试出现异常: {e}")
+                logger.error(f"第 {attempt + 1} 次发送报文{self.send_message['slave_id']}{self.send_message['function_code']}{self.send_message['data']}尝试出现异常: {e}")
                 if attempt < max_retries:
-                    logger.info(f"准备进行第 {attempt + 2} 次重试...")
+                    logger.info(f"准备进行第 {attempt + 2} 次重试报文{self.send_message['slave_id']}{self.send_message['function_code']}{self.send_message['data']}...")
                     time.sleep(0.1)  # 重试前短暂延迟
                 else:
                     # 重新抛出异常
