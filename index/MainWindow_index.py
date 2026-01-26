@@ -727,15 +727,15 @@ class MainWindow_Index(ThemedWindow):
     def show_open_dialog(self,resolve,reject):
         # 弹窗最晚持续时间
         logger.critical("1231")
-        start_times = float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])/float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])*2*8+20
+        start_wait_times = float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])/float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])*2*8+20
         if self.start_dialog is None:
-            self.start_dialog = AnimatedLoadingDialog(countdown_seconds=start_times,title="开始实验",message="正在启动气路...")
+            self.start_dialog = AnimatedLoadingDialog(countdown_seconds=start_wait_times,title="开始实验",message="正在启动气路...")
         else:
             self.start_dialog.reset_progress()
             self.start_dialog.clear_list_data()
             self.start_dialog.deleteLater()
             self.start_dialog = AnimatedLoadingDialog(
-                countdown_seconds=start_times,
+                countdown_seconds=start_wait_times,
                 title="开始实验", message="正在启动气路...")
 
         # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
@@ -947,14 +947,15 @@ class MainWindow_Index(ThemedWindow):
         pass
 
     def show_stop_dialog(self,resolve,reject):
+        stop_wait_times = float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + 30
         if self.stop_dialog is None:
-            self.stop_dialog = AnimatedLoadingDialog(countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+15,title="停止实验",message="正在停止实验...")
+            self.stop_dialog = AnimatedLoadingDialog(countdown_seconds=stop_wait_times,title="停止实验",message="正在停止实验...")
         else:
             self.stop_dialog.reset_progress()
             self.stop_dialog.clear_list_data()
             self.stop_dialog.deleteLater()
             self.stop_dialog = AnimatedLoadingDialog(
-                countdown_seconds=float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+15,
+                countdown_seconds=stop_wait_times,
                 title="停止实验",message="正在停止实验...")
 
         # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)

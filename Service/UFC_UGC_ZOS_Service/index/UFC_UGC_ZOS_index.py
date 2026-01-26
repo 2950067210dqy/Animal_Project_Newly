@@ -80,7 +80,7 @@ class Monitor_start_state_Thread(MyQThread):
 
     def dosomething(self):
         # logger.critical(f"UFC:{self.UFC_gas_path_system_obj.ufc_start_time_state},ZOS:{self.ZOS_gas_path_system_obj.zos_start_status}" )
-        if self.UFC_gas_path_system_obj.ufc_start_time_state and self.ZOS_gas_path_system_obj.zos_start_status:
+        if self.ZOS_gas_path_system_obj.zos_start_status:
 
             self.update_start_state_signal.send()
         time.sleep(1)
@@ -450,8 +450,7 @@ class UFC_UGC_ZOS_index(MyQThread):
     def pause_timers(self):
         if self.zos_start_timer is not None and self.zos_start_timer.is_active():
             self.zos_start_timer.pause()
-        if self.ufc_start_timer is not None and self.ufc_start_timer.is_active():
-            self.ufc_start_timer.pause()
+
         if self.calibration_start_timer is not None and self.calibration_start_timer.is_active():
             self.calibration_start_timer.pause()
         if self.gas_state_check_timer is not None and self.gas_state_check_timer.is_active():
@@ -460,8 +459,7 @@ class UFC_UGC_ZOS_index(MyQThread):
     def resume_timers(self):
         if self.zos_start_timer is not None:
             self.zos_start_timer.resume()
-        if self.ufc_start_timer is not None:
-            self.ufc_start_timer.resume()
+
         if self.calibration_start_timer is not None:
             self.calibration_start_timer.resume()
         if self.gas_state_check_timer is not None:
@@ -512,19 +510,3 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.zos_start_timer.set_task(self.ZOS_gas_path_system_obj.zos_start_timer_task)
         self.zos_start_timer.start()
 
-    def set_ufc_start_timer(self):
-        try:
-            self.ufc_start_timer = PeriodicTimer(
-                interval_ms=float(
-                    global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time_delay']) * 1000,
-                max_duration_ms=float(
-                    global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time']) * 1000,
-                task=None,
-                run_in_thread=True,
-                timer_finished_callback=self.UFC_gas_path_system_obj.check_ufc_start_time_state,
-                run_immediately=True
-            )
-        except Exception as e:
-            logger.error(f"{e}")
-        self.ufc_start_timer.set_task(self.UFC_gas_path_system_obj.ufc_start_timer_task)
-        self.ufc_start_timer.start()

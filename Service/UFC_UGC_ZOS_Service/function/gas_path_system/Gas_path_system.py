@@ -202,7 +202,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | UFC-启动 3.1 等待气泵和流量控制器开启，此过程需{time_index}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])}秒，等待流量控制器自动配置及运行")
             time_index += 1
-            time.sleep(1)
+            time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time_delay']))
         AsyPromise(self.finsh_start).then(
             lambda r: resolve(r)
         ).catch(lambda e: reject(e))
@@ -314,7 +314,13 @@ class UFC_gas_path_system_close_thread(MyQThread):
         )
     def close_UFC_valve(self,resolve,reject,port):
         """4.UFC阀门关闭 让步骤3延迟1分钟在关闭"""
-        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time']))
+        # 等待时间
+        time_index = 0
+        while time_index < float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']):
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | UFC-停止 3.1 等待气泵及设定鼠笼流量控制器关闭，此过程需{time_index}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])}秒，等待流量控制器自动关闭")
+            time_index += 1
+            time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time_delay']))
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list(f"000B0000"),
@@ -628,8 +634,7 @@ class UFC_gas_path_system(Gas_path_system):
     def __init__(self):
         super().__init__()
 
-        #记录ufc等待的1分钟状态
-        self.ufc_start_time_state = False
+
         #开启线程
         self.ufc_gas_path_system_start_thread = UFC_gas_path_system_start_thread(
             name="UFC_gas_path_system_start_thread",
@@ -699,19 +704,6 @@ class UFC_gas_path_system(Gas_path_system):
         global wait_UFC_start_finish_event
         wait_UFC_start_finish_event.wait()
         resolve()
-
-    def ufc_start_timer_task(self,elapsed_ms):
-        #ufc 气泵及设定鼠笼流量控制器开启 此过程需1分钟，等待流量控制器自动配置及运行
-
-
-
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC 气泵及设定鼠笼流量控制器开启 此过程需{int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['start_wait_time'])}s(当前{elapsed_ms//1000}s)，等待流量控制器自动配置及运行 .")
-
-    def check_ufc_start_time_state(self):
-        #定时器结束调用
-        # logger.error("check_ufc_start_time_state")
-        self.ufc_start_time_state =True
 
     """start end"""
 
