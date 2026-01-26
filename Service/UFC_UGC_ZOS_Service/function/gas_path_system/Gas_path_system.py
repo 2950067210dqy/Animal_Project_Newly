@@ -125,8 +125,9 @@ class UFC_gas_path_system_start_thread(MyQThread):
         #     )
         # ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         AsyPromise(self.ufc_start).then(
-            self.stop()
+
         ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        self.stop()
         pass
         pass
 
@@ -215,6 +216,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         global wait_UFC_start_finish_event
         wait_UFC_start_finish_event.set()
         wait_UFC_start_finish_event.clear()
+
         resolve()
 class UFC_gas_path_system_close_thread(MyQThread):
     """
@@ -1432,7 +1434,7 @@ class ZOS_gas_path_system(Gas_path_system):
         while mouse_cage_index is None or mouse_cage_index != len(mouse_cages_inc) :
             # 如果被停止
             if self.is_stop:
-                reject()
+                break
             AsyPromise(self.switch_mouse_cage_gas_UFC,port=port,mouse_cages_inc=mouse_cages_inc).then().catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
             if mouse_cage_index is not None:
@@ -1441,7 +1443,8 @@ class ZOS_gas_path_system(Gas_path_system):
                 # 当前为参考气 则下一个为第一个鼠笼
                 mouse_cage_index = 0
                 pass
-
+        if self.is_stop:
+            reject()
     def switch_mouse_cage_gas_UFC(self, resolve, reject, port, mouse_cages_inc):
         """
         UFC切换鼠笼气路
@@ -1643,7 +1646,7 @@ class ZOS_gas_path_system(Gas_path_system):
 
         ):
             if  self.is_stop:
-                reject()
+                break
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | ZOS-启动 4) ZOS通道压力初始化:【3】. 循循环读取压力值 （推荐每1秒读取一次）（读取5次） 循环读取{'鼠笼' + str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的压力值，当前：{self.circular_nums}/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])}S")
             # 3.循环读取CO2浓度
@@ -1662,7 +1665,8 @@ class ZOS_gas_path_system(Gas_path_system):
 
             time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay']))
             self.circular_nums+=int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])
-
+        if self.is_stop:
+            reject()
     def handle_pressure_value_by_zos_start(self,resolve,reject,port,r):
         if self.is_stop:
             reject()
