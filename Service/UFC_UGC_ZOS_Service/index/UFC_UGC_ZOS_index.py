@@ -204,13 +204,13 @@ class UFC_UGC_ZOS_index(MyQThread):
         global stop_flag
         stop_flag = False
         p = AsyPromise(self.ZOS_gas_path_system_obj.start).then(
-            AsyPromise(
+            lambda _:AsyPromise(
                 self.UFC_gas_path_system_obj.start,
             ).then(
-                AsyPromise(self.UGC_gas_path_system_obj.start).then(
+                lambda _:AsyPromise(self.UGC_gas_path_system_obj.start).then(
 
-                    AsyPromise(self.set_start_timers).then(
-                        AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init)
+                    lambda _:AsyPromise(self.set_start_timers).then(
+                        lambda _:AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init)
                     ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
                 ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
             ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
@@ -375,7 +375,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         :return:
         """
         p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
-            AsyPromise(
+            lambda _:AsyPromise(
                 self.Range_carlibration_obj.calibrate
             ).then(
                 lambda r:r()
@@ -523,6 +523,6 @@ class UFC_UGC_ZOS_index(MyQThread):
                 run_immediately=True
             )
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         self.ufc_start_timer.set_task(self.UFC_gas_path_system_obj.ufc_start_timer_task)
         self.ufc_start_timer.start()

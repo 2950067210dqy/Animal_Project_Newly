@@ -396,7 +396,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
             self.send_response_text(
                 f"{time_util.get_format_from_time(time.time())} | 设备: {self.ports[index]['device']}" + f" #{self.ports[index]['description']}" + "  已被选中!")
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
     # 往响应栏添加信息
     def send_response_text(self, text):
@@ -441,7 +441,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
         try:
             dt = datetime.strptime(time_part, "%Y-%m-%d %H:%M:%S.%f")
         except ValueError as e:
-            logger.error(e)
+            logger.error(f"{e}")
             # 如果没有毫秒，退回简单解析
             dt = datetime.strptime(time_part, "%Y-%m-%d %H:%M:%S")
         return dt
@@ -553,7 +553,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
             ).then(
                 AsyPromise(self.UGC_gas_path_system_obj.start,).then(
                     AsyPromise(self.set_start_timers)
-                ).catch(lambda e:logger.error(f"{e}"))
+                ).catch(lambda e:AsyPromise.log_and_reject(e, logger, "错误"))
             ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
@@ -736,7 +736,7 @@ class UFC_UGC_ZOS_index(ThemedWindow):
                 run_immediately=True
             )
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         self.ufc_start_timer.finished.connect(self.UFC_gas_path_system_obj.check_ufc_start_time_state)
         self.ufc_start_timer.set_task(self.UFC_gas_path_system_obj.ufc_start_timer_task)
         self.ufc_start_timer.start()

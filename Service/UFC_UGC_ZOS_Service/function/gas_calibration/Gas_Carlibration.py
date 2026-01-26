@@ -84,7 +84,7 @@ class Zero_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 2.校零气路（Zero气）电磁阀开
             lambda r: AsyPromise(self.solenoid_valve_of_zero_gas_open,port=port)
-        ).catch(lambda e: logger.error(e))
+        ).catch(lambda e: logger.error(f"{e}"))
         pass
     #2.校零气路（Zero气）电磁阀开
     def solenoid_valve_of_zero_gas_open(self,resolve,reject,port):
@@ -275,7 +275,7 @@ class Zero_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |  零点标定 7 ugc sample电磁阀打开")
         AsyPromise(self.send_thread.Send).then(
             # 8 标定完成。
-            AsyPromise(self.finish_calibration).then(
+            lambda _:AsyPromise(self.finish_calibration).then(
                 lambda r: resolve()
             ).catch(lambda e: reject(e))
 
@@ -322,7 +322,7 @@ class Range_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 2.ugc span电磁阀打开。
             lambda r: AsyPromise(self.ugc_span_open,port=port)
-        ).catch(lambda e: logger.error(e))
+        ).catch(lambda e: logger.error(f"{e}"))
         pass
     def ugc_span_open(self,resolve,reject,port):
         # 2.ugc span电磁阀打开。
@@ -340,7 +340,7 @@ class Range_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 3.循环采样zos氧浓度
             lambda r: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=port)
-        ).catch(lambda e: logger.error(e))
+        ).catch(lambda e: logger.error(f"{e}"))
         pass
     def cyclic_sampling_of_zos_oxygen_sensor(self,resolve,reject,port):
         # 3.循环采样zos氧浓度
@@ -459,7 +459,7 @@ class Range_Carlibration(Gas_Carlibration):
             f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 7. ugc sample电磁阀打开")
         AsyPromise(self.send_thread.Send).then(
             # 8 标定完成
-            AsyPromise(self.finish_calibration).then(
+            lambda _:AsyPromise(self.finish_calibration).then(
                 lambda r: resolve()
             ).catch(lambda e: reject(e))
         ).catch(lambda e: reject(e))

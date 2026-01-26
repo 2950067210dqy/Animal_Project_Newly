@@ -45,7 +45,7 @@ class Send_Message:
 
             except Exception as e:
                 self.modbus.close()
-                logger.error(e)
+                logger.error(f"{e}")
                 reject(e)
             finally:
                 self.modbus.close()
@@ -85,7 +85,7 @@ class Send_Message:
 
             except Exception as e:
                 self.modbus.close()
-                logger.error(e)
+                logger.error(f"{e}")
                 return_data=None
                 parser_message=None
             finally:

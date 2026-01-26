@@ -336,12 +336,12 @@ class UFC_UGC_ZOS_index(MyQThread):
     #启动按钮事件 启动气路
     def start_btn_handle(self):
         p= AsyPromise(self.ZOS_gas_path_system_obj.start).then(
-            AsyPromise(
+            lambda _:AsyPromise(
                 self.UFC_gas_path_system_obj.start,
             ).then(
-                AsyPromise(self.UGC_gas_path_system_obj.start,).then(
-                    AsyPromise(self.set_start_timers)
-                ).catch(lambda e:logger.error(f"{e}"))
+                lambda _:AsyPromise(self.UGC_gas_path_system_obj.start,).then(
+                    lambda _:AsyPromise(self.set_start_timers)
+                ).catch(lambda e:AsyPromise.log_and_reject(e, logger, "错误"))
             ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
         ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
@@ -358,7 +358,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         #         auto_wait_event.clear()
         #         self.auto_run_thread.start_finish_signal.emit()
         #     except Exception as e:
-        #         logger.error(e)
+        #         logger.error(f"{e}")
 
 
         return p
@@ -595,7 +595,7 @@ class UFC_UGC_ZOS_index(MyQThread):
                 run_immediately=True
             )
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         self.ufc_start_timer.set_task(self.UFC_gas_path_system_obj.ufc_start_timer_task)
         # self.ufc_start_timer.finished.connect(self.UFC_gas_path_system_obj.check_ufc_start_time_state)
         self.ufc_start_timer.start()

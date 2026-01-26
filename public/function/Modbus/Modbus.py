@@ -116,7 +116,7 @@ class ModbusRTUMaster:
                 self.ser.write(frame)
 
             except Exception as e:
-                logger.error(e)
+                logger.error(f"{e}")
             time.sleep(float(global_setting.get_setting('monitor_data')['SEND']['get_response_delay']))
 
             response = self.ser.read(256)

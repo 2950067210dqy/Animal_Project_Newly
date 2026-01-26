@@ -132,7 +132,11 @@ class AsyPromise:
         def _wrap_on_rejected(reason):
             if on_rejected:
                 return on_rejected(reason)
-            raise reason
+            # 确保 reason 是异常对象
+            if isinstance(reason, BaseException):
+                raise reason
+            else:
+                raise Exception(str(reason))
 
         if self._state == AsyPromise.RESOLVED:
             return AsyPromise(lambda resolve, reject: resolve(_wrap_on_fulfilled(self._value)))

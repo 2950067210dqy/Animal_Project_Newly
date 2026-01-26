@@ -119,7 +119,7 @@ class Send_thread(MyQThread):
                     pass
                 self.is_start = False
             except Exception as e:
-                logger.error(e)
+                logger.error(f"{e}")
             finally:
                 self.is_start = False
             time.sleep(1)
@@ -224,7 +224,7 @@ class Tab_3(ThemedWindow):
             self.send_response_text(
                 f"{time_util.get_format_from_time(time.time())}- 设备: {self.ports[index]['device']}" + f" #{self.ports[index]['description']}" + "  已被选中!")
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
     def send_response_text(self, text):
@@ -292,7 +292,7 @@ class Tab_3(ThemedWindow):
                         self.send_thread.set_send_message(self.send_message)
                         self.send_thread.is_start = True
                     except Exception as e:
-                        logger.error(e)
+                        logger.error(f"{e}")
                 else:
                     message_struct = ObjectQueueItem(to="main_monitor_data",
                                                      data=self.send_message,
@@ -301,7 +301,7 @@ class Tab_3(ThemedWindow):
                     logger.debug(f"tab_3开始发送消息:{message_struct}")
                 pass
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
             self.send_response_text(e)
 
     # 判断是否是16进制

@@ -77,7 +77,7 @@ class Send_Message:
 
             except Exception as e:
 
-                logger.error(e)
+                logger.error(f"{e}")
                 reject(e)
             finally:
 
@@ -138,7 +138,7 @@ class Send_Message:
 
             except Exception as e:
 
-                logger.error(e)
+                logger.error(f"{e}")
                 return_data = None
                 parser_message = None
             finally:

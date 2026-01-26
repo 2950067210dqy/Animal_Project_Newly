@@ -13,7 +13,7 @@ class DataCaculation:
         try:
             self.sqlite_manager.close()
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
     def caculate_data(self,columns:list = [],datas=[]):
         """
         计算数据

@@ -485,7 +485,7 @@ class deep_camera_config_dialog(QDialog):
             logger.debug(f"鼠笼1的{choose_value['serial']}已经被选中")
 
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
     def selection_change_mouse_cage_2_combox(self, data_index):
@@ -520,7 +520,7 @@ class deep_camera_config_dialog(QDialog):
             logger.debug(f"鼠笼2的{choose_value['serial']}已经被选中")
 
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
     def selection_change_mouse_cage_3_combox(self, data_index):
@@ -554,7 +554,7 @@ class deep_camera_config_dialog(QDialog):
             logger.debug(f"鼠笼3的{choose_value['serial']}已经被选中")
 
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
     def selection_change_mouse_cage_4_combox(self, data_index):
@@ -589,7 +589,7 @@ class deep_camera_config_dialog(QDialog):
             logger.debug(f"鼠笼4的{choose_value['serial']}已经被选中")
 
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
     def selection_change_mouse_cage_5_combox(self, data_index):
@@ -624,7 +624,7 @@ class deep_camera_config_dialog(QDialog):
             logger.debug(f"鼠笼5的{choose_value['serial']}已经被选中")
 
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
     def selection_change_mouse_cage_6_combox(self, data_index):
@@ -659,7 +659,7 @@ class deep_camera_config_dialog(QDialog):
             logger.debug(f"鼠笼6的{choose_value['serial']}已经被选中")
 
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
     def selection_change_mouse_cage_7_combox(self, data_index):
@@ -694,7 +694,7 @@ class deep_camera_config_dialog(QDialog):
             logger.debug(f"鼠笼7的{choose_value['serial']}已经被选中")
 
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
     def selection_change_mouse_cage_8_combox(self, data_index):
@@ -727,7 +727,7 @@ class deep_camera_config_dialog(QDialog):
             self.combox_connect_func()
             logger.debug(f"鼠笼8的{choose_value['serial']}已经被选中")
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
     def init_btn_other(self):
@@ -767,7 +767,7 @@ class deep_camera_config_dialog(QDialog):
             # print(f"after:{self.camera_series_list_select_need}")
             self.init_combox()
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
 
     def ok_func(self):
         """
