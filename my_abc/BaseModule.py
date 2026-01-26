@@ -194,19 +194,19 @@ class BaseModule(ABC):
 
 
 
-            left_layout =tab_frame.findChild(QVBoxLayout, "left_layout")
-            right_layout = tab_frame.findChild(QVBoxLayout, "right_layout")
+            # left_layout =tab_frame.findChild(QVBoxLayout, "left_layout")
+            # right_layout = tab_frame.findChild(QVBoxLayout, "right_layout")
             bottom_layout = tab_frame.findChild(QVBoxLayout, "bottom_layout")
             middle_layout =tab_frame.findChild(QVBoxLayout, "middle_layout")
 
-            scroll_left_layout =    BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"left_layout"))
-            scroll_right_layout =   BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"right_layout"))
+            # scroll_left_layout =    BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"left_layout"))
+            # scroll_right_layout =   BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"right_layout"))
             scroll_bottom_layout =  BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"bottom_layout"))
             scroll_middle_layout =   BaseWindow.add_scroll_area_if_not_exists(tab_frame.findChild(QVBoxLayout,"middle_layout"))
 
             scroll_middle_layout.addWidget(self.interface_widget.frame_obj)
-            scroll_left_layout.addWidget(self.interface_widget.left_frame_obj)
-            scroll_right_layout.addWidget(self.interface_widget.right_frame_obj)
+            # scroll_left_layout.addWidget(self.interface_widget.left_frame_obj)
+            # scroll_right_layout.addWidget(self.interface_widget.right_frame_obj)
             scroll_bottom_layout.addWidget(self.interface_widget.bottom_frame_obj)
             self.interface_widget.setMinimumSize()
             # 拉伸系数的layout
@@ -219,22 +219,22 @@ class BaseModule(ABC):
             else:
                 main_layout.setStretchFactor(bottom_layout,2)
                 main_layout.setStretchFactor(top_layout, 4)
-            if self.interface_widget.left_frame_obj is None and self.interface_widget.right_frame_obj is None:
-                top_layout.setStretchFactor(left_layout,0)
-                top_layout.setStretchFactor(middle_layout,6)
-                top_layout.setStretchFactor(right_layout,0)
-            elif self.interface_widget.left_frame_obj is None:
-                top_layout.setStretchFactor(left_layout, 0)
-                top_layout.setStretchFactor(middle_layout, 5)
-                top_layout.setStretchFactor(right_layout, 1)
-            elif self.interface_widget.right_frame_obj is None:
-                top_layout.setStretchFactor(left_layout, 1)
-                top_layout.setStretchFactor(middle_layout, 5)
-                top_layout.setStretchFactor(right_layout, 0)
-            else:
-                top_layout.setStretchFactor(left_layout, 1)
-                top_layout.setStretchFactor(right_layout, 1)
-                top_layout.setStretchFactor(middle_layout, 4)
+            # if self.interface_widget.left_frame_obj is None and self.interface_widget.right_frame_obj is None:
+            #     top_layout.setStretchFactor(left_layout,0)
+            #     top_layout.setStretchFactor(middle_layout,6)
+            #     top_layout.setStretchFactor(right_layout,0)
+            # elif self.interface_widget.left_frame_obj is None:
+            #     top_layout.setStretchFactor(left_layout, 0)
+            #     top_layout.setStretchFactor(middle_layout, 5)
+            #     top_layout.setStretchFactor(right_layout, 1)
+            # elif self.interface_widget.right_frame_obj is None:
+            #     top_layout.setStretchFactor(left_layout, 1)
+            #     top_layout.setStretchFactor(middle_layout, 5)
+            #     top_layout.setStretchFactor(right_layout, 0)
+            # else:
+            #     top_layout.setStretchFactor(left_layout, 1)
+            #     top_layout.setStretchFactor(right_layout, 1)
+            #     top_layout.setStretchFactor(middle_layout, 4)
             size_factor = 0.9
             if self.interface_widget.frame_obj is not None:
                 self.interface_widget.frame_obj.menuBar().hide()
@@ -243,21 +243,21 @@ class BaseModule(ABC):
                                                        int(middle_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
 
 
-            if self.interface_widget.left_frame_obj is not None:
-                self.interface_widget.left_frame_obj.menuBar().hide()
-                self.interface_widget.left_frame_obj.statusBar().hide()
-                self.interface_widget.left_frame_obj.resize(
-                    int(left_layout.geometry().width()),
-                    int(left_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
-
-
-            if self.interface_widget.right_frame_obj is not None:
-                self.interface_widget.right_frame_obj.menuBar().hide()
-                self.interface_widget.right_frame_obj.statusBar().hide()
-                self.interface_widget.right_frame_obj.resize(int(right_layout.geometry().width()),
-                                                             int(right_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
-
-
+            # if self.interface_widget.left_frame_obj is not None:
+            #     self.interface_widget.left_frame_obj.menuBar().hide()
+            #     self.interface_widget.left_frame_obj.statusBar().hide()
+            #     self.interface_widget.left_frame_obj.resize(
+            #         int(left_layout.geometry().width()),
+            #         int(left_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
+            #
+            #
+            # if self.interface_widget.right_frame_obj is not None:
+            #     self.interface_widget.right_frame_obj.menuBar().hide()
+            #     self.interface_widget.right_frame_obj.statusBar().hide()
+            #     self.interface_widget.right_frame_obj.resize(int(right_layout.geometry().width()),
+            #                                                  int(right_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
+            #
+            #
             if self.interface_widget.bottom_frame_obj is not None:
                 self.interface_widget.bottom_frame_obj.menuBar().hide()
                 self.interface_widget.bottom_frame_obj.statusBar().hide()
@@ -319,21 +319,28 @@ class BaseModule(ABC):
                 self.interface_widget.frame_obj.menuBar().show()
                 self.interface_widget.frame_obj.statusBar().show()
                 self.interface_widget.frame_obj.setWindowTitle(self.title+'content')
-                self.interface_widget.frame_obj.setGeometry(h_each*(h_stretch['left']),
-                                                            self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + flag,
-                                                            h_each*(h_stretch['middle']),
-                                                            v_each*(v_stretch['top']),
-                                                            )
-            if self.interface_widget.right_frame_obj is not None:
-                self.interface_widget.right_frame_obj.menuBar().show()
-                self.interface_widget.right_frame_obj.statusBar().show()
-                self.interface_widget.right_frame_obj.setWindowTitle(self.title+'right')
-                self.interface_widget.right_frame_obj.setGeometry(
-                    h_each * (h_stretch['middle'] +h_stretch['left']),
-                    self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + flag,
-                    h_each * (h_stretch['right']),
-                    v_each * (v_stretch['top']) ,
+                # 让中间窗口占满整个区域
+                self.interface_widget.frame_obj.setGeometry(
+                    0,
+                    self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + 10,
+                    self.main_gui.centralWidget().width(),
+                    self.main_gui.centralWidget().geometry().height() - self.main_gui.statusBar().height() - self.main_gui.toolbar.geometry().height()
                 )
+                # self.interface_widget.frame_obj.setGeometry(h_each*(h_stretch['left']),
+                #                                             self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + flag,
+                #                                             h_each*(h_stretch['middle']),
+                #                                             v_each*(v_stretch['top']),
+                #                                             )
+            # if self.interface_widget.right_frame_obj is not None:
+            #     self.interface_widget.right_frame_obj.menuBar().show()
+            #     self.interface_widget.right_frame_obj.statusBar().show()
+            #     self.interface_widget.right_frame_obj.setWindowTitle(self.title+'right')
+            #     self.interface_widget.right_frame_obj.setGeometry(
+            #         h_each * (h_stretch['middle'] +h_stretch['left']),
+            #         self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + flag,
+            #         h_each * (h_stretch['right']),
+            #         v_each * (v_stretch['top']) ,
+            #     )
             if self.interface_widget.bottom_frame_obj is not None:
                 self.interface_widget.bottom_frame_obj.menuBar().show()
                 self.interface_widget.bottom_frame_obj.statusBar().show()

@@ -224,15 +224,41 @@ def all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index):
     logger.info(logo_text)
     pass
 
-def all_modules_check_online_state_Not_Each_Mouse_Cage(port,mouse_cage_index):
+def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
+    """
+    检测气路模块的在线状态 - 根据笼号检测该笼的气路模块
+    """
+    send_messages = []
+
+    for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Module_Info.value:
+        """
+        检测气路模块：UFC、UGC、ZOS
+        根据笼号加偏移
+        """
+        for message_struct in data_type.value['send_messages']:
+            message_temp = copy.deepcopy(message_struct.message)
+            message_temp['port'] = port
+
+            # 根据笼号加偏移
+            if mouse_cage_index is not None:
+                mouse_cage = gids[mouse_cage_index] if gids else 1
+                message_temp['slave_id'] = copy.copy(
+                    format(int(message_temp['slave_id'], 16) + 16 * mouse_cage, '02X'))
+
+            send_messages.append({'message': message_temp})
+
+    # 发送所有气路模块的检测报文
+    for msg in send_messages:
+        send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
+
+    # 日志记录
+    if mouse_cage_index is not None:
+        mouse_cage = gids[mouse_cage_index] if gids else 1
+    else:
+        mouse_cage = None
+    logo_text = f"{time_util.get_format_from_time(time.time())} | 设备在线检测 气路模块 | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送气路模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
+    logger.info(logo_text)
     pass
-
-
-
-
-
-
-
 
 """
 数据存储区域 start
@@ -307,29 +333,6 @@ class Store_Thread(MyQThread):
             logger.error(f"{self.name}存储错误：{e}")
 
         return success, error
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     def _send_storage_result(self, data_item, success, error):
         """发送存储结果到对应的结果队列"""
@@ -453,19 +456,41 @@ class Send_thread(MyQThread):
 
 
                     # 把返回数据返回给源头
-                    message_struct=None
+                    message_struct = None
                     if message['origin'] == "New_main_experiment_setting":
-                        message_struct = ObjectQueueItem(to=message['origin'],
-                                                         data=return_data,
-                                                         title="Each_Mouse_Cage_detect_finished",
-                                                         origin='main_monitor_data')
+                        # ==================== 判断是否为气路模块 ====================
+                        is_air_path_module = return_data.get('module_name') in ['UFC', 'UGC', 'ZOS']
+
+                        if is_air_path_module:
+                            # 气路模块响应
+                            message_struct = ObjectQueueItem(
+                                to=message['origin'],
+                                data=return_data,
+                                title="Not_Each_Mouse_Cage_detect_finished",  # 气路模块标题
+                                origin='main_monitor_data'
+                            )
+                            logger.debug(f"气路模块 {return_data.get('module_name')} 检测完成")
+                        else:
+                            # 鼠笼内模块响应
+                            message_struct = ObjectQueueItem(
+                                to=message['origin'],
+                                data=return_data,
+                                title="Each_Mouse_Cage_detect_finished",  # 鼠笼内模块标题
+                                origin='main_monitor_data'
+                            )
+                            logger.debug(f"鼠笼内模块 {return_data.get('module_name')} 检测完成")
+
                     elif send_state:
-                        message_struct = ObjectQueueItem(to=message['origin'],
-                                                         data=parser_message,
-                                                         origin='main_monitor_data')
+                        message_struct = ObjectQueueItem(
+                            to=message['origin'],
+                            data=parser_message,
+                            origin='main_monitor_data'
+                        )
+
                     if message_struct is not None:
                         global_setting.get_setting("send_message_queue").put(message_struct)
                         logger.debug(f"main_monitor_data将响应报文的解析数据返回源头：{message_struct}")
+
 
                 except queue.Empty:
                     self.priority_queue_empty=True
@@ -580,31 +605,6 @@ class Send_thread(MyQThread):
                             total_messages_processed += 1
 
             time.sleep(float(global_setting.get_setting('monitor_data')['SEND']['delay']))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class Add_message_thread(MyQThread):
