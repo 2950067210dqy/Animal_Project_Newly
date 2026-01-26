@@ -1658,17 +1658,19 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['补偿前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)','流量(sccm)']
+        port_types = ['预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)','流量(sccm)']
         values = []
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
-                case 4,9,14,19,24,29,34,39,44,49,54,59,64,69,74:
+                case 4|9|14|19|24|29|34|39|44|49|54|59|64|69|74:
+
                     oxygen_num=  float(
                             str(self.response_struct['data'][i - 4]) + "." + str(self.response_struct['data'][i-3]).zfill(2)+str(self.response_struct['data'][i-2]).zfill(2))
                     air_pressure_num =  round(float(
                             str(self.response_struct['data'][i - 1]) + "." +str(self.response_struct['data'][i])),3)
-                    values.append([oxygen_num, air_pressure_num])
+                    # logger.info(f"i:{i},oxy:{oxygen_num},press:{air_pressure_num},lens:{len(self.response_struct['data'])}")
+                    values.append((oxygen_num, air_pressure_num))
                     if i ==74:
                         return_datas.append({
                             "desc": port_types[j],
@@ -1698,7 +1700,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']} | "
         parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
-        logger.info(parser_message)
+        logger.info(f"{return_data}|{parser_message}")
         return return_datas, parser_message
         pass
 
