@@ -241,11 +241,14 @@ class UFC_gas_path_system_close_thread(MyQThread):
     def before_Runing_work(self):
         pass
     def dosomething(self):
+        queue = global_setting.get_setting("queue", None)
+
         # 1.关闭正在运行的鼠笼
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+
             return
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         if mouse_cages_inc is not None and len(mouse_cages_inc) > 0:
@@ -259,6 +262,12 @@ class UFC_gas_path_system_close_thread(MyQThread):
                 }
                 self.update_status_main_signal_gui_update.send(
                     f"{time_util.get_format_from_time(time.time())} | UFC-停止 1.关闭{addr + 1}号鼠笼气路")
+                if queue:
+                    queue.put(
+                        ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index",
+                                        title="stop_show_info_except_status_counts",
+                                        data=f"{time_util.get_format_from_time(time.time())} | UFC-停止 1.关闭{addr + 1}号鼠笼气路",
+                                        time=time_util.get_format_from_time(time.time())))
                 self.send_thread.send_message = self.send_message
                 AsyPromise(self.send_thread.Send).then()
                 # self.send_thread.Send_no_promise()
@@ -273,6 +282,12 @@ class UFC_gas_path_system_close_thread(MyQThread):
                 }
                 self.update_status_main_signal_gui_update.send(
                     f"{time_util.get_format_from_time(time.time())} | UFC-停止 1.关闭参考气")
+                if queue:
+                    queue.put(
+                        ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index",
+                                        title="stop_show_info_except_status_counts",
+                                        data=f"{time_util.get_format_from_time(time.time())} | UFC-停止 1.关闭参考气",
+                                        time=time_util.get_format_from_time(time.time())))
                 self.send_thread.send_message = self.send_message
                 AsyPromise(self.send_thread.Send).then(
                     lambda r: AsyPromise(self.close_ZOS_valve, port=port)
@@ -292,6 +307,13 @@ class UFC_gas_path_system_close_thread(MyQThread):
         }
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-停止 2.关闭zos采样阀门")
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index",
+                                title="stop_show_info_except_status_counts",
+                                data=f"{time_util.get_format_from_time(time.time())} | UFC-停止 2.关闭zos采样阀门",
+                                time=time_util.get_format_from_time(time.time())))
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             lambda r: AsyPromise(self.close_Gas_flow_rate_valve, port=port), resolve()
@@ -308,17 +330,28 @@ class UFC_gas_path_system_close_thread(MyQThread):
         }
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-停止 3.气泵及设定鼠笼流量控制器关闭")
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index",
+                                title="stop_show_info_except_status_counts",
+                                data=f"{time_util.get_format_from_time(time.time())} | UFC-停止 3.气泵及设定鼠笼流量控制器关闭",
+                                time=time_util.get_format_from_time(time.time())))
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             lambda r: AsyPromise(self.close_UFC_valve, port=port), resolve()
         )
     def close_UFC_valve(self,resolve,reject,port):
         """4.UFC阀门关闭 让步骤3延迟1分钟在关闭"""
+        queue = global_setting.get_setting("queue", None)
         # 等待时间
         time_index = 0
         while time_index < float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']):
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | UFC-停止 3.1 等待气泵及设定鼠笼流量控制器关闭，此过程需{time_index}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])}秒，等待流量控制器自动关闭")
+            if queue:
+                queue.put(
+                    ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index", title="stop_show_info_except_status_counts",
+                                    data=f"{time_util.get_format_from_time(time.time())} | UFC-停止 3.1 等待气泵及设定鼠笼流量控制器关闭，此过程需{time_index}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])}秒，等待流量控制器自动关闭",
+                                    time=time_util.get_format_from_time(time.time())))
             time_index += 1
             time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time_delay']))
         self.send_message = {
@@ -330,6 +363,13 @@ class UFC_gas_path_system_close_thread(MyQThread):
         }
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC-停止 4.UFC阀门关闭")
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index",
+                                title="stop_show_info_except_status_counts",
+                                data=f"{time_util.get_format_from_time(time.time())} | UFC-停止 4.UFC阀门关闭",
+                                time=time_util.get_format_from_time(time.time())))
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             lambda _:AsyPromise(self.finish_close).then(
@@ -348,8 +388,8 @@ class UFC_gas_path_system_close_thread(MyQThread):
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index", title="stop_gap_system_return",
-                                data=" UFC 已关闭",
+                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index", title="stop_show_info_except_status_counts",
+                                data=f"{time_util.get_format_from_time(time.time())} | UFC 已关闭",
                                 time=time_util.get_format_from_time(time.time())))
         resolve()
 class UFC_gas_path_system_run_thread(MyQThread):
@@ -1050,6 +1090,13 @@ class UGC_gas_path_system(Gas_path_system):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC-停止 1.停止UGC閥門")
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index",
+                                title="stop_show_info_except_status_counts",
+                                data=f"{time_util.get_format_from_time(time.time())} | UGC-停止 1.停止UGC閥門",
+                                time=time_util.get_format_from_time(time.time())))
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2.鼠笼气电磁阀关(sample 气)
@@ -1059,12 +1106,13 @@ class UGC_gas_path_system(Gas_path_system):
 
     pass
     def stop_finished(self,resolve,reject):
-        #返回响应
+        # 返回响应
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index", title="stop_gap_system_return",
-                                data=" UGC 已停止",
+                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index",
+                                title="stop_show_info_except_status_counts",
+                                data=f"{time_util.get_format_from_time(time.time())} |  UGC 已停止",
                                 time=time_util.get_format_from_time(time.time())))
 
         self.update_status_main_signal_gui_update.send(

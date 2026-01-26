@@ -103,7 +103,7 @@ class read_queue_data_Thread(MyQThread):
                         if self.window is not None and self.window.start_dialog is not None :
 
                             self.window.start_dialog.update_progress_value(self.window.start_dialog.progress_max)
-                    case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_monitor_data_return":
+                    case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_monitor_data_return"|"stop_show_info_except_status_counts":
                         if message.data and self.window:
                             #  更新气路运行消息
                             # 将运行信息放入status栏中
@@ -111,14 +111,14 @@ class read_queue_data_Thread(MyQThread):
                             if self.window.stop_dialog is not None:
                                 self.window.stop_dialog.insert_data_signal.emit(f"{message.data} ")
                                 # self.window.start_dialog.update_progress_value(1)
-                            pass
-                            # 当深度相机、红外相机、气路、鼠笼内、存储数据都发过返回消息则关闭关闭实验窗口
-                            if self.old_Stop_experiment_status_text_reTurn is  None:
-                                self.old_Stop_experiment_status_text_reTurn = message.title
-                                self.old_stop_status_counts += 1
-                            elif message.title !=self.old_Stop_experiment_status_text_reTurn:
-                                self.old_Stop_experiment_status_text_reTurn=message.title
-                                self.old_stop_status_counts += 1
+                            if message.title !="stop_show_info_except_status_counts":
+                                #不为普通消息  且 当深度相机、红外相机、气路、鼠笼内、存储数据都发过返回消息则关闭关闭实验窗口
+                                if self.old_Stop_experiment_status_text_reTurn is  None:
+                                    self.old_Stop_experiment_status_text_reTurn = message.title
+                                    self.old_stop_status_counts += 1
+                                elif message.title !=self.old_Stop_experiment_status_text_reTurn:
+                                    self.old_Stop_experiment_status_text_reTurn=message.title
+                                    self.old_stop_status_counts += 1
 
                             if self.old_stop_status_counts >= self.old_stop_status_max:
                                 # 停止完成，关闭停止实验窗口
