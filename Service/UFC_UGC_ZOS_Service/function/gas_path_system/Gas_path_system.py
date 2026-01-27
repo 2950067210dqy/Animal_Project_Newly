@@ -1010,7 +1010,7 @@ class UGC_gas_path_system(Gas_path_system):
                         if state_value ==0:
                             error_data= "UGC阀门状态：OFF"
                             logger.error(error_data)
-                            reject(error_data)
+                            # reject(error_data)
                         else:
                             ok_data = "UGC阀门状态：ON"
                             logger.info(ok_data)
