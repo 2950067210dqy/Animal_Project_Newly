@@ -754,7 +754,7 @@ class UFC_gas_path_system(Gas_path_system):
         :return:
         """
         time.sleep(0.01)
-        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 开始运行{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 开始运行，is_circulation_read={is_circulation_read}{'.'*100}")
 
         AsyPromise(self.open_zos_valve,is_circulation_read=is_circulation_read).then(lambda r:resolve(r)).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
 
@@ -993,12 +993,12 @@ class UGC_gas_path_system(Gas_path_system):
 
     """start end"""
     """run start"""
-    def run(self,resolve,reject,is_circular_read=True):
+    def run(self,resolve,reject,is_circulation_read=True):
         """
         气路运行
         :return:
         """
-        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UGC 开始运行{'.'*100}")
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UGC 开始运行，is_circulation_read={is_circulation_read}{'.'*100}")
         # 1.鼠笼气电磁阀开(sample 气)(开机默认打开)
         port = global_setting.get_setting("port", None)
         if port is None:
@@ -1019,7 +1019,7 @@ class UGC_gas_path_system(Gas_path_system):
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
             # 2.开泵抽气（正式开机）
-            lambda r: AsyPromise(self.open_valve_remove_gas,port=port,is_circular_read=is_circular_read).then(lambda r1:resolve()
+            lambda r: AsyPromise(self.open_valve_remove_gas,port=port,is_circulation_read=is_circulation_read).then(lambda r1:resolve()
             ).catch(lambda e: reject(e))
         ).catch(lambda e: reject(e))
         pass
@@ -1043,7 +1043,7 @@ class UGC_gas_path_system(Gas_path_system):
         ).catch(lambda e: reject(e))
 
         pass
-    def open_valve_remove_gas(self,resolve,reject,port,is_circular_read):
+    def open_valve_remove_gas(self,resolve,reject,port,is_circulation_read):
         # 2.开泵抽气（正式开机）
         self.send_message = {
             'port': port,
@@ -1055,7 +1055,7 @@ class UGC_gas_path_system(Gas_path_system):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC 运行-2.开泵抽气（正式开机）")
         self.send_thread.send_message = self.send_message
-        if is_circular_read:
+        if is_circulation_read:
             AsyPromise(self.send_thread.Send).then(
                 # 3.循环读取CO2浓度
                 lambda r: AsyPromise(self.circular_running).then(lambda r1: resolve()

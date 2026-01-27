@@ -249,8 +249,6 @@ class UFC_UGC_ZOS_index(MyQThread):
         global_setting.set_setting("start_time_messages_sent_epoch_for_running", time.time())
         if self.zos_start_timer is not None and (self.zos_start_timer.is_active() or self.zos_start_timer._is_paused):
             self.zos_start_timer.stop()
-        if self.ufc_start_timer is not None and (self.ufc_start_timer.is_active() or self.ufc_start_timer._is_paused):
-            self.ufc_start_timer.stop()
         p = AsyPromise(self.UFC_gas_path_system_obj.run).then(
             lambda v: AsyPromise(
                 self.UGC_gas_path_system_obj.run
