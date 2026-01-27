@@ -216,7 +216,7 @@ class MonitorDataWindows(ThemedWidget):
         self.charts_widget = DemoDraggableDockWidget()
         self.charts_layout.addWidget(self.charts_widget)
 
-        self.main_layout.addLayout(self.charts_layout, stretch=7)
+        self.main_layout.addLayout(self.charts_layout, stretch=8)
 
 
         self.setLayout(self.main_layout)

@@ -1234,6 +1234,45 @@ class AdvancedChartWidget(BaseWidget):
             except:
                 pass
 
+    def _plot_line_with_gaps(self, x_data, y_data, **kwargs):
+        """
+        绘制带断点的折线图（在None值处断开）
+
+        Args:
+            x_data: X轴数据
+            y_data: Y轴数据（可能包含None）
+            **kwargs: plot方法的其他参数
+        """
+        # 分割成多个连续段
+        segments_x = []
+        segments_y = []
+        current_x = []
+        current_y = []
+
+        for x, y in zip(x_data, y_data):
+            if y is None:
+                # 遇到None，保存当前段并开始新段
+                if current_x:
+                    segments_x.append(current_x)
+                    segments_y.append(current_y)
+                    current_x = []
+                    current_y = []
+            else:
+                current_x.append(x)
+                current_y.append(y)
+
+        # 保存最后一段
+        if current_x:
+            segments_x.append(current_x)
+            segments_y.append(current_y)
+
+        # 绘制所有段
+        for seg_x, seg_y in zip(segments_x, segments_y):
+            if seg_x:  # 确保段不为空
+                self.ax.plot(seg_x, seg_y, **kwargs)
+                # 只在第一段显示标签
+                if 'label' in kwargs:
+                    kwargs.pop('label')
     def refresh_chart(self):
         """刷新图表显示"""
         try:
@@ -1291,8 +1330,10 @@ class AdvancedChartWidget(BaseWidget):
                     self.ax.plot(x_display, data_list, label=cage_name,
                                  color=color, marker=marker, markersize=markersize,
                                  linewidth=linewidth, alpha=alpha)
-
-
+                    # self._plot_line_with_gaps(x_display, data_list,
+                    #                          label=cage_name, color=color,
+                    #                          marker=marker, markersize=markersize,
+                    #                          linewidth=linewidth, alpha=alpha)
                 elif self.chart_type == "柱状图":
                     visible_cages = [c for c in sorted_cages if c in self.visible_series
                                      and self.current_data_type in self.cage_data[c]]
