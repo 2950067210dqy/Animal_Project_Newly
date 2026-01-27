@@ -210,7 +210,7 @@ class TableWidgetPaging(ThemedWidget):
                         QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)  # 水平和垂直居中
                     self.table_widget.setItem(self.table_widget.rowCount() - 1, col, item)
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
 
         # 更新分页信息
         self.update_page_info()

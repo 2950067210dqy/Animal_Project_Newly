@@ -214,7 +214,7 @@ class Tab_2(ThemedWindow):
                 tab_frame.tab.update_port_and_mouse_cage.emit()
 
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
 
 

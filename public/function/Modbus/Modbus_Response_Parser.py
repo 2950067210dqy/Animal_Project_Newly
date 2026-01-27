@@ -1986,10 +1986,10 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
     def parser_function_code_1(self):
         function_desc = """
                读输出端口状态信息
-               参数长度：2
+               参数长度：3
                """
-        pack_struct = "B B"
-        self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=False)
+        pack_struct = "B B B"
+        self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         data_binary_str_list = self.int_to_8bit_binary(num_list=self.response_struct['data'])[1]

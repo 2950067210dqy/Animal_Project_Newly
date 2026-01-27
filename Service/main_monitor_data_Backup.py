@@ -455,7 +455,7 @@ class Send_thread(MyQThread):
                     self.normal_queue_empty=True
                     break
             except Exception as e:
-                logger.error(e)
+                logger.error(f"{e}")
             finally:
                 if self.normal_queue_empty:
                     continue

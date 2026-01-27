@@ -157,7 +157,7 @@ class custom_data_file_util:
                 folder_util.open_folder(os.path.dirname(export_file_path))
                 folder_util.open_folder(export_file_path)
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         pass
     @classmethod
     def save_folder_contents_as_custom_file_for_user_choose(cls, folder_path, is_delete_original_data_file=True):
@@ -191,7 +191,7 @@ class custom_data_file_util:
                 transfer_handle.export_db_to_excel(writer, combine_mode=True, sheet_used=used_sheet_names,
                                                    chunksize=(5000 or None))
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
         # 删除该文件夹
         if is_delete_original_data_file:
             folder_util.remove_non_empty_folder(folder_path)

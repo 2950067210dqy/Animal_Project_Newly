@@ -567,7 +567,7 @@ class Send_thread(MyQThread):
                     self.normal_queue_empty=True
                     break
             except Exception as e:
-                logger.error(e)
+                logger.error(f"{e}")
             finally:
                 if self.normal_queue_empty:
                     continue
@@ -740,8 +740,8 @@ def copy_experiment_setting_file():
         pass
     pass
 # 线程
-ufc_ugc_zos:UFC_UGC_ZOS_index=None
-ufc_ugc_zos_thread =None
+ufc_ugc_zos=None
+ufc_ugc_zos_thread:UFC_UGC_ZOS_index =None
 # 存储线程
 store_thread:Store_Thread = None
 # 发送报文线程
@@ -957,13 +957,13 @@ def barrier_action():
                                0)
 
 
-def after_run_of_ufc_ugc_zos_barrier_action():
-    #ufc ugc zos run完后在鼠笼内run
-    # 通知鼠笼传感器解除阻塞开始运行
-    wait_UFC_UGC_ZOS_start_event = global_setting.get_setting("wait_UFC_UGC_ZOS_start_event")
-    if wait_UFC_UGC_ZOS_start_event is not None:
-        wait_UFC_UGC_ZOS_start_event.set()
-        wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
+# def after_run_of_ufc_ugc_zos_barrier_action():
+#     #ufc ugc zos run完后在鼠笼内run
+#     # 通知鼠笼传感器解除阻塞开始运行
+#     wait_UFC_UGC_ZOS_start_event = global_setting.get_setting("wait_UFC_UGC_ZOS_start_event")
+#     if wait_UFC_UGC_ZOS_start_event is not None:
+#         wait_UFC_UGC_ZOS_start_event.set()
+#         wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
 def main(q,send_message_q):
 
     # logger.remove(0)
@@ -1033,7 +1033,6 @@ def start():
         ufc_ugc_zos_thread.start()
 
     except Exception as ex:
-        print(ex)
         logger.error(f"<UNK>{ex}")
 
     # 存储线程
@@ -1089,10 +1088,17 @@ def stop():
         if ufc_ugc_zos_thread is not None:
             ufc_ugc_zos_thread.stop_btn_handle()
             ufc_ugc_zos_thread.stop()
+            ufc_ugc_zos_thread.deleteLater()
             ufc_ugc_zos_thread=None
     except Exception as e:
         logger.error(f"关闭实验监测ufc_ugc_zos错误，原因：{e}")
-    pass
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
+                                data=f"关闭气路模块错误，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
+
     try:
         logger.error("stop_store_thread")
         if store_thread is not None and store_thread.isRunning():
@@ -1112,7 +1118,7 @@ def stop():
         if queue:
             queue.put(
                 ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
-                                data=f"关闭气路模块错误，原因：{e}",
+                                data=f"关闭实验监测store_thread错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
     try:
         logger.error("stop_add_message_thread")

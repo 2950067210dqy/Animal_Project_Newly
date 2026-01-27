@@ -137,7 +137,7 @@ class MainWindow_Index(ThemedWindow):
                 logger.error(f"读取菜单json字符串解析错误：{e}")
                 self.menu_name = None
             except Exception as e:
-                logger.error(e)
+                logger.error(f"{e}")
                 self.menu_name = None
             if self.menu_name is not None:
                 # 创建菜单栏

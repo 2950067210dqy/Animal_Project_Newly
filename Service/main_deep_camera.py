@@ -1327,7 +1327,7 @@ def check_setting_cameras_each_number():
                 queue.put(ObjectQueueItem(origin="main_deep_camera", to="main_gui", title="deep_camera_config_dialog",
                                           time=time_util.get_format_from_time(time.time())))
         except Exception as e:
-            logger.error(e)
+            logger.error(f"{e}")
 
         pass
 
@@ -1467,7 +1467,7 @@ def start():
         # 根据设置的相机数量来连接
         check_setting_cameras_each_number()
     except Exception as e:
-        logger.error(e)
+        logger.error(f"{e}")
 
     pass
 def restart(q):
