@@ -241,9 +241,10 @@ class UFC_UGC_ZOS_index(MyQThread):
         auto_wait_event.wait()
         if stop_flag:
             return AsyPromise.reject_immediately("run_btn_handle在启动过程中时遇到停止指令")
-        # wait_UFC_UGC_ZOS_start_event = global_setting.get_setting("wait_UFC_UGC_ZOS_start_event")
-        # wait_UFC_UGC_ZOS_start_event.set()
-        # wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
+        #     让鼠笼内模块开始发送报文
+        wait_UFC_UGC_ZOS_start_event = global_setting.get_setting("wait_UFC_UGC_ZOS_start_event")
+        wait_UFC_UGC_ZOS_start_event.set()
+        wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
         #每轮运行发送报文数量 赋值0
         global_setting.set_setting("messages_sent_epoch_for_running", 0)
         global_setting.set_setting("start_time_messages_sent_epoch_for_running", time.time())
