@@ -1576,6 +1576,7 @@ class ZOS_gas_path_system(Gas_path_system):
                 pass
         if self.is_stop:
             reject("Stop")
+        resolve()
     def switch_mouse_cage_gas_UFC(self, resolve, reject, port, mouse_cages_inc,mouse_cage_index):
         """
         UFC切换鼠笼气路
