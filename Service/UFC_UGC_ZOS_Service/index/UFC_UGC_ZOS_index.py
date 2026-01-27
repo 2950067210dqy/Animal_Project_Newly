@@ -207,9 +207,14 @@ class UFC_UGC_ZOS_index(MyQThread):
                 self.UFC_gas_path_system_obj.start,
             ).then(
                 lambda _:AsyPromise(self.UGC_gas_path_system_obj.start).then(
-
                     lambda _:AsyPromise(self.set_start_timers).then(
-                        lambda _:AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init)
+                        # 添加UFC运行但是不读取数值 UGC运行但是不读取数值
+                        lambda _: AsyPromise(self.UFC_gas_path_system_obj.run,is_circulation_read=False).then(
+                            lambda _: AsyPromise(self.UGC_gas_path_system_obj.run,is_circulation_read=False).then(
+                                lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init)
+                            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+                        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+
                     ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
                 ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
             ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
