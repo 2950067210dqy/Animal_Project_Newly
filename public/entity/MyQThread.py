@@ -63,8 +63,12 @@ class MyQThread(QThread):
         # self.terminate()
     def deleteLater(self):
         self.stop()
+        self.requestInterruption()  # 请求中断
         self.quit()
-        self.wait()
+        # 等待1秒
+        if not self.wait(1000):
+            self.terminate()
+            self.wait(1000)
 
     def __del__(self):
         logger.debug(f"线程{self.name}被销毁!")
