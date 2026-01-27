@@ -486,7 +486,6 @@ class MainWindow_Index(ThemedWindow):
 
         self.hide_common_tools()
 
-
     def create_menu_bar(self):
         """创建菜单栏 - 触发工具栏切换"""
         for menu_dict in self.menu_name:
@@ -501,13 +500,20 @@ class MainWindow_Index(ThemedWindow):
             # 添加到菜单栏
             self.menuBar().addAction(action)
 
+            # 从菜单配置中获取 required_app_state，转换为枚举
+            required_state_str = menu_dict.get('required_app_state', 'INITIALIZED')
+            try:
+                required_app_state = AppState[required_state_str]
+            except KeyError:
+                required_app_state = AppState.INITIALIZED
+
             # 存储菜单动作信息
             self.menu_bar_actions.append({
                 "name": menu_dict['text'],
                 "obj_name": f"menu_{menu_dict['id']}",
                 "action": action,
                 "menu_id": menu_dict['id'],
-                "app_state": AppState.INITIALIZED
+                "app_state": required_app_state  # 使用正确的状态
             })
 
     def switch_toolbar_content(self, menu_id):
