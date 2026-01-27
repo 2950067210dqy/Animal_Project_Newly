@@ -248,7 +248,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         #每轮运行发送报文数量 赋值0
         global_setting.set_setting("messages_sent_epoch_for_running", 0)
         global_setting.set_setting("start_time_messages_sent_epoch_for_running", time.time())
-        if self.zos_start_timer is not None and (self.zos_start_timer.is_active() or self.zos_start_timer._is_paused):
+        if self.zos_start_timer is not None :
             self.zos_start_timer.stop()
         p = AsyPromise(self.UFC_gas_path_system_obj.run).then(
             lambda v: AsyPromise(

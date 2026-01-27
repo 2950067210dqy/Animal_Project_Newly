@@ -1551,7 +1551,7 @@ class ZOS_gas_path_system(Gas_path_system):
             reject("Stop")
         AsyPromise(self.circular_once_start_zos_pressure_init, port=port).then(lambda r: resolve()
                                                                                ).catch(lambda e: logger.error(f"{e}"))
-        resolve()
+
     def circular_once_start_zos_pressure_init(self,resolve,reject,port):
         # 4) ZOS通道压力初始化
         self.update_status_main_signal_gui_update.send(

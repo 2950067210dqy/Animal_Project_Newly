@@ -65,10 +65,10 @@ class MyQThread(QThread):
         self.stop()
         self.requestInterruption()  # 请求中断
         self.quit()
-        # 等待1秒
-        if not self.wait(1000):
-            self.terminate()
-            self.wait(1000)
+        # # 等待1秒
+        # if not self.wait(1000):
+        #     self.terminate()
+        #     self.wait(1000)
 
     def __del__(self):
         logger.debug(f"线程{self.name}被销毁!")
