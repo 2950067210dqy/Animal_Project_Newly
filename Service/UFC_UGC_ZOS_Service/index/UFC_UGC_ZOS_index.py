@@ -212,13 +212,13 @@ class UFC_UGC_ZOS_index(MyQThread):
                         lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
                             lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
                                 lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init)
-                            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-                        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+                            ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+                        ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
 
-                    ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-                ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-            ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+                    ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+                ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+            ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+        ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
 
         if self.monitor_start_state_Thread is None:
             self.monitor_start_state_Thread = Monitor_start_state_Thread(
@@ -257,9 +257,9 @@ class UFC_UGC_ZOS_index(MyQThread):
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.run)
                 # .then(
                 #     lambda v3: AsyPromise(self.remove_waitting_ufc_ugc_zos_event)
-                # ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-            ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+                # ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+            ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+        ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
 
 
         return p
@@ -291,10 +291,10 @@ class UFC_UGC_ZOS_index(MyQThread):
             ).then(
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.stop).then(
                     lambda v22: AsyPromise(self.finished_stop)
-                ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+                ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
 
-            ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+            ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+        ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         return p
     def finished_stop(self):
         """
@@ -323,40 +323,40 @@ class UFC_UGC_ZOS_index(MyQThread):
         if stop_flag:
             return AsyPromise.reject_immediately("calibration_handle 在启动过程中时遇到停止指令")
         self.set_calibration_start_timer()
-        p = AsyPromise(lambda r,e:r()).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        p = AsyPromise(lambda r,e:r()).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         return p
     def carlibation(self):
         # p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
         #     lambda v: AsyPromise(
         #         self.Range_carlibration_obj.calibrate
-        #     ).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-        # ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        #     ).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+        # ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         # return p
         # 测试   不需要校0标定
         # p = AsyPromise(
         #     self.Range_carlibration_obj.calibrate
-        # ).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        # ).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         # return p
         #測試 不需要校0和校span标定
         p = AsyPromise(
             self.no_carlibration
-        ).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         return p
     def no_carlibration(self,resolve,reject):
         resolve()
         # p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
         #     lambda v: AsyPromise(
         #         self.Range_carlibration_obj.calibrate
-        #     ).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-        # ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        #     ).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+        # ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         # return p
         # # 测试   不需要校0标定
         # p = AsyPromise(
         #     self.Range_carlibration_obj.calibrate
-        # ).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        # ).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         # return p
         # 不需要自动标定
-        p = AsyPromise(lambda r, e: r()).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        p = AsyPromise(lambda r, e: r()).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         return p
     def range_calibration_handle(self):
         """
@@ -365,7 +365,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         """
         p = AsyPromise(
             self.Range_carlibration_obj.calibrate
-        ).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         return p
     def zero_calibration_handle(self):
         """
@@ -374,7 +374,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         """
         p = AsyPromise(
             self.Zero_carlibration_obj.calibrate
-        ).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         return p
     def calibration_btn_start(self):
         """
@@ -386,21 +386,21 @@ class UFC_UGC_ZOS_index(MyQThread):
                 self.Range_carlibration_obj.calibrate
             ).then(
                 lambda r:r()
-            ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+            ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+        ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         return  p
     def gas_state_check_handle(self):
         global stop_flag
         if stop_flag:
             return AsyPromise.reject_immediately("gas_state_check_handle 在启动过程中时遇到停止指令")
         self.set_gas_state_check_timer()
-        p = AsyPromise(lambda r,e:r()).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        p = AsyPromise(lambda r,e:r()).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         return p
     def gas_state_check(self):
         p = AsyPromise(self.UFC_gas_state_check_obj.state_check).then(
-        ).catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         return p
-        # p = AsyPromise(lambda r, e: r()).then().catch( lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        # p = AsyPromise(lambda r, e: r()).then().catch( lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         # return p
 
 

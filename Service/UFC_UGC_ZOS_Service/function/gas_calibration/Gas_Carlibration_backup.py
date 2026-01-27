@@ -80,7 +80,7 @@ class Zero_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 2.校零气路（Zero气）电磁阀开
             lambda r: AsyPromise(self.solenoid_valve_of_zero_gas_open,port=port),resolve()
-        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         pass
     #2.校零气路（Zero气）电磁阀开
     def solenoid_valve_of_zero_gas_open(self,resolve,reject,port):
@@ -267,7 +267,7 @@ class Range_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 2.ugc span电磁阀打开。
             lambda r: AsyPromise(self.ugc_span_open,port=port),resolve()
-        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         pass
     def ugc_span_open(self,resolve,reject,port):
         # 2.ugc span电磁阀打开。
@@ -285,7 +285,7 @@ class Range_Carlibration(Gas_Carlibration):
         AsyPromise(self.send_thread.Send).then(
             # 3.循环采样zos氧浓度
             lambda r: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=port),resolve()
-        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         pass
     def cyclic_sampling_of_zos_oxygen_sensor(self,resolve,reject,port):
         # 3.循环采样zos氧浓度

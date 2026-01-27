@@ -720,14 +720,13 @@ class MainWindow_Index(ThemedWindow):
             queue.put(           message_struct)
         AsyPromise(self.start_update_gui).then(
             lambda _:AsyPromise(self.show_open_dialog).then(
-                lambda _:AsyPromise(self.start_open_window).then().catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+                lambda _:AsyPromise(self.start_open_window).then().catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+            ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
         pass
     def show_open_dialog(self,resolve,reject):
         # 弹窗最晚持续时间
-        logger.critical("1231")
-        start_wait_times = float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])/float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])*2*8+20
+        start_wait_times =float(global_setting.get_setting('configer')['dialog_timeout']['timeout'])+ float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])/float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])*2*8+20
         if self.start_dialog is None:
             self.start_dialog = AnimatedLoadingDialog(countdown_seconds=start_wait_times,title="开始实验",message="正在启动气路...")
         else:
@@ -915,11 +914,11 @@ class MainWindow_Index(ThemedWindow):
 
                     lambda _:AsyPromise(self.stop_update_gui).then(
 
-                        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
+                        ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
 
-                ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-            ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误"))
-        ).catch(lambda e: AsyPromise.log_and_reject(e, logger, "错误") )
+                ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+            ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误"))
+        ).catch(lambda e: AsyPromise.log_and_continue(e, logger, "错误") )
 
         # self.stop_store_info()
         pass
@@ -947,7 +946,7 @@ class MainWindow_Index(ThemedWindow):
         pass
 
     def show_stop_dialog(self,resolve,reject):
-        stop_wait_times = float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + 30
+        stop_wait_times = float(global_setting.get_setting('configer')['dialog_timeout']['timeout'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + 30
         if self.stop_dialog is None:
             self.stop_dialog = AnimatedLoadingDialog(countdown_seconds=stop_wait_times,title="停止实验",message="正在停止实验...")
         else:
