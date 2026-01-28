@@ -67,7 +67,6 @@ class read_queue_data_Thread(MyQThread):
         self.queue = None
         self.send_thread: Send_thread = None
         pass
-
     def stop(self):
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.stop()
@@ -77,6 +76,7 @@ class read_queue_data_Thread(MyQThread):
             # logger.error(f"{self.queue.qsize()}")
             try:
                 message: ObjectQueueItem = self.queue.get()
+                # logger.error(f"{self.name}_get_message:{message}|")
             except Exception as e:
                 logger.error(f"{self.name}发生错误{e}")
                 return
@@ -123,6 +123,15 @@ class read_queue_data_Thread(MyQThread):
                     case 'start_calibration':
                         start_calibration()
                         pass
+                    case 'stop_zero_calibration':
+
+                        stop_zero_calibration()
+                        pass
+                    case 'stop_span_calibration':
+                        stop_range_calibration()
+                        pass
+                    case 'stop_calibration':
+                        stop_calibration()
                     case 'pause':
                         pause()
                     case 'stop':
@@ -227,98 +236,98 @@ def all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index):
     pass
 
 def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
-#     """
-#     检测气路模块的在线状态
-#     """
-#     send_messages = []
-#
-#     # ==================== 获取鼠笼号 ====================
-#     if mouse_cage_index is not None:
-#         mouse_cage = gids[mouse_cage_index] if gids else 1
-#     else:
-#         mouse_cage = None
-#
-#     # ==================== 处理每个气路模块 ====================
-#     for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Module_Info.value:
-#         """
-#         检测气路模块：UFC、UGC、ZOS
-#         """
-#         # 判断模块类型
-#         is_ufc_module = (data_type.name == 'UFC')
-#         is_zos_module = (data_type.name == 'ZOS')
-#         is_ugc_module = (data_type.name == 'UGC')
-#
-#         # ——— 对于 ZOS/UGC，需要先发送切换报文 ———
-#         if (is_zos_module or is_ugc_module) and mouse_cage is not None:
-#             # 第一步：切换到ZOS采样阀气路
-#             switch_zos_valve_message = {
-#                 'port': port,
-#                 'slave_id': '02',  # 切换指令发给主控模块
-#                 'function_code': '05',
-#                 'address': '0009',  # ZOS采样阀气路地址
-#                 'data': '00FF',  # 闭合
-#                 'module_type': 'air_path_switch',
-#                 'cage_index': mouse_cage_index,
-#                 'mouse_cage_number': mouse_cage,  # 实际鼠笼号
-#                 'switch_step': '1_zos_valve'
-#             }
-#             send_messages.append({'message': switch_zos_valve_message})
-#             # print(f'******当前鼠笼号{mouse_cage}')
-#             # logger.debug(f"[{data_type.name}] 步骤1: 切换到ZOS采样阀气路")
-#
-#             # 第二步：切换到目标鼠笼
-#             # 鼠笼地址 = 鼠笼号 - 1 (鼠笼1对应地址0x0000，鼠笼2对应0x0001...)
-#             cage_address = format(mouse_cage - 1, '04X')
-#
-#             switch_cage_message = {
-#                 'port': port,
-#                 'slave_id': '02',  # 切换指令发给主控模块
-#                 'function_code': '05',
-#                 'address': cage_address,  # 根据鼠笼号动态计算地址
-#                 'data': '00FF',  # 闭合
-#                 'module_type': 'air_path_switch',
-#                 'cage_index': mouse_cage_index,
-#                 'mouse_cage_number': mouse_cage,  # 实际鼠笼号（1-8）
-#                 'switch_step': '2_target_cage'
-#             }
-#             send_messages.append({'message': switch_cage_message})
-#             # logger.debug(
-#             #     f"[{data_type.name}] 步骤2: 切换到鼠笼{mouse_cage} "
-#             #     f"(索引={mouse_cage_index}, 地址=0x{cage_address})"
-#             # )
-#
-#         # ——— 发送查询报文 ———
-#         for message_struct in data_type.value['send_messages']:
-#             message_temp = copy.deepcopy(message_struct.message)
-#             message_temp['port'] = port
-#
-#             # 标记模块信息
-#             message_temp['module_type'] = 'air_path'
-#             message_temp['cage_index'] = mouse_cage_index
-#             message_temp['mouse_cage_number'] = mouse_cage
-#             message_temp['is_ufc'] = is_ufc_module
-#
-#             send_messages.append({'message': message_temp})
-#
-#     # ==================== 发送报文 ====================
-#     for msg in send_messages:
-#         send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
-#
-#     # ==================== 日志 ====================
-#     if mouse_cage is not None:
-#         cage_label = f"鼠笼 {mouse_cage}"
-#         note = "(已发送切换报文)" if (is_zos_module or is_ugc_module) else ""
-#     else:
-#         cage_label = "参考气路"
-#         note = ""
-#
-#     valid_messages = [msg for msg in send_messages if msg.get('type') is None]
-#     logo_text = (
-#         f"{time_util.get_format_from_time(time.time())} | "
-#         f"设备在线检测 气路模块 | {cage_label} | "
-#         f"发送报文: {len(valid_messages)} 条 {note}"
-#     )
-#     logger.info(logo_text)
+    """
+    检测气路模块的在线状态
+    """
+    send_messages = []
+
+    # ==================== 获取鼠笼号 ====================
+    if mouse_cage_index is not None:
+        mouse_cage = gids[mouse_cage_index] if gids else 1
+    else:
+        mouse_cage = None
+
+    # ==================== 处理每个气路模块 ====================
+    for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Module_Info.value:
+        """
+        检测气路模块：UFC、UGC、ZOS
+        """
+        # 判断模块类型
+        is_ufc_module = (data_type.name == 'UFC')
+        is_zos_module = (data_type.name == 'ZOS')
+        is_ugc_module = (data_type.name == 'UGC')
+
+        # ——— 对于 ZOS/UGC，需要先发送切换报文 ———
+        if (is_zos_module or is_ugc_module) and mouse_cage is not None:
+            # 第一步：切换到ZOS采样阀气路
+            switch_zos_valve_message = {
+                'port': port,
+                'slave_id': '02',  # 切换指令发给主控模块
+                'function_code': '05',
+                'address': '0009',  # ZOS采样阀气路地址
+                'data': '00FF',  # 闭合
+                'module_type': 'air_path_switch',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': mouse_cage,  # 实际鼠笼号
+                'switch_step': '1_zos_valve'
+            }
+            send_messages.append({'message': switch_zos_valve_message})
+            # print(f'******当前鼠笼号{mouse_cage}')
+            # logger.debug(f"[{data_type.name}] 步骤1: 切换到ZOS采样阀气路")
+
+            # 第二步：切换到目标鼠笼
+            # 鼠笼地址 = 鼠笼号 - 1 (鼠笼1对应地址0x0000，鼠笼2对应0x0001...)
+            cage_address = format(mouse_cage - 1, '04X')
+
+            switch_cage_message = {
+                'port': port,
+                'slave_id': '02',  # 切换指令发给主控模块
+                'function_code': '05',
+                'address': cage_address,  # 根据鼠笼号动态计算地址
+                'data': '00FF',  # 闭合
+                'module_type': 'air_path_switch',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': mouse_cage,  # 实际鼠笼号（1-8）
+                'switch_step': '2_target_cage'
+            }
+            send_messages.append({'message': switch_cage_message})
+            # logger.debug(
+            #     f"[{data_type.name}] 步骤2: 切换到鼠笼{mouse_cage} "
+            #     f"(索引={mouse_cage_index}, 地址=0x{cage_address})"
+            # )
+
+        # ——— 发送查询报文 ———
+        for message_struct in data_type.value['send_messages']:
+            message_temp = copy.deepcopy(message_struct.message)
+            message_temp['port'] = port
+
+            # 标记模块信息
+            message_temp['module_type'] = 'air_path'
+            message_temp['cage_index'] = mouse_cage_index
+            message_temp['mouse_cage_number'] = mouse_cage
+            message_temp['is_ufc'] = is_ufc_module
+
+            send_messages.append({'message': message_temp})
+
+    # ==================== 发送报文 ====================
+    for msg in send_messages:
+        send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
+
+    # ==================== 日志 ====================
+    if mouse_cage is not None:
+        cage_label = f"鼠笼 {mouse_cage}"
+        note = "(已发送切换报文)" if (is_zos_module or is_ugc_module) else ""
+    else:
+        cage_label = "参考气路"
+        note = ""
+
+    valid_messages = [msg for msg in send_messages if msg.get('type') is None]
+    logo_text = (
+        f"{time_util.get_format_from_time(time.time())} | "
+        f"设备在线检测 气路模块 | {cage_label} | "
+        f"发送报文: {len(valid_messages)} 条 {note}"
+    )
+    logger.info(logo_text)
     pass
 
 """
@@ -864,10 +873,15 @@ def barrier_action():
     store_Datas.append({'desc': '氧浓度0点校准值',
                         'value': results.get('ZeroCalibration_data__oxygen_calibration_zero_value') if results.get(
                             'ZeroCalibration_data__oxygen_calibration_zero_value') is not None else None}  )
+    store_Datas.append({'desc': 'ZOS压力0点校准值',
+                        'value': results.get('ZeroCalibration_data__zos_pressure_calibration_zero_value') if results.get(
+                            'ZeroCalibration_data__zos_pressure_calibration_zero_value') is not None else None})
     store_Datas.append({'desc': '氧浓传感器span数值',
                         'value': results.get('SpanCalibration_data__oxygen_calibration_span_value') if results.get(
                             'SpanCalibration_data__oxygen_calibration_span_value') is not None else None})
-
+    store_Datas.append({'desc': 'ZOS压力span数值',
+                        'value': results.get('SpanCalibration_data__zos_pressure_calibration_span_value') if results.get(
+                            'SpanCalibration_data__zos_pressure_calibration_span_value') is not None else None})
     store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') if results.get(
                             f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') is not None else None   })
     store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
@@ -1133,6 +1147,31 @@ def start_calibration():
     """
     if ufc_ugc_zos_thread is not None:
         ufc_ugc_zos_thread.calibration_btn_start()
+    pass
+def stop_zero_calibration():
+    global ufc_ugc_zos_thread, ufc_ugc_zos
+    if ufc_ugc_zos_thread is not None:
+        ufc_ugc_zos_thread.stop_zero_calibration_handle()
+    """
+    stop 校0
+    :return:
+    """
+    pass
+def stop_range_calibration():
+    """
+      stop 校span
+    :return:
+    """
+    if ufc_ugc_zos_thread is not None:
+        ufc_ugc_zos_thread.stop_range_calibration_handle()
+    pass
+def stop_calibration():
+    """
+      stop 校0 和span
+    :return:
+    """
+    if ufc_ugc_zos_thread is not None:
+        ufc_ugc_zos_thread.stop_calibration_btn_start()
     pass
 def restart(q,send_message_q):
     main(q,send_message_q)

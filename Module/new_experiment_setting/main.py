@@ -31,7 +31,7 @@ class Main_experiment_setting_widget(BaseInterfaceWidget):
         self.bottom_frame_obj = None
 
     def get_type(self):
-        return BaseInterfaceType.WINDOW
+        return BaseInterfaceType.WIDGET
 
     def create_middle_window(self) -> BaseWindow:
         return Tab_1()
@@ -63,7 +63,7 @@ class Main_experiment_setting(BaseModule):
         return "New_main_experiment_setting"
 
     def get_title(self):
-        return "串口配置"
+        return "设置设备"
 
     def get_menu_name(self):
         return {"id": 1, "text": "设备信息"}

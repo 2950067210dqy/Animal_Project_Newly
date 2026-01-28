@@ -57,6 +57,7 @@ class Others_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("oxygen_calibration_zero_value", "氧浓度0点校准值", " REAL "),
+                ("zos_pressure_calibration_zero_value", "ZOS压力0点校准值", " REAL "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ],
@@ -68,6 +69,7 @@ class Others_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("oxygen_calibration_span_value", "氧浓传感器span数值", " REAL "),
+                ("zos_pressure_calibration_span_value", "ZOS压力span数值", " REAL "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ],
@@ -81,7 +83,9 @@ class Others_Tables(Enum):
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("mouse_cage_number", "鼠笼号", " INTEGER "),
                 ("oxygen_calibration_zero_value", "氧浓度0点校准值", " REAL "),
+                ("zos_pressure_calibration_zero_value", "ZOS压力0点校准值", " REAL "),
                 ("oxygen_calibration_span_value", "氧浓传感器span数值", " REAL "),
+                ("zos_pressure_calibration_span_value", "ZOS压力span数值", " REAL "),
                 ("mouse_cage_infrared_temp", "鼠笼红外温度(°C)", " REAL "),
                 ("UFC_flow_num", "ufc_流量计测量值(sccm)", " INTEGER "),
                 ("reference_flow_num", "ufc_参考气流量计测量值(sccm)", " INTEGER "),

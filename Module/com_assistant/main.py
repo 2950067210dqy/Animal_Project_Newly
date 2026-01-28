@@ -39,7 +39,7 @@ class Main_com_assistant_widget(BaseInterfaceWidget):
 
     def get_type(self):
         """获得类型 """
-        return BaseInterfaceType.WINDOW
+        return BaseInterfaceType.WIDGET
     def create_middle_window(self) -> BaseWindow:
         return Tab_3()
 

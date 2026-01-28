@@ -5,7 +5,6 @@ from loguru import logger
 
 #logger = logger.bind(category="gui_logger")
 class MyQThread(QThread):
-
     def __init__(self, name):
         super().__init__()
         super().setObjectName(name)
@@ -14,61 +13,134 @@ class MyQThread(QThread):
         self.condition = QWaitCondition()
         self._running = False
         self._paused = False
-    def isStart(self):
-        return self._running
-    def isPaused(self):
-        return self._paused and self._running
+        self._stop_requested = False  # 新增明确的停止标志
+
     def run(self):
         logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
         self._running = True
-        self.before_Runing_work()
-        while self._running:
-            self.mutex.lock()
-            if self._paused:
-                self.condition.wait(self.mutex)  # 等待条件变量
+        self._stop_requested = False
+
+        try:
+            self.before_Runing_work()
+
+            while not self._stop_requested and not self.isInterruptionRequested():
+                # 检查是否需要暂停
+                self.mutex.lock()
+                while self._paused and not self._stop_requested and not self.isInterruptionRequested():
+                    # 使用带超时的等待，定期检查停止状态
+                    if not self.condition.wait(self.mutex, 500):  # 500ms超时
+                        # 超时后重新检查状态
+                        pass
+                self.mutex.unlock()
+
+                # 双重检查
+                if self._stop_requested or self.isInterruptionRequested():
+                    break
+
+                # 执行工作
+                if not self._paused:
+                    try:
+                        self.dosomething()
+                    except Exception as e:
+                        logger.error(f"{self.name} dosomething error: {e}")
+                        break
+                else:
+                    # 如果暂停了，短暂休眠
+                    self.msleep(10)
+
+        except Exception as e:
+            logger.error(f"{self.name} run() exception: {e}")
+        finally:
+            self._running = False
+            logger.warning(f"{self.name} thread run() ended")
+
+    def stop(self):
+        logger.warning(f"{self.name} thread stop() called")
+        self.mutex.lock()
+        try:
+            self._stop_requested = True
+            self._running = False
+            self._paused = False
+            self.condition.wakeAll()
+        finally:
             self.mutex.unlock()
 
-            # 执行一些工作（替代为你需要的任务）
-            self.dosomething()
-    def move_work_to_thread(self,work):
-        self.dosomething=work
-    def before_Runing_work(self):
-        #执行前的一些工作
-        pass
-    def dosomething(self):
-        # 执行一些工作（替代为你需要的任务）
-        pass
-
     def pause(self):
-        # 暂停线程
-        self.mutex.lock()
-        self._paused = True
-        self.mutex.unlock()
-        logger.warning(f"{self.name} thread {threading.get_ident()} has been paused！")
+        if not self._stop_requested:
+            self.mutex.lock()
+            self._paused = True
+            self.mutex.unlock()
+            logger.warning(f"{self.name} thread has been paused！")
 
     def resume(self):
         self.mutex.lock()
         self._paused = False
-        self.condition.wakeAll()  # 唤醒线程
+        self.condition.wakeAll()
         self.mutex.unlock()
-        logger.warning(f"{self.name} thread {threading.get_ident()} has been resumed！")
+        logger.warning(f"{self.name} thread has been resumed！")
 
-    def stop(self):
-        logger.warning(f"{self.name} thread {threading.get_ident()} has been stopped！")
-        self.mutex.lock()
-        self._running = False
-        self._paused = False  # 确保在停止前取消暂停
-        self.condition.wakeAll()  # 可能需要唤醒线程以便其能正常退出
-        self.mutex.unlock()
-        # self.terminate()
     def deleteLater(self):
-        self.stop()
-        self.requestInterruption()  # 请求中断
-        self.quit()
-        # # 等待1秒
-        # if not self.wait(1000):
-        #     self.terminate()
-        #     self.wait(1000)
+        """更安全的删除方法"""
+        logger.warning(f"开始删除线程 {self.name}")
+
+        try:
+            # 1. 设置停止标志
+            self.stop()
+
+            # 2. 请求中断
+            self.requestInterruption()
+
+            # 3. 强制唤醒多次
+            for _ in range(5):
+                self.mutex.lock()
+                self.condition.wakeAll()
+                self.mutex.unlock()
+                QThread.msleep(20)
+
+            # 4. 退出事件循环
+            self.quit()
+
+            # 5. 等待线程结束
+            wait_count = 0
+            while self.isRunning() and wait_count < 50:  # 最多等待5秒 (50 * 100ms)
+                QThread.msleep(100)
+                wait_count += 1
+
+                # 每秒再次唤醒一次
+                if wait_count % 10 == 0:
+                    self.mutex.lock()
+                    self.condition.wakeAll()
+                    self.mutex.unlock()
+
+            if self.isRunning():
+                logger.warning(f"{self.name}线程等待超时，强制终止")
+                # self.terminate()
+                self.wait(1000)
+            else:
+                logger.warning(f"{self.name}线程正常结束")
+
+        except Exception as e:
+            logger.error(f"{self.name}删除线程异常: {e}")
+            try:
+                # self.terminate()
+                self.wait(1000)
+            except Exception as e2:
+                logger.error(f"{self.name}强制终止失败: {e2}")
+
+    def isStart(self):
+        return self._running and not self._stop_requested
+
+    def isPaused(self):
+        return self._paused and self._running and not self._stop_requested
+
+    def move_work_to_thread(self, work):
+        self.dosomething = work
+
+    def before_Runing_work(self):
+        pass
+
+    def dosomething(self):
+        pass
 
     def __del__(self):
         logger.debug(f"线程{self.name}被销毁!")

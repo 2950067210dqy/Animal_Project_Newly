@@ -6,6 +6,7 @@ from blinker.base import _PNamespaceSignal
 from loguru import logger
 
 from public.config_class.global_setting import global_setting
+from public.entity.enum.Public_Enum import GapSystem_Running_Type
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
@@ -17,11 +18,12 @@ import time
 
 
 class Send_Message:
-    def __init__(self, update_status_main_signal_gui_update=None, send_message=None, modbus=None):
+    def __init__(self, update_status_main_signal_gui_update=None, send_message=None, modbus=None,update_status_main_signal_gui_update_type=GapSystem_Running_Type.DEFAULT):
         # 更新主线程状态栏消息信号
         self.update_status_main_signal_gui_update: _PNamespaceSignal = update_status_main_signal_gui_update
         self.send_message = send_message
         self.modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
+        self.update_status_main_signal_gui_update_type = update_status_main_signal_gui_update_type
 
     def _send_with_retry(self, max_retries=3):
         """带重试机制的发送方法"""
@@ -99,7 +101,7 @@ class Send_Message:
 
                     # 将解析数据返回给主菜单
                     self.update_status_main_signal_gui_update.send(
-                        f"{time_util.get_format_from_time(time.time())} | {parser_message}")
+                        f"{time_util.get_format_from_time(time.time())} | {parser_message}",title=self.update_status_main_signal_gui_update_type)
                     return_data['data'].append({'desc': '备注', 'value': None})
                 else:
                     # 将错误信息返回给主菜单
@@ -107,7 +109,7 @@ class Send_Message:
                         for data in return_data['data']:
                             if data and data.get('desc') and data.get('desc') == '备注':
                                 self.update_status_main_signal_gui_update.send(
-                                    f"{time_util.get_format_from_time(time.time())} |{data.get('value')}")
+                                    f"{time_util.get_format_from_time(time.time())} |{data.get('value')}",title=self.update_status_main_signal_gui_update_type)
                                 break
 
                 # 把返回数据返回给源头
@@ -153,7 +155,7 @@ class Send_Message:
 
                     # 将解析数据返回给主菜单
                     self.update_status_main_signal_gui_update.send(
-                        f"{time_util.get_format_from_time(time.time())} | {parser_message}")
+                        f"{time_util.get_format_from_time(time.time())} | {parser_message}",title=self.update_status_main_signal_gui_update_type)
                     return_data['data'].append({'desc': '备注', 'value': None})
                 else:
                     # 将错误信息返回给主菜单
@@ -161,7 +163,7 @@ class Send_Message:
                         for data in return_data['data']:
                             if data and data.get('desc') and data.get('desc') == '备注':
                                 self.update_status_main_signal_gui_update.send(
-                                    f"{time_util.get_format_from_time(time.time())} | {data.get('value')}")
+                                    f"{time_util.get_format_from_time(time.time())} | {data.get('value')}",title=self.update_status_main_signal_gui_update_type)
                                 break
 
                 # 把返回数据返回给源头

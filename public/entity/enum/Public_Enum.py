@@ -1,18 +1,24 @@
 from enum import Enum
-class ModBusResponseCode(Enum):
-    #一般错误
-    ERROR = 404
-    #操作超时
-    OPERATOR_TIMEOUT =401
-    #发送接收异常
-    SEND_RECEIVE_EXCEPTION=402
-    #解析报文TIMEOUT1
-    VALIDATE_RESP_TIMEOUT1 =301
-    VALIDATE_RESP_TIMEOUT2=302
-    VALIDATE_RESP_TIMEOUT3 =303
-    VALIDATE_RESP_FUNC_CODE_EXCEPTION =304
-    #成功
-    SUCCESS =200
+class GapSystem_Running_Type(Enum):
+    """
+    气路系统logger_info方法的title 区分气路模块中的哪个气路发过来的消息
+    """
+    #默认
+    DEFAULT = 0
+
+    UFC_START = 1
+    UFC_RUNNING = 2
+    UFC_STOP = 3
+    UGC_START = 4
+    UGC_RUNNING = 5
+    UGC_STOP = 6
+    ZOS_START = 7
+    ZOS_RUNNING = 8
+    ZOS_STOP = 9
+
+    ZERO_CALIBRATION = 10
+    RANGE_CALIBRATION = 11
+    UFC_STATE_CHECK =12
     def __lt__(self, other):
         if other is None:
             return False
@@ -36,6 +42,50 @@ class ModBusResponseCode(Enum):
         if other is None:
             return False
         return self.value == other.value
+    def __ne__(self, other):
+        if other is None:
+            return False
+        return self.value != other.value
+class ModBusResponseCode(Enum):
+    # 一般错误
+    ERROR = 404
+    # 操作超时
+    OPERATOR_TIMEOUT = 401
+    # 发送接收异常
+    SEND_RECEIVE_EXCEPTION = 402
+    # 解析报文TIMEOUT1
+    VALIDATE_RESP_TIMEOUT1 = 301
+    VALIDATE_RESP_TIMEOUT2 = 302
+    VALIDATE_RESP_TIMEOUT3 = 303
+    VALIDATE_RESP_FUNC_CODE_EXCEPTION = 304
+    # 成功
+    SUCCESS = 200
+
+    def __lt__(self, other):
+        if other is None:
+            return False
+        return self.value < other.value
+
+    def __le__(self, other):
+        if other is None:
+            return False
+        return self.value <= other.value
+
+    def __gt__(self, other):
+        if other is None:
+            return False
+        return self.value > other.value
+
+    def __ge__(self, other):
+        if other is None:
+            return False
+        return self.value >= other.value
+
+    def __eq__(self, other):
+        if other is None:
+            return False
+        return self.value == other.value
+
     def __ne__(self, other):
         if other is None:
             return False

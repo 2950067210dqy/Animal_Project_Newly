@@ -41,7 +41,7 @@ class read_queue_data_Thread(MyQThread):
             if message is not None and message.is_Empty():
                 return
             if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'monitor_data_new_index':
-                logger.error(f"{self.name}_get_message:{message}")
+                # logger.error(f"{self.name}_get_message:{message}")
                 match message.title:
                     case 'zero_calibration_finish':
                         """
@@ -49,16 +49,33 @@ class read_queue_data_Thread(MyQThread):
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
                             self.window.left_top_widget_content.enabled_zero_calibration_btn_signal.emit()
-                            self.window.left_top_widget_content.list_widget.insertItem(0,
-                                                        f"{time_util.get_format_from_time(time.time())}-校零完成时间")
+
                     case 'range_calibration_finish':
                         """
                         量程标定结束
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
                             self.window.left_top_widget_content.enabled_range_calibration_btn_signal.emit()
-                            self.window.left_top_widget_content.list_widget.insertItem(0,
-                                                                                       f"{time_util.get_format_from_time(time.time())}-校量程完成时间")
+                    case 'stop_zero_calibration_finish':
+                        """
+                        stop零点标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_stop_zero_calibration_btn_signal.emit()
+
+                    case 'stop_range_calibration_finish':
+                        """
+                        stop量程标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_stop_range_calibration_btn_signal.emit()
+                    case 'calibration_msg':
+                        """
+                        标定的消息
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+
+                            self.window.left_top_widget_content.logger_calibration_msg_signal.emit(message.data)
                     case _:
                         pass
 
