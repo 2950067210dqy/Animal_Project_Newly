@@ -723,6 +723,7 @@ class MainWindow_Index(ThemedWindow):
                 lambda _:AsyPromise(self.start_open_window).then().catch(lambda e: logger.error(f"{e}"))
             ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
+        # AsyPromise(self.start_open_window).then().catch(lambda e: logger.error(f"{e}"))
         pass
     def show_open_dialog(self,resolve,reject):
         # 弹窗最晚持续时间

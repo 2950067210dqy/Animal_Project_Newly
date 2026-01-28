@@ -4,9 +4,9 @@ import typing
 from enum import Enum
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtCore import QTimer, pyqtSignal, Qt
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QButtonGroup, QRadioButton, \
-    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame
+    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame, QSplitter
 from loguru import logger
 
 from Module.new_monitor_data.ui.custom.charts.Custom_charts import AdvancedChartWidget
@@ -55,6 +55,7 @@ class Show_Type(Enum):
             return False
         return self.value != other.value
 class MonitorDataWindows(ThemedWidget):
+    logger_calibration_msg_signal =pyqtSignal(str)
     enabled_zero_calibration_btn_signal =pyqtSignal()
     enabled_range_calibration_btn_signal =pyqtSignal()
     def resizeEvent(self, a0: typing.Optional[QtGui.QResizeEvent]):
@@ -99,7 +100,10 @@ class MonitorDataWindows(ThemedWidget):
         super().__init__()
         self.gids = []
         self.n = 0
-
+        # 存放创建的 dock 引用
+        self._docks_widget = []
+        self._docks_widget_charts = []
+        self._docks_widget_calibration = []
         # 是否正在零点标定 和量程标定
         self.is_all_calibration = False
         # 正在零点标定
@@ -116,8 +120,13 @@ class MonitorDataWindows(ThemedWidget):
         ]
 
         self.main_layout = QVBoxLayout()
+        self.main_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.setHandleWidth(3)
 
-        self.top_layout = QHBoxLayout()
+        self.top_layout_scroll=QScrollArea()
+        self.top_layout_widget = QWidget()
+        self.top_layout = QHBoxLayout(self.top_layout_widget)
 
         btn_layout = QVBoxLayout()
         btn_left_layout = QHBoxLayout()
@@ -149,7 +158,9 @@ class MonitorDataWindows(ThemedWidget):
         btn_layout.addLayout(btn_right_layout)
         self.top_layout.addLayout(btn_layout)
         # Scroll area2 包含 QListView
-        opera_layout =QVBoxLayout()
+        opera_layout_widget =QWidget()
+        opera_layout_widget.setWindowTitle(f"校准信息页")
+        opera_layout =QVBoxLayout(opera_layout_widget)
         h_layout = QHBoxLayout()
         tip_label = QLabel("操作（操作必须手动导出数据，否则停止实验和关闭程序不会导出操作数据！）:")
         tip_label.setStyleSheet("""
@@ -174,6 +185,7 @@ class MonitorDataWindows(ThemedWidget):
 
         # 创建 QListWidget
         self.list_widget = QListWidget()
+
         # self.list_widget.setMinimumHeight(300)
 
         # 添加组件到滚动布局
@@ -184,17 +196,26 @@ class MonitorDataWindows(ThemedWidget):
         h_layout_2.addWidget(self.scroll_area_2)
         opera_layout.addLayout(h_layout_2)
         opera_layout.addStretch(7)
-        self.top_layout.addLayout(opera_layout)
-        self.main_layout.addLayout(self.top_layout, stretch=1)
-        # 添加横向分割线
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)  # 设置为横线
-        line.setFrameShadow(QFrame.Shadow.Sunken)  # 设置阴影效果
-        line.setStyleSheet("height: 3px; background-color: gray;")  # 设置粗细和颜色
-        self.main_layout.addWidget(line, stretch=1)
+
+
+        self.opera_layout_widget = DemoDraggableDockWidget(is_showt_tab=False)
+        self._docks_widget_calibration.append( opera_layout_widget)
+        self.opera_layout_widget.addFrames(self._docks_widget_calibration)
+
+        self.top_layout.addWidget(self.opera_layout_widget)
+        self.top_layout_scroll.setLayout(self.top_layout)
+        self.main_splitter.addWidget(self.top_layout_scroll)
+        # self.main_layout.addLayout(self.top_layout, stretch=1)
+        # # 添加横向分割线
+        # line = QFrame()
+        # line.setFrameShape(QFrame.Shape.HLine)  # 设置为横线
+        # line.setFrameShadow(QFrame.Shadow.Sunken)  # 设置阴影效果
+        # line.setStyleSheet("height: 3px; background-color: gray;")  # 设置粗细和颜色
+        # self.main_layout.addWidget(line, stretch=1)
         # 连接信号
         self.enabled_zero_calibration_btn_signal.connect(self.enabled_zero_calibration_btn)
         self.enabled_range_calibration_btn_signal.connect(self.enabled_range_calibration_btn)
+        self.logger_calibration_msg_signal.connect(self.logger_calibration_msg)
         # 绑定按钮事件
         self.zero_calibration_btn.clicked.connect(self.zero_calibration_start)
         self.range_calibration_btn.clicked.connect(self.range_calibration_start)
@@ -203,26 +224,31 @@ class MonitorDataWindows(ThemedWidget):
         self.button_group.buttonClicked.connect(self.on_show_selection_changed)
 
         # 表格区域
-        self.content_layout = QVBoxLayout()
-        self.content_widget=DemoDraggableDockWidget()
+        self.content_layout_widget = QWidget()
+        self.content_layout = QVBoxLayout( self.content_layout_widget)
+        self.content_widget=DemoDraggableDockWidget(is_showt_tab=False)
         self.content_layout.addWidget(self.content_widget)
 
-
-        self.main_layout.addLayout(self.content_layout,stretch=8)
+        self.main_splitter.addWidget(self.content_layout_widget)
+        # self.main_layout.addLayout(self.content_layout,stretch=8)
 
 
         # 图表区域
-        self.charts_layout = QVBoxLayout()
-        self.charts_widget = DemoDraggableDockWidget()
+        self.charts_layout_widget=QWidget()
+        self.charts_layout = QVBoxLayout(self.charts_layout_widget)
+        self.charts_widget = DemoDraggableDockWidget(is_showt_tab=False)
         self.charts_layout.addWidget(self.charts_widget)
 
-        self.main_layout.addLayout(self.charts_layout, stretch=8)
-
+        self.main_splitter.addWidget(self.charts_layout_widget)
+        # self.main_layout.addLayout(self.charts_layout, stretch=8)
+        # 设置拉伸因子 (索引, 拉伸因子)
+        self.main_splitter.setStretchFactor(0, 2)
+        self.main_splitter.setStretchFactor(1, 8)
+        self.main_splitter.setStretchFactor(2, 8)
+        self.main_layout.addWidget(self.main_splitter)
 
         self.setLayout(self.main_layout)
-        # 存放创建的 dock 引用
-        self._docks_widget = []
-        self._docks_widget_charts = []
+
     def clear_existing_docks(self):
         self.content_widget.remove_all()
         for d in self._docks_widget:
@@ -400,6 +426,8 @@ class MonitorDataWindows(ThemedWidget):
         self.zero_calibration_btn.setDisabled(False)
         self.is_zero_calibration = False
         self.zero_calibration_btn.setText("校零")
+        self.list_widget.insertItem(0,
+                                                                   f"{time_util.get_format_from_time(time.time())}-校零完成时间")
         msg_box_3 = InfoDialog(title="校零完成", info=f"校0已经完成，完成时间{time_util.get_format_from_time(time.time())}",
                              icon=QMessageBox.Icon.Information)
         msg_box_3.exec()
@@ -407,6 +435,10 @@ class MonitorDataWindows(ThemedWidget):
         self.range_calibration_btn.setDisabled(False)
         self.is_range_calibration = False
         self.range_calibration_btn.setText("校量程")
+        self.list_widget.insertItem(0,
+                                                                   f"{time_util.get_format_from_time(time.time())}-校量程完成时间")
         msg_box_2 = InfoDialog(title="校量程完成", info=f"校量程已经完成，完成时间{time_util.get_format_from_time(time.time())}",
                              icon=QMessageBox.Icon.Information)
         msg_box_2.exec()
+    def logger_calibration_msg(self,msg):
+        self.list_widget.insertItem(0,msg)

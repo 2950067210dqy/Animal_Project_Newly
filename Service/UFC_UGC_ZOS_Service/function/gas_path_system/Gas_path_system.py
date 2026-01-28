@@ -1383,7 +1383,9 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             values = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)']
             flow_nums =[data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='流量(sccm)']
             if len(values)>0 and len(flow_nums)>0:
-                oxygen_and_pressure_values = values[0]
+                # 氧浓度V应校准为（V-Vzero）* K
+                oxygen_and_pressure_values =[ round((oxygen_value - global_setting.get_setting("Vzero", 0)) * global_setting.get_setting("K", 1), 6)  for oxygen_value in values[0]]
+
                 # 流量计值
                 flow_num = flow_nums[0]
                 result_data["data"].append({"desc": "流量(sccm)", "value": flow_num})

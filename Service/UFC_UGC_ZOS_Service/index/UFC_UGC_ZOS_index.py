@@ -16,6 +16,7 @@ from Service.UFC_UGC_ZOS_Service.function.gas_state_check.Gas_State_Check import
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from public.entity.MyQThread import MyQThread, MyThread
+from public.entity.enum.Public_Enum import GapSystem_Running_Type
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Timer.ProcederTimer import PeriodicTimer
 from public.function.promise.AsyPromise import AsyPromise
@@ -126,14 +127,35 @@ class UFC_UGC_ZOS_index(MyQThread):
         serial_lock = threading.Lock()
         global_setting.set_setting("serial_lock", serial_lock)
 
-    def logger_info(self, text):
+    def logger_info(self, text,**kwargs):
 
         if text and "\n" not in text:
+
             # 除了日志需求，需要将响应信息放映出来
-            queue = global_setting.get_setting("queue",None)
-            if queue:
-                queue.put(ObjectQueueItem(origin="UFC_UGC_ZOS_index", to="MainWindow_index", title="gap_system_running_state",data=text,
-                                          time=time_util.get_format_from_time(time.time())))
+
+            title = kwargs.get("title",GapSystem_Running_Type.DEFAULT)
+
+            match title:
+                case GapSystem_Running_Type.ZERO_CALIBRATION|GapSystem_Running_Type.RANGE_CALIBRATION:
+                    send_message_queue = global_setting.get_setting("send_message_queue")
+                    if send_message_queue:
+                        send_message_queue.put(ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='monitor_data_new_index',
+                                                               title='calibration_msg',
+                                                               data=text,
+                                                               time=time_util.get_format_from_time(time.time())))
+
+                    pass
+                case GapSystem_Running_Type.DEFAULT:
+                    queue = global_setting.get_setting("queue", None)
+                    if queue:
+                        queue.put(ObjectQueueItem(origin="UFC_UGC_ZOS_index", to="MainWindow_index", title="gap_system_running_state",data=text,
+                                      time=time_util.get_format_from_time(time.time())))
+                case _:
+                    queue = global_setting.get_setting("queue", None)
+                    if queue:
+                        queue.put(ObjectQueueItem(origin="UFC_UGC_ZOS_index", to="MainWindow_index", title="gap_system_running_state",data=text,
+                                      time=time_util.get_format_from_time(time.time())))
+
             logger.debug(text)
 
     def _init_function(self):

@@ -1,5 +1,51 @@
 from enum import Enum
+class GapSystem_Running_Type(Enum):
+    """
+    气路系统logger_info方法的title 区分气路模块中的哪个气路发过来的消息
+    """
+    #默认
+    DEFAULT = 0
 
+    UFC_START = 1
+    UFC_RUNNING = 2
+    UFC_STOP = 3
+    UGC_START = 4
+    UGC_RUNNING = 5
+    UGC_STOP = 6
+    ZOS_START = 7
+    ZOS_RUNNING = 8
+    ZOS_STOP = 9
+
+    ZERO_CALIBRATION = 10
+    RANGE_CALIBRATION = 11
+    UFC_STATE_CHECK =12
+    def __lt__(self, other):
+        if other is None:
+            return False
+        return self.value < other.value
+
+    def __le__(self, other):
+        if other is None:
+            return False
+        return self.value <= other.value
+
+    def __gt__(self, other):
+        if other is None:
+            return False
+        return self.value > other.value
+
+    def __ge__(self, other):
+        if other is None:
+            return False
+        return self.value >= other.value
+    def __eq__(self, other):
+        if other is None:
+            return False
+        return self.value == other.value
+    def __ne__(self, other):
+        if other is None:
+            return False
+        return self.value != other.value
 class AppState(Enum):
     #程序当前状态
     # 初始化状态
