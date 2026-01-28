@@ -67,7 +67,7 @@ class MyQThread(QThread):
             # self.requestInterruption()  # 请求中断
             self.quit()
             if self.wait(5000):  # 等待5秒
-                self.debug_print(f"{self.name}线程正常结束")
+                logger.warning(f"{self.name}线程正常结束")
             else:
                 logger.warning(f"{self.name}线程停止等待超时，强制终止")
                 self.terminate()
