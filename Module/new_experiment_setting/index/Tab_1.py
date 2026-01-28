@@ -518,7 +518,7 @@ class Tab_1(ThemedWindow):
                 self.cage_list_widget.addItem(item)
                 self.cage_enabled_status[group_id] = group
 
-                logger.info(f"已启用笼子: ID={group_id}, Name={group.name}, Animals={animal_count}")
+                # logger.info(f"已启用笼子: ID={group_id}, Name={group.name}, Animals={animal_count}")
         else:
             logger.warning("没有找到任何已启用的分组")
 
@@ -528,12 +528,6 @@ class Tab_1(ThemedWindow):
     def start_module_detection(self):
         """
         开始检测各鼠笼的所有模块状态
-        流程：
-        1. 检查是否有已启用的笼子
-        2. 初始化每个笼子的模块追踪信息
-        3. 逐个向笼子的每个模块发送检测报文（带延迟）
-        4. 等待响应（最多N秒）
-        5. 显示检测结果
         """
         if not self.cage_enabled_status or len(self.cage_enabled_status) == 0:
             logger.error("没有已启用的笼子，无法开始检测")
@@ -547,10 +541,17 @@ class Tab_1(ThemedWindow):
         logger.info(f"{'=' * 80}")
         send_message_queue = global_setting.get_setting("send_message_queue", None)
         if send_message_queue:
+            # 传递笼子ID列表
+            gids = list(self.cage_enabled_status.keys())
             send_message_queue.put(
-      ObjectQueueItem(origin="New_main_experiment_setting", to="main_monitor_data", title="start_all_modules_detection",
-
-                                time=time_util.get_format_from_time(time.time())))
+                ObjectQueueItem(
+                    origin="New_main_experiment_setting",
+                    to="main_monitor_data",
+                    title="start_all_modules_detection",
+                    data={'gids': gids},  # 传递笼子信息
+                    time=time_util.get_format_from_time(time.time())
+                )
+            )
 
     def show_warning(self, title: str, message: str):
         """显示警告对话框"""

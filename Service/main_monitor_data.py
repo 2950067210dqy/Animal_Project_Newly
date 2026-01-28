@@ -46,7 +46,7 @@ wait_UFC_UGC_ZOS_start_event = threading.Event()
 global_setting.set_setting("wait_UFC_UGC_ZOS_start_event",wait_UFC_UGC_ZOS_start_event)
 # 通道
 experiment_settings = global_setting.get_setting("experiment_setting",None)
-gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+gids = [group.id for group in experiment_settings.groups if group.is_selected == 1] if experiment_settings is not None else []
 #气路之间也需要顺序run ufc run->ugc run->zos run
 wait_UFC_run_finish_event = threading.Event()
 wait_UGC_run_finish_event = threading.Event()
@@ -171,7 +171,9 @@ read_queue_data_thread = read_queue_data_Thread(name="main_monitor_data_read_que
 def  all_modules_check_online_state():
     port = global_setting.get_setting("port")
     global gids,send_thread
-    gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+    experiment_settings = global_setting.get_setting("experiment_setting", None)
+    gids = [group.id for group in experiment_settings.groups if
+            group.is_selected == 1] if experiment_settings is not None else []
     mouse_cage_index =None
     for i in range(len(gids)+1):
         # 鼠笼内的模块 参考气路则不运行：
@@ -213,7 +215,7 @@ def all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index):
             send_messages.append({'message': message_temp})
 
 
-        pass 
+        pass
     for msg in send_messages:
         send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
     if mouse_cage_index is not None:
@@ -225,39 +227,98 @@ def all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index):
     pass
 
 def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
-    """
-    检测气路模块的在线状态 - 根据笼号检测该笼的气路模块
-    """
-    send_messages = []
-
-    for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Module_Info.value:
-        """
-        检测气路模块：UFC、UGC、ZOS
-        根据笼号加偏移
-        """
-        for message_struct in data_type.value['send_messages']:
-            message_temp = copy.deepcopy(message_struct.message)
-            message_temp['port'] = port
-
-            # 根据笼号加偏移
-            if mouse_cage_index is not None:
-                mouse_cage = gids[mouse_cage_index] if gids else 1
-                message_temp['slave_id'] = copy.copy(
-                    format(int(message_temp['slave_id'], 16) + 16 * mouse_cage, '02X'))
-
-            send_messages.append({'message': message_temp})
-
-    # 发送所有气路模块的检测报文
-    for msg in send_messages:
-        send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
-
-    # 日志记录
-    if mouse_cage_index is not None:
-        mouse_cage = gids[mouse_cage_index] if gids else 1
-    else:
-        mouse_cage = None
-    logo_text = f"{time_util.get_format_from_time(time.time())} | 设备在线检测 气路模块 | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送气路模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
-    logger.info(logo_text)
+#     """
+#     检测气路模块的在线状态
+#     """
+#     send_messages = []
+#
+#     # ==================== 获取鼠笼号 ====================
+#     if mouse_cage_index is not None:
+#         mouse_cage = gids[mouse_cage_index] if gids else 1
+#     else:
+#         mouse_cage = None
+#
+#     # ==================== 处理每个气路模块 ====================
+#     for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Module_Info.value:
+#         """
+#         检测气路模块：UFC、UGC、ZOS
+#         """
+#         # 判断模块类型
+#         is_ufc_module = (data_type.name == 'UFC')
+#         is_zos_module = (data_type.name == 'ZOS')
+#         is_ugc_module = (data_type.name == 'UGC')
+#
+#         # ——— 对于 ZOS/UGC，需要先发送切换报文 ———
+#         if (is_zos_module or is_ugc_module) and mouse_cage is not None:
+#             # 第一步：切换到ZOS采样阀气路
+#             switch_zos_valve_message = {
+#                 'port': port,
+#                 'slave_id': '02',  # 切换指令发给主控模块
+#                 'function_code': '05',
+#                 'address': '0009',  # ZOS采样阀气路地址
+#                 'data': '00FF',  # 闭合
+#                 'module_type': 'air_path_switch',
+#                 'cage_index': mouse_cage_index,
+#                 'mouse_cage_number': mouse_cage,  # 实际鼠笼号
+#                 'switch_step': '1_zos_valve'
+#             }
+#             send_messages.append({'message': switch_zos_valve_message})
+#             # print(f'******当前鼠笼号{mouse_cage}')
+#             # logger.debug(f"[{data_type.name}] 步骤1: 切换到ZOS采样阀气路")
+#
+#             # 第二步：切换到目标鼠笼
+#             # 鼠笼地址 = 鼠笼号 - 1 (鼠笼1对应地址0x0000，鼠笼2对应0x0001...)
+#             cage_address = format(mouse_cage - 1, '04X')
+#
+#             switch_cage_message = {
+#                 'port': port,
+#                 'slave_id': '02',  # 切换指令发给主控模块
+#                 'function_code': '05',
+#                 'address': cage_address,  # 根据鼠笼号动态计算地址
+#                 'data': '00FF',  # 闭合
+#                 'module_type': 'air_path_switch',
+#                 'cage_index': mouse_cage_index,
+#                 'mouse_cage_number': mouse_cage,  # 实际鼠笼号（1-8）
+#                 'switch_step': '2_target_cage'
+#             }
+#             send_messages.append({'message': switch_cage_message})
+#             # logger.debug(
+#             #     f"[{data_type.name}] 步骤2: 切换到鼠笼{mouse_cage} "
+#             #     f"(索引={mouse_cage_index}, 地址=0x{cage_address})"
+#             # )
+#
+#         # ——— 发送查询报文 ———
+#         for message_struct in data_type.value['send_messages']:
+#             message_temp = copy.deepcopy(message_struct.message)
+#             message_temp['port'] = port
+#
+#             # 标记模块信息
+#             message_temp['module_type'] = 'air_path'
+#             message_temp['cage_index'] = mouse_cage_index
+#             message_temp['mouse_cage_number'] = mouse_cage
+#             message_temp['is_ufc'] = is_ufc_module
+#
+#             send_messages.append({'message': message_temp})
+#
+#     # ==================== 发送报文 ====================
+#     for msg in send_messages:
+#         send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
+#
+#     # ==================== 日志 ====================
+#     if mouse_cage is not None:
+#         cage_label = f"鼠笼 {mouse_cage}"
+#         note = "(已发送切换报文)" if (is_zos_module or is_ugc_module) else ""
+#     else:
+#         cage_label = "参考气路"
+#         note = ""
+#
+#     valid_messages = [msg for msg in send_messages if msg.get('type') is None]
+#     logo_text = (
+#         f"{time_util.get_format_from_time(time.time())} | "
+#         f"设备在线检测 气路模块 | {cage_label} | "
+#         f"发送报文: {len(valid_messages)} 条 {note}"
+#     )
+#     logger.info(logo_text)
     pass
 
 """
@@ -1021,7 +1082,8 @@ def start():
     global_setting.set_setting("cage_number_list_index", None)
     # 通道
     experiment_settings = global_setting.get_setting("experiment_setting", None)
-    gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+    gids = [group.id for group in experiment_settings.groups if
+            group.is_selected == 1] if experiment_settings is not None else []
     # UFC_UGC_ZOS
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
     ufc_ugc_zos_thread = None
