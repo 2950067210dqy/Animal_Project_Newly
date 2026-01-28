@@ -56,7 +56,19 @@ class read_queue_data_Thread(MyQThread):
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
                             self.window.left_top_widget_content.enabled_range_calibration_btn_signal.emit()
+                    case 'stop_zero_calibration_finish':
+                        """
+                        stop零点标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_stop_zero_calibration_btn_signal.emit()
 
+                    case 'stop_range_calibration_finish':
+                        """
+                        stop量程标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_stop_range_calibration_btn_signal.emit()
                     case 'calibration_msg':
                         """
                         标定的消息

@@ -411,6 +411,45 @@ class UFC_UGC_ZOS_index(MyQThread):
             ).catch( lambda e: logger.error(f"{e}"))
         ).catch( lambda e: logger.error(f"{e}"))
         return  p
+    def stop_range_calibration_handle(self):
+        """
+        stop_ 量程标定
+        :return:
+        """
+        self.Range_carlibration_obj.is_STOP = True
+        self.Range_carlibration_obj.update()
+        p = AsyPromise(
+            self.Range_carlibration_obj.stop_calibrate
+        ).then().catch( lambda e: logger.error(f"{e}"))
+        return p
+    def stop_zero_calibration_handle(self):
+        """
+        stop_零点标定
+        :return:
+        """
+        self.Zero_carlibration_obj.is_STOP = True
+        self.Zero_carlibration_obj.update()
+        p = AsyPromise(
+            self.Zero_carlibration_obj.stop_calibrate
+        ).then().catch( lambda e: logger.error(f"{e}"))
+        return p
+    def stop_calibration_btn_start(self):
+        """
+        stop_按钮点击的标定事件
+        :return:
+        """
+        self.Range_carlibration_obj.is_STOP = True
+        self.Zero_carlibration_obj.is_STOP = True
+        self.Range_carlibration_obj.update()
+        self.Zero_carlibration_obj.update()
+        p = AsyPromise(self.Zero_carlibration_obj.stop_calibrate).then(
+            lambda _:AsyPromise(
+                self.Range_carlibration_obj.stop_calibrate
+            ).then(
+                lambda r:r()
+            ).catch( lambda e: logger.error(f"{e}"))
+        ).catch( lambda e: logger.error(f"{e}"))
+        return  p
     def gas_state_check_handle(self):
         global stop_flag
         if stop_flag:

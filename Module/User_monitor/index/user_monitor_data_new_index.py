@@ -44,7 +44,8 @@ class read_queue_data_Thread(MyQThread):
                 # logger.error(f"{self.name}_get_message:{message}|")
             if message is not None and message.is_Empty():
                 return
-            if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'monitor_data_new_index':
+            # 不要乱复制  message.to不要为monitor_data_new_index
+            if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'user_monitor_data_new_index':
                 logger.error(f"{self.name}_get_message:{message}")
                 match message.title:
                     case 'zero_calibration_finish':

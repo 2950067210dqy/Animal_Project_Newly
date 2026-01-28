@@ -1384,7 +1384,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             flow_nums =[data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='流量(sccm)']
             if len(values)>0 and len(flow_nums)>0:
                 # 氧浓度V应校准为（V-Vzero）* K
-                oxygen_and_pressure_values =[ round((oxygen_value - global_setting.get_setting("Vzero", 0)) * global_setting.get_setting("K", 1), 6)  for oxygen_value in values[0]]
+                oxygen_and_pressure_values = [(round((float(oxygen) - global_setting.get_setting("Vzero", 0)) * global_setting.get_setting("K", 1), 6), pressure) for oxygen, pressure in values[0]]
 
                 # 流量计值
                 flow_num = flow_nums[0]
@@ -1400,7 +1400,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
                     logger.warning(f'鼠笼{mouse_cage_number_addr_single}的氧气传感器测量值(%)经过校准后得:{pred}，用于计算的预测因子为：{self.factor}')
                 else:
                     # 下标为None 则为参考气
-                    pred, factor = predict_steady_o2( np.array(oxygen__values), np.array(pressure_values), is_reference=True)
+                    pred, factor = predict_steady_o2( oxygen__values, pressure_values, is_reference=True)
                     logger.warning(f'参考气的氧气传感器测量值(%)经过校准后得:{pred}，得到的预测因子为：{factor}')
                     # 更新预测因子
                     self.factor = factor

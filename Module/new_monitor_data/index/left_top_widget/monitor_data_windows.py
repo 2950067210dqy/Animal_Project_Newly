@@ -58,6 +58,8 @@ class MonitorDataWindows(ThemedWidget):
     logger_calibration_msg_signal =pyqtSignal(str)
     enabled_zero_calibration_btn_signal =pyqtSignal()
     enabled_range_calibration_btn_signal =pyqtSignal()
+    enabled_stop_zero_calibration_btn_signal = pyqtSignal()
+    enabled_stop_range_calibration_btn_signal = pyqtSignal()
     def resizeEvent(self, a0: typing.Optional[QtGui.QResizeEvent]):
         self.setMinimumSize(0, 0)
 
@@ -154,8 +156,21 @@ class MonitorDataWindows(ThemedWidget):
         btn_right_layout.addWidget(self.zero_calibration_btn)
         btn_right_layout.addWidget(self.range_calibration_btn)
         btn_right_layout.addWidget(self.calibration_btn)
+
+        btn_bottom_layout = QHBoxLayout()
+        self.stop_zero_calibration_btn = QPushButton("停止校零")
+        self.stop_range_calibration_btn = QPushButton("停止校量程")
+        self.stop_calibration_btn = QPushButton("停止校零且量程")
+        # self.stop_range_calibration_btn.setDisabled(True)
+        # self.stop_zero_calibration_btn.setDisabled(True)
+        # self.stop_calibration_btn.setDisabled(True)
+        btn_bottom_layout.addWidget(self.stop_zero_calibration_btn)
+        btn_bottom_layout.addWidget(self.stop_range_calibration_btn)
+        btn_bottom_layout.addWidget(self.stop_calibration_btn)
+
         btn_layout.addLayout(btn_left_layout)
         btn_layout.addLayout(btn_right_layout)
+        btn_layout.addLayout(btn_bottom_layout)
         self.top_layout.addLayout(btn_layout)
         # Scroll area2 包含 QListView
         opera_layout_widget =QWidget()
@@ -215,11 +230,16 @@ class MonitorDataWindows(ThemedWidget):
         # 连接信号
         self.enabled_zero_calibration_btn_signal.connect(self.enabled_zero_calibration_btn)
         self.enabled_range_calibration_btn_signal.connect(self.enabled_range_calibration_btn)
+        self.enabled_stop_zero_calibration_btn_signal.connect(self.enabled_stop_zero_calibration_btn)
+        self.enabled_stop_range_calibration_btn_signal.connect(self.enabled_stop_range_calibration_btn)
         self.logger_calibration_msg_signal.connect(self.logger_calibration_msg)
         # 绑定按钮事件
         self.zero_calibration_btn.clicked.connect(self.zero_calibration_start)
         self.range_calibration_btn.clicked.connect(self.range_calibration_start)
         self.calibration_btn.clicked.connect(self.calibration_start)
+        self.stop_zero_calibration_btn.clicked.connect(self.zero_calibration_stop)
+        self.stop_range_calibration_btn.clicked.connect(self.range_calibration_stop)
+        self.stop_calibration_btn.clicked.connect(self.calibration_stop)
         self.export_button.clicked.connect(self.export_opera_data)
         self.button_group.buttonClicked.connect(self.on_show_selection_changed)
 
@@ -411,16 +431,87 @@ class MonitorDataWindows(ThemedWidget):
         msg_box.exec()
 
         pass
+    def zero_calibration_stop(self):
+        self.disabled_stop_zero_calibration_btn()
+        # 校0按钮事件
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        send_message_queue.put(ObjectQueueItem(origin='monitor_data_windows', to='main_monitor_data',
+                                               title='stop_zero_calibration',
+                                               data=None,
+                                               time=time_util.get_format_from_time(time.time())))
+        self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-停止校0按钮被点击时间")
+        msg_box = InfoDialog(title="停止校0", info=f"停止校0开始，请耐心等待",
+                             icon=QMessageBox.Icon.Information)
+        msg_box.exec()
+
+        pass
+
+    def range_calibration_stop(self):
+        self.disabled_stop_range_calibration_btn()
+        # 校span按钮事件
+        # 校0按钮事件
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        send_message_queue.put(ObjectQueueItem(origin='monitor_data_windows', to='main_monitor_data',
+                                               title='stop_span_calibration',
+                                               data=None,
+                                               time=time_util.get_format_from_time(time.time())))
+        self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-停止校span按钮被点击时间")
+        msg_box = InfoDialog(title="停止校span", info=f"停止校span开始，请耐心等待",
+                             icon=QMessageBox.Icon.Information)
+        msg_box.exec()
+
+        pass
+
+    def calibration_stop(self):
+        self.is_all_calibration = False
+        self.disabled_stop_range_calibration_btn()
+        self.disabled_stop_zero_calibration_btn()
+
+        # 校0校span按钮事件
+        # 校0按钮事件
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        send_message_queue.put(ObjectQueueItem(origin='monitor_data_windows', to='main_monitor_data',
+                                               title='stop_calibration',
+                                               data=None,
+                                               time=time_util.get_format_from_time(time.time())))
+        self.list_widget.insertItem(0, f"{time_util.get_format_from_time(time.time())}-停止校0和校span按钮被点击时间")
+        msg_box = InfoDialog(title="停止校0和校span", info=f"停止校0和校span开始，请耐心等待",
+                             icon=QMessageBox.Icon.Information)
+        msg_box.exec()
+
+        pass
     def disabled_zero_calibration_btn(self):
         self.calibration_btn.setDisabled(True)
         self.zero_calibration_btn.setDisabled(True)
+
+        self.stop_calibration_btn.setDisabled(False)
+        self.stop_zero_calibration_btn.setDisabled(False)
+
         self.is_zero_calibration=True
         self.zero_calibration_btn.setText("正在校零中")
     def disabled_range_calibration_btn(self):
         self.calibration_btn.setDisabled(True)
         self.range_calibration_btn.setDisabled(True)
+
+        self.stop_calibration_btn.setDisabled(False)
+        self.stop_range_calibration_btn.setDisabled(False)
+
         self.is_range_calibration=True
         self.range_calibration_btn.setText("正在校量程中")
+
+    def disabled_stop_zero_calibration_btn(self):
+        self.stop_calibration_btn.setDisabled(True)
+        self.stop_zero_calibration_btn.setDisabled(True)
+
+        self.is_zero_calibration = False
+        self.stop_zero_calibration_btn.setText("正在停止校零中")
+        self.zero_calibration_btn.setText("校零")
+    def disabled_stop_range_calibration_btn(self):
+        self.stop_calibration_btn.setDisabled(True)
+        self.stop_range_calibration_btn.setDisabled(True)
+        self.is_range_calibration = False
+        self.stop_range_calibration_btn.setText("正在停止校量程中")
+        self.range_calibration_btn.setText("校量程")
     def enabled_zero_calibration_btn(self):
 
         self.zero_calibration_btn.setDisabled(False)
@@ -438,6 +529,30 @@ class MonitorDataWindows(ThemedWidget):
         self.list_widget.insertItem(0,
                                                                    f"{time_util.get_format_from_time(time.time())}-校量程完成时间")
         msg_box_2 = InfoDialog(title="校量程完成", info=f"校量程已经完成，完成时间{time_util.get_format_from_time(time.time())}",
+                             icon=QMessageBox.Icon.Information)
+        msg_box_2.exec()
+
+
+    def enabled_stop_zero_calibration_btn(self):
+
+        self.zero_calibration_btn.setDisabled(False)
+        self.is_zero_calibration = False
+        self.zero_calibration_btn.setText("校零")
+        self.stop_zero_calibration_btn.setText("停止校零")
+
+        self.list_widget.insertItem(0,
+                                                                   f"{time_util.get_format_from_time(time.time())}-停止校零完成时间")
+        msg_box_3 = InfoDialog(title="停止校零完成", info=f"停止校0已经完成，完成时间{time_util.get_format_from_time(time.time())}",
+                             icon=QMessageBox.Icon.Information)
+        msg_box_3.exec()
+    def enabled_stop_range_calibration_btn(self):
+        self.range_calibration_btn.setDisabled(False)
+        self.is_range_calibration = False
+        self.range_calibration_btn.setText("校量程")
+        self.stop_range_calibration_btn.setText("停止校量程")
+        self.list_widget.insertItem(0,
+                                                                   f"{time_util.get_format_from_time(time.time())}-停止校量程完成时间")
+        msg_box_2 = InfoDialog(title="停止校量程完成", info=f"停止校量程已经完成，完成时间{time_util.get_format_from_time(time.time())}",
                              icon=QMessageBox.Icon.Information)
         msg_box_2.exec()
     def logger_calibration_msg(self,msg):

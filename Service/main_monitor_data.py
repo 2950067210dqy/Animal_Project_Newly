@@ -67,7 +67,6 @@ class read_queue_data_Thread(MyQThread):
         self.queue = None
         self.send_thread: Send_thread = None
         pass
-
     def stop(self):
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.stop()
@@ -77,6 +76,7 @@ class read_queue_data_Thread(MyQThread):
             # logger.error(f"{self.queue.qsize()}")
             try:
                 message: ObjectQueueItem = self.queue.get()
+                # logger.error(f"{self.name}_get_message:{message}|")
             except Exception as e:
                 logger.error(f"{self.name}发生错误{e}")
                 return
@@ -121,6 +121,15 @@ class read_queue_data_Thread(MyQThread):
                     case 'start_calibration':
                         start_calibration()
                         pass
+                    case 'stop_zero_calibration':
+
+                        stop_zero_calibration()
+                        pass
+                    case 'stop_span_calibration':
+                        stop_range_calibration()
+                        pass
+                    case 'stop_calibration':
+                        stop_calibration()
                     case 'pause':
                         pause()
                     case 'stop':
@@ -978,6 +987,31 @@ def start_calibration():
     """
     if ufc_ugc_zos_thread is not None:
         ufc_ugc_zos_thread.calibration_btn_start()
+    pass
+def stop_zero_calibration():
+    global ufc_ugc_zos_thread, ufc_ugc_zos
+    if ufc_ugc_zos_thread is not None:
+        ufc_ugc_zos_thread.stop_zero_calibration_handle()
+    """
+    stop 校0
+    :return:
+    """
+    pass
+def stop_range_calibration():
+    """
+      stop 校span
+    :return:
+    """
+    if ufc_ugc_zos_thread is not None:
+        ufc_ugc_zos_thread.stop_range_calibration_handle()
+    pass
+def stop_calibration():
+    """
+      stop 校0 和span
+    :return:
+    """
+    if ufc_ugc_zos_thread is not None:
+        ufc_ugc_zos_thread.stop_calibration_btn_start()
     pass
 def restart(q,send_message_q):
     main(q,send_message_q)
