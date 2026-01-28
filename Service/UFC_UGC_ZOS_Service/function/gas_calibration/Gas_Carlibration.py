@@ -9,9 +9,10 @@ from blinker.base import _PNamespaceSignal
 from loguru import logger
 
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
-from deleted_moudle.UFC_UGC_ZOS_Test.entity.MyQThread import MyQThread
+
 
 from public.config_class.global_setting import global_setting
+from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import GapSystem_Running_Type
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Type import Others_Tables
@@ -96,6 +97,7 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
         :param reject:
         :return:
         """
+        self.is_STOP=True
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  停止零点量程标定 开始{'.' * 100}", title=self.title)
         # resolve()
@@ -417,6 +419,7 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
         :param reject:
         :return:
         """
+        self.is_STOP=True
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  停止SPan量程标定 开始{'.' * 100}", title=self.title)
         # resolve()

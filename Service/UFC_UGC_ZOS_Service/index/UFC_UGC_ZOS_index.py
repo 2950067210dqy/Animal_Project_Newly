@@ -312,7 +312,11 @@ class UFC_UGC_ZOS_index(MyQThread):
                 self.UFC_gas_path_system_obj.stop,
             ).then(
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.stop).then(
-                    lambda v22: AsyPromise(self.finished_stop)
+                    lambda v22: AsyPromise(self.Zero_carlibration_obj.stop_calibrate).then(
+                        lambda _: AsyPromise(self.Range_carlibration_obj.stop_calibrate).then(
+                            lambda _: AsyPromise(self.finished_stop)
+                        ).catch(lambda e: logger.error(f"{e}"))
+                    ).catch(lambda e: logger.error(f"{e}"))
                 ).catch( lambda e: logger.error(f"{e}"))
 
             ).catch( lambda e: logger.error(f"{e}"))
@@ -416,7 +420,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         stop_ 量程标定
         :return:
         """
-        self.Range_carlibration_obj.is_STOP = True
+
         self.Range_carlibration_obj.update()
         p = AsyPromise(
             self.Range_carlibration_obj.stop_calibrate
@@ -427,7 +431,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         stop_零点标定
         :return:
         """
-        self.Zero_carlibration_obj.is_STOP = True
+
         self.Zero_carlibration_obj.update()
         p = AsyPromise(
             self.Zero_carlibration_obj.stop_calibrate
@@ -438,8 +442,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         stop_按钮点击的标定事件
         :return:
         """
-        self.Range_carlibration_obj.is_STOP = True
-        self.Zero_carlibration_obj.is_STOP = True
+
         self.Range_carlibration_obj.update()
         self.Zero_carlibration_obj.update()
         p = AsyPromise(self.Zero_carlibration_obj.stop_calibrate).then(

@@ -64,7 +64,7 @@ class MyQThread(QThread):
     def deleteLater(self):
         self.stop()
         try:
-            self.requestInterruption()  # 请求中断
+            # self.requestInterruption()  # 请求中断
             self.quit()
             if self.wait(5000):  # 等待5秒
                 self.debug_print(f"{self.name}线程正常结束")
@@ -73,7 +73,10 @@ class MyQThread(QThread):
                 self.terminate()
         except Exception as e:
             logger.warning(f"{self.name}线程停止错误，强制终止")
-            self.terminate()
+            try:
+                self.terminate()
+            except Exception as e:
+                logger.warning(f"{self.name}线程强制终止失败")
         # # 等待1秒
         # if not self.wait(1000):
         #     self.terminate()
