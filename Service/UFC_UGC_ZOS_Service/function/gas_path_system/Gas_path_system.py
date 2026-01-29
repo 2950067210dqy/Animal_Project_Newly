@@ -887,7 +887,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
         #3.循环读取CO2浓度
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"00000008"),
+            'data': number_util.set_int_to_4_bytes_list(f"00000005"),
             'slave_id': '3',
             'function_code': '4',
             'timeout': 1

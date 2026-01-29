@@ -379,10 +379,10 @@ class UFC_UGC_ZOS_index(MyQThread):
     #     wait_UFC_UGC_ZOS_start_event.clear()  # 重置事件
     #     resolve()
     def stop_btn_handle(self):
-        if self.monitor_start_state_Thread is not None:
-            self.monitor_start_state_Thread.stop()
-            self.monitor_start_state_Thread.deleteLater()
-            self.monitor_start_state_Thread = None
+        # if self.monitor_start_state_Thread is not None:
+        #     self.monitor_start_state_Thread.stop()
+        #     self.monitor_start_state_Thread.deleteLater()
+        #     self.monitor_start_state_Thread = None
         # 如果此时正在启动就关闭，就需要把启动的时候一直在循环的线程和被阻塞的线程给唤醒然后给stop掉
         if self.ZOS_gas_path_system_obj is not None:
             self.ZOS_gas_path_system_obj.is_stop=True
