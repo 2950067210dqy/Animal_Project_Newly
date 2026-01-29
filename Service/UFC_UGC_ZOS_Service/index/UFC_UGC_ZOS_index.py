@@ -285,7 +285,9 @@ class UFC_UGC_ZOS_index(MyQThread):
                         lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
                             lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
                                 lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
-                                    lambda _: AsyPromise(self.calibration_btn_start)
+                                    lambda _: AsyPromise(self.calibration_btn_start).then(
+
+                                    ).catch(lambda e: logger.error(f"{e}"))
                                 ).catch(lambda e: logger.error(f"{e}"))
                             ).catch(lambda e: logger.error(f"{e}"))
                         ).catch(lambda e: logger.error(f"{e}"))

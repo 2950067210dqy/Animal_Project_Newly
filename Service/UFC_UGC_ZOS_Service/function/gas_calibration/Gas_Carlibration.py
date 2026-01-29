@@ -620,10 +620,10 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
                             global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
                                 'zero_calibration_carbon_threshold'])
                         )
-                        # or
-                        # (
-                        #         now_carbon_value != 0 or now_oxygen_value != 0
-                        # )
+                        or
+                        (
+                                now_carbon_value != 0 or now_oxygen_value != 0
+                        )
 
 
                 ) and
