@@ -709,9 +709,9 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
         # 采集氧气
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("2"),
+            'data': number_util.set_int_to_4_bytes_list("3"),
             'slave_id': '4',
-            'function_code': '4',
+            'function_code': '65',
             'timeout': 1
         }
         self.send_thread.send_message = self.send_message
