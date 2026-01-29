@@ -845,7 +845,7 @@ class MainWindow_Index(ThemedWindow):
             self.start_dialog.insert_calibration_dialog(self.calibration_details_windows)
         result = self.start_dialog.exec()
         # 关闭校准窗口
-        # self.release_calibration_windows()
+        self.release_calibration_windows()
         if result == QDialog.DialogCode.Accepted:
             resolve()
         else:
