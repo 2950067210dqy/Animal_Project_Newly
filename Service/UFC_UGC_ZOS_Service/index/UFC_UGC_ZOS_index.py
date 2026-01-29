@@ -221,6 +221,41 @@ class UFC_UGC_ZOS_index(MyQThread):
 
                                                    time=time_util.get_format_from_time(time.time())))
             pass
+    def start_btn_handle_with_calibration(self):
+        """启动气路 并且还要校准气路"""
+        global stop_flag
+        stop_flag = False
+        p = AsyPromise(self.ZOS_gas_path_system_obj.start).then(
+            lambda _: AsyPromise(
+                self.UFC_gas_path_system_obj.start,
+            ).then(
+                lambda _: AsyPromise(self.UGC_gas_path_system_obj.start).then(
+                    lambda _: AsyPromise(self.set_start_timers).then(
+                        # 添加UFC运行但是不读取数值 UGC运行但是不读取数值
+                        lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
+                            lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
+                                lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
+                                    lambda _: AsyPromise(self.calibration_btn_start)
+                                ).catch(lambda e: logger.error(f"{e}"))
+                            ).catch(lambda e: logger.error(f"{e}"))
+                        ).catch(lambda e: logger.error(f"{e}"))
+
+                    ).catch(lambda e: logger.error(f"{e}"))
+                ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: logger.error(f"{e}"))
+
+        if self.monitor_start_state_Thread is None:
+            self.monitor_start_state_Thread = Monitor_start_state_Thread(
+                name="Monitor_start_state_Thread",
+                UFC_gas_path_system_obj=self.UFC_gas_path_system_obj,
+                UGC_gas_path_system_obj=self.UGC_gas_path_system_obj,
+                ZOS_gas_path_system_obj=self.ZOS_gas_path_system_obj,
+                update_start_state_signal=self.update_start_state_signal
+            )
+        self.monitor_start_state_Thread.start()
+
+        return p
     def start_btn_handle(self):
         global stop_flag
         stop_flag = False
@@ -233,7 +268,9 @@ class UFC_UGC_ZOS_index(MyQThread):
                         # 添加UFC运行但是不读取数值 UGC运行但是不读取数值
                         lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
                             lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
-                                lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init)
+                                lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
+
+                                )
                             ).catch(lambda e: logger.error(f"{e}"))
                         ).catch(lambda e: logger.error(f"{e}"))
 
@@ -492,16 +529,28 @@ class UFC_UGC_ZOS_index(MyQThread):
 
 
     def dosomething(self):
-        self.start_btn_handle().then(
-            self.run_btn_handle().then(
-                self.calibration_handle().then(
-                    self.gas_state_check_handle().then(
-                        self.stop()
+        # 是否自动校准气路
+        is_auto_calibration = global_setting.get_setting("is_auto_calibration",True)
+        if is_auto_calibration:
+            self.start_btn_handle_with_calibration().then(
+                self.run_btn_handle().then(
+                    self.calibration_handle().then(
+                        self.gas_state_check_handle().then(
+                            self.stop()
+                        )
                     )
                 )
             )
-        )
-
+        else:
+            self.start_btn_handle().then(
+                self.run_btn_handle().then(
+                    self.calibration_handle().then(
+                        self.gas_state_check_handle().then(
+                            self.stop()
+                        )
+                    )
+                )
+            )
 
 
     def pause(self):

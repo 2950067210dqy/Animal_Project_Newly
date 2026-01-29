@@ -25,7 +25,7 @@ from public.function.Modbus.Modbus import ModbusRTUMaster
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeQt6 import ThemedWindow
 from PyQt6 import QtGui
-from PyQt6.QtCore import QRect, Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import QRect, Qt, pyqtSignal, QTimer, QEvent
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QGroupBox, QLabel, QSlider, QRadioButton, \
     QGridLayout, QButtonGroup, QComboBox, QListWidget, QPushButton, QMessageBox, QHBoxLayout, QLineEdit, QDoubleSpinBox, \
     QCheckBox
@@ -143,10 +143,22 @@ class Send_thread(MyQThread):
 class Tab_7(ThemedWindow):
     update_status_main_signal_gui_update = pyqtSignal(str)
 
-    def focusInEvent(self, a0):
-        if self.calibration_checkbox is not None:
-            self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
-        super().focusInEvent(a0)
+
+
+    def changeEvent(self, event: QEvent):
+        """窗口状态改变事件"""
+        if event.type() == QEvent.Type.ActivationChange:
+            if self.isActiveWindow():
+                if self.calibration_checkbox is not None:
+                    self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
+                # print("窗口被激活")
+            else:
+                # if self.calibration_checkbox is not None:
+                #     self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
+                pass
+                # print("窗口失去焦点")
+
+        super().changeEvent(event)
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
         logger.warning("tab7——show")
@@ -758,7 +770,7 @@ class Tab_7(ThemedWindow):
         self.calibration_checkbox.setStyleSheet("""
                 QCheckBox {
                     margin-top:17px;
-                    font-weight:bolder;
+                    font-weight:bold;
                 }
                 """)
         self.calibration_checkbox.stateChanged.connect(self.calibration_gas_state_change)
@@ -771,7 +783,7 @@ class Tab_7(ThemedWindow):
         span_oxygen_desc_label = QLabel("span校准的标准气体的氧浓度数值（单位:%,例如20.9%，请输入20.9）：")
         span_oxygen_desc_label.setStyleSheet("""
                       QLabel {
-                          font-weight:bolder;
+                          font-weight:bold;
                       }
                       """)
         self.span_oxygen_desc_text = QDoubleSpinBox()
@@ -785,7 +797,7 @@ class Tab_7(ThemedWindow):
         span_carbon_desc_label = QLabel("span校准的标准气体的CO2浓度数值（单位:%,例如0.03%，请输入0.03）：")
         span_carbon_desc_label.setStyleSheet("""
                               QLabel {
-                                  font-weight:bolder;
+                                  font-weight:bold;
                               }
                               """)
         self.span_carbon_desc_text = QDoubleSpinBox()
@@ -798,6 +810,11 @@ class Tab_7(ThemedWindow):
         # 创建第2个 GridLayout
         h_layout = QHBoxLayout()
         vr_desc_label=QLabel("请输入Vr值[已弃用]（实际的标定气体，根据气瓶上的标识确定,单位:%,例如20.9%，请输入20.9）：")
+        vr_desc_label.setStyleSheet("""
+                              QLabel {
+                                  font-weight:bold;
+                              }
+                              """)
         self.vr_desc_text=QDoubleSpinBox()
         self.vr_desc_text.setValue(global_setting.get_setting("Vr",20.9))
 
