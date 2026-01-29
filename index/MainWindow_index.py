@@ -162,7 +162,7 @@ class read_queue_data_Thread(MyQThread):
                         data为time
                         """
                         if self.window is not None and self.window.calibration_details_windows is not None :
-                            self.window.calibration_details_windows.updateSpanEndTime(message.data)
+                            self.window.calibration_details_windows.updateSpanStartTime(message.data)
                             self.window.calibration_details_windows.updateStatus("量程标定")
                     case 'set_stop_span_calibration_time':
                         """

@@ -1239,7 +1239,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         wait_UGC_run_finish_event = global_setting.get_setting("wait_UGC_run_finish_event", None)
         if wait_UGC_run_finish_event:
             # 阻塞 等待UGC运行完在运行
-            wait_UGC_run_finish_event.wait()
+            wait_UGC_run_finish_event.wait(5000)
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         if mouse_cages_inc is not None and len(mouse_cages_inc) > 0:
