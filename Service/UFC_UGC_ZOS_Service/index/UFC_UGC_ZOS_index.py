@@ -158,6 +158,8 @@ class UFC_UGC_ZOS_index(MyQThread):
                                                         title='set_start_zero_calibration_time',
                                                         data=text.get('value',''),
                                                         time=time_util.get_format_from_time(time.time())))
+                                    # 暂停正在运行的气路模块
+                                    self.pause_running_gap_system()
                                     pass
                                 case 'set_stop_zero_calibration_time':
                                     queue.put(
@@ -174,6 +176,8 @@ class UFC_UGC_ZOS_index(MyQThread):
                                                         title='set_start_span_calibration_time',
                                                         data=text.get('value',''),
                                                         time=time_util.get_format_from_time(time.time())))
+                                    # 暂停正在运行的气路模块
+                                    self.pause_running_gap_system()
                                     pass
                                 case 'set_stop_span_calibration_time':
                                     queue.put(
@@ -279,6 +283,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         """启动气路 并且还要校准气路"""
         global stop_flag
         stop_flag = False
+
         p = AsyPromise(self.ZOS_gas_path_system_obj.start).then(
             lambda _: AsyPromise(
                 self.UFC_gas_path_system_obj.start,
@@ -289,7 +294,7 @@ class UFC_UGC_ZOS_index(MyQThread):
                         lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
                             lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
                                 lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
-                                    lambda _: AsyPromise(self.calibration_btn_start).then(
+                                    lambda _: AsyPromise(self.calibration_start).then(
 
                                     ).catch(lambda e: logger.error(f"{e}"))
                                 ).catch(lambda e: logger.error(f"{e}"))
@@ -312,6 +317,17 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.monitor_start_state_Thread.start()
 
         return p
+    def calibration_start(self,resolve,reject):
+        AsyPromise(self.Zero_carlibration_obj.calibrate).then(
+            lambda v: AsyPromise(
+                self.Range_carlibration_obj.calibrate
+            ).then(
+                lambda v2: resolve()
+            ).catch( lambda e: logger.error(f"{e}"))
+        ).catch( lambda e: logger.error(f"{e}"))
+
+
+
     def start_btn_handle(self):
         global stop_flag
         stop_flag = False
@@ -437,46 +453,9 @@ class UFC_UGC_ZOS_index(MyQThread):
                 ObjectQueueItem(origin="UFC_UGC_ZOS_index", to="MainWindow_index", title="stop_gap_system_return",
                                 data="停止气路完成",
                                 time=time_util.get_format_from_time(time.time())))
-    def calibration_handle(self):
-        global stop_flag
-        if stop_flag:
-            return AsyPromise.reject_immediately("calibration_handle 在启动过程中时遇到停止指令")
-        self.set_calibration_start_timer()
-        p = AsyPromise(lambda r,e:r()).then().catch( lambda e: logger.error(f"{e}"))
-        return p
-    def carlibation(self):
-        # p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
-        #     lambda v: AsyPromise(
-        #         self.Range_carlibration_obj.calibrate
-        #     ).then().catch( lambda e: logger.error(f"{e}"))
-        # ).catch( lambda e: logger.error(f"{e}"))
-        # return p
-        # 测试   不需要校0标定
-        # p = AsyPromise(
-        #     self.Range_carlibration_obj.calibrate
-        # ).then().catch( lambda e: logger.error(f"{e}"))
-        # return p
-        #測試 不需要校0和校span标定
-        p = AsyPromise(
-            self.no_carlibration
-        ).then().catch( lambda e: logger.error(f"{e}"))
-        return p
-    def no_carlibration(self,resolve,reject):
-        resolve()
-        # p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
-        #     lambda v: AsyPromise(
-        #         self.Range_carlibration_obj.calibrate
-        #     ).then().catch( lambda e: logger.error(f"{e}"))
-        # ).catch( lambda e: logger.error(f"{e}"))
-        # return p
-        # # 测试   不需要校0标定
-        # p = AsyPromise(
-        #     self.Range_carlibration_obj.calibrate
-        # ).then().catch( lambda e: logger.error(f"{e}"))
-        # return p
-        # 不需要自动标定
-        p = AsyPromise(lambda r, e: r()).then().catch( lambda e: logger.error(f"{e}"))
-        return p
+
+
+
     def pause_running_gap_system(self):
         #暂停正在运行的气路模块
         if self.UFC_gas_path_system_obj is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread is not None and not self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread.isPaused():
@@ -498,8 +477,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         量程标定
         :return:
         """
-        # 暂停正在运行的气路模块
-        self.pause_running_gap_system()
+
         p = AsyPromise(
             self.Range_carlibration_obj.calibrate
         ).then().catch( lambda e: logger.error(f"{e}"))
@@ -509,8 +487,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         零点标定
         :return:
         """
-        # 暂停正在运行的气路模块
-        self.pause_running_gap_system()
+
         p = AsyPromise(
             self.Zero_carlibration_obj.calibrate
         ).then().catch( lambda e: logger.error(f"{e}"))
@@ -520,6 +497,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         按钮点击的标定事件
         :return:
         """
+
         p = AsyPromise(self.Zero_carlibration_obj.calibrate).then(
             lambda _:AsyPromise(
                 self.Range_carlibration_obj.calibrate
@@ -528,6 +506,7 @@ class UFC_UGC_ZOS_index(MyQThread):
             ).catch( lambda e: logger.error(f"{e}"))
         ).catch( lambda e: logger.error(f"{e}"))
         return  p
+
     def stop_range_calibration_handle(self):
         """
         stop_ 量程标定
@@ -589,21 +568,21 @@ class UFC_UGC_ZOS_index(MyQThread):
         if is_auto_calibration:
             self.start_btn_handle_with_calibration().then(
                 self.run_btn_handle().then(
-                    self.calibration_handle().then(
-                        self.gas_state_check_handle().then(
-                            self.stop()
-                        )
+
+                    self.gas_state_check_handle().then(
+                        self.stop()
                     )
+
                 )
             )
         else:
             self.start_btn_handle().then(
                 self.run_btn_handle().then(
-                    self.calibration_handle().then(
-                        self.gas_state_check_handle().then(
-                            self.stop()
-                        )
+
+                    self.gas_state_check_handle().then(
+                        self.stop()
                     )
+
                 )
             )
 
@@ -679,17 +658,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.gas_state_check_timer.set_task(self.gas_state_check)
         self.gas_state_check_timer.start()
 
-    def set_calibration_start_timer(self):
-        self.calibration_start_timer = PeriodicTimer(
-            interval_ms=float(
-                global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['start_time_delay']) * 1000,
-            max_duration_ms=None,
-            task=None,
-            run_in_thread=True,
-            run_immediately=True
-        )
-        self.calibration_start_timer.set_task(self.carlibation)
-        self.calibration_start_timer.start()
+
 
     def set_zos_start_timer(self):
         self.zos_start_timer = PeriodicTimer(
