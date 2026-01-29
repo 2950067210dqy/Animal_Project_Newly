@@ -137,13 +137,63 @@ class UFC_UGC_ZOS_index(MyQThread):
 
             match title:
                 case GapSystem_Running_Type.ZERO_CALIBRATION|GapSystem_Running_Type.RANGE_CALIBRATION:
-                    send_message_queue = global_setting.get_setting("send_message_queue")
-                    if send_message_queue:
-                        send_message_queue.put(ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='monitor_data_new_index',
-                                                               title='calibration_msg',
-                                                               data=text,
-                                                               time=time_util.get_format_from_time(time.time())))
-
+                    """此时text为{
+                        'type':'set_start_zero_calibration_time'
+                                |'set_stop_zero_calibration_time'
+                                |'set_start_span_calibration_time'
+                                |'set_stop_span_calibration_time'
+                                |'set_calibration_values'
+                                |None,
+                        'value':''|{} 
+                    }
+                    
+                    """
+                    queue = global_setting.get_setting("queue", None)
+                    if queue:
+                        if isinstance(text,dict):
+                            match text.get("type",None):
+                                case 'set_start_zero_calibration_time':
+                                    queue.put(
+                                        ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index',
+                                                        title='set_start_zero_calibration_time',
+                                                        data=text.get('value',''),
+                                                        time=time_util.get_format_from_time(time.time())))
+                                    pass
+                                case 'set_stop_zero_calibration_time':
+                                    queue.put(
+                                        ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index',
+                                                        title='set_stop_zero_calibration_time',
+                                                        data=text.get('value',''),
+                                                        time=time_util.get_format_from_time(time.time())))
+                                    pass
+                                case 'set_start_span_calibration_time':
+                                    queue.put(
+                                        ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index',
+                                                        title='set_start_span_calibration_time',
+                                                        data=text.get('value',''),
+                                                        time=time_util.get_format_from_time(time.time())))
+                                    pass
+                                case 'set_stop_span_calibration_time':
+                                    queue.put(
+                                        ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index',
+                                                        title='set_stop_span_calibration_time',
+                                                        data=text.get('value',''),
+                                                        time=time_util.get_format_from_time(time.time())))
+                                    pass
+                                case 'set_calibration_values':
+                                    queue.put(
+                                        ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index',
+                                                        title='set_calibration_values',
+                                                        data=text.get('value',{}),
+                                                        time=time_util.get_format_from_time(time.time())))
+                                    pass
+                                case _:
+                                    pass
+                        else:
+                            queue.put(ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index',
+                                                                   title='calibration_msg',
+                                                                   data=text,
+                                                                   time=time_util.get_format_from_time(time.time())))
                     pass
                 case GapSystem_Running_Type.DEFAULT:
                     queue = global_setting.get_setting("queue", None)

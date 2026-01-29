@@ -18,10 +18,12 @@ from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_inde
 from my_abc.BaseModule import BaseModule
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.component.custom_status_bar import CustomStatusBar
+from public.component.dialog.custom.calibration_detail_Dialog import CalibrationDialog
 from public.component.dialog.custom.loading_dialog_seconds import AnimatedLoadingDialog
 from public.component.mask.LoadingMask import LoadingContext
 from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
+from public.entity.BaseWindow import BaseWindow
 from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState, Tutorial_Type
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
@@ -131,6 +133,55 @@ class read_queue_data_Thread(MyQThread):
                     case 'close_stop_experiment_dialog':
                         # 停止完成，关闭停止实验窗口
                         self.close_stop_experiment_dialog()
+                    case 'calibration_msg':
+                        """
+                        标定的消息
+                        """
+                        if self.window is not None and self.window.calibration_details_windows is not None :
+                            self.window.calibration_details_windows.addLog(message.data,has_time=True)
+                    case 'set_start_zero_calibration_time':
+                        """
+                        设置开始校准零点
+                        data为time
+                        """
+                        if self.window is not None and self.window.calibration_details_windows is not None :
+                            self.window.calibration_details_windows.updateZeroStartTime(message.data)
+                            self.window.calibration_details_windows.updateStatus("零点标定")
+
+                    case 'set_stop_zero_calibration_time':
+                        """
+                        设置结束校准零点
+                        data为time
+                        """
+                        if self.window is not None and self.window.calibration_details_windows is not None :
+                            self.window.calibration_details_windows.updateZeroEndTime(message.data)
+                            self.window.calibration_details_windows.updateStatus("未标定")
+                    case 'set_start_span_calibration_time':
+                        """
+                        设置开始校准span
+                        data为time
+                        """
+                        if self.window is not None and self.window.calibration_details_windows is not None :
+                            self.window.calibration_details_windows.updateSpanEndTime(message.data)
+                            self.window.calibration_details_windows.updateStatus("量程标定")
+                    case 'set_stop_span_calibration_time':
+                        """
+                        设置结束校准span
+                        data为time
+                        """
+                        if self.window is not None and self.window.calibration_details_windows is not None :
+                            self.window.calibration_details_windows.updateSpanEndTime(message.data)
+                            self.window.calibration_details_windows.updateStatus("未标定")
+                    case 'set_calibration_values':
+                        """
+                        设置校准窗口显示值
+                        data:{"oxygen_value":0,"carbon_value":0,"oxygen_pressure_value":0}
+                        """
+                        if self.window is not None and self.window.calibration_details_windows is not None and message.data is not None :
+                            self.window.calibration_details_windows.updateO2Current(message.data.get("oxygen_value",0))
+                            self.window.calibration_details_windows.updateCO2Current(message.data.get("carbon_value",0))
+                            self.window.calibration_details_windows.updatePressureCurrent(message.data.get("oxygen_pressure_value",0))
+
                     case _:
                         pass
 
@@ -144,7 +195,10 @@ read_queue_data_thread = read_queue_data_Thread(name="MainWindow_index_read_queu
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
     change_enable_component_app_state_signal = QtCore.pyqtSignal()
-
+    #显示校准详情dialog的信号
+    show_calibration_window_signal = QtCore.pyqtSignal(dict)
+    #释放校准详情dialog的信号
+    release_calibration_window_signal = QtCore.pyqtSignal()
     def close_window_handle(self):
         """
         关闭窗口执行的事件
@@ -308,6 +362,8 @@ class MainWindow_Index(ThemedWindow):
         self.active_module_widgets:[BaseModule]=[]
         # 打开的窗口
         self.open_windows:[BaseModule]=[]
+        # 校准气路的窗口
+        self.calibration_details_windows:CalibrationDialog=None
         # 工具栏
         self.toolbar = None
         #状态栏
@@ -383,6 +439,8 @@ class MainWindow_Index(ThemedWindow):
         self.change_enable_component_app_state()
         # 连接信号
         self.change_enable_component_app_state_signal.connect(self.change_enable_component_app_state)
+        self.show_calibration_window_signal.connect(self.show_calibration_windows)
+        self.release_calibration_window_signal.connect(self.release_calibration_windows)
         pass
     # 创建工具栏
     def create_tool_bar(self):
@@ -687,21 +745,7 @@ class MainWindow_Index(ThemedWindow):
                 # action_dict["action"].setDisabled(False)
         self.setEnabled(True)
         resolve()
-    #   延遲打開窗口
-    def start_open_window(self,resolve,reject):
-        QTimer.singleShot(1 * 1000, self.open_monitor_data_window)
-        resolve()
-    def open_monitor_data_window(self):
-        """
-        打開監控數據界面
-        :return:
-        """
-        # 打開窗口
-        for module in self.modules:
-            module: BaseModule
-            if module.name == "Main_New_Monitor_data":
-                module.click_method()
-                return
+
     def start_experiment(self):
 
         self.setEnabled(False)
@@ -769,8 +813,10 @@ class MainWindow_Index(ThemedWindow):
             queue=global_setting.get_setting("queue")
             queue.put(           message_struct)
         AsyPromise(self.start_update_gui).then(
-            lambda _:AsyPromise(self.show_open_dialog).then(
-                lambda _:AsyPromise(self.start_open_window).then().catch(lambda e: logger.error(f"{e}"))
+            lambda _: AsyPromise(self.show_open_dialog).then(
+                lambda _: AsyPromise(self.start_open_window).then(
+
+                ).catch(lambda e: logger.error(f"{e}"))
             ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
         # AsyPromise(self.start_open_window).then().catch(lambda e: logger.error(f"{e}"))
@@ -778,23 +824,80 @@ class MainWindow_Index(ThemedWindow):
     def show_open_dialog(self,resolve,reject):
         # 弹窗最晚持续时间
         start_wait_times =float(global_setting.get_setting('configer')['dialog_timeout']['timeout'])+ float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])/float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])*2*8+20
+
         if self.start_dialog is None:
             self.start_dialog = AnimatedLoadingDialog(countdown_seconds=start_wait_times,title="开始实验",message="正在启动气路...")
         else:
             self.start_dialog.reset_progress()
             self.start_dialog.clear_list_data()
             self.start_dialog.deleteLater()
+            self.start_dialog=None
             self.start_dialog = AnimatedLoadingDialog(
                 countdown_seconds=start_wait_times,
                 title="开始实验", message="正在启动气路...")
 
         # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
+
+        # 如果勾选了自动校准，就添加自动校准界面在弹窗里
+        is_auto_calibration = global_setting.get_setting('is_auto_calibration',True)
+        if is_auto_calibration:
+            self.init__calibration_windows()
+            self.start_dialog.insert_calibration_dialog(self.calibration_details_windows)
         result = self.start_dialog.exec()
+        # 关闭校准窗口
+        # self.release_calibration_windows()
         if result == QDialog.DialogCode.Accepted:
             resolve()
         else:
             self.stop_experiment()
             reject()
+
+        pass
+    def init__calibration_windows(self):
+        #初始化标定窗口
+        if self.calibration_details_windows is None:
+            self.calibration_details_windows = CalibrationDialog(main_gui=self)
+            self.calibration_details_windows.updateO2Span(global_setting.get_setting('span_standard_oxygen_value',0))
+            self.calibration_details_windows.updateCO2Span(global_setting.get_setting('span_standard_carbon_value',0))
+            self.calibration_details_windows.updatePressureSpan(80)
+    def show_calibration_windows(self,data):
+        self.init__calibration_windows()
+        if data:
+            match data.get("type",''):
+                case "zero_calibration"|"all_calibration":
+                    self.calibration_details_windows.updateStatus("零点标定")
+                    self.calibration_details_windows.updateZeroStartTime(data.get("time"))
+                    pass
+                case "span_calibration":
+                    self.calibration_details_windows.updateStatus("量程标定")
+                    self.calibration_details_windows.updateSpanStartTime(data.get("time"))
+                    pass
+                case _:
+                    pass
+
+        self.calibration_details_windows.show()
+    def release_calibration_windows(self):
+        # 释放标定窗口
+        if self.calibration_details_windows is not None:
+            self.calibration_details_windows.hide()
+            self.calibration_details_windows.close()
+            self.calibration_details_windows.deleteLater()
+            self.calibration_details_windows = None
+    #   延遲打開窗口
+    def start_open_window(self,resolve,reject):
+        QTimer.singleShot(1 * 1000, self.open_monitor_data_window)
+        resolve()
+    def open_monitor_data_window(self):
+        """
+        打開監控數據界面
+        :return:
+        """
+        # 打開窗口
+        for module in self.modules:
+            module: BaseModule
+            if module.name == "Main_New_Monitor_data":
+                module.click_method()
+                return
     def pause_experiment(self):
         # 在with语句中自动管理加载遮罩
         with LoadingContext(self, "正在暂停...", "animated") as mask:

@@ -111,7 +111,7 @@ class Gas_Carlibration:
         :param next_function:
         :return:
         """
-        AsyPromise(self.close_ufc_current_cage_valve).then(
+        AsyPromise(self.close_ufc_current_cage_valve, port=port).then(
             lambda r: AsyPromise(next_function, port=port).then(lambda r1: resolve()).catch(lambda e: logger.error(e))
         ).catch(lambda e: logger.error(e))
     # 0.关闭UFC当前鼠笼阀门
@@ -125,6 +125,8 @@ class Gas_Carlibration:
             else:
                 # 下标为None 则为参考气
                 mouse_cage_number_addr_single = 8
+            if self.is_STOP:
+                reject("stop")
             self.send_message = {
                 'port': port,
                 'data': number_util.set_int_to_4_bytes_list(f"000{mouse_cage_number_addr_single}0000"),
@@ -142,6 +144,8 @@ class Gas_Carlibration:
         reject("关闭UFC当前鼠笼阀门获取鼠笼数据失败")
     def open_ugc_zero_or_span_valve(self,resolve,reject,port):
         # 1. 打开ugc调零或者SPan阀门
+        if self.is_STOP:
+            reject("stop")
         match self.type:
             case Gas_Carlibration_Type.ZERO:
                 self.send_message = {
@@ -173,6 +177,8 @@ class Gas_Carlibration:
         ).catch(lambda e: logger.error(e))
     def close_ugc_sample_valve(self,resolve,reject,port):
         # 2. 关闭ugc采样阀
+        if self.is_STOP:
+            reject("stop")
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list(f"0"),
@@ -190,6 +196,8 @@ class Gas_Carlibration:
         ).catch(lambda e: logger.error(e))
     def close_ugc_zero_or_span_valve(self,resolve,reject,port):
         # 3. 关闭ugc 校0阀门或校span阀门
+        if self.is_STOP:
+            reject("stop")
         match self.type:
             case Gas_Carlibration_Type.ZERO:
                 self.send_message = {
@@ -221,6 +229,8 @@ class Gas_Carlibration:
         ).catch(lambda e: logger.error(e))
     def open_zos_zero_or_span_valve(self,resolve,reject,port):
         # 4. 启动zos 校0通道或校span通道
+        if self.is_STOP:
+            reject("stop")
         match self.type:
             case Gas_Carlibration_Type.ZERO:
                 self.send_message = {
@@ -262,6 +272,8 @@ class Gas_Carlibration:
             else:
                 # 下标为None 则为参考气
                 mouse_cage_number_addr_single = 8
+            if self.is_STOP:
+                reject("stop")
             self.send_message = {
                 'port': port,
                 'data': number_util.set_int_to_4_bytes_list(f"000{mouse_cage_number_addr_single}0000"),
@@ -474,11 +486,21 @@ class Gas_Carlibration:
                                                title='range_calibration_finish',
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))
+                # 发送完成标定消息
+                self.update_status_main_signal_gui_update.send(
+                    {'type': 'set_stop_span_calibration_time',
+                     'value': f'{time_util.get_format_from_time(time.time())}'}, title=self.title
+                )
             case Gas_Carlibration_Type.ZERO:
                 send_message_queue.put(ObjectQueueItem(origin='Gas_Carlibration', to='monitor_data_new_index',
                                                        title='zero_calibration_finish',
                                                        data=None,
                                                        time=time_util.get_format_from_time(time.time())))
+                # 发送完成标定消息
+                self.update_status_main_signal_gui_update.send(
+                    {'type': 'set_stop_zero_calibration_time',
+                     'value': f'{time_util.get_format_from_time(time.time())}'}, title=self.title
+                )
             case _:
                 pass
         resolve()
@@ -494,11 +516,21 @@ class Gas_Carlibration:
                                                        title='stop_range_calibration_finish',
                                                        data=None,
                                                        time=time_util.get_format_from_time(time.time())))
+                # 发送完成标定消息
+                self.update_status_main_signal_gui_update.send(
+                    {'type': 'set_stop_span_calibration_time',
+                     'value': f'{time_util.get_format_from_time(time.time())}'}, title=self.title
+                )
             case Gas_Carlibration_Type.ZERO:
                 send_message_queue.put(ObjectQueueItem(origin='Gas_Carlibration', to='monitor_data_new_index',
                                                        title='stop_zero_calibration_finish',
                                                        data=None,
                                                        time=time_util.get_format_from_time(time.time())))
+                # 发送完成标定消息
+                self.update_status_main_signal_gui_update.send(
+                    {'type': 'set_stop_zero_calibration_time',
+                     'value': f'{time_util.get_format_from_time(time.time())}'}, title=self.title
+                )
             case _:
                 pass
 
@@ -523,6 +555,11 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  零点标定 开始{'.' * 100}",title=self.title )
+        # 发送开始标定消息
+        self.update_status_main_signal_gui_update.send(
+            {'type': 'set_start_zero_calibration_time', 'value': f'{time_util.get_format_from_time(time.time())}'},
+            title=self.title
+        )
         self.is_STOP = False
         # resolve()
         self.port = global_setting.get_setting("port", None)
@@ -635,6 +672,17 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
             end_time = time.time()
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} |  零点标定 6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度、zos气压（{now_oxygen_value}，{now_pressure_value}）之前氧气浓度、zos气压（{last_oxygen_value}，{last_pressure_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time),b=datetime.fromtimestamp(start_time),zero_pad=True,signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])}秒",title=self.title )
+            # 发送标定数据消息
+            self.update_status_main_signal_gui_update.send(
+                {'type': 'set_calibration_values',
+                 'value': {
+                            'oxygen_value':now_oxygen_value,
+                            'carbon_value':now_carbon_value,
+                            'oxygen_pressure_value':now_pressure_value,
+                            }
+
+                 }, title=self.title
+            )
             time.sleep(1)
             pass
         last_carbon_value, last_oxygen_value, last_pressure_value =None, None, None
@@ -740,6 +788,11 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
     def calibrate(self,resolve,reject):
         """量程标定"""
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 开始{'.' * 100}",title=self.title )
+        # 发送开始标定消息
+        self.update_status_main_signal_gui_update.send(
+            {'type':'set_start_span_calibration_time','value':f'{time_util.get_format_from_time(time.time())}'},title=self.title
+        )
+
         self.is_STOP=False
         # resolve()
         self.port = global_setting.get_setting("port", None)
@@ -853,6 +906,17 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度、zos气压（{now_oxygen_value}，{now_pressure_value}）之前氧气浓度、zos气压（{last_oxygen_value}，{last_pressure_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time), b=datetime.fromtimestamp(start_time), zero_pad=True, signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])}秒",
                 title=self.title)
+            # 发送标定数据消息
+            self.update_status_main_signal_gui_update.send(
+                {'type': 'set_calibration_values',
+                 'value': {
+                     'oxygen_value': now_oxygen_value,
+                     'carbon_value': now_carbon_value,
+                     'oxygen_pressure_value': now_pressure_value,
+                 }
+
+                 }, title=self.title
+            )
             time.sleep(1)
             pass
         last_carbon_value, last_oxygen_value, last_pressure_value = None, None, None
