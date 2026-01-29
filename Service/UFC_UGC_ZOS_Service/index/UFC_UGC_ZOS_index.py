@@ -30,6 +30,9 @@ auto_wait_event = threading.Event()
 # 在气路模块运行之前被阻塞时 如果遇见停止实验则不进行运行及后续的操作
 stop_flag = False
 
+# 等待校0和span完成
+wait_zero_calibration_finished_event= threading.Event()
+wait_span_calibration_finished_event= threading.Event()
 
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
@@ -169,6 +172,9 @@ class UFC_UGC_ZOS_index(MyQThread):
                                                         time=time_util.get_format_from_time(time.time())))
                                     #解除运行线程暂停
                                     self.resume_running_gap_system()
+                                    global wait_zero_calibration_finished_event
+                                    wait_zero_calibration_finished_event.set()
+                                    wait_zero_calibration_finished_event.clear()
                                     pass
                                 case 'set_start_span_calibration_time':
                                     queue.put(
@@ -187,6 +193,9 @@ class UFC_UGC_ZOS_index(MyQThread):
                                                         time=time_util.get_format_from_time(time.time())))
                                     # 解除运行线程暂停
                                     self.resume_running_gap_system()
+                                    global wait_span_calibration_finished_event
+                                    wait_span_calibration_finished_event.set()
+                                    wait_span_calibration_finished_event.clear()
                                     pass
                                 case 'set_calibration_values':
                                     queue.put(
@@ -286,7 +295,10 @@ class UFC_UGC_ZOS_index(MyQThread):
                             lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
                                 lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
                                     lambda _: AsyPromise(self.calibration_start).then(
+                                        lambda _: AsyPromise(
+                                            self.finish_start).then(
 
+                                        ).catch(lambda e: logger.error(f"{e}"))
                                     ).catch(lambda e: logger.error(f"{e}"))
                                 ).catch(lambda e: logger.error(f"{e}"))
                             ).catch(lambda e: logger.error(f"{e}"))
@@ -297,27 +309,30 @@ class UFC_UGC_ZOS_index(MyQThread):
             ).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: logger.error(f"{e}"))
 
-        if self.monitor_start_state_Thread is None:
-            self.monitor_start_state_Thread = Monitor_start_state_Thread(
-                name="Monitor_start_state_Thread",
-                UFC_gas_path_system_obj=self.UFC_gas_path_system_obj,
-                UGC_gas_path_system_obj=self.UGC_gas_path_system_obj,
-                ZOS_gas_path_system_obj=self.ZOS_gas_path_system_obj,
-                update_start_state_signal=self.update_start_state_signal
-            )
-        self.monitor_start_state_Thread.start()
+
 
         return p
     def calibration_start(self,resolve,reject):
-        AsyPromise(self.Zero_carlibration_obj.calibrate).then(
+        AsyPromise(self.zero_carlibration_obj_calibrate_wrapped).then(
             lambda v: AsyPromise(
-                self.Range_carlibration_obj.calibrate
+                self.span_carlibration_obj_calibrate_wrapped
             ).then(
-                lambda v2: resolve()
+                lambda v2:resolve()
             ).catch( lambda e: logger.error(f"{e}"))
         ).catch( lambda e: logger.error(f"{e}"))
+    def zero_carlibration_obj_calibrate_wrapped(self,resolve,reject):
+        AsyPromise(self.Zero_carlibration_obj.calibrate).catch(lambda e: logger.error(f"{e}"))
+        global wait_zero_calibration_finished_event
+        wait_zero_calibration_finished_event.wait()
+        resolve()
+        pass
 
-
+    def span_carlibration_obj_calibrate_wrapped(self, resolve, reject):
+        AsyPromise(self.Range_carlibration_obj.calibrate).catch(lambda e: logger.error(f"{e}"))
+        global wait_span_calibration_finished_event
+        wait_span_calibration_finished_event.wait()
+        resolve()
+        pass
 
     def start_btn_handle(self):
         global stop_flag
@@ -332,8 +347,11 @@ class UFC_UGC_ZOS_index(MyQThread):
                         lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
                             lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
                                 lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
+                                    lambda _: AsyPromise(
+                                        self.finish_start).then(
 
-                                )
+                                    ).catch(lambda e: logger.error(f"{e}"))
+                                ).catch(lambda e: logger.error(f"{e}"))
                             ).catch(lambda e: logger.error(f"{e}"))
                         ).catch(lambda e: logger.error(f"{e}"))
 
@@ -342,6 +360,12 @@ class UFC_UGC_ZOS_index(MyQThread):
             ).catch( lambda e: logger.error(f"{e}"))
         ).catch( lambda e: logger.error(f"{e}"))
 
+
+
+
+
+        return p
+    def finish_start(self,resolve,reject):
         if self.monitor_start_state_Thread is None:
             self.monitor_start_state_Thread = Monitor_start_state_Thread(
                 name="Monitor_start_state_Thread",
@@ -351,11 +375,7 @@ class UFC_UGC_ZOS_index(MyQThread):
                 update_start_state_signal=self.update_start_state_signal
             )
         self.monitor_start_state_Thread.start()
-
-
-
-        return p
-
+        resolve()
     def run_btn_handle(self):
 
         global auto_wait_event,stop_flag
