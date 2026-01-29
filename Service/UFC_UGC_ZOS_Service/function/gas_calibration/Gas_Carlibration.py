@@ -482,6 +482,7 @@ class Gas_Carlibration:
         send_message_queue = global_setting.get_setting("send_message_queue")
         match self.type:
             case Gas_Carlibration_Type.SPAN:
+                # 给界面进程发送消息
                 send_message_queue.put(ObjectQueueItem(origin='Gas_Carlibration', to='monitor_data_new_index',
                                                title='range_calibration_finish',
                                                data=None,

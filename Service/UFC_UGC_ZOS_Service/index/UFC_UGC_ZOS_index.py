@@ -165,6 +165,8 @@ class UFC_UGC_ZOS_index(MyQThread):
                                                         title='set_stop_zero_calibration_time',
                                                         data=text.get('value',''),
                                                         time=time_util.get_format_from_time(time.time())))
+                                    #解除运行线程暂停
+                                    self.resume_running_gap_system()
                                     pass
                                 case 'set_start_span_calibration_time':
                                     queue.put(
@@ -179,6 +181,8 @@ class UFC_UGC_ZOS_index(MyQThread):
                                                         title='set_stop_span_calibration_time',
                                                         data=text.get('value',''),
                                                         time=time_util.get_format_from_time(time.time())))
+                                    # 解除运行线程暂停
+                                    self.resume_running_gap_system()
                                     pass
                                 case 'set_calibration_values':
                                     queue.put(
@@ -529,8 +533,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         stop_ 量程标定
         :return:
         """
-        # 解除暂停正在运行的气路模块
-        self.resume_running_gap_system()
+
         self.Range_carlibration_obj.update()
         p = AsyPromise(
             self.Range_carlibration_obj.stop_calibrate
@@ -541,8 +544,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         stop_零点标定
         :return:
         """
-        # 解除暂停正在运行的气路模块
-        self.resume_running_gap_system()
+
         self.Zero_carlibration_obj.update()
         p = AsyPromise(
             self.Zero_carlibration_obj.stop_calibrate
