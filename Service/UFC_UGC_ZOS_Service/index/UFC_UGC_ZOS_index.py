@@ -384,11 +384,29 @@ class UFC_UGC_ZOS_index(MyQThread):
         # 不需要自动标定
         p = AsyPromise(lambda r, e: r()).then().catch( lambda e: logger.error(f"{e}"))
         return p
+    def pause_running_gap_system(self):
+        #暂停正在运行的气路模块
+        if self.UFC_gas_path_system_obj is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread is not None and not self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread.isPaused():
+            self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread.pause()
+        if self.UGC_gas_path_system_obj is not None and self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread is not None and not self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread.isPaused():
+            self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread.pause()
+        if self.ZOS_gas_path_system_obj is not None and self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread is not None and not self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread.isPaused():
+            self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread.pause()
+    def resume_running_gap_system(self):
+        #解除暂停正在运行的气路模块
+        if self.UFC_gas_path_system_obj is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread.isPaused():
+            self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread.resume()
+        if self.UGC_gas_path_system_obj is not None and self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread is not None and self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread.isPaused():
+            self.UGC_gas_path_system_obj.ugc_gas_path_system_run_thread.resume()
+        if self.ZOS_gas_path_system_obj is not None and self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread is not None and self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread.isPaused():
+            self.ZOS_gas_path_system_obj.zos_gas_path_system_run_thread.resume()
     def range_calibration_handle(self):
         """
         量程标定
         :return:
         """
+        # 暂停正在运行的气路模块
+        self.pause_running_gap_system()
         p = AsyPromise(
             self.Range_carlibration_obj.calibrate
         ).then().catch( lambda e: logger.error(f"{e}"))
@@ -398,6 +416,8 @@ class UFC_UGC_ZOS_index(MyQThread):
         零点标定
         :return:
         """
+        # 暂停正在运行的气路模块
+        self.pause_running_gap_system()
         p = AsyPromise(
             self.Zero_carlibration_obj.calibrate
         ).then().catch( lambda e: logger.error(f"{e}"))
@@ -420,7 +440,8 @@ class UFC_UGC_ZOS_index(MyQThread):
         stop_ 量程标定
         :return:
         """
-
+        # 解除暂停正在运行的气路模块
+        self.resume_running_gap_system()
         self.Range_carlibration_obj.update()
         p = AsyPromise(
             self.Range_carlibration_obj.stop_calibrate
@@ -431,7 +452,8 @@ class UFC_UGC_ZOS_index(MyQThread):
         stop_零点标定
         :return:
         """
-
+        # 解除暂停正在运行的气路模块
+        self.resume_running_gap_system()
         self.Zero_carlibration_obj.update()
         p = AsyPromise(
             self.Zero_carlibration_obj.stop_calibrate

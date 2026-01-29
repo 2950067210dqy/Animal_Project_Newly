@@ -33,6 +33,7 @@ from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.number_util import number_util
+from public.util.string_util import String_util
 from public.util.time_util import time_util
 
 # 全局变量
@@ -145,6 +146,15 @@ class read_queue_data_Thread(MyQThread):
                             global_setting.set_setting("experiment_setting", data.get("experiment_setting", None))
                             global_setting.set_setting("experiment_setting_file",
                                                        data.get("experiment_setting_file", ""))
+
+                            # 将鼠笼号存进全局变量来使用
+                            experiment_settings = global_setting.get_setting("experiment_setting", None)
+
+                            gids = [group.id for group in
+                                    experiment_settings.groups] if experiment_settings is not None else []
+                            global_setting.set_setting("mouse_cages", gids)
+                            global_setting.set_setting("mouse_cages_2byte_str",
+                                                       String_util.array_to_binary_string(gids))
 
                         pass
                     case 'stop_modbus':
