@@ -81,18 +81,35 @@ class MyQThread(QThread):
             self.mutex.unlock()
 
     def pause(self):
-        if not self._stop_requested:
+        # 只有在线程真正运行时才允许暂停
+        if not self._stop_requested and self._running and self.isRunning():
             self.mutex.lock()
-            self._paused = True
-            self.mutex.unlock()
-            logger.warning(f"{self.name} thread has been paused！")
+            try:
+                self._paused = True
+                logger.warning(f"{self.name} thread has been paused！")
+            finally:
+                self.mutex.unlock()
+        else:
+            logger.warning(f"{self.name} thread cannot be paused (not running)")
 
     def resume(self):
-        self.mutex.lock()
-        self._paused = False
-        self.condition.wakeAll()
-        self.mutex.unlock()
-        logger.warning(f"{self.name} thread has been resumed！")
+        # 只有在线程真正运行时才处理恢复
+        if self._running and self.isRunning():
+            self.mutex.lock()
+            try:
+                self._paused = False
+                self.condition.wakeAll()
+                logger.warning(f"{self.name} thread has been resumed！")
+            finally:
+                self.mutex.unlock()
+        else:
+            # 如果线程还未启动，确保暂停标志为False
+            self.mutex.lock()
+            try:
+                self._paused = False
+                logger.warning(f"{self.name} thread resume called (thread not running, reset pause flag)")
+            finally:
+                self.mutex.unlock()
 
     def deleteLater(self):
         """更安全的删除方法"""
