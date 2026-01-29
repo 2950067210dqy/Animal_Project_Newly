@@ -227,7 +227,7 @@ class CalibrationChartWidget(QWidget):
                 range_padding = (max_idx - min_idx) * 0.1 if max_idx > min_idx else 1
                 self.ax.set_xlim(min_idx - range_padding, max_idx + range_padding)
 
-            # 添加数值标签到最后一个数据点
+            # 添加数值标签到最后一个数据点 和第一个数据点
             if data:
                 last_idx = indices[-1]
                 last_val = data[-1]
@@ -240,7 +240,17 @@ class CalibrationChartWidget(QWidget):
                                            facecolor=color, alpha=0.2),
                                  arrowprops=dict(arrowstyle='->',
                                                  color=color, lw=1))
-
+                first_idx = indices[0]
+                first_val = data[0]
+                self.ax.annotate(f'{first_val:.2f}',
+                                 xy=(first_idx, first_val),
+                                 xytext=(5, 5),
+                                 textcoords='offset points',
+                                 fontsize=9,
+                                 bbox=dict(boxstyle='round,pad=0.3',
+                                           facecolor=color, alpha=0.2),
+                                 arrowprops=dict(arrowstyle='->',
+                                                 color=color, lw=1))
             self.ax.legend(loc='upper left', fontsize=9)
         else:
             # 没有有效数据时显示提示
