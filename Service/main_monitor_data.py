@@ -106,6 +106,11 @@ class read_queue_data_Thread(MyQThread):
                             modbus = ModbusRTUMasterNew(port_use, baudrate=115200, timeout=float(
                                 global_setting.get_setting('monitor_data')['Serial']['timeout']), )
                             global_setting.set_setting("modbus", modbus)
+                    case 'set_experiment_basic_config':
+                        data = message.data
+                        if data is not None:
+                            for key,value in data:
+                                global_setting.set_setting(key, value)
                     case 'start':
                         data = message.data
                         if data is not None:
@@ -736,6 +741,10 @@ def barrier_action():
     store_Datas.append({'desc': 'ZOS压力span数值',
                         'value': results.get('SpanCalibration_data__zos_pressure_calibration_span_value') if results.get(
                             'SpanCalibration_data__zos_pressure_calibration_span_value') is not None else None})
+    store_Datas.append({'desc': '二氧化碳浓传感器span数值',
+                        'value': results.get(
+                            'SpanCalibration_data__carbon_calibration_span_value') if results.get(
+                            'SpanCalibration_data__carbon_calibration_span_value') is not None else None})
     store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') if results.get(
                             f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') is not None else None   })
     store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(

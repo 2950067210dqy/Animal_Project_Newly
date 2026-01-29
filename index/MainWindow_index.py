@@ -7,7 +7,7 @@ from PyQt6 import QtCore
 from PyQt6.QtCore import QTimer, QObject, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog, QMenu, QMenuBar, QWidget, \
-    QApplication
+    QApplication, QCheckBox
 from loguru import logger
 
 
@@ -196,6 +196,7 @@ class MainWindow_Index(ThemedWindow):
             else:
                 event.ignore()  # 忽略关闭事件
         pass
+
     def setup_tutorial(self):
         #实例化提示引导器 下面式实例化模板
         if self.tutorial:
@@ -230,8 +231,12 @@ class MainWindow_Index(ThemedWindow):
                     self.tutorial.add_step(widget,
                                            f"单击此按钮是{action.text()}\n{menu.toolTip()}")
         for tool_bar_action in self.tool_bar_actions:
-            self.tutorial.add_step(tool_bar_action['action'].associatedObjects()[1],
-                               f"单击此按钮是{tool_bar_action['name']}\n{tool_bar_action['tip']}")
+            if isinstance(tool_bar_action['action'],QAction):
+                self.tutorial.add_step(tool_bar_action['action'].associatedObjects()[1],
+                                   f"单击此按钮是{tool_bar_action['name']}\n{tool_bar_action['tip']}")
+            else:
+                self.tutorial.add_step(tool_bar_action['action'],
+                                       f"单击此是{tool_bar_action['name']}\n{tool_bar_action['tip']}")
         # 状态栏提示
         self.tutorial.add_step(self.status_bar.time_label,
                                f"显示当前时间。")
@@ -391,6 +396,7 @@ class MainWindow_Index(ThemedWindow):
                 "name": "窗口变换",
                 "short_name": "变换",
                 "obj_name": "window_exchange",
+                "type":"button",
                 "icon": "⇄",  # 或使用图标文件: ":/icons/exchange.png"
                 "callback": self.exchange_widget_and_window,
                 "app_state": AppState.INITIALIZED,
@@ -403,6 +409,7 @@ class MainWindow_Index(ThemedWindow):
                 "name": "更改主题颜色",
                 "short_name": "主题",
                 "obj_name": "toggle_mode",
+                "type": "button",
                 "icon": "🌓",
                 "callback": self.toggle_theme,
                 "app_state": AppState.INITIALIZED,
@@ -411,10 +418,12 @@ class MainWindow_Index(ThemedWindow):
                 "separator_before": False,
                 "separator_after": True
             },
+
             {
                 "name": "开始实验",
                 "short_name": "开始",
                 "obj_name": "start_experiment",
+                "type": "button",
                 "icon": "▶",
                 "callback": self.start_experiment,
                 "app_state": AppState.CONFIGURING,
@@ -424,9 +433,23 @@ class MainWindow_Index(ThemedWindow):
                 "separator_after": False
             },
             {
+                "name": "开始实验时校准气体",
+                "short_name": "校准",
+                "obj_name": "calibration_gas",
+                "type": "checkbox",
+                "icon": "📏",
+                "callback": self.calibration_gas_state_change,
+                "app_state": AppState.INITIALIZED,
+                "tip": "单击此按钮会将选择开始实验时是否校准气体。",
+                "disabled": False,
+                "separator_before": False,
+                "separator_after": False
+            },
+            {
                 "name": "暂停实验",
                 "short_name": "暂停",
                 "obj_name": "pause_experiment",
+                "type": "button",
                 "icon": "⏸",
                 "callback": self.pause_experiment,
                 "app_state": AppState.CONFIGURING,
@@ -439,6 +462,7 @@ class MainWindow_Index(ThemedWindow):
                 "name": "停止实验",
                 "short_name": "停止",
                 "obj_name": "stop_experiment",
+                "type": "button",
                 "icon": "⏹",
                 "callback": self.stop_experiment,
                 "app_state": AppState.CONFIGURING,
@@ -451,6 +475,7 @@ class MainWindow_Index(ThemedWindow):
                 "name": "导出实验数据",
                 "short_name": "导出",
                 "obj_name": "export_experiment_datas",
+                "type": "button",
                 "icon": "💾",
                 "callback": self.export_experiment_datas,
                 "app_state": AppState.MONITORING,
@@ -463,6 +488,7 @@ class MainWindow_Index(ThemedWindow):
                 "name": "重置教程页",
                 "short_name": "重置教程",
                 "obj_name": "reset_guidance",
+                "type": "button",
                 "icon": "🔄",
                 "callback": self.reset_guidance,
                 "app_state": AppState.INITIALIZED,
@@ -477,28 +503,46 @@ class MainWindow_Index(ThemedWindow):
         for button_config in toolbar_buttons:
             if button_config["separator_before"]:
                 self.toolbar.addSeparator()
+            if button_config["type"]=="button":
+                action = QAction(button_config["short_name"], self)
+                action.setObjectName(button_config["obj_name"])
+                action.setToolTip(button_config["tip"])
+                action.triggered.connect(button_config["callback"])
+                # 设置图标
+                if button_config["icon"]:
+                    action.setText(button_config["icon"] + " " + button_config["short_name"])
 
-            action = QAction(button_config["short_name"], self)
-            action.setObjectName(button_config["obj_name"])
-            action.setToolTip(button_config["tip"])
-            action.triggered.connect(button_config["callback"])
-            # 设置图标
-            if button_config["icon"]:
-                action.setText(button_config["icon"] + " " + button_config["short_name"])
+                if button_config["disabled"]:
+                    action.setDisabled(True)
 
-            if button_config["disabled"]:
-                action.setDisabled(True)
+                self.tool_bar_actions.append({
+                    "name": button_config["name"],
+                    "obj_name": button_config["obj_name"],
+                    "action": action,
+                    "app_state": button_config["app_state"],
+                    "tip": button_config["tip"]
+                })
 
-            self.tool_bar_actions.append({
-                "name": button_config["name"],
-                "obj_name": button_config["obj_name"],
-                "action": action,
-                "app_state": button_config["app_state"],
-                "tip": button_config["tip"]
-            })
+                self.toolbar.addAction(action)
+            elif button_config["type"]=="checkbox":
+                if button_config["icon"]:
+                    checkBox = QCheckBox(button_config["icon"] + " " + button_config["name"])
+                else:
+                    checkBox = QCheckBox(button_config["name"])
+                checkBox.setChecked(True)
+                checkBox.stateChanged.connect(button_config["callback"])
+                checkBox.setObjectName(button_config["obj_name"])
+                if button_config["disabled"]:
+                    checkBox.setDisabled(True)
+                self.tool_bar_actions.append({
+                    "name": button_config["name"],
+                    "obj_name": button_config["obj_name"],
+                    "action": checkBox,
+                    "app_state": button_config["app_state"],
+                    "tip": button_config["tip"]
+                })
 
-            self.toolbar.addAction(action)
-
+                self.toolbar.addWidget(checkBox)
             if button_config["separator_after"]:
                 self.toolbar.addSeparator()
     def create_menu_bar(self):
@@ -688,7 +732,13 @@ class MainWindow_Index(ThemedWindow):
         # self.start_thread = Start_experiment_thread(name="start_thread",window=self)
         # self.start_thread.start()
 
+
+
         send_message_queue = global_setting.get_setting("send_message_queue")
+
+
+
+
         send_message_queue.put(ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='start',
                                                data={
                                                    'start_experiment_time':global_setting.get_setting("start_experiment_time"),
@@ -1108,3 +1158,13 @@ class MainWindow_Index(ThemedWindow):
             )
 
             self.status_bar.update_tip("✅ 所有页面的首次访问状态已重置")
+    # 监听是否自动校准气路模块的框选
+    def calibration_gas_state_change(self,state):
+        is_checked = bool(state)  # 直接转为布尔值
+        # 是否自动校准气体给其他进程同步设置
+        global_setting.set_setting("is_auto_calibration", is_checked)
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        send_message_queue.put(
+            ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='set_experiment_basic_config',
+                            data={"is_auto_calibration": is_checked},
+                            time=time_util.get_format_from_time(time.time())))

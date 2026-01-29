@@ -27,7 +27,8 @@ from theme.ThemeQt6 import ThemedWindow
 from PyQt6 import QtGui
 from PyQt6.QtCore import QRect, Qt, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QGroupBox, QLabel, QSlider, QRadioButton, \
-    QGridLayout, QButtonGroup, QComboBox, QListWidget, QPushButton, QMessageBox, QHBoxLayout, QLineEdit, QDoubleSpinBox
+    QGridLayout, QButtonGroup, QComboBox, QListWidget, QPushButton, QMessageBox, QHBoxLayout, QLineEdit, QDoubleSpinBox, \
+    QCheckBox
 
 from public.util.time_util import time_util
 
@@ -142,7 +143,10 @@ class Send_thread(MyQThread):
 class Tab_7(ThemedWindow):
     update_status_main_signal_gui_update = pyqtSignal(str)
 
-
+    def focusInEvent(self, a0):
+        if self.calibration_checkbox is not None:
+            self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
+        super().focusInEvent(a0)
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
         logger.warning("tab7——show")
@@ -150,6 +154,8 @@ class Tab_7(ThemedWindow):
             self.send_thread.resume()
         # 实例化自定义ui
         self._init_customize_ui()
+        if self.calibration_checkbox is not None:
+            self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration',True))
         super().showEvent(a0)
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
         logger.warning("tab7--hide")
@@ -183,6 +189,13 @@ class Tab_7(ThemedWindow):
         self.port_combox=None
         self.response_text=None
         self.vr_desc_text:QDoubleSpinBox=None
+        self.span_oxygen_desc_text:QDoubleSpinBox=None
+        self.span_carbon_desc_text:QDoubleSpinBox=None
+        # 创建是否校准复选框
+        self.calibration_checkbox = None
+
+
+
         self.experiment_setting: Experiment_setting_entity =None
         # 发送报文线程
         self.send_thread:Send_thread = None
@@ -415,13 +428,30 @@ class Tab_7(ThemedWindow):
             if self.main_gui is not None:
                 self.main_gui.change_enable_component_app_state_signal.emit()
                 pass
-            # 设置vr值
-            vr_value= self.vr_desc_text.value()
-            if  vr_value:
-                global_setting.set_setting("Vr",float(vr_value))
             send_message_queue = global_setting.get_setting("send_message_queue")
             send_message_queue.put(ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_port',
                                                    data=self.send_message['port'],
+                                                   time=time_util.get_format_from_time(time.time())))
+            # 设置vr值
+            basic_experiment_config = {}
+            vr_value= self.vr_desc_text.value()
+            if  vr_value:
+                basic_experiment_config['vr_desc'] = float(vr_value)
+                global_setting.set_setting("Vr",float(vr_value))
+            # 设置span校准的标准气体的氧气浓度值 %
+            span_oxygen_value = self.span_oxygen_desc_text.value()
+            if span_oxygen_value:
+                basic_experiment_config["span_standard_oxygen_value"]=float(span_oxygen_value)
+                global_setting.set_setting("span_standard_oxygen_value", float(span_oxygen_value))
+            # 设置span校准的标准气体的二氧化碳浓度值 %
+            span_carbon_value = self.span_carbon_desc_text.value()
+            if span_carbon_value:
+                basic_experiment_config["span_standard_carbon_value"] = float(span_carbon_value)
+                global_setting.set_setting("span_standard_carbon_value", float(span_carbon_value))
+
+            # 给其他进程同步设置
+            send_message_queue.put(ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_experiment_basic_config',
+                                                   data=basic_experiment_config,
                                                    time=time_util.get_format_from_time(time.time())))
             self.close()
             msg_box = InfoDialog(title="确定设备配置", info="确定该设备配置成功!",
@@ -713,18 +743,83 @@ class Tab_7(ThemedWindow):
         """
         # 创建 GroupBox
         self.group_box = QGroupBox(f"基本配置")
+        self.group_box.setStyleSheet("""
+        QGroupBox {
+            font-size:17px;
+            font-weight:bolder;
+        }
+        """)
         self.group_box.setContentsMargins(10, 10, 10, 10)
         scroll_area_layout.addWidget(self.group_box)
+        main_layout =QVBoxLayout()
+        hT_layout = QHBoxLayout()
 
-        # 创建第一个 GridLayout
+        self.calibration_checkbox = QCheckBox("启动时校准气路值")
+        self.calibration_checkbox.setStyleSheet("""
+                QCheckBox {
+                    margin-top:17px;
+                    font-weight:bolder;
+                }
+                """)
+        self.calibration_checkbox.stateChanged.connect(self.calibration_gas_state_change)
+        self.calibration_checkbox.setChecked( global_setting.get_setting("is_auto_calibration", True))
+        hT_layout.addWidget(self.calibration_checkbox)
+        main_layout.addLayout(hT_layout)
+
+
+        h0_layout = QHBoxLayout()
+        span_oxygen_desc_label = QLabel("span校准的标准气体的氧浓度数值（单位:%,例如20.9%，请输入20.9）：")
+        span_oxygen_desc_label.setStyleSheet("""
+                      QLabel {
+                          font-weight:bolder;
+                      }
+                      """)
+        self.span_oxygen_desc_text = QDoubleSpinBox()
+        self.span_oxygen_desc_text.setValue(global_setting.get_setting("span_standard_oxygen_value",20.9))
+
+        h0_layout.addWidget(span_oxygen_desc_label)
+        h0_layout.addWidget(self.span_oxygen_desc_text)
+        main_layout.addLayout(h0_layout)
+
+        h1_layout = QHBoxLayout()
+        span_carbon_desc_label = QLabel("span校准的标准气体的CO2浓度数值（单位:%,例如0.03%，请输入0.03）：")
+        span_carbon_desc_label.setStyleSheet("""
+                              QLabel {
+                                  font-weight:bolder;
+                              }
+                              """)
+        self.span_carbon_desc_text = QDoubleSpinBox()
+        self.span_carbon_desc_text.setValue(global_setting.get_setting("span_standard_carbon_value",0.03))
+
+        h1_layout.addWidget(span_carbon_desc_label)
+        h1_layout.addWidget(self.span_carbon_desc_text)
+        main_layout.addLayout(h1_layout)
+
+        # 创建第2个 GridLayout
         h_layout = QHBoxLayout()
-        vr_desc_label=QLabel("请输入Vr值（实际的标定气体，根据气瓶上的标识确定,单位:%,例如20.9%，请输入20.9）：")
+        vr_desc_label=QLabel("请输入Vr值[已弃用]（实际的标定气体，根据气瓶上的标识确定,单位:%,例如20.9%，请输入20.9）：")
         self.vr_desc_text=QDoubleSpinBox()
         self.vr_desc_text.setValue(global_setting.get_setting("Vr",20.9))
 
         h_layout.addWidget(vr_desc_label)
         h_layout.addWidget(self.vr_desc_text)
-        self.group_box.setLayout(h_layout)
+        main_layout.addLayout(h_layout)
+        self.group_box.setLayout(main_layout)
         pass
+    def calibration_gas_state_change(self,state):
+        is_checked = bool(state)  # 直接转为布尔值
+        # 是否自动校准气体给其他进程同步设置
+        if self.main_gui is not None:
+            for tool_bar_action in self.main_gui.tool_bar_actions:
 
+                # 特殊按钮需要特殊配置
+                if tool_bar_action['obj_name'] in ["calibration_gas"]:
+                    tool_bar_action["action"].setChecked(is_checked)
+                    break
+        global_setting.set_setting("is_auto_calibration", is_checked)
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        send_message_queue.put(
+            ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_experiment_basic_config',
+                            data={"is_auto_calibration": is_checked},
+                            time=time_util.get_format_from_time(time.time())))
 

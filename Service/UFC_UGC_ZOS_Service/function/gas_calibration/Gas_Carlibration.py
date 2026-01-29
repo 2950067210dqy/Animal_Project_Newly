@@ -583,10 +583,10 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
                             global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
                                 'zero_calibration_carbon_threshold'])
                         )
-                        or
-                        (
-                                now_carbon_value != 0 or now_oxygen_value != 0
-                        )
+                        # or
+                        # (
+                        #         now_carbon_value != 0 or now_oxygen_value != 0
+                        # )
 
 
                 ) and
@@ -601,14 +601,14 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
             # 循环读取CO2浓度
             self.send_message = {
                 'port': port,
-                'data': number_util.set_int_to_4_bytes_list("5"),
+                'data': number_util.set_int_to_4_bytes_list("8"),
                 'slave_id': '3',
                 'function_code': '4',
                 'timeout': 1
             }
             self.send_thread.send_message = self.send_message
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。1）采集二氧化碳浓度，is_STOP={self.is_STOP}",title=self.title )
+                f"{time_util.get_format_from_time(time.time())} |  零点标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。1）采集二氧化碳浓度，is_STOP={self.is_STOP}",title=self.title )
             carbon_data, carbon_message =self.send_thread.Send_no_promise()
             now_carbon_values = [item['value'] for item in carbon_data['data'] if "CO2" in item['desc']]
             last_carbon_value = copy.deepcopy(now_carbon_value)
@@ -623,7 +623,7 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
             }
             self.send_thread.send_message = self.send_message
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。2）采集氧气浓度",title=self.title )
+                f"{time_util.get_format_from_time(time.time())} |  零点标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。2）采集氧气浓度",title=self.title )
             oxygen_data,oxygen_message =  self.send_thread.Send_no_promise()
             now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
             last_oxygen_value = copy.deepcopy(now_oxygen_value)
@@ -634,13 +634,13 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
             now_pressure_value = now_pressure_values[0] if now_pressure_values else None
             end_time = time.time()
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定 3.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度、zos气压（{now_oxygen_value}，{now_pressure_value}）之前氧气浓度、zos气压（{last_oxygen_value}，{last_pressure_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time),b=datetime.fromtimestamp(start_time),zero_pad=True,signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])}秒",title=self.title )
+                f"{time_util.get_format_from_time(time.time())} |  零点标定 6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度、zos气压（{now_oxygen_value}，{now_pressure_value}）之前氧气浓度、zos气压（{last_oxygen_value}，{last_pressure_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time),b=datetime.fromtimestamp(start_time),zero_pad=True,signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])}秒",title=self.title )
             time.sleep(1)
             pass
         last_carbon_value, last_oxygen_value, last_pressure_value =None, None, None
         if self.is_STOP:
             reject()
-        #5.二氧化碳零点设置。
+        #7.二氧化碳零点设置。
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list("00100000"),
@@ -650,13 +650,13 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
         }
         self.send_thread.send_message = self.send_message
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  零点标定 5.二氧化碳零点设置",title=self.title )
+            f"{time_util.get_format_from_time(time.time())} |  零点标定 7.二氧化碳零点设置",title=self.title )
         AsyPromise(self.send_thread.Send).then(
-            # 6.氧浓传感器零点记录。
+            # 8.氧浓传感器零点记录。
             lambda r: AsyPromise(self.zero_point_recording_of_oxygen_sensor, port=port).then(lambda r2:resolve()).catch(lambda e: logger.error(f"{e}"))
         ).catch(lambda e: reject(e))
         pass
-    # 6.氧浓传感器零点记录。
+    # 8.氧浓传感器零点记录。
     def zero_point_recording_of_oxygen_sensor(self,resolve,reject,port):
         # 采集氧气
         self.send_message = {
@@ -676,7 +676,7 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
         now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
         now_pressure_value = now_pressure_values[0] if now_pressure_values else None
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  零点标定 6.氧浓传感器零点记录值 zos气压：{now_pressure_value}，氧气浓度：{now_oxygen_values}",title=self.title )
+            f"{time_util.get_format_from_time(time.time())} |  零点标定 8.氧浓传感器零点记录值 zos气压：{now_pressure_value}，氧气浓度：{now_oxygen_values}",title=self.title )
         # 存储值----------------------------------------------------
         return_data_struct={}
         return_data_struct['module_name']='ZeroCalibration'
@@ -701,7 +701,7 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
         except Exception as e:
             return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value}]
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定 5.出错，错误：{e} |氧浓传感器零点记录值{now_oxygen_value}，zos压力：{now_pressure_value},oxygen_data：{oxygen_data}，now_oxygen_values：{now_oxygen_values}",title=self.title )
+                f"{time_util.get_format_from_time(time.time())} |  零点标定 8.出错，错误：{e} |氧浓传感器零点记录值{now_oxygen_value}，zos压力：{now_pressure_value},oxygen_data：{oxygen_data}，now_oxygen_values：{now_oxygen_values}",title=self.title )
         return_data_struct['slave_id']=0
         return_data_struct['function_code']=0
         result = store_data_with_result(return_data_struct, need_result=True, timeout=5)
@@ -715,7 +715,7 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
 
         else:
             AsyPromise(self.send_thread.Send).then(
-                # 7.校零返回系统工作运行状态
+                # 9.校零返回系统工作运行状态
                 lambda r: AsyPromise(self.return_to_running_state, port=port
                                      ).then(lambda r2: resolve()).catch(lambda e: logger.error(f"{e}"))
             ).catch(lambda e: reject(e))
@@ -772,32 +772,64 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
         resolve()
 
     def cyclic_sampling_of_zos_oxygen_sensor(self,resolve,reject,port):
-        # 6.循环采样zos氧浓度
+        # 6.循环采样zos氧浓度 和 co2浓度
         global last_oxygen_value,last_carbon_value,last_pressure_value
         # 现在测量的氧气值
         now_oxygen_value = None
+        now_carbon_value = None
         now_pressure_value = None
         if self.is_STOP:
             reject()
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 3.循环采样zos氧浓度。",title=self.title )
+            f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 6.循环采样zos氧浓度和co2浓度。",title=self.title )
         start_time = time.time()
         end_time = None
-        # 小于阈值稳定
+        # 小于阈值稳定 或者 至少循环60秒
         while (
-                (now_oxygen_value is None ) or
-                (last_oxygen_value is None) or
                 (
-                    now_oxygen_value - last_oxygen_value >
-                    float(global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']['span_calibration_oxygen_threshold'])
+                        (now_oxygen_value is None or now_carbon_value is None) or
+                        (last_carbon_value is None or last_oxygen_value is None) or
+
+                        (
+                                abs(now_oxygen_value - last_oxygen_value) > float(
+                            global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
+                                'span_calibration_oxygen_threshold'])
+                                or
+                                abs(now_carbon_value - last_carbon_value) > float(
+                            global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
+                                'span_calibration_carbon_threshold'])
+                        )
+                        # or
+                        # (
+                        #         now_carbon_value != 0 or now_oxygen_value != 0
+                        # )
+
+                ) and
+                (
+                        end_time is None or int(end_time - start_time) <= float(
+                    global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['span_calibration_circular_times'])
                 )
-              ) and(
-                end_time is None or int(end_time - start_time) <= float(
-                  global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['span_calibration_circular_times'])
-            ):
+
+        ):
             if self.is_STOP:
                 break
-            # 循环开始
+            # 循环读取CO2浓度
+            self.send_message = {
+                'port': port,
+                'data': number_util.set_int_to_4_bytes_list("8"),
+                'slave_id': '3',
+                'function_code': '4',
+                'timeout': 1
+            }
+            self.send_thread.send_message = self.send_message
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。1）采集二氧化碳浓度，is_STOP={self.is_STOP}",
+                title=self.title)
+            carbon_data, carbon_message = self.send_thread.Send_no_promise()
+            now_carbon_values = [item['value'] for item in carbon_data['data'] if "CO2" in item['desc']]
+            last_carbon_value = copy.deepcopy(now_carbon_value)
+            now_carbon_value = now_carbon_values[0] if now_carbon_values else None
+            # 采集氧气
             self.send_message = {
                 'port': port,
                 'data': number_util.set_int_to_4_bytes_list(f"00000003"),
@@ -807,7 +839,8 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
             }
             self.send_thread.send_message = self.send_message
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 3.循环采样zos氧浓度。1)采样zos氧气浓度,is_STOP={self.is_STOP}",title=self.title )
+                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。2）采集氧气浓度",
+                title=self.title)
             oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
             now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
             last_oxygen_value = copy.deepcopy(now_oxygen_value)
@@ -818,13 +851,14 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
             now_pressure_value = now_pressure_values[0] if now_pressure_values else None
             end_time = time.time()
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 3.循环采样zos氧浓度。2）现在氧气浓度、zos压力（{now_oxygen_value}，{now_pressure_value}）之前氧气浓度、zos压力（{last_oxygen_value}，{last_pressure_value}）已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time),b=datetime.fromtimestamp(start_time),zero_pad=True,signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['span_calibration_circular_times'])}秒",title=self.title )
+                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度、zos气压（{now_oxygen_value}，{now_pressure_value}）之前氧气浓度、zos气压（{last_oxygen_value}，{last_pressure_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time), b=datetime.fromtimestamp(start_time), zero_pad=True, signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])}秒",
+                title=self.title)
             time.sleep(1)
             pass
         last_carbon_value, last_oxygen_value, last_pressure_value = None, None, None
         if self.is_STOP:
             reject()
-        # 5. 氧浓传感器span数值记录。
+        # 7. 氧浓传感器span数值记录。
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list(f"00000003"),
@@ -841,7 +875,7 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
         now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
         now_pressure_value = now_pressure_values[0] if now_pressure_values else None
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 5.氧浓传感器span数值记录。氧气浓度：{now_oxygen_value}%，zos气压：{now_pressure_value}KPa",title=self.title )
+            f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 7.氧浓传感器span数值记录。氧气浓度：{now_oxygen_value}%，zos气压：{now_pressure_value}KPa，CO2：{now_carbon_value}%",title=self.title )
         # 存储值----------------------------------------------------
         return_data_struct = {}
         return_data_struct['module_name'] = 'SpanCalibration'
@@ -852,10 +886,10 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
         #K=（Vs-Vzero）/（Vr-Vzero）
         if now_oxygen_value is not None:
             K =(now_oxygen_value-global_setting.get_setting("Vzero",0))/(global_setting.get_setting("Vr",20.9)-global_setting.get_setting("Vzero",0))
-            logger.warning(f"量程标定的K值为：{K},Vs值为：{now_oxygen_value}，Vr值为：{global_setting.get_setting('Vr',20.9)},Vzero值为：{global_setting.get_setting('Vzero',0)}")
-            self.update_status_main_signal_gui_update.send(f"量程标定的K值为：{K},Vs值为：{now_oxygen_value}，Vr值为：{global_setting.get_setting('Vr',20.9)},Vzero值为：{global_setting.get_setting('Vzero',0)}",title=self.title )
+            logger.warning(f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 7.量程标定的K值为：{K},Vs值为：{now_oxygen_value}，Vr值为：{global_setting.get_setting('Vr',20.9)},Vzero值为：{global_setting.get_setting('Vzero',0)}")
+            self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 7.量程标定的K值为：{K},Vs值为：{now_oxygen_value}，Vr值为：{global_setting.get_setting('Vr',20.9)},Vzero值为：{global_setting.get_setting('Vzero',0)}",title=self.title )
             global_setting.set_setting("K",K )
-            return_data_struct['data'] = [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value},{'desc': 'ZOS压力span数值', 'value': now_pressure_value}]
+            return_data_struct['data'] = [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value},{'desc': 'ZOS压力span数值', 'value': now_pressure_value},{'desc': '二氧化碳浓传感器span数值', 'value': now_carbon_value}]
         else:
             now_oxygen_value = [data['value'] for data in oxygen_data['data'] if data['desc'] == "备注"]
             if len(now_oxygen_value) == 0:
@@ -875,7 +909,7 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
             reject()
         else:
             AsyPromise(self.send_thread.Send).then(
-                #6.校SPAN返回系统工作运行状态
+                #8.校SPAN返回系统工作运行状态
                 lambda r: AsyPromise(self.return_to_running_state, port=port
                                      ).then(lambda r2:resolve()).catch(lambda e: logger.error(f"{e}"))
             ).catch(lambda e: reject(e))

@@ -887,7 +887,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
         #3.循环读取CO2浓度
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"00000005"),
+            'data': number_util.set_int_to_4_bytes_list(f"00000008"),
             'slave_id': '3',
             'function_code': '4',
             'timeout': 1
@@ -1754,6 +1754,7 @@ class ZOS_gas_path_system(Gas_path_system):
     def start_success(self,resolve,reject):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS 启动完成。")
+        self.zos_start_status = True
         if self.is_stop:
             reject("Stop")
         resolve()
