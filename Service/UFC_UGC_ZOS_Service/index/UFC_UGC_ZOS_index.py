@@ -581,6 +581,7 @@ class UFC_UGC_ZOS_index(MyQThread):
     def dosomething(self):
         # 是否自动校准气路
         is_auto_calibration = global_setting.get_setting("is_auto_calibration",True)
+        logger.critical(f"{self.name}<UNK>is_auto_calibration：{is_auto_calibration}")
         if is_auto_calibration:
             self.start_btn_handle_with_calibration().then(
                 self.run_btn_handle().then(

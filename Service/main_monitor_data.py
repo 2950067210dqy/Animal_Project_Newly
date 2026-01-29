@@ -110,6 +110,7 @@ class read_queue_data_Thread(MyQThread):
                         data:dict = message.data
                         if data is not None and isinstance(data, dict):
                             for key,value in data.items():
+                                logger.critical(f"{self.name}<UNK>{key}<UNK>{value}")
                                 global_setting.set_setting(key, value)
                     case 'start':
                         data = message.data
