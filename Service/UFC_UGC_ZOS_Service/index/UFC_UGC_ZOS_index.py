@@ -108,7 +108,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.UFC_gas_state_check_obj: UFC_Gas_State_Check = None
 
         self.zos_start_timer: PeriodicTimer = None
-        self.calibration_start_timer: PeriodicTimer = None
+
         self.gas_state_check_timer: PeriodicTimer = None
         self.monitor_start_state_Thread: MyQThread = None
 
@@ -222,16 +222,8 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.update_start_state_signal = signal('update_start_state')
         self.update_start_state_signal.connect(self.update_start_state)
 
-        self.start_signal = signal('start')
-        self.start_signal.connect(self.start_btn_handle)
-        self.run_signal = signal('run')
-        self.run_signal.connect(self.run_btn_handle)
-        self.carlibration_signal = signal('carlibration')
-        self.carlibration_signal.connect(self.calibration_handle)
-        self.gas_state_check_signal = signal('gas_state_check')
-        self.gas_state_check_signal.connect(self.gas_state_check_handle)
-        self.auto_finish_signal = signal('auto_finish')
-        self.auto_finish_signal.connect(self.auto_finish_handle)
+
+
 
         self.UFC_gas_path_system_obj = UFC_gas_path_system()
         self.UGC_gas_path_system_obj = UGC_gas_path_system()
@@ -257,8 +249,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         if read_queue_data_thread is not None and not read_queue_data_thread.isRunning():
             read_queue_data_thread.start()
 
-    def auto_finish_handle(self):
-        pass
+
 
     def update_start_state(self, sender, **kwargs):
         if self.monitor_start_state_Thread is not None:
@@ -623,8 +614,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         if self.zos_start_timer is not None and self.zos_start_timer.is_active():
             self.zos_start_timer.pause()
 
-        if self.calibration_start_timer is not None and self.calibration_start_timer.is_active():
-            self.calibration_start_timer.pause()
+
         if self.gas_state_check_timer is not None and self.gas_state_check_timer.is_active():
             self.gas_state_check_timer.pause()
 
@@ -632,8 +622,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         if self.zos_start_timer is not None:
             self.zos_start_timer.resume()
 
-        if self.calibration_start_timer is not None:
-            self.calibration_start_timer.resume()
+
         if self.gas_state_check_timer is not None:
             self.gas_state_check_timer.resume()
 
@@ -641,8 +630,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         if self.zos_start_timer is not None :
             self.zos_start_timer.stop()
 
-        if self.calibration_start_timer is not None:
-            self.calibration_start_timer.stop()
+
         if self.gas_state_check_timer is not None  :
             self.gas_state_check_timer.stop()
 
