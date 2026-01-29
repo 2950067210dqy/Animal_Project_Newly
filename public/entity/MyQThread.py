@@ -18,8 +18,12 @@ class MyQThread(QThread):
 
     def run(self):
         logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
+        # 启动时强制重置所有状态
+        self.mutex.lock()
         self._running = True
         self._stop_requested = False
+        self._paused = False  # 强制重置
+        self.mutex.unlock()
 
         try:
             self.before_Runing_work()
