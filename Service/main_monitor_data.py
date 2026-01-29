@@ -107,9 +107,9 @@ class read_queue_data_Thread(MyQThread):
                                 global_setting.get_setting('monitor_data')['Serial']['timeout']), )
                             global_setting.set_setting("modbus", modbus)
                     case 'set_experiment_basic_config':
-                        data = message.data
-                        if data is not None:
-                            for key,value in data:
+                        data:dict = message.data
+                        if data is not None and isinstance(data, dict):
+                            for key,value in data.items():
                                 global_setting.set_setting(key, value)
                     case 'start':
                         data = message.data

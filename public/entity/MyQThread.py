@@ -1,4 +1,5 @@
 import threading
+import traceback
 
 from PyQt6.QtCore import QThread, QMutex, QWaitCondition
 from loguru import logger
@@ -42,7 +43,21 @@ class MyQThread(QThread):
                     try:
                         self.dosomething()
                     except Exception as e:
-                        logger.error(f"{self.name} dosomething error: {e}")
+                        error_msg=[f"{self.name} dosomething error: {e}"]
+                        # 1. 获取错误的类型和值
+                        error_type = type(e).__name__
+                        error_value = str(e)
+                        error_msg.append(f"Error Type: {error_type}")
+                        error_msg.append(f"Error Value: {error_value}")
+                        if hasattr(e, '__traceback__') and e.__traceback__:
+                            error_msg.append("Traceback:")
+                            tb_lines = traceback.format_tb(e.__traceback__)
+                            error_msg.extend(tb_lines)
+                            error_msg.append(f"{error_type}: {error_value}")
+                        else:
+                            error_msg.append("No traceback available")
+                        error_msg.append(f"{self.name} dosomething error: {e}")
+                        logger.error("\n".join(error_msg))
                         break
                 else:
                     # 如果暂停了，短暂休眠
