@@ -4,6 +4,7 @@ import math
 import time
 import typing
 import threading
+from pathlib import Path
 
 from PyQt6.QtGui import QDoubleValidator, QColor
 from loguru import logger
@@ -87,7 +88,12 @@ class Tab_1(ThemedWindow):
     # ==========初始化相关==========
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
-
+        # ==================== 配置管理相关 ====================
+        self.current_cage_config = {}  # 当前笼子的配置缓存
+        # 获取用户主目录并创建配置文件夹
+        self.user_config_dir = Path.home() / ".mouse_experiment_config" / "cage_configs"
+        self.user_config_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"配置文件保存位置: {self.user_config_dir}")
         self.mouse_cage_modules_status = None
         self.reference_modules_status = None
 
@@ -554,8 +560,11 @@ class Tab_1(ThemedWindow):
         grid_layout1.addWidget(radio_on, 0, 1)
         grid_layout1.addWidget(radio_off, 0, 2)
 
-    def init_em_config_ui_for_group(self, module_key, module_value, scroll_area_layout, group_num):
+    def init_em_config_ui_for_group(self, module_key, module_value, scroll_area_layout, group_num, saved_config=None):
         """初始化 EM 配置UI（针对特定鼠笼）"""
+        if saved_config is None:
+            saved_config = {}
+
         group_box = QGroupBox(
             f"{module_value['desc']}-{module_value['config'][0]['value'][0]['desc']}"
         )
@@ -576,7 +585,13 @@ class Tab_1(ThemedWindow):
             f"{module_value['config'][0]['value'][0]['refer_value']['1']['desc']}"
         )
         radio_off.setObjectName("off")
-        radio_off.setChecked(True)
+
+        # ==================== 新增：从保存的配置恢复状态 ====================
+        saved_value = saved_config.get('config_0', 'off')
+        if saved_value == 'on':
+            radio_on.setChecked(True)
+        else:
+            radio_off.setChecked(True)
 
         button_group = QButtonGroup(grid_layout1)
         button_group.addButton(radio_on)
@@ -584,8 +599,9 @@ class Tab_1(ThemedWindow):
         button_group.buttonClicked.connect(
             lambda button, address=module_value['address'], mouse_cage_number=group_num,
                    function_code=module_value['config'][0]['function_code'],
-                   data_lists=module_value['config'][0]['value'][0]['refer_value']:
-            self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists)
+                   data_lists=module_value['config'][0]['value'][0]['refer_value'],
+                   config_key='EM_config_0':
+            self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists, config_key)
         )
 
         grid_layout1.addWidget(label, 0, 0)
@@ -708,9 +724,11 @@ class Tab_1(ThemedWindow):
         grid_layout4.addWidget(label, 0, 0)
         grid_layout4.addWidget(slider, 0, 1)
         grid_layout4.addWidget(current_value_label, 0, 2)
+    def init_enm_config_ui_for_group(self, module_key, module_value, scroll_area_layout, group_num, saved_config=None):
+        """初始化 ENM 配置UI（针对特定鼠笼）- 支持配置加载"""
+        if saved_config is None:
+            saved_config = {}
 
-    def init_enm_config_ui_for_group(self, module_key, module_value, scroll_area_layout, group_num):
-        """初始化 ENM 配置UI（针对特定鼠笼）"""
         # 第1个 GroupBox
         group_box = QGroupBox(
             f"{module_value['desc']}-{module_value['config'][0]['value'][0]['desc']}"
@@ -732,7 +750,13 @@ class Tab_1(ThemedWindow):
             f"{module_value['config'][0]['value'][0]['refer_value']['1']['desc']}"
         )
         radio_off.setObjectName("off")
-        radio_off.setChecked(True)
+
+        # ==================== 从保存的配置恢复状态 ====================
+        saved_value = saved_config.get('config_0_value_0', 'off')
+        if saved_value == 'on':
+            radio_on.setChecked(True)
+        else:
+            radio_off.setChecked(True)
 
         button_group = QButtonGroup(grid_layout1)
         button_group.addButton(radio_on)
@@ -740,8 +764,9 @@ class Tab_1(ThemedWindow):
         button_group.buttonClicked.connect(
             lambda button, address=module_value['address'], mouse_cage_number=group_num,
                    function_code=module_value['config'][0]['function_code'],
-                   data_lists=module_value['config'][0]['value'][0]['refer_value']:
-            self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists)
+                   data_lists=module_value['config'][0]['value'][0]['refer_value'],
+                   config_key='ENM_config_0_value_0':
+            self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists, config_key)
         )
 
         grid_layout1.addWidget(label, 0, 0)
@@ -769,7 +794,13 @@ class Tab_1(ThemedWindow):
             f"{module_value['config'][0]['value'][1]['refer_value']['1']['desc']}"
         )
         radio_off.setObjectName("off")
-        radio_off.setChecked(True)
+
+        # ==================== 从保存的配置恢复状态 ====================
+        saved_value = saved_config.get('config_0_value_1', 'off')
+        if saved_value == 'on':
+            radio_on.setChecked(True)
+        else:
+            radio_off.setChecked(True)
 
         button_group = QButtonGroup(grid_layout2)
         button_group.addButton(radio_on)
@@ -777,8 +808,9 @@ class Tab_1(ThemedWindow):
         button_group.buttonClicked.connect(
             lambda button, address=module_value['address'], mouse_cage_number=group_num,
                    function_code=module_value['config'][0]['function_code'],
-                   data_lists=module_value['config'][0]['value'][1]['refer_value']:
-            self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists)
+                   data_lists=module_value['config'][0]['value'][1]['refer_value'],
+                   config_key='ENM_config_0_value_1':
+            self.on_radio_button_clicked(button, address, mouse_cage_number, function_code, data_lists, config_key)
         )
 
         grid_layout2.addWidget(label, 0, 0)
@@ -801,9 +833,15 @@ class Tab_1(ThemedWindow):
         slider.setOrientation(Qt.Orientation.Horizontal)
         slider.setMinimum(1)
         slider.setMaximum(9)
-        slider.setValue(1)
 
-        current_value_label = QLabel("当前值: 1")
+        # ==================== 从保存的配置恢复滑块值 ====================
+        saved_slider_value = saved_config.get('config_1_value_0', 1)
+        try:
+            slider.setValue(int(saved_slider_value))
+        except (ValueError, TypeError):
+            slider.setValue(1)
+
+        current_value_label = QLabel(f"当前值: {slider.value()}")
 
         slider.valueChanged.connect(
             lambda value, label=current_value_label: self.update_slider_label(value, label)
@@ -811,8 +849,9 @@ class Tab_1(ThemedWindow):
         slider.sliderReleased.connect(
             lambda address=module_value['address'], mouse_cage_number=group_num,
                    function_code=module_value['config'][1]['function_code'],
-                   data_lists=module_value['config'][1]['value'][0]['refer_value'], slider=slider
-            : self.update_slider(address, mouse_cage_number, function_code, data_lists, slider)
+                   data_lists=module_value['config'][1]['value'][0]['refer_value'],
+                   slider=slider, config_key='ENM_config_1_value_0':
+            self.update_slider(address, mouse_cage_number, function_code, data_lists, slider, config_key)
         )
 
         grid_layout3.addWidget(label, 0, 0)
@@ -835,9 +874,15 @@ class Tab_1(ThemedWindow):
         slider.setOrientation(Qt.Orientation.Horizontal)
         slider.setMinimum(1)
         slider.setMaximum(9)
-        slider.setValue(1)
 
-        current_value_label = QLabel("当前值: 1")
+        # ==================== 从保存的配置恢复滑块值 ====================
+        saved_slider_value = saved_config.get('config_1_value_1', 1)
+        try:
+            slider.setValue(int(saved_slider_value))
+        except (ValueError, TypeError):
+            slider.setValue(1)
+
+        current_value_label = QLabel(f"当前值: {slider.value()}")
 
         slider.valueChanged.connect(
             lambda value, label=current_value_label: self.update_slider_label(value, label)
@@ -845,13 +890,15 @@ class Tab_1(ThemedWindow):
         slider.sliderReleased.connect(
             lambda address=module_value['address'], mouse_cage_number=group_num,
                    function_code=module_value['config'][1]['function_code'],
-                   data_lists=module_value['config'][1]['value'][1]['refer_value'], slider=slider
-            : self.update_slider(address, mouse_cage_number, function_code, data_lists, slider)
+                   data_lists=module_value['config'][1]['value'][1]['refer_value'],
+                   slider=slider, config_key='ENM_config_1_value_1':
+            self.update_slider(address, mouse_cage_number, function_code, data_lists, slider, config_key)
         )
 
         grid_layout4.addWidget(label, 0, 0)
         grid_layout4.addWidget(slider, 0, 1)
         grid_layout4.addWidget(current_value_label, 0, 2)
+
 
 
     # ==========事件处理==========
@@ -1828,50 +1875,128 @@ class Tab_1(ThemedWindow):
             logger.error(f"更新笼 {cage_number} 检测状态失败: {e}", exc_info=True)
 
     # ==========配置管理==========
+    def _get_cage_config_path(self, cage_id: int) -> Path:
+        """获取笼子配置文件路径"""
+        return self.user_config_dir / f"cage_{cage_id}_config.json"
+
+    def _save_cage_config_to_json(self, cage_id: int, config_data: dict) -> bool:
+        """保存笼子配置到用户本地JSON文件"""
+        try:
+            config_data['timestamp'] = time_util.get_format_from_time(time.time())
+            config_data['cage_id'] = cage_id
+
+            config_path = self._get_cage_config_path(cage_id)
+
+            # 确保目录存在
+            self.user_config_dir.mkdir(parents=True, exist_ok=True)
+
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"✓ 笼子 {cage_id} 配置已保存到: {config_path}")
+            return True
+        except Exception as e:
+            logger.error(f"保存笼子 {cage_id} 配置失败: {e}")
+            return False
+
+    def _load_cage_config_from_json(self, cage_id: int) -> dict:
+        """从用户本地JSON文件加载笼子配置"""
+        try:
+            config_path = self._get_cage_config_path(cage_id)
+
+            if not config_path.exists():
+                logger.debug(f"笼子 {cage_id} 配置文件不存在，使用默认配置: {config_path}")
+                return {}
+
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+
+            logger.info(f"✓ 笼子 {cage_id} 配置已从本地加载: {config_path}")
+            return config_data
+        except Exception as e:
+            logger.error(f"加载笼子 {cage_id} 配置失败: {e}")
+            return {}
+
+    def _delete_cage_config_file(self, cage_id: int) -> bool:
+        """删除笼子本地配置文件"""
+        try:
+            config_path = self._get_cage_config_path(cage_id)
+            if config_path.exists():
+                config_path.unlink()
+                logger.info(f"✓ 笼子 {cage_id} 本地配置文件已删除: {config_path}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"删除笼子 {cage_id} 配置失败: {e}")
+            return False
+
     def load_cage_config(self, group_num):
         """加载指定鼠笼的配置界面"""
         try:
-            # ✓ 直接使用缓存的对象
             if self.content_layout is None:
                 logger.error("content_layout 未找到！")
                 return
 
             self.remove_layout_items(self.content_layout)
-
             self.init_basic_config(self.content_layout)
+
+            # ==================== 新增：从用户本地加载保存的配置 ====================
+            saved_config = self._load_cage_config_from_json(group_num)
+            self.current_cage_config = saved_config.copy()
+
+            if saved_config:
+                logger.info(f"✓ 已加载笼子 {group_num} 的本地保存配置")
+            else:
+                logger.info(f"笼子 {group_num} 首次配置，将创建新配置文件")
 
             response_data = self.groups_status[group_num]['response_data']
 
             for module_key, module_value in self.config.items():
                 if module_key == Modbus_Type.Modbus_Slave_Ids.ENM.value['name']:
-                    self.init_enm_config_ui_for_group(module_key, module_value, self.content_layout, group_num)
+                    module_config = saved_config.get('ENM', {})
+                    self.init_enm_config_ui_for_group(module_key, module_value, self.content_layout, group_num,
+                                                      module_config)
                 elif module_key == Modbus_Type.Modbus_Slave_Ids.EM.value['name']:
-                    self.init_em_config_ui_for_group(module_key, module_value, self.content_layout, group_num)
+                    module_config = saved_config.get('EM', {})
+                    self.init_em_config_ui_for_group(module_key, module_value, self.content_layout, group_num,
+                                                     module_config)
         except Exception as e:
             logger.error(f"加载笼子配置出错: {e}", exc_info=True)
 
-    def on_radio_button_clicked(self, button,address,mouse_cage_number,function_code,data_lists):
-        btn_object_name:str = button.objectName()
-        """处理按钮点击事件"""
-        data_list = ['00','00','00','00']
+    def on_radio_button_clicked(self, button, address, mouse_cage_number, function_code, data_lists, config_key=''):
+        """处理按钮点击事件 - 实时保存配置到本地"""
+        btn_object_name: str = button.objectName()
+        data_list = ['00', '00', '00', '00']
+
         if "on" in btn_object_name.lower():
-            data_list=[hex_str[2:] for hex_str in data_lists["0"]['value']]
+            data_list = [hex_str[2:] for hex_str in data_lists["0"]['value']]
+            state_value = 'on'
         elif "off" in btn_object_name.lower():
             data_list = [hex_str[2:] for hex_str in data_lists["1"]['value']]
-        self.send_message['data'] = data_list
-        if mouse_cage_number ==0:
-            self.send_message['slave_id'] = format(address, '02X')
-        else:
-            self.send_message['slave_id'] = format(address+mouse_cage_number*16, '02X')
-        self.send_message['function_code'] = format(function_code, '02X')
+            state_value = 'off'
 
-        self.send_data()
-    def update_slider(self, address, mouse_cage_number, function_code, data_lists, slider: QSlider):
-        value = slider.value()
+        # ==================== 保存配置到内存和本地文件 ====================
+        if config_key:
+            # 获取模块类型
+            if config_key.startswith('ENM_'):
+                module_type = 'ENM'
+                config_key_clean = config_key.replace('ENM_', '')
+            elif config_key.startswith('EM_'):
+                module_type = 'EM'
+                config_key_clean = config_key.replace('EM_', '')
+            else:
+                module_type = 'UNKNOWN'
+                config_key_clean = config_key
 
-        data_list = ['00', '00', '00', '00']
-        if str(value) in data_lists:
-            data_list = [hex_str[2:] for hex_str in data_lists[str(value)]['value']]
+            if module_type not in self.current_cage_config:
+                self.current_cage_config[module_type] = {}
+
+            self.current_cage_config[module_type][config_key_clean] = state_value
+
+            # 实时保存到用户本地文件
+            self._save_cage_config_to_json(mouse_cage_number, self.current_cage_config)
+
+        # ==================== 发送数据到硬件 ====================
         self.send_message['data'] = data_list
         if mouse_cage_number == 0:
             self.send_message['slave_id'] = format(address, '02X')
@@ -1880,7 +2005,47 @@ class Tab_1(ThemedWindow):
         self.send_message['function_code'] = format(function_code, '02X')
 
         self.send_data()
+        # logger.info(f"✓ 笼子 {mouse_cage_number} 配置已保存到本地并发送: {config_key}={state_value}")
 
+    def update_slider(self, address, mouse_cage_number, function_code, data_lists, slider: QSlider, config_key=''):
+        """更新滑块值 - 实时保存配置到本地"""
+        value = slider.value()
+        data_list = ['00', '00', '00', '00']
+
+        if str(value) in data_lists:
+            data_list = [hex_str[2:] for hex_str in data_lists[str(value)]['value']]
+
+        # ==================== 保存配置到内存和本地文件 ====================
+        if config_key:
+            # 获取模块类型
+            if config_key.startswith('ENM_'):
+                module_type = 'ENM'
+                config_key_clean = config_key.replace('ENM_', '')
+            elif config_key.startswith('EM_'):
+                module_type = 'EM'
+                config_key_clean = config_key.replace('EM_', '')
+            else:
+                module_type = 'UNKNOWN'
+                config_key_clean = config_key
+
+            if module_type not in self.current_cage_config:
+                self.current_cage_config[module_type] = {}
+
+            self.current_cage_config[module_type][config_key_clean] = value
+
+            # 实时保存到用户本地文件
+            self._save_cage_config_to_json(mouse_cage_number, self.current_cage_config)
+
+        # ==================== 发送数据到硬件 ====================
+        self.send_message['data'] = data_list
+        if mouse_cage_number == 0:
+            self.send_message['slave_id'] = format(address, '02X')
+        else:
+            self.send_message['slave_id'] = format(address + mouse_cage_number * 16, '02X')
+        self.send_message['function_code'] = format(function_code, '02X')
+
+        self.send_data()
+        logger.info(f"✓ 笼子 {mouse_cage_number} 滑块配置已保存到本地并发送: {config_key}={value}")
     def update_slider_label(self, value, label):
         label.setText(f"当前值: {value}")  # 更新当前值标签的文本
         # 更新label
