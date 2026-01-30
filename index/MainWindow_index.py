@@ -859,7 +859,7 @@ class MainWindow_Index(ThemedWindow):
             self.calibration_details_windows = CalibrationDialog(main_gui=self)
             self.calibration_details_windows.updateO2Span(global_setting.get_setting('span_standard_oxygen_value',0))
             self.calibration_details_windows.updateCO2Span(global_setting.get_setting('span_standard_carbon_value',0))
-            self.calibration_details_windows.updatePressureSpan(80)
+            self.calibration_details_windows.updatePressureSpan(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']))
     def show_calibration_windows(self,data):
         self.init__calibration_windows()
         if data:
