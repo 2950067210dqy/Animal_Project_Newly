@@ -250,18 +250,18 @@ class Tab_1(ThemedWindow):
 
     def _init_customize_ui(self):
         """初始化自定义UI"""
+        # 确保experiment_setting已被加载
         if self.experiment_setting is None:
-            logger.warning("experiment_setting 为None，跳过部分初始化")
-            self.init_port_combox()
-            self.config = get_default_config()
-        else:
-            self.init_port_combox()
-            self.config = get_default_config()
-            QTimer.singleShot(100, self.init_cage_list)
+            self.experiment_setting = global_setting.get_setting("experiment_setting", None)
+            logger.warning(f"experiment_setting 状态: {self.experiment_setting is not None}")
 
-        # 初始化右侧配置区域为默认显示
+        self.init_port_combox()
+        self.config = get_default_config()
+
+        # 延迟初始化，确保UI完全渲染
+        QTimer.singleShot(200, self.init_cage_list)
+
         self.init_config_ui()
-
         super()._init_customize_ui()
 
     def _init_function(self):
@@ -288,7 +288,7 @@ class Tab_1(ThemedWindow):
                 # 设置其他必要属性
                 read_queue_data_thread.update_group_activation_signal = self.update_group_activation_signal
 
-                # 启动线程（只启动一次）
+                # 启动线程
                 read_queue_data_thread.start()
                 logger.info("读队列线程已启动")
             else:
@@ -296,9 +296,6 @@ class Tab_1(ThemedWindow):
         else:
             logger.error("read_queue_data_thread 为 None")
 
-    def _retranslateUi(self):
-        """翻译UI文本（如果需要）"""
-        pass
 
     def setup_tutorial(self):
         """设置教程"""
@@ -333,7 +330,7 @@ class Tab_1(ThemedWindow):
     # ==========UI初始化相关==========
     def init_port_combox(self):
         """初始化端口下拉框"""
-        # ✓ 直接使用缓存的对象
+        # 直接使用缓存的对象
         if self.port_combox is None:
             logger.error("实例化端口下拉框失败！")
             return
@@ -376,18 +373,23 @@ class Tab_1(ThemedWindow):
 
     def init_cage_list(self):
         """初始化鼠笼列表（已启用的笼子）"""
-        logger.info("=" * 80)
         logger.info("进入 init_cage_list()...")
 
+        # ==================== 确保 experiment_setting 已加载 ====================
         if self.experiment_setting is None:
-            logger.warning("experiment_setting 未初始化")
+            self.experiment_setting = global_setting.get_setting("experiment_setting", None)
+            logger.warning(f"experiment_setting 状态: {self.experiment_setting is not None}")
+
+        # 如果仍为None，说明还没加载，直接返回
+        if self.experiment_setting is None:
+            logger.error("experiment_setting 仍未加载，无法初始化笼子列表")
             return
 
         if self.cage_list_widget is None:
             logger.error("cage_list_widget 为 None")
             return
 
-        # 简化：一次性清空所有状态
+        # 一次性清空所有状态
         self.cage_list_widget.clear()
         self.cage_enabled_status.clear()
         self.groups_status.clear()
@@ -432,19 +434,18 @@ class Tab_1(ThemedWindow):
                 self.cage_enabled_status[group_id] = group
                 cage_added_count += 1
 
-                logger.info(f"✓ 已添加笼子: ID={group_id}, Name={group.name}")
+                logger.info(f"已添加笼子: ID={group_id}, Name={group.name}")
 
-         # ⭐⭐⭐ 关键：标记初始化完成 ⭐⭐⭐
+         # 标记初始化完成
         self._cage_list_initialized = True
-        logger.critical(f"✓✓✓ _cage_list_initialized 已设置为 True ✓✓✓")
+        logger.critical(f"_cage_list_initialized 已设置为 True")
         logger.info(f"笼子列表初始化完成: 添加 {cage_added_count} 个笼子")
-        logger.info("=" * 80)
 
     def init_config_ui(self):
         """初始化配置UI - 显示默认配置"""
         if self.experiment_setting is None:
             self.experiment_setting: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
-            # ✓ 直接使用缓存的对象
+            # 直接使用缓存的对象
         if self.content_layout is None:
             logger.error("content_layout 未找到！")
             return
@@ -508,7 +509,7 @@ class Tab_1(ThemedWindow):
         if refresh_port_btn:
             refresh_port_btn.clicked.connect(self.refresh_port)
 
-        # ✓ 直接使用缓存的对象
+        # 直接使用缓存的对象
         if self.confirm_port_btn:
             self.confirm_port_btn.clicked.connect(self.confirm_port)
             self.confirm_port_btn.setEnabled(True)
@@ -519,7 +520,7 @@ class Tab_1(ThemedWindow):
             self.config_btn.clicked.connect(self.start_device_config)
             self.config_btn.setEnabled(False)
 
-        # ✓ 直接使用缓存的对象
+        # 直接使用缓存的对象
         if self.start_btn:
             self.start_btn.clicked.connect(self.start_device_config)
 
@@ -956,35 +957,36 @@ class Tab_1(ThemedWindow):
 
             cage_data = mouse_cage_detect_dict[group_id]
 
-            # ==================== 关键修改：获取预期模块列表 ====================
+            # ==================== 获取预期模块列表 ====================
             expected_modules = self._get_expected_modules()
+            expected_module_count = len(expected_modules)
 
             cage_modules = cage_data.get('cage_modules', {})
             air_modules = cage_data.get('air_modules', {})
 
             # 合并所有收到的模块
             received_modules = list(cage_modules.keys()) + list(air_modules.keys())
+            received_module_count = len(received_modules)
 
             logger.info(f"笼子 {group_id} 检测统计:")
-            logger.info(f"  预期模块数: {len(expected_modules)}")
-            logger.info(f"  已收到模块数: {len(received_modules)}")
-            logger.info(f"  预期模块: {expected_modules}")
+            logger.info(f"  已收到模块数: {received_module_count}")
             logger.info(f"  已收到: {received_modules}")
 
             # ==================== 检查是否所有模块都已检测 ====================
-            # 计算是否收到了所有预期的模块（至少7个模块）
-            all_modules_detected = len(received_modules) >= len(expected_modules) and len(received_modules) >= 7
+            # 动态判断是否收到了足够的模块
+            min_required_modules = max(expected_module_count, 7)  # 至少需要7个模块
+            all_modules_detected = received_module_count >= min_required_modules
 
             if not all_modules_detected:
                 logger.warning(
                     f"笼子 {group_id} 还未完成所有模块的检测。"
-                    f"已收到: {len(received_modules)}/{len(expected_modules)} 个模块"
+                    f"已收到: {received_module_count}/{min_required_modules} 个模块"
                 )
                 self.show_warning(
                     "检测进行中",
                     f"笼子 {group_id} 的检测还未完成。\n\n"
-                    f"已检测: {len(received_modules)} 个模块\n"
-                    f"总共需要: {len(expected_modules)} 个模块\n\n"
+                    f"已检测: {received_module_count} 个模块\n"
+                    f"至少需要: {min_required_modules} 个模块\n\n"
                     f"请耐心等待检测完成。"
                 )
                 return
@@ -996,45 +998,41 @@ class Tab_1(ThemedWindow):
             if not overall_valid:
                 # 收集失败的模块信息
                 missing_modules = []
+                failed_details = []
 
                 cage_is_valid = cage_data.get('cage_is_valid', False)
                 air_is_valid = cage_data.get('air_is_valid', False)
 
+                # 收集失败的笼内模块
                 if not cage_is_valid and cage_modules:
                     failed_cage_modules = [
                         name for name, status in cage_modules.items() if not status
                     ]
                     if failed_cage_modules:
                         missing_modules.extend(failed_cage_modules)
+                        for module_name in failed_cage_modules:
+                            failed_details.append(f"  • {module_name} (笼内模块) - ✗ 失败")
 
+                # 收集失败的气路模块
                 if not air_is_valid and air_modules:
                     failed_air_modules = [
                         name for name, status in air_modules.items() if not status
                     ]
                     if failed_air_modules:
                         missing_modules.extend(failed_air_modules)
+                        for module_name in failed_air_modules:
+                            failed_details.append(f"  • {module_name} (气路模块) - ✗ 失败")
 
                 # 防止同一笼子频繁弹窗（5秒内只弹一次）
                 current_time = time.time()
                 if (self.last_warning_group_id != group_id or
                         current_time - self.last_warning_time > 5):
-                    missing_text = "、".join(missing_modules) if missing_modules else "未知"
-
-                    # 收集所有失败的模块详情
-                    failed_details = []
-                    for module_name, status in cage_modules.items():
-                        if not status:
-                            failed_details.append(f"  • {module_name} (笼内模块) - ✗ 失败")
-                    for module_name, status in air_modules.items():
-                        if not status:
-                            failed_details.append(f"  • {module_name} (气路模块) - ✗ 失败")
-
-                    failed_info = "\n".join(failed_details) if failed_details else "未知"
+                    failed_info = "\n".join(failed_details) if failed_details else "未知模块失败"
 
                     self.show_warning(
                         "检测未通过",
                         f"笼子 {group_id} 检测异常\n\n"
-                        f"已检测模块: {len(received_modules)}/7\n\n"
+                        f"已检测模块: {received_module_count}/{min_required_modules}\n\n"
                         f"失败的模块:\n{failed_info}\n\n"
                         f"请检查以上模块的连接状态，然后重新进行检测。"
                     )
@@ -1046,7 +1044,7 @@ class Tab_1(ThemedWindow):
                 return
 
             # ==================== 检测通过，进入配置 ====================
-            logger.info(f"✓ 笼子 {group_id} 所有 {len(received_modules)} 个模块检测通过，进入配置界面")
+            logger.info(f"✓ 笼子 {group_id} 所有 {received_module_count} 个模块检测通过，进入配置界面")
 
             self.selected_group_num = group_id
             self.load_cage_config(group_id)
@@ -1063,13 +1061,19 @@ class Tab_1(ThemedWindow):
             logger.error(f"防抖处理笼子选择出错: {e}", exc_info=True)
             self.pending_cage_selection = None
 
-
     # ==========检测流程==========
     def confirm_port(self):
         """确认串口并开始检测"""
         if not self.port_combox or self.port_combox.currentIndex() < 0:
             self.show_warning("错误", "请先选择有效的串口")
             return
+
+        # ==================== 关键：确保 experiment_setting 已加载 ====================
+        if self.experiment_setting is None:
+            self.experiment_setting = global_setting.get_setting("experiment_setting", None)
+            if self.experiment_setting is None:
+                self.show_warning("错误", "实验设置未加载，请稍候...")
+                return
 
         self.send_message['port'] = self.ports[self.port_combox.currentIndex()]['device']
         self.port_confirmed = True
@@ -1086,13 +1090,12 @@ class Tab_1(ThemedWindow):
 
         if self.config_btn:
             self.config_btn.setEnabled(False)
-            self.config_btn.setText("检测中...")
 
-        # ⭐⭐⭐ 重置已完成笼子集合 ⭐⭐⭐
+        # 重置已完成笼子集合
         self._completed_cages = set()
         self._detection_completion_timers = {}
 
-        # 改正：先初始化列表，再开始检测
+        # 先初始化列表，再开始检测
         self.init_cage_list()
 
         # 确保初始化完成后再开始检测
@@ -1100,8 +1103,11 @@ class Tab_1(ThemedWindow):
             logger.info(f"开始检测 {self.cage_list_widget.count()} 个笼子...")
             QTimer.singleShot(50, self.start_module_detection)
         else:
-            self.show_warning("初始化失败", "没有找到已启用的笼子或初始化失败")
-            logger.error(f"初始化失败: _cage_list_initialized={self._cage_list_initialized}")
+            self.show_warning("初始化失败", f"没有找到已启用的笼子或初始化失败\n"
+                                            f"cage_enabled_status: {len(self.cage_enabled_status)}\n"
+                                            f"_cage_list_initialized: {self._cage_list_initialized}")
+            logger.error(f"初始化失败: _cage_list_initialized={self._cage_list_initialized}, "
+                         f"cage_enabled_status={self.cage_enabled_status}")
 
     def start_module_detection(self):
         """
@@ -1134,25 +1140,55 @@ class Tab_1(ThemedWindow):
 
     def _detect_next_cage(self):
         """检测下一个笼子"""
+
+        # ==================== 诊断信息 ====================
+        logger.critical(
+            f"[_detect_next_cage] 被调用\n"
+            f"  current_detecting_index: {self.current_detecting_index}\n"
+            f"  total_cages: {len(self.cage_list_to_detect)}\n"
+            f"  detection_in_progress: {self.detection_in_progress}"
+        )
+
+        # ==================== 检查是否所有笼子都已检测 ====================
         if self.current_detecting_index >= len(self.cage_list_to_detect):
-            # 所有笼子检测完毕
-            logger.info("所有笼子检测完毕")
+            logger.critical(
+                f"[完成] 所有 {len(self.cage_list_to_detect)} 个笼子已检测完成！"
+            )
+
+            # 确保清理所有计时器
+            self._cleanup_all_timers()
+
+            # 更新全局状态
             self.detection_in_progress = False
+
+            # 更新状态标签
             if self.detection_status_label:
-                self.detection_status_label.setText("检测完成！请选择笼子进行配置")
+                self.detection_status_label.setText("✓ 检测完成！请选择笼子进行配置")
+
+            logger.critical("[检测流程] 正式结束")
             return
 
+        # ==================== 检测被用户手动停止 ====================
+        if not self.detection_in_progress:
+            logger.warning(f"[中止] 用户已停止检测")
+            self._cleanup_all_timers()
+            return
+
+        # ==================== 获取下一个笼子 ====================
         cage_number = self.cage_list_to_detect[self.current_detecting_index]
         self.current_detecting_index += 1
 
+        total_cages = len(self.cage_list_to_detect)
+        current_position = self.current_detecting_index
+
         logger.info(f"\n{'─' * 80}")
-        logger.info(f"开始检测笼子 {cage_number} ({self.current_detecting_index}/{len(self.cage_list_to_detect)})")
+        logger.info(f"开始检测笼子 {cage_number} ({current_position}/{total_cages})")
         logger.info(f"{'─' * 80}\n")
 
-        # 立即更新UI为"检测中"
+        # 更新UI为"检测中"
         self.update_cage_display_to_detecting(cage_number)
 
-        # 发送检测命令（只检测这一个笼子）
+        # 发送检测命令
         send_message_queue = global_setting.get_setting("send_message_queue", None)
         if send_message_queue:
             send_message_queue.put(
@@ -1160,15 +1196,15 @@ class Tab_1(ThemedWindow):
                     origin="New_main_experiment_setting",
                     to="main_monitor_data",
                     title="start_all_modules_detection",
-                    data={'gids': [cage_number]},  # 只检测这一个笼子
+                    data={'gids': [cage_number]},
                     time=time_util.get_format_from_time(time.time())
                 )
             )
 
-        # 设置检测超时（30秒）
+        # 设置检测超时（10秒）
         self._set_cage_detection_timeout(cage_number)
 
-    def _set_cage_detection_timeout(self, cage_number, timeout_seconds=30):
+    def _set_cage_detection_timeout(self, cage_number, timeout_seconds=10):
         """为单个笼子设置检测超时"""
         if cage_number in self.detection_timers:
             self.detection_timers[cage_number].stop()
@@ -1182,14 +1218,73 @@ class Tab_1(ThemedWindow):
         logger.info(f"笼子 {cage_number} 检测超时设置: {timeout_seconds}秒")
 
     def _on_cage_detection_timeout(self, cage_number):
-        """检测超时处理"""
-        logger.warning(f"笼子 {cage_number} 检测超时，继续下一个笼子")
-        self._detect_next_cage()
+        """
+        检测超时处理 - 笼子检测10秒没有响应
+        """
+        logger.warning(f"[10秒超时] 笼子 {cage_number} 检测超时（10秒无响应）")
+
+        # 清理该笼子的计时器
+        if cage_number in self.detection_timers:
+            timer = self.detection_timers.pop(cage_number)
+            if timer.isActive():
+                timer.stop()
+
+        # 清理该笼子的3秒完成计时器
+        if hasattr(self, '_detection_completion_timers'):
+            if cage_number in self._detection_completion_timers:
+                timer_data = self._detection_completion_timers.pop(cage_number, {})
+                timer = timer_data.get('timer')
+                if timer and timer.isActive():
+                    timer.stop()
+
+        # ==================== 标记为已完成 ====================
+        if not hasattr(self, '_completed_cages'):
+            self._completed_cages = set()
+
+        if cage_number not in self._completed_cages:
+            self._completed_cages.add(cage_number)
+            logger.warning(f"笼 {cage_number} 超时，强制标记为已完成")
+
+            # 更新UI为异常状态
+            self._update_cage_detection_complete(cage_number)
+
+        # ==================== 推进流程（即使是超时也要继续）====================
+        logger.info(f"笼 {cage_number} 超时完毕，推进到下一个笼子")
+        QTimer.singleShot(300, self._detect_next_cage)
+
+    def _cleanup_all_timers(self):
+        """清理所有计时器"""
+        logger.info(f"[清理] 清理所有计时器...")
+
+        # 清理检测超时计时器
+        if self.detection_timers:
+            count = 0
+            for cage_num in list(self.detection_timers.keys()):
+                timer = self.detection_timers.pop(cage_num, None)
+                if timer and timer.isActive():
+                    timer.stop()
+                    count += 1
+            if count > 0:
+                logger.info(f"  已停止 {count} 个超时计时器")
+
+        # 清理完成检测计时器
+        if hasattr(self, '_detection_completion_timers') and self._detection_completion_timers:
+            count = 0
+            for cage_num in list(self._detection_completion_timers.keys()):
+                data = self._detection_completion_timers.pop(cage_num, {})
+                timer = data.get('timer')
+                if timer and timer.isActive():
+                    timer.stop()
+                    count += 1
+            if count > 0:
+                logger.info(f"  已停止 {count} 个完成计时器")
+
+        logger.info(f"[清理] 所有计时器已清理完毕")
 
     def _check_detection_complete(self, cage_number):
         """
-        ⭐⭐⭐ 核心修复：检查该笼子是否完成检测
-        改进：不再依赖预期模块数，而是根据实际收到的模块数来判断
+        检查该笼子是否完成检测
+        3秒内没有新模块到达则认为检测完成
         """
         try:
             mouse_cage_detect_dict = global_setting.get_setting("mouse_cage_detect_state_dict", {})
@@ -1201,71 +1296,82 @@ class Tab_1(ThemedWindow):
             cage_data = mouse_cage_detect_dict[cage_number]
             cage_modules = cage_data.get('cage_modules', {})
             air_modules = cage_data.get('air_modules', {})
-
             total_modules = len(cage_modules) + len(air_modules)
 
-            # ⭐⭐⭐ 关键改动：不再用静态的EXPECTED_TOTAL_MODULES
-            # 而是每次检测完成后等待一段时间，看是否还有新模块到达
-            # 如果3秒内没有新模块，就认为检测完成了
-
             logger.critical(
-                f"🎯 笼 {cage_number} 实时模块收集进度:\n"
-                f"   笼内模块: {list(cage_modules.keys())} (共{len(cage_modules)}个)\n"
-                f"   气路模块: {list(air_modules.keys())} (共{len(air_modules)}个)\n"
-                f"   总计: {total_modules} 个模块\n"
-                f"   检测结果: {'✓ 通过' if cage_data.get('overall_valid') else '✗ 异常'}"
+                f"笼 {cage_number} 实时模块收集进度:\n"
+                f"笼内模块: {list(cage_modules.keys())} (共{len(cage_modules)}个)\n"
+                f"气路模块: {list(air_modules.keys())} (共{len(air_modules)}个)\n"
+                f"总计: {total_modules} 个模块\n"
+                f"检测结果: {'通过' if cage_data.get('overall_valid') else '✗ 异常'}"
             )
 
-            # ⭐⭐⭐ 检查是否需要启动完成检测的超时计时器
-            if total_modules > 0:
-                # 已收到至少1个模块了
-                if not hasattr(self, '_detection_completion_timers'):
-                    self._detection_completion_timers = {}
+            # ==================== 没有收到任何模块，不启动计时器 ====================
+            if total_modules == 0:
+                logger.debug(f"笼 {cage_number} 还未收到任何模块，不启动计时器")
+                return
 
-                # 如果该笼子的完成计时器还没启动，就启动一个
-                if cage_number not in self._detection_completion_timers:
-                    logger.info(f"🕐 笼 {cage_number} 启动完成检测计时器（3秒等待期）")
+            # ==================== 初始化计时器字典 ====================
+            if not hasattr(self, '_detection_completion_timers'):
+                self._detection_completion_timers = {}
+
+            # ==================== 如果该笼子的计时器不存在，创建一个新的 ====================
+            if cage_number not in self._detection_completion_timers:
+                logger.info(f"笼 {cage_number} 启动完成检测计时器（3秒等待期）")
+
+                timer = QTimer()
+                timer.setSingleShot(True)
+                timer.timeout.connect(lambda: self._on_cage_detection_wait_timeout(cage_number))
+                timer.start(3000)  # 3秒等待
+
+                self._detection_completion_timers[cage_number] = {
+                    'timer': timer,
+                    'last_module_count': total_modules,
+                    'last_update_time': time.time()
+                }
+            else:
+                # ==================== 计时器已存在，检查是否有新模块到达 ====================
+                timer_data = self._detection_completion_timers[cage_number]
+                last_count = timer_data['last_module_count']
+
+                if total_modules > last_count:
+                    # 有新模块到达，重启计时器
+                    logger.info(f"笼 {cage_number} 有新模块到达 ({last_count}→{total_modules})，重启计时器")
+                    old_timer = timer_data['timer']
+                    old_timer.stop()
 
                     timer = QTimer()
                     timer.setSingleShot(True)
                     timer.timeout.connect(lambda: self._on_cage_detection_wait_timeout(cage_number))
-                    timer.start(3000)  # 3秒等待
+                    timer.start(3000)  # 再等3秒
 
                     self._detection_completion_timers[cage_number] = {
                         'timer': timer,
-                        'last_module_count': total_modules
+                        'last_module_count': total_modules,
+                        'last_update_time': time.time()
                     }
                 else:
-                    # 计时器已启动，检查是否有新模块到达
-                    last_count = self._detection_completion_timers[cage_number]['last_module_count']
-                    if total_modules > last_count:
-                        # 有新模块到达，重启计时器
-                        logger.info(f"🔄 笼 {cage_number} 有新模块到达 ({last_count}→{total_modules})，重启计时器")
-                        old_timer = self._detection_completion_timers[cage_number]['timer']
-                        old_timer.stop()
-
-                        timer = QTimer()
-                        timer.setSingleShot(True)
-                        timer.timeout.connect(lambda: self._on_cage_detection_wait_timeout(cage_number))
-                        timer.start(3000)  # 再等3秒
-
-                        self._detection_completion_timers[cage_number] = {
-                            'timer': timer,
-                            'last_module_count': total_modules
-                        }
+                    # 没有新模块，继续等待
+                    logger.debug(
+                        f"笼 {cage_number} 无新模块，继续等待（已等待 {time.time() - timer_data['last_update_time']:.1f}s）")
 
         except Exception as e:
             logger.error(f"检查检测完成时出错: {e}", exc_info=True)
 
     def _on_cage_detection_wait_timeout(self, cage_number):
         """
-        ⭐⭐⭐ 3秒等待超时，没有新模块到达，认为检测完成
+        3秒等待超时，没有新模块到达，认为检测完成
+
+        关键改动：
+        - 不再检查 detection_in_progress（因为该笼子已完成，必须推进）
+        - 让 _detect_next_cage() 负责所有流程判断
         """
         try:
             if not hasattr(self, '_detection_completion_timers'):
                 return
 
             if cage_number not in self._detection_completion_timers:
+                logger.warning(f"笼 {cage_number} 的计时器已被清除")
                 return
 
             # 清除该笼子的完成计时器
@@ -1274,6 +1380,7 @@ class Tab_1(ThemedWindow):
             mouse_cage_detect_dict = global_setting.get_setting("mouse_cage_detect_state_dict", {})
 
             if cage_number not in mouse_cage_detect_dict:
+                logger.error(f"笼 {cage_number} 不在检测字典中")
                 return
 
             cage_data = mouse_cage_detect_dict[cage_number]
@@ -1282,48 +1389,120 @@ class Tab_1(ThemedWindow):
             total_modules = len(cage_modules) + len(air_modules)
 
             logger.critical(
-                f"⏱️ 笼 {cage_number} 等待期满（3秒内无新模块）\n"
-                f"   最终收集到: {total_modules} 个模块\n"
-                f"   笼内: {list(cage_modules.keys())}\n"
-                f"   气路: {list(air_modules.keys())}"
+                f"[3秒超时触发] 笼 {cage_number} 等待期满\n"
+                f"  最终模块数: {total_modules}\n"
+                f"  笼内: {list(cage_modules.keys())}\n"
+                f"  气路: {list(air_modules.keys())}"
             )
 
-            # ⭐⭐⭐ 防止重复触发：检查该笼子是否已处理过
+            # ==================== 防止重复处理 ====================
             if not hasattr(self, '_completed_cages'):
                 self._completed_cages = set()
 
             if cage_number in self._completed_cages:
-                logger.warning(f"⚠️ 笼 {cage_number} 已在完成列表中，跳过重复触发")
+                logger.warning(f"笼 {cage_number} 已处理过，跳过")
                 return
 
-            # 标记为已完成
             self._completed_cages.add(cage_number)
-            logger.critical(f"✅ 已完成检测的笼子: {self._completed_cages}")
+            logger.critical(f"[完成标记] 已完成笼子: {self._completed_cages}")
 
-            # ⭐⭐⭐ 关键：触发下一个笼子的检测
-            if self.detection_in_progress and self.current_detecting_index < len(self.cage_list_to_detect):
-                logger.critical(f"🚀 笼 {cage_number} 检测完成，即将进入下一个笼子")
-                QTimer.singleShot(500, self._detect_next_cage)
+            # ==================== 更新UI为"检测完成"状态 ====================
+            self._update_cage_detection_complete(cage_number)
+
+            # ==================== 关键修复：无论什么状态，都推进到下一个笼子 ====================
+            # 这样做是为了确保流程不会卡住
+            logger.info(f"笼 {cage_number} 检测完成，推进流程...")
+            QTimer.singleShot(300, self._detect_next_cage)
 
         except Exception as e:
             logger.error(f"检测等待超时处理出错: {e}", exc_info=True)
 
+    def _update_cage_detection_complete(self, cage_number):
+        """
+        更新笼子UI为"检测完成"状态
+        """
+        try:
+            cage_list_widget = self._get_cage_list_widget()
+            if not cage_list_widget:
+                return
+
+            # ========== 如果列表为空，重新初始化 ==========
+            if cage_list_widget.count() == 0:
+                logger.warning(f"列表为空，重新初始化...")
+                self.init_cage_list()
+                if cage_list_widget.count() == 0:
+                    logger.error("重新初始化后列表仍为空")
+                    return
+
+            # 找到对应的笼子项
+            for i in range(cage_list_widget.count()):
+                item = cage_list_widget.item(i)
+                if not item or item.data(Qt.ItemDataRole.UserRole) != cage_number:
+                    continue
+
+                group = self.cage_enabled_status.get(cage_number)
+                if not group:
+                    continue
+
+                animal_count = 0
+                if self.experiment_setting and self.experiment_setting.animalGroupRecords:
+                    animal_count = len([
+                        r for r in self.experiment_setting.animalGroupRecords
+                        if r.gid == cage_number
+                    ])
+
+                # 获取检测数据
+                mouse_cage_detect_dict = global_setting.get_setting("mouse_cage_detect_state_dict", {})
+                cage_data = mouse_cage_detect_dict.get(cage_number, {})
+                overall_valid = cage_data.get('overall_valid', False)
+
+                # 根据检测结果显示相应的状态
+                if overall_valid:
+                    status_text = "✓ 检测完成（可配置）"
+                    # 使能该项，允许点击
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+                else:
+                    status_text = "✗ 检测异常（无法配置）"
+                    # 禁用该项
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
+
+                item_text = f"鼠笼 {cage_number} - {group.name} ({animal_count}个动物) - {status_text}"
+                item.setText(item_text)
+
+                logger.info(f"✓ 笼 {cage_number} UI 已更新为: {status_text}")
+                cage_list_widget.viewport().update()
+                cage_list_widget.repaint()
+                break
+
+        except Exception as e:
+            logger.error(f"更新笼 {cage_number} 完成状态失败: {e}", exc_info=True)
+
     def _get_expected_modules(self):
         """获取所有预期需要检测的模块列表"""
         expected_modules = []
-        if self.config:
-            for module_key, module_value in self.config.items():
-                module_name = module_value.get('desc', module_key)
-                expected_modules.append(module_name)
+
+        try:
+            if self.config:
+                for module_key, module_value in self.config.items():
+                    if isinstance(module_value, dict):
+                        module_name = module_value.get('desc', module_key)
+                        expected_modules.append(module_name)
+                        logger.debug(f"添加预期模块: {module_name}")
+
+            logger.info(f"预期模块总数: {len(expected_modules)}, 列表: {expected_modules}")
+
+        except Exception as e:
+            logger.error(f"获取预期模块列表失败: {e}")
+            # 如果配置读取失败，返回默认的最小模块数量要求
+            expected_modules = ["默认模块"] * 7
+
         return expected_modules
 
 
 
     # ==========状态更新==========
     def each_Mouse_Cage_detect_update_state(self, state_data):
-        """
-        更新鼠笼内模块检测状态
-        """
+        """更新鼠笼内模块检测状态"""
         logger.critical(f"TAB1_each_Mouse_Cage_detect_update_state: {state_data}")
 
         mouse_cage_number = state_data.get('mouse_cage_number')
@@ -1337,21 +1516,21 @@ class Tab_1(ThemedWindow):
         # 获取或创建全局检测字典
         mouse_cage_detect_dict = global_setting.get_setting("mouse_cage_detect_state_dict", {})
 
-        # 初始化该鼠笼的检测数据
+        # 初始化该鼠笼的检测数据（初始值应该为 False，表示还没开始检测）
         if mouse_cage_number not in mouse_cage_detect_dict:
             mouse_cage_detect_dict[mouse_cage_number] = {
                 'cage_states': [],
                 'air_states': [],
                 'cage_modules': {},
                 'air_modules': {},
-                'cage_is_valid': True,
-                'air_is_valid': True,
-                'overall_valid': True,
+                'cage_is_valid': False,  # ← 改为 False
+                'air_is_valid': False,  # ← 改为 False
+                'overall_valid': False,  # ← 改为 False
                 'update_time': time_util.get_format_from_time(time.time()),
-                'first_detection_time': time.time()  # ⭐ 记录第一个检测数据到达的时间
+                'first_detection_time': time.time()
             }
 
-        # 关键：将模块信息存储到 cage_modules 字典
+        # 将模块信息存储到 cage_modules 字典
         mouse_cage_detect_dict[mouse_cage_number]['cage_modules'][module_name] = response_state
         mouse_cage_detect_dict[mouse_cage_number]['cage_states'].append(response_state)
         mouse_cage_detect_dict[mouse_cage_number]['update_time'] = time_util.get_format_from_time(time.time())
@@ -1361,9 +1540,9 @@ class Tab_1(ThemedWindow):
         cage_is_valid = len(cage_modules) > 0 and all(cage_modules.values())
         mouse_cage_detect_dict[mouse_cage_number]['cage_is_valid'] = cage_is_valid
 
-        # 更新整体有效性
+        # 更新整体有效性（只有气路也完成检测时才判断整体有效）
         air_is_valid = mouse_cage_detect_dict[mouse_cage_number]['air_is_valid']
-        overall_valid = cage_is_valid and air_is_valid
+        overall_valid = cage_is_valid and air_is_valid and len(cage_modules) > 0
         mouse_cage_detect_dict[mouse_cage_number]['overall_valid'] = overall_valid
 
         # 保存到全局设置
@@ -1377,28 +1556,34 @@ class Tab_1(ThemedWindow):
             f"整体有效: {overall_valid}"
         )
 
-        # 更新UI
-        self.update_cage_ui_status(mouse_cage_number)
+        # ==================== 更新UI ====================
+        self.update_cage_display_to_detecting(mouse_cage_number)
 
-        # ⭐⭐⭐ 关键：检查是否收齐所有模块 ⭐⭐⭐
+        # 检查检测是否完成
         self._check_detection_complete(mouse_cage_number)
 
     def not_each_Mouse_Cage_detect_update_state(self, state_data):
-        """
-        更新气路模块检测状态
-        """
+        """更新气路模块检测状态"""
         logger.critical(f"TAB1_not_each_Mouse_Cage_detect_update_state: {state_data}")
 
         module_name = state_data.get('module_name', 'UNKNOWN')
         response_state = state_data.get('response_state', False)
-        mouse_cage_number = state_data.get('mouse_cage_number', 0)
 
         # 获取检测字典
         mouse_cage_detect_dict = global_setting.get_setting("mouse_cage_detect_state_dict", {})
 
-        # 关键修改：如果检测字典为空，先初始化所有已启用的鼠笼
-        if not mouse_cage_detect_dict and self.cage_enabled_status:
-            logger.info("检测字典为空，正在为所有已启用鼠笼初始化检测状态...")
+        # ==================== 确保cage_enabled_status不为空 ====================
+        if not self.cage_enabled_status:
+            logger.warning(f"cage_enabled_status 为空，正在初始化...")
+            self.init_cage_list()
+
+            if not self.cage_enabled_status:
+                logger.error(f"cage_enabled_status 初始化失败，无法处理检测数据")
+                return
+
+        # 如果检测字典为空，先为所有已启用的笼子初始化
+        if not mouse_cage_detect_dict:
+            logger.info("检测字典为空，正在初始化所有已启用的笼子...")
             mouse_cage_detect_dict = {}
 
             for cage_number in self.cage_enabled_status.keys():
@@ -1407,26 +1592,24 @@ class Tab_1(ThemedWindow):
                     'air_states': [],
                     'cage_modules': {},
                     'air_modules': {},
-                    'cage_is_valid': True,
-                    'air_is_valid': True,
-                    'overall_valid': True,
+                    'cage_is_valid': False,  # ← 改为 False
+                    'air_is_valid': False,  # ← 改为 False
+                    'overall_valid': False,  # ← 改为 False
                     'update_time': time_util.get_format_from_time(time.time()),
-                    'first_detection_time': time.time()  # ⭐ 记录初始化时间
+                    'first_detection_time': time.time()
                 }
 
-            # 保存初始化的字典
             global_setting.set_setting("mouse_cage_detect_state_dict", mouse_cage_detect_dict)
-            logger.info(f"已为 {len(mouse_cage_detect_dict)} 个鼠笼初始化检测状态")
+            logger.info(f"已初始化 {len(mouse_cage_detect_dict)} 个笼子的检测状态")
 
-        # 再次检查是否有可用的鼠笼
         existing_cage_numbers = list(mouse_cage_detect_dict.keys())
         if not existing_cage_numbers:
-            logger.warning("没有任何已初始化的鼠笼，无法更新气路模块状态")
+            logger.warning("没有任何已初始化的笼子")
             return
 
         logger.info(f"气路模块 {module_name} 检测结果: {response_state}，将更新到笼子: {existing_cage_numbers}")
 
-        # 为所有鼠笼更新该气路模块的状态
+        # ==================== 为所有鼠笼更新该气路模块的状态 ====================
         for cage_number in existing_cage_numbers:
             cage_data = mouse_cage_detect_dict[cage_number]
 
@@ -1434,7 +1617,7 @@ class Tab_1(ThemedWindow):
             if 'air_modules' not in cage_data:
                 cage_data['air_modules'] = {}
 
-            # 关键：将气路模块状态存储到 air_modules 字典
+            # 将气路模块状态存储到 air_modules 字典
             cage_data['air_modules'][module_name] = response_state
 
             # 兼容旧代码：同时保存到 air_states 列表
@@ -1450,22 +1633,26 @@ class Tab_1(ThemedWindow):
             air_is_valid = len(air_modules) > 0 and all(air_modules.values())
             cage_data['air_is_valid'] = air_is_valid
 
-            # 更新整体有效性
-            cage_is_valid = cage_data.get('cage_is_valid', True)
-            cage_data['overall_valid'] = cage_is_valid and air_is_valid
+            # 更新整体有效性（两类模块都要检测完成）
+            cage_is_valid = cage_data.get('cage_is_valid', False)
+            cage_modules = cage_data.get('cage_modules', {})
+            # 只有当两类模块都有数据时才判断overall_valid
+            cage_data['overall_valid'] = (cage_is_valid and air_is_valid and
+                                          len(cage_modules) > 0 and len(air_modules) > 0)
 
             logger.info(
                 f"鼠笼 {cage_number} 气路模块更新: "
                 f"{module_name}={response_state}, "
                 f"当前气路模块: {air_modules}, "
                 f"气路有效: {air_is_valid}, "
+                f"笼内模块: {len(cage_modules)} 个, "
                 f"整体有效: {cage_data['overall_valid']}"
             )
 
-            # 更新UI
-            self.update_cage_ui_status(cage_number)
+            # ==================== 更新该笼子的UI ====================
+            self.update_cage_display_to_detecting(cage_number)
 
-            # ⭐⭐⭐ 关键：检查是否收齐所有模块 ⭐⭐⭐
+            # ==================== 检查该笼子是否完成检测 ====================
             self._check_detection_complete(cage_number)
 
         # 保存到全局设置
@@ -1481,20 +1668,24 @@ class Tab_1(ThemedWindow):
             logger.error(f"cage_list_widget 为 None，无法更新鼠笼 {cage_number} 的UI")
             return
 
-        # ========== 检查列表是否为空 ==========
+        # ========== 如果列表为空，重新初始化 ==========
         list_count = cage_list_widget.count()
-
         if list_count == 0:
-            logger.warning(f"笼子列表为空，cage_number={cage_number} 还未初始化")
-            return
+            logger.warning(f"笼子列表为空，重新初始化...")
+            self.init_cage_list()  # 重新初始化列表
+            list_count = cage_list_widget.count()
+
+            if list_count == 0:
+                logger.error(f"重新初始化后列表仍为空，无法更新")
+                return
 
         # ========== 检查状态字典 ==========
         if cage_number not in self.cage_enabled_status:
-            logger.warning(f"笼号 {cage_number} 不在 cage_enabled_status 中，可能还未初始化")
+            logger.warning(f"笼号 {cage_number} 不在 cage_enabled_status 中")
             return
 
         if cage_number not in self.groups_status:
-            logger.warning(f"笼号 {cage_number} 不在 groups_status 中，可能还未初始化")
+            logger.warning(f"笼号 {cage_number} 不在 groups_status 中")
             return
 
         try:
@@ -1512,7 +1703,7 @@ class Tab_1(ThemedWindow):
                     break
 
             if not found_item:
-                logger.warning(f"未找到笼子 {cage_number} 对应的 ListWidgetItem，可能还未初始化")
+                logger.warning(f"未找到笼子 {cage_number} 对应的 ListWidgetItem")
                 return
 
             logger.info(f"✓ 找到匹配的笼子项: 笼号={cage_number}")
@@ -1553,23 +1744,15 @@ class Tab_1(ThemedWindow):
             )
 
             # ==================== 状态判断逻辑 ====================
-            # ⭐⭐⭐ 改动：不再硬编码EXPECTED_TOTAL_MODULES = 7
-            # 而是根据实际收到的模块数动态判断
-
             if total_module_count == 0:
                 status_text = f"待检测"
                 found_item.setFlags(Qt.ItemFlag.NoItemFlags)
 
             elif total_module_count > 0:
-                # 只要收到至少1个模块，就显示"检测中..."
                 status_text = f"检测中... ({total_module_count}个模块)"
                 found_item.setFlags(Qt.ItemFlag.NoItemFlags)
                 self.groups_status[cage_number]['status'] = 'detecting'
                 logger.info(f"✓ 笼 {cage_number}: {status_text}")
-
-                # 同时也检查是否最后收到了完整的检测结果
-                # 这个判断会由 _on_cage_detection_wait_timeout 来决定
-                # 所以这里只是显示当前进度
 
             # ========== 更新UI ==========
             item_text = f"鼠笼 {cage_number} - {group.name} ({animal_count}个动物) - {status_text}"
@@ -1585,9 +1768,10 @@ class Tab_1(ThemedWindow):
             logger.error(f"更新笼 {cage_number} UI 失败: {e}", exc_info=True)
 
     def update_cage_display_to_detecting(self, cage_number):
-        """立即更新单个笼子的UI显示为"检测中"状态"""
+        """根据检测模块数量动态更新单个笼子的UI显示状态"""
         try:
             if not self.cage_list_widget:
+                logger.warning(f"cage_list_widget 为空，无法更新笼 {cage_number}")
                 return
 
             for i in range(self.cage_list_widget.count()):
@@ -1597,6 +1781,7 @@ class Tab_1(ThemedWindow):
 
                 group = self.cage_enabled_status.get(cage_number)
                 if not group:
+                    logger.warning(f"笼 {cage_number} 未在 cage_enabled_status 中找到")
                     continue
 
                 animal_count = 0
@@ -1606,15 +1791,43 @@ class Tab_1(ThemedWindow):
                         if r.gid == cage_number
                     ])
 
-                status_text = f"检测中..."
+                # 获取检测状态
+                mouse_cage_detect_dict = global_setting.get_setting("mouse_cage_detect_state_dict", {})
+
+                # ========== 处理字典为空或笼子数据不存在的情况 ==========
+                if cage_number not in mouse_cage_detect_dict:
+                    status_text = "检测中..."
+                    logger.info(f"笼 {cage_number} 检测字典为空，初始化为'检测中...'")
+                else:
+                    cage_data = mouse_cage_detect_dict[cage_number]
+
+                    # 获取已检测的模块
+                    cage_modules = cage_data.get('cage_modules', {})
+                    air_modules = cage_data.get('air_modules', {})
+                    received_module_count = len(cage_modules) + len(air_modules)
+
+                    # 日志记录实时变化的值
+                    logger.debug(
+                        f"笼 {cage_number} - 笼内模块: {list(cage_modules.keys())} (count={len(cage_modules)})")
+                    logger.debug(f"笼 {cage_number} - 气路模块: {list(air_modules.keys())} (count={len(air_modules)})")
+                    logger.debug(f"笼 {cage_number} - 总模块数: {received_module_count}")
+
+                    # 根据模块数量确定状态
+                    if received_module_count == 0:
+                        status_text = "检测中..."
+                    elif received_module_count <= 7:
+                        status_text = f"检测中...({received_module_count}/7)"
+                    else:
+                        status_text = f"检测异常({received_module_count}/7)"
+
                 item_text = f"鼠笼 {cage_number} - {group.name} ({animal_count}个动物) - {status_text}"
                 item.setText(item_text)
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
-                logger.info(f"已更新笼 {cage_number} 显示为: {status_text}")
+                logger.info(f"✓ 已更新笼 {cage_number} 显示为: {status_text}")
                 break
 
         except Exception as e:
-            logger.error(f"更新笼 {cage_number} 检测中状态失败: {e}", exc_info=True)
+            logger.error(f"更新笼 {cage_number} 检测状态失败: {e}", exc_info=True)
 
     # ==========配置管理==========
     def load_cage_config(self, group_num):
