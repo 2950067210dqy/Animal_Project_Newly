@@ -269,32 +269,65 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
 
     # ==================== 参考气路：只做状态查询 ====================
     if is_reference:
-        # 参考气路直接查询三个模块状态
-        air_modules = [
-            ('2', 'UFC', '02'),
-            ('4', 'ZOS', '04'),
-            ('3', 'UGC', '03'),
-        ]
+        # 分开处理 - 从站 02 (UFC)
+        status_msg_02 = Send_Message(
+            slave_address='2',
+            slave_desc="02-状态查询",
+            function_code=4,
+            function_desc="读取UFC输入寄存器状态",
+            message={
+                'port': port,
+                'data': ['00', '00', '00', '08'],
+                'slave_id': '2',
+                'function_code': '11',
+                'timeout': 1,
+                'module_type': 'status_read',
+                'device_type': 'UFC',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': 0  # 参考气路设为0
+            }
+        )
+        send_messages.append(status_msg_02)
 
-        for slave_id, device_type, desc in air_modules:
-            status_msg = Send_Message(
-                slave_address=slave_id,
-                slave_desc=f"{desc}-状态查询",
-                function_code=4,
-                function_desc=f"读取{device_type}输入寄存器状态",
-                message={
-                    'port': port,
-                    'data': ['00', '01', '00', '01'],
-                    'slave_id': slave_id,
-                    'function_code': '4',
-                    'timeout': 1,
-                    'module_type': 'status_read',
-                    'device_type': device_type,
-                    'cage_index': mouse_cage_index,
-                    'mouse_cage_number': 0  # 参考气路设为0
-                }
-            )
-            send_messages.append(status_msg)
+        # 分开处理 - 从站 04 (ZOS)
+        status_msg_04 = Send_Message(
+            slave_address='4',
+            slave_desc="04-状态查询",
+            function_code=3,
+            function_desc="读取ZOS输入寄存器状态",
+            message={
+                'port': port,
+                'data': ['00', '01', '00', '01'],
+                'slave_id': '4',
+                'function_code': '11',
+                'timeout': 1,
+                'module_type': 'status_read',
+                'device_type': 'ZOS',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': 0  # 参考气路设为0
+            }
+        )
+        send_messages.append(status_msg_04)
+
+        # 分开处理 - 从站 03 (UGC)
+        status_msg_03 = Send_Message(
+            slave_address='3',
+            slave_desc="03-状态查询",
+            function_code=2,
+            function_desc="读取UGC输入寄存器状态",
+            message={
+                'port': port,
+                'data': ['00', '00', '00', '05'],
+                'slave_id': '3',
+                'function_code': '4',
+                'timeout': 1,
+                'module_type': 'status_read',
+                'device_type': 'UGC',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': 0  # 参考气路设为0
+            }
+        )
+        send_messages.append(status_msg_03)
 
     # ==================== 鼠笼模式：先切换再查询 ====================
     else:
@@ -344,31 +377,65 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
         send_messages.append(switch_cage_msg)
 
         # 3. 状态查询（切换完成后查询当前鼠笼的气路状态）
-        air_modules = [
-            ('2', 'UFC', '02'),
-            ('4', 'ZOS', '04'),
-            ('3', 'UGC', '03'),
-        ]
+        # 分开处理 - 从站 02 (UFC)
+        status_msg_02 = Send_Message(
+            slave_address='2',
+            slave_desc="02-状态查询",
+            function_code=4,
+            function_desc="读取UFC输入寄存器状态",
+            message={
+                'port': port,
+                'data': ['00', '01', '00', '00'],
+                'slave_id': '2',
+                'function_code': '11',
+                'timeout': 1,
+                'module_type': 'status_read',
+                'device_type': 'UFC',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': mouse_cage
+            }
+        )
+        send_messages.append(status_msg_02)
 
-        for slave_id, device_type, desc in air_modules:
-            status_msg = Send_Message(
-                slave_address=slave_id,
-                slave_desc=f"{desc}-状态查询",
-                function_code=4,
-                function_desc=f"读取{device_type}输入寄存器状态",
-                message={
-                    'port': port,
-                    'data': ['00', '01', '00', '01'],
-                    'slave_id': slave_id,
-                    'function_code': '4',
-                    'timeout': 1,
-                    'module_type': 'status_read',
-                    'device_type': device_type,
-                    'cage_index': mouse_cage_index,
-                    'mouse_cage_number': mouse_cage
-                }
-            )
-            send_messages.append(status_msg)
+        # 分开处理 - 从站 04 (ZOS)
+        status_msg_04 = Send_Message(
+            slave_address='4',
+            slave_desc="04-状态查询",
+            function_code=3,
+            function_desc="读取ZOS输入寄存器状态",
+            message={
+                'port': port,
+                'data': ['00', '00', '00', '00'],
+                'slave_id': '4',
+                'function_code': '11',
+                'timeout': 1,
+                'module_type': 'status_read',
+                'device_type': 'ZOS',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': mouse_cage
+            }
+        )
+        send_messages.append(status_msg_04)
+
+        # 分开处理 - 从站 03 (UGC)
+        status_msg_03 = Send_Message(
+            slave_address='3',
+            slave_desc="03-状态查询",
+            function_code=2,
+            function_desc="读取UGC输入寄存器状态",
+            message={
+                'port': port,
+                'data': ['00', '00', '00', '05'],
+                'slave_id': '3',
+                'function_code': '4',
+                'timeout': 1,
+                'module_type': 'status_read',
+                'device_type': 'UGC',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': mouse_cage
+            }
+        )
+        send_messages.append(status_msg_03)
 
     # ==================== 发送所有报文 ====================
     for send_msg in send_messages:
