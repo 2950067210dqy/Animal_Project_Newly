@@ -168,4 +168,4 @@ class Ui_tab1_frame(object):
 
     def retranslateUi(self, tab1_frame):
         _translate = QtCore.QCoreApplication.translate
-        tab1_frame.setWindowTitle(_translate("tab1_frame", "串口配置"))
+        tab1_frame.setWindowTitle(_translate("tab1_frame", "设备信息"))
