@@ -148,7 +148,7 @@ class Tab_1(ThemedWindow):
         # ==================== 防抖相关 ====================
         self.cage_selection_timer = QTimer()
         self.cage_selection_timer.setSingleShot(True)
-        # self.cage_selection_timer.timeout.connect(self._on_cage_selected_debounced)
+        self.cage_selection_timer.timeout.connect(self._on_cage_selected_debounced)
         self.pending_cage_selection = None
         self.last_warning_group_id = None
         self.last_warning_time = 0
