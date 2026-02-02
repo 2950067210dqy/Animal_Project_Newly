@@ -1,4 +1,5 @@
 import threading
+import traceback
 
 from PyQt6.QtCore import QThread, QMutex, QWaitCondition
 from loguru import logger
@@ -13,40 +14,39 @@ class MyQThread(QThread):
         self.condition = QWaitCondition()
         self._running = False
         self._paused = False
-        self._stop_requested = False  # 新增明确的停止标志
+        self._stop_requested = False
 
     def run(self):
         logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
         self._running = True
         self._stop_requested = False
+        self._paused = False  # 启动时重置状态
 
         try:
             self.before_Runing_work()
 
             while not self._stop_requested and not self.isInterruptionRequested():
-                # 检查是否需要暂停
                 self.mutex.lock()
+
+                # 如果被暂停，就等待
                 while self._paused and not self._stop_requested and not self.isInterruptionRequested():
-                    # 使用带超时的等待，定期检查停止状态
-                    if not self.condition.wait(self.mutex, 500):  # 500ms超时
-                        # 超时后重新检查状态
-                        pass
+                    self.condition.wait(self.mutex, 1000)  # 1秒超时
+
+                # 检查是否需要退出
+                should_exit = self._stop_requested or self.isInterruptionRequested()
                 self.mutex.unlock()
 
-                # 双重检查
-                if self._stop_requested or self.isInterruptionRequested():
+                if should_exit:
                     break
 
-                # 执行工作
-                if not self._paused:
-                    try:
-                        self.dosomething()
-                    except Exception as e:
-                        logger.error(f"{self.name} dosomething error: {e}")
-                        break
-                else:
-                    # 如果暂停了，短暂休眠
-                    self.msleep(10)
+                # 执行实际工作
+                try:
+                    self.dosomething()
+                except Exception as e:
+                    error_msg = [f"{self.name} dosomething error: {e}"]
+                    # 错误处理代码...
+                    logger.error("\n".join(error_msg))
+                    break
 
         except Exception as e:
             logger.error(f"{self.name} run() exception: {e}")
@@ -54,38 +54,45 @@ class MyQThread(QThread):
             self._running = False
             logger.warning(f"{self.name} thread run() ended")
 
+    def pause(self):
+        if not self.isRunning():
+            logger.warning(f"{self.name} thread not running, pause ignored")
+            return
+
+        self.mutex.lock()
+        if not self._stop_requested:
+            self._paused = True
+            logger.warning(f"{self.name} thread has been paused！")
+        self.mutex.unlock()
+
+    def resume(self):
+        if not self.isRunning():
+            logger.warning(f"{self.name} thread not running, resume ignored")
+            return
+
+        self.mutex.lock()
+        if self._paused:
+            self._paused = False
+            self.condition.wakeAll()
+            logger.warning(f"{self.name} thread has been resumed！")
+        self.mutex.unlock()
+
     def stop(self):
         logger.warning(f"{self.name} thread stop() called")
         self.mutex.lock()
-        try:
-            self._stop_requested = True
-            self._running = False
-            self._paused = False
-            self.condition.wakeAll()
-        finally:
-            self.mutex.unlock()
-
-    def pause(self):
-        if not self._stop_requested:
-            self.mutex.lock()
-            self._paused = True
-            self.mutex.unlock()
-            logger.warning(f"{self.name} thread has been paused！")
-
-    def resume(self):
-        self.mutex.lock()
+        self._stop_requested = True
+        self._running = False
         self._paused = False
         self.condition.wakeAll()
         self.mutex.unlock()
-        logger.warning(f"{self.name} thread has been resumed！")
 
     def deleteLater(self):
         """更安全的删除方法"""
         logger.warning(f"开始删除线程 {self.name}")
 
         try:
-            # 1. 设置停止标志
-            self.stop()
+            # # 1. 设置停止标志
+            # self.stop()
 
             # 2. 请求中断
             self.requestInterruption()

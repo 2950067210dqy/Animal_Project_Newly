@@ -49,19 +49,21 @@ class read_queue_data_Thread(MyQThread):
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
                             self.window.left_top_widget_content.enabled_zero_calibration_btn_signal.emit()
-
+                            self.close_calibration_window()
                     case 'range_calibration_finish':
                         """
                         量程标定结束
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
                             self.window.left_top_widget_content.enabled_range_calibration_btn_signal.emit()
+                            self.close_calibration_window()
                     case 'stop_zero_calibration_finish':
                         """
                         stop零点标定结束
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
                             self.window.left_top_widget_content.enabled_stop_zero_calibration_btn_signal.emit()
+                            self.close_calibration_window()
 
                     case 'stop_range_calibration_finish':
                         """
@@ -69,6 +71,7 @@ class read_queue_data_Thread(MyQThread):
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
                             self.window.left_top_widget_content.enabled_stop_range_calibration_btn_signal.emit()
+                            self.close_calibration_window()
                     case 'calibration_msg':
                         """
                         标定的消息
@@ -76,6 +79,14 @@ class read_queue_data_Thread(MyQThread):
                         if self.window is not None and self.window.left_top_widget_content is not None:
 
                             self.window.left_top_widget_content.logger_calibration_msg_signal.emit(message.data)
+                    case 'open_calibration_window':
+                        """
+                        打开标定详情弹窗
+                        """
+                        if self.window is not None and self.window.main_gui is not None:
+                            # logger.critical('open_calibration_window')
+                            self.window.main_gui.show_calibration_window_signal.emit({'type':message.data,'time':message.time})
+
                     case _:
                         pass
 
@@ -87,7 +98,14 @@ class read_queue_data_Thread(MyQThread):
                 self.queue.put(message)
 
         pass
-
+    def close_calibration_window(self):
+        """
+        关闭标定详情弹窗
+        :return:
+        """
+        # if self.window is not None and self.window.main_gui is not None:
+        #     self.window.main_gui.release_calibration_window_signal.emit()
+        pass
 
 read_queue_data_thread = read_queue_data_Thread(name="monitor_data_new_index_read_queue_data_thread")
 

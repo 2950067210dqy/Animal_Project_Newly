@@ -1,6 +1,7 @@
 import sys
 from PyQt6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout,
-                             QLabel, QProgressBar, QPushButton, QListView, QMessageBox)
+                             QLabel, QProgressBar, QPushButton, QListView, QMessageBox, QWidget, QFrame, QScrollArea,
+                             QGridLayout, QSplitter)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QStandardItemModel, QStandardItem
 
@@ -11,13 +12,15 @@ class AnimatedLoadingDialog(QDialog):
     insert_data_signal = pyqtSignal(str)
     task_completed_signal = pyqtSignal()
 
-    def __init__(self, countdown_seconds=10, message="正在加载数据...", title="系统加载中", show_listview=True):
+    def __init__(self, countdown_seconds=10, message="正在加载数据...", title="系统加载中",
+                 show_listview=True, calibration_dialog=None):
         super().__init__()
         self.countdown_seconds = countdown_seconds
         self.current_seconds = countdown_seconds
         self.message = message
         self.title = title
         self.show_listview = show_listview
+        self.calibration_dialog = calibration_dialog  # 接收CalibrationDialog
 
         # 进度条相关属性
         self.manual_progress = 0
@@ -41,11 +44,9 @@ class AnimatedLoadingDialog(QDialog):
 
     def init_ui(self):
         self.setWindowTitle(self.title)
-        # 根据是否显示listview调整窗口大小
-        if self.show_listview:
-            self.setFixedSize(700, 500)
-        else:
-            self.setFixedSize(400, 200)
+
+        # 根据当前屏幕大小动态调整窗口尺寸
+        self._adjust_window_size()
 
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setStyleSheet("""
@@ -70,13 +71,192 @@ class AnimatedLoadingDialog(QDialog):
                 border: 1px solid #ccc;
                 border-radius: 5px;
                 background-color: white;
-                selection-background-color: #007acc;
+                selection-background-color: #007bff;
+            }
+            QSplitter::handle {
+                background-color: #007acc;
+                border: 1px solid #005a9f;
+                border-radius: 2px;
+            }
+           
+            QSplitter::handle:hover {
+                background-color: #0099ff;
+            }
+            QSplitter::handle:pressed {
+                background-color: #004d7a;
             }
         """)
 
-        layout = QVBoxLayout()
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        # 主布局
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+
+        # 创建主分割器
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setChildrenCollapsible(False)  # 防止子部件被完全折叠
+
+        # ==================== 左侧区域（原来的加载对话框）====================
+        left_widget = self._create_left_panel()
+
+        # 添加左侧面板到分割器
+        self.main_splitter.addWidget(left_widget)
+
+        # ==================== 右侧区域（CalibrationDialog）====================
+        if self.calibration_dialog:
+            right_widget = self._create_calibration_panel()
+            if right_widget:
+                self.main_splitter.addWidget(right_widget)
+                # 设置初始分割比例 (左:右 = 1:1)
+                self.main_splitter.setSizes([500, 500])
+
+        # 将分割器添加到主布局
+        main_layout.addWidget(self.main_splitter)
+
+        self.center_on_screen()
+
+    def _adjust_window_size(self):
+        """
+        根据屏幕大小动态调整窗口尺寸
+        """
+        # 获取当前屏幕信息
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.availableGeometry()
+        screen_width = screen_geometry.width()
+        screen_height = screen_geometry.height()
+
+        # 设置窗口大小占屏幕的比例
+        if self.calibration_dialog:
+            # 有CalibrationDialog时使用更大的尺寸
+            if self.show_listview:
+                # 占屏幕宽度的80%，高度的70%
+                width = int(screen_width * 0.8)
+                height = int(screen_height * 0.7)
+            else:
+                # 占屏幕宽度的70%，高度的50%
+                width = int(screen_width * 0.7)
+                height = int(screen_height * 0.5)
+        else:
+            # 没有CalibrationDialog时使用较小尺寸
+            if self.show_listview:
+                # 占屏幕宽度的40%，高度的60%
+                width = int(screen_width * 0.4)
+                height = int(screen_height * 0.6)
+            else:
+                # 占屏幕宽度的25%，高度的25%
+                width = int(screen_width * 0.25)
+                height = int(screen_height * 0.25)
+
+        # 设置最小和最大尺寸限制
+        min_width = 400
+        min_height = 200
+        max_width = int(screen_width * 0.9)
+        max_height = int(screen_height * 0.8)
+
+        # 应用尺寸限制
+        width = max(min_width, min(width, max_width))
+        height = max(min_height, min(height, max_height))
+
+        self.setFixedSize(width, height)
+
+    # 添加一个获取屏幕信息的方法
+    def get_screen_info(self):
+        """
+        获取当前屏幕信息
+
+        Returns:
+            dict: 包含屏幕信息的字典
+        """
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.availableGeometry()
+
+        return {
+            'width': screen_geometry.width(),
+            'height': screen_geometry.height(),
+            'dpi': screen.logicalDotsPerInch(),
+            'device_pixel_ratio': screen.devicePixelRatio(),
+            'name': screen.name()
+        }
+
+    # 添加一个支持多屏幕的方法
+    def _get_current_screen(self):
+        """
+        获取当前窗口所在的屏幕
+
+        Returns:
+            QScreen: 当前屏幕对象
+        """
+        # 获取所有屏幕
+        screens = QApplication.screens()
+
+        if len(screens) == 1:
+            return screens[0]
+
+        # 如果有多个屏幕，找到包含窗口中心点的屏幕
+        window_center = self.frameGeometry().center()
+
+        for screen in screens:
+            if screen.geometry().contains(window_center):
+                return screen
+
+        # 如果没有找到，返回主屏幕
+        return QApplication.primaryScreen()
+
+    def _adjust_window_size_multi_screen(self):
+        """
+        支持多屏幕的窗口大小调整方法
+        """
+        # 获取当前屏幕
+        current_screen = self._get_current_screen()
+        screen_geometry = current_screen.availableGeometry()
+        screen_width = screen_geometry.width()
+        screen_height = screen_geometry.height()
+
+        # 考虑DPI缩放
+        device_pixel_ratio = current_screen.devicePixelRatio()
+
+        # 设置窗口大小占屏幕的比例
+        if self.calibration_dialog:
+            if self.show_listview:
+                width = int(screen_width * 0.8)
+                height = int(screen_height * 0.7)
+            else:
+                width = int(screen_width * 0.7)
+                height = int(screen_height * 0.5)
+        else:
+            if self.show_listview:
+                width = int(screen_width * 0.4)
+                height = int(screen_height * 0.6)
+            else:
+                width = int(screen_width * 0.25)
+                height = int(screen_height * 0.25)
+
+        # 应用DPI缩放
+        width = int(width / device_pixel_ratio)
+        height = int(height / device_pixel_ratio)
+
+        # 设置最小和最大尺寸限制
+        min_width = int(400 / device_pixel_ratio)
+        min_height = int(200 / device_pixel_ratio)
+        max_width = int(screen_width * 0.9 / device_pixel_ratio)
+        max_height = int(screen_height * 0.8 / device_pixel_ratio)
+
+        # 应用尺寸限制
+        width = max(min_width, min(width, max_width))
+        height = max(min_height, min(height, max_height))
+
+        self.setFixedSize(width, height)
+
+    def _create_left_panel(self):
+        """
+        创建左侧面板（原loading dialog内容）
+
+        Returns:
+            QWidget: 左侧面板
+        """
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setSpacing(15)
+        left_layout.setContentsMargins(10, 10, 10, 10)
 
         # 标题
         self.title_label = QLabel(self.title)
@@ -100,9 +280,9 @@ class AnimatedLoadingDialog(QDialog):
         self.progress_bar.setValue(0)
 
         # 添加基本控件到布局
-        layout.addWidget(self.title_label)
-        layout.addWidget(self.message_label)
-        layout.addWidget(self.progress_bar)
+        left_layout.addWidget(self.title_label)
+        left_layout.addWidget(self.message_label)
+        left_layout.addWidget(self.progress_bar)
 
         # QListView（可控制显示/隐藏）
         self.list_view = QListView()
@@ -110,7 +290,7 @@ class AnimatedLoadingDialog(QDialog):
         self.list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         if self.show_listview:
-            layout.addWidget(self.list_view)
+            left_layout.addWidget(self.list_view)
         else:
             self.list_view.hide()
 
@@ -131,10 +311,37 @@ class AnimatedLoadingDialog(QDialog):
         bottom_layout.addWidget(self.cancel_button)
 
         # 添加底部布局
-        layout.addLayout(bottom_layout)
+        left_layout.addLayout(bottom_layout)
 
-        self.setLayout(layout)
-        self.center_on_screen()
+        return left_widget
+
+    def _create_calibration_panel(self):
+        """
+        从CalibrationDialog创建右侧面板
+
+        Returns:
+            QWidget: 包含标定对话框的面板
+        """
+        if not self.calibration_dialog:
+            return None
+
+        # 创建容器
+        panel = QWidget()
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(10, 10, 10, 10)
+        panel_layout.setSpacing(0)
+
+        # 直接将CalibrationDialog添加到面板中
+        # 移除CalibrationDialog的窗口属性，使其成为面板的子widget
+        self.calibration_dialog.setWindowFlags(Qt.WindowType.Widget)
+        self.calibration_dialog.setParent(panel)
+        panel_layout.addWidget(self.calibration_dialog)
+
+        return panel
+
+
+
+
 
     def init_listview(self):
         """初始化ListView的数据模型"""
@@ -142,6 +349,9 @@ class AnimatedLoadingDialog(QDialog):
         self.list_view.setModel(self.list_model)
 
     def center_on_screen(self):
+        """
+        将窗口居中显示在屏幕上
+        """
         screen = QApplication.primaryScreen()
         screen_geometry = screen.availableGeometry()
         dialog_geometry = self.frameGeometry()
@@ -182,10 +392,8 @@ class AnimatedLoadingDialog(QDialog):
 
             # 修正逻辑：只有在任务未完成时才显示超时错误
             if not self.task_completed:
- # 调试信息
                 self.show_timeout_error()
             else:
-
                 # 任务已完成，正常关闭
                 self.progress_bar.setValue(100)
                 self.message_label.setText("加载完成！")
@@ -200,12 +408,8 @@ class AnimatedLoadingDialog(QDialog):
 
     def show_timeout_error(self):
         """显示超时错误弹窗"""
-
-
         if self.is_closing:
             return
-
-
 
         # 创建消息框
         msg_box = QMessageBox(self)
@@ -221,76 +425,141 @@ class AnimatedLoadingDialog(QDialog):
 
         # 设置弹窗样式
         msg_box.setStyleSheet("""
-                    QMessageBox {
-                        background-color: #f0f0f0;
-                    }
-                    QMessageBox QLabel {
-                        color: #333;
-                        font-size: 12px;
-                    }
-                    QPushButton {
-                        background-color: #007acc;
-                        color: white;
-                        border: none;
-                        padding: 8px 16px;
-                        border-radius: 4px;
-                        min-width: 60px;
-                        font-size: 12px;
-                    }
-                    QPushButton:hover {
-                        background-color: #005c99;
-                    }
-                """)
-
-
+            QMessageBox {
+                background-color: #f0f0f0;
+            }
+            QMessageBox QLabel {
+                color: #333;
+                font-size: 12px;
+            }
+            QPushButton {
+                background-color: #007acc;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                min-width: 60px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #005c99;
+            }
+        """)
 
         # 显示弹窗并等待用户点击
         result = msg_box.exec()
-
-
-        # 用户点击OK后关闭对话框
-        # if result == QMessageBox.StandardButton.Ok:
-
         self._safe_reject()
-
 
     def _safe_accept(self):
         """安全地接受对话框"""
         if not self.is_closing:
             self.is_closing = True
-
             self.accept()
-
 
     def _safe_reject(self):
         """安全地拒绝对话框"""
         if not self.is_closing:
             self.is_closing = True
-
             self.reject()
+    #--------------------------分隔器的相关方法-----------------------------
+    def set_splitter_sizes(self, left_ratio=1, right_ratio=1):
+        """
+        设置分割器的分割比例
 
-        # ==================== QListView 相关接口 ====================
+        Args:
+            left_ratio (int): 左侧比例
+            right_ratio (int): 右侧比例
+        """
+        if self.main_splitter.count() >= 2:
+            total_width = self.width() - 40  # 减去边距
+            left_width = int(total_width * left_ratio / (left_ratio + right_ratio))
+            right_width = total_width - left_width
+            self.main_splitter.setSizes([left_width, right_width])
 
+    def get_splitter_sizes(self):
+        """
+        获取当前分割器的尺寸
+
+        Returns:
+            list: 分割器各部分的尺寸列表
+        """
+        return self.main_splitter.sizes()
+
+    def save_splitter_state(self):
+        """
+        保存分割器状态
+
+        Returns:
+            bytes: 分割器状态数据
+        """
+        return self.main_splitter.saveState()
+
+    def restore_splitter_state(self, state):
+        """
+        恢复分割器状态
+
+        Args:
+            state (bytes): 分割器状态数据
+        """
+        return self.main_splitter.restoreState(state)
+
+    def set_splitter_collapsible(self, index, collapsible=True):
+        """
+        设置分割器中某个部件是否可折叠
+
+        Args:
+            index (int): 部件索引
+            collapsible (bool): 是否可折叠
+        """
+        widget = self.main_splitter.widget(index)
+        if widget:
+            self.main_splitter.setCollapsible(index, collapsible)
+
+    # ==================== 插入CalibrationDialog的方法 ====================
+
+    def insert_calibration_dialog(self, calibration_dialog):
+        """
+        动态插入CalibrationDialog到右侧面板
+
+        Args:
+            calibration_dialog: CalibrationDialog实例
+        """
+        if not self.calibration_dialog:
+            self.calibration_dialog = calibration_dialog
+
+            # 创建右侧面板
+            right_widget = self._create_calibration_panel()
+
+            if right_widget:
+                # 添加到分割器
+                self.main_splitter.addWidget(right_widget)
+
+                # 设置分割比例 (左:右 = 1:1)
+                self.main_splitter.setSizes([500, 500])
+
+            # 重新调整窗口大小
+            self._adjust_window_size()
+            self.center_on_screen()
+
+    # ==================== QListView 相关接口 ====================
 
     def show_listview(self):
         """显示QListView"""
         if not self.show_listview:
             self.show_listview = True
             self.list_view.show()
-            self.layout().addWidget(self.list_view)
-            self.setFixedSize(500, 400)
+            # 重新调整窗口大小
+            self._adjust_window_size()
             self.center_on_screen()
-
 
     def hide_listview(self):
         """隐藏QListView"""
         if self.show_listview:
             self.show_listview = False
             self.list_view.hide()
-            self.layout().removeWidget(self.list_view)
-            self.setFixedSize(400, 200)
+            # 重新调整窗口大小
+            self._adjust_window_size()
             self.center_on_screen()
-
 
     def insert_list_data(self, data):
         """
@@ -301,18 +570,14 @@ class AnimatedLoadingDialog(QDialog):
         """
         self.insert_data_signal.emit(str(data))
 
-
     def _insert_data_ui(self, data):
         """在主线程中执行UI更新"""
         if self.is_closing:
             return
 
         item = QStandardItem(data)
-        # 插入到第一行（索引0）
         self.list_model.insertRow(0, item)
-        # 滚动到顶部显示新添加的数据
         self.list_view.scrollToTop()
-
 
     def insert_multiple_list_data(self, data_list):
         """
@@ -321,15 +586,13 @@ class AnimatedLoadingDialog(QDialog):
         Args:
             data_list (list): 要插入的数据列表
         """
-        for data in reversed(data_list):  # 反向插入保持顺序
+        for data in reversed(data_list):
             self.insert_list_data(data)
-
 
     def clear_list_data(self):
         """清空QListView中的所有数据"""
         if not self.is_closing:
             self.list_model.clear()
-
 
     def get_all_list_data(self):
         """
@@ -345,8 +608,7 @@ class AnimatedLoadingDialog(QDialog):
                 data_list.append(item.text())
         return data_list
 
-        # ==================== 进度条手动控制接口 ====================
-
+    # ==================== 进度条手动控制接口 ====================
 
     def set_progress_range(self, minimum=0, maximum=100):
         """
@@ -361,11 +623,8 @@ class AnimatedLoadingDialog(QDialog):
         self.progress_max = maximum
         self.use_manual_progress = True
 
-
-        # 停止自动进度条动画
         if hasattr(self, 'progress_timer'):
             self.progress_timer.stop()
-
 
     def set_progress_value(self, value):
         """
@@ -379,9 +638,7 @@ class AnimatedLoadingDialog(QDialog):
 
         self.manual_progress = value
         self.use_manual_progress = True
-
         self.progress_updated.emit(value)
-
 
     def _update_progress_ui(self, value):
         """在主线程中更新进度条UI"""
@@ -390,12 +647,8 @@ class AnimatedLoadingDialog(QDialog):
 
         self.progress_bar.setValue(value)
 
-
-        # 检查任务是否完成
         if value >= self.progress_max and not self.task_completed:
-
             self.task_completed_signal.emit()
-
 
     def update_progress_value(self, increment=1):
         """
@@ -410,16 +663,12 @@ class AnimatedLoadingDialog(QDialog):
         self.manual_progress += increment
         self.manual_progress = min(self.manual_progress, self.progress_max)
         self.use_manual_progress = True
-
         self.progress_updated.emit(self.manual_progress)
-
 
     def complete_task(self):
         """手动标记任务完成（线程安全）"""
         if not self.is_closing and not self.task_completed:
-
             self.task_completed_signal.emit()
-
 
     def _complete_task_ui(self):
         """在主线程中执行任务完成的UI更新"""
@@ -429,14 +678,10 @@ class AnimatedLoadingDialog(QDialog):
         self.task_completed = True
         self.message_label.setText("任务完成！")
 
-
-        # 停止倒计时
         if hasattr(self, 'timer'):
             self.timer.stop()
 
-        # 延迟500ms后关闭对话框
         QTimer.singleShot(500, self._safe_accept)
-
 
     def get_progress_value(self):
         """
@@ -447,7 +692,6 @@ class AnimatedLoadingDialog(QDialog):
         """
         return self.progress_bar.value()
 
-
     def reset_progress(self):
         """重置进度条到0"""
         if not self.is_closing:
@@ -455,16 +699,14 @@ class AnimatedLoadingDialog(QDialog):
             self.progress_bar.setValue(0)
             self.task_completed = False
 
-
     def is_task_completed(self):
         """
         检查任务是否完成
 
-       Returns:
+        Returns:
             bool: 任务完成状态
         """
         return self.task_completed
-
 
     def closeEvent(self, event):
         """重写关闭事件"""
