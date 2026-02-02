@@ -24,12 +24,12 @@ from public.function.Modbus import Modbus_Type
 from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeQt6 import ThemedWindow
-from PyQt6 import QtGui, QtCore
-from PyQt6.QtCore import QRect, Qt, pyqtSignal, QTimer
+from PyQt6 import QtGui, QtCore, QtWidgets
+from PyQt6.QtCore import QRect, Qt, pyqtSignal, QTimer, QEvent
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QScrollArea, QGroupBox, QLabel, QSlider, QRadioButton,
     QGridLayout, QButtonGroup, QComboBox, QPushButton, QMessageBox, QHBoxLayout,
-    QLineEdit, QDoubleSpinBox, QListWidget, QListWidgetItem
+    QLineEdit, QDoubleSpinBox, QListWidget, QListWidgetItem, QCheckBox
 )
 from public.util.time_util import time_util
 
@@ -122,6 +122,10 @@ class Tab_1(ThemedWindow):
         self.right_title = None
         self.vr_desc_text: QDoubleSpinBox = None
         self.experiment_setting: Experiment_setting_entity = None
+        self.span_oxygen_desc_text: QDoubleSpinBox = None
+        self.span_carbon_desc_text: QDoubleSpinBox = None
+        # 创建是否校准复选框
+        self.calibration_checkbox = None
 
         self.confirm_port_btn = None
         self.config_btn = None
@@ -218,11 +222,22 @@ class Tab_1(ThemedWindow):
             if hasattr(self.ui, 'content_layout'):
                 self.content_layout = self.ui.content_layout
             else:
-                # 从scroll area获取
                 if self.config_scroll_area:
                     widget = self.config_scroll_area.widget()
                     if widget:
                         self.content_layout = widget.layout()
+
+            # 缓存基本配置相关组件
+            if hasattr(self.ui, 'basic_config_layout'):
+                self.basic_config_layout = self.ui.basic_config_layout
+            else:
+                self.basic_config_layout = self.findChild(QVBoxLayout, "basic_config_layout")
+
+            # 缓存模块检测布局
+            if hasattr(self.ui, 'module_detection_layout'):
+                self.module_detection_layout = self.ui.module_detection_layout
+            else:
+                self.module_detection_layout = self.findChild(QVBoxLayout, "module_detection_layout")
 
             if hasattr(self.ui, 'tab_1_port_combox'):
                 self.port_combox = self.ui.tab_1_port_combox
@@ -248,7 +263,6 @@ class Tab_1(ThemedWindow):
 
         except Exception as e:
             logger.error(f"缓存UI组件失败: {e}", exc_info=True)
-
     # 获得相关数据
     def _init_data(self):
         # 获得下拉框数据
@@ -265,11 +279,186 @@ class Tab_1(ThemedWindow):
         self.init_port_combox()
         self.config = get_default_config()
 
+        # 初始化基本配置到上方区域
+        self.init_basic_config_at_top()
+
+        # 初始化模块检测显示
+        self.init_module_detection_display()
+
         # 延迟初始化，确保UI完全渲染
         QTimer.singleShot(200, self.init_cage_list)
 
         self.init_config_ui()
         super()._init_customize_ui()
+
+    def init_module_detection_display(self):
+        """初始化模块检测显示区域"""
+        if self.module_detection_layout is None:
+            logger.error("module_detection_layout 未找到！")
+            return
+
+        # 清空布局
+        self.remove_layout_items(self.module_detection_layout)
+
+        # 获取配置中的所有模块
+        modules_to_detect = []
+        if self.config:
+            for module_key, module_value in self.config.items():
+                if isinstance(module_value, dict):
+                    module_name = module_value.get('desc', module_key)
+                    modules_to_detect.append({
+                        'name': module_name,
+                        'key': module_key,
+                        'status': False  # 初始状态为未检测
+                    })
+
+        # 如果没有配置，使用默认模块列表
+        if not modules_to_detect:
+            modules_to_detect = [
+                {'name': 'UFC', 'key': 'UFC', 'status': False},
+                {'name': 'ZOS', 'key': 'ZOS', 'status': False},
+                {'name': 'UGC', 'key': 'UGC', 'status': False},
+            ]
+
+        # 创建模块检测标签列表
+        self.module_status_labels = {}
+
+        for module_info in modules_to_detect:
+            module_name = module_info['name']
+            module_key = module_info['key']
+
+            # 创建水平布局
+            h_layout = QtWidgets.QHBoxLayout()
+            h_layout.setSpacing(10)
+
+            # 模块名称标签
+            name_label = QtWidgets.QLabel(f"{module_name}:")
+            name_label.setMinimumWidth(60)
+            name_label.setStyleSheet("font-weight: bold;")
+            h_layout.addWidget(name_label)
+
+            # 模块状态标签
+            status_label = QtWidgets.QLabel("○ 未检测")
+            status_label.setStyleSheet("""
+                QLabel {
+                    color: #666;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    background-color: #f0f0f0;
+                }
+            """)
+            status_label.setMinimumWidth(100)
+            h_layout.addWidget(status_label)
+
+            h_layout.addStretch()
+
+            self.module_detection_layout.addLayout(h_layout)
+            self.module_status_labels[module_key] = status_label
+
+        # 添加总体检测进度
+        progress_layout = QtWidgets.QHBoxLayout()
+        progress_layout.setSpacing(10)
+
+        progress_label = QtWidgets.QLabel("检测进度:")
+        progress_label.setStyleSheet("font-weight: bold;")
+        progress_layout.addWidget(progress_label)
+
+        self.detection_progress_label = QtWidgets.QLabel("0/3")
+        self.detection_progress_label.setStyleSheet("""
+            QLabel {
+                color: #666;
+                padding: 5px 10px;
+                border-radius: 3px;
+                background-color: #f0f0f0;
+            }
+        """)
+        progress_layout.addWidget(self.detection_progress_label)
+
+        progress_layout.addStretch()
+
+        self.module_detection_layout.addLayout(progress_layout)
+        logger.info("✓ 模块检测显示已初始化")
+
+    def update_module_detection_status(self, module_key, status, module_name=None):
+        """更新单个模块的检测状态"""
+        if module_key not in self.module_status_labels:
+            logger.warning(f"模块 {module_key} 未在状态标签中")
+            return
+
+        status_label = self.module_status_labels[module_key]
+
+        if status:
+            status_label.setText("✓ 已检测")
+            status_label.setStyleSheet("""
+                QLabel {
+                    color: #27ae60;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    background-color: #d5f4e6;
+                    font-weight: bold;
+                }
+            """)
+        else:
+            status_label.setText("✗ 检测失败")
+            status_label.setStyleSheet("""
+                QLabel {
+                    color: #e74c3c;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    background-color: #fadbd8;
+                    font-weight: bold;
+                }
+            """)
+
+        logger.info(f"✓ 模块 {module_key} 状态已更新为: {'检测成功' if status else '检测失败'}")
+
+        # 更新检测进度
+        self.update_detection_progress()
+
+    def update_detection_progress(self):
+        """更新检测进度显示"""
+        if not hasattr(self, 'module_status_labels') or not hasattr(self, 'detection_progress_label'):
+            return
+
+        total_modules = len(self.module_status_labels)
+        detected_modules = 0
+
+        for label in self.module_status_labels.values():
+            if "✓ 已检测" in label.text() or "✗ 检测失败" in label.text():
+                detected_modules += 1
+
+        self.detection_progress_label.setText(f"{detected_modules}/{total_modules}")
+
+        # 如果全部检测完成，改变颜色
+        if detected_modules == total_modules:
+            self.detection_progress_label.setStyleSheet("""
+                QLabel {
+                    color: #27ae60;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    background-color: #d5f4e6;
+                    font-weight: bold;
+                }
+            """)
+        elif detected_modules > 0:
+            self.detection_progress_label.setStyleSheet("""
+                QLabel {
+                    color: #f39c12;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    background-color: #fdebd0;
+                    font-weight: bold;
+                }
+            """)
+    # 初始化基本配置到上方（自适应高度，不滚动）
+    def init_basic_config_at_top(self):
+        """初始化基本配置到上方专用区域（自适应高度，不需要滚动）"""
+        if self.basic_config_layout is None:
+            logger.error("basic_config_layout 未找到！")
+            return
+
+        self.remove_layout_items(self.basic_config_layout)
+        self.init_basic_config(self.basic_config_layout)
 
     def _init_function(self):
         """初始化功能"""
@@ -449,62 +638,121 @@ class Tab_1(ThemedWindow):
         """初始化配置UI - 显示默认配置"""
         if self.experiment_setting is None:
             self.experiment_setting: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
-            # 直接使用缓存的对象
+
         if self.content_layout is None:
             logger.error("content_layout 未找到！")
             return
 
         self.remove_layout_items(self.content_layout)
-        self.config_layout: QVBoxLayout = self.findChild(QVBoxLayout, "content_layout")
-        if self.config_layout is not None:
-            self.remove_layout_items(self.config_layout)
 
-            self.scroll_area = QScrollArea()
-            self.scroll_area.setObjectName("content_layout_scroll_area")
-            self.scroll_area.setWidgetResizable(True)
+        # 添加提示标签
+        tip_label = QLabel("请先确认串口，然后选择要配置的鼠笼")
+        tip_label.setStyleSheet("color: #666; font-style: italic;")
+        self.content_layout.addWidget(tip_label)
 
-            self.scroll_area_content = QWidget()
-            self.scroll_area_layout = QVBoxLayout(self.scroll_area_content)
+        # 如果有config，则显示所有模块的默认配置
+        if self.config:
+            for module_key, module_value in self.config.items():
+                if module_key == Modbus_Type.Modbus_Slave_Ids.ENM.value['name']:
+                    self.init_enm_config_ui_default(module_key, module_value, self.content_layout)
+                elif module_key == Modbus_Type.Modbus_Slave_Ids.EM.value['name']:
+                    self.init_em_config_ui_default(module_key, module_value, self.content_layout)
 
-            # 添加提示标签
-            tip_label = QLabel("请先确认串口，然后选择要配置的鼠笼")
-            tip_label.setStyleSheet("color: #666; font-style: italic;")
-            self.scroll_area_layout.addWidget(tip_label)
-
-            # 初始化基本配置
-            self.init_basic_config(self.scroll_area_layout)
-
-            # 如果有config，则显示所有模块的默认配置
-            if self.config:
-                for module_key, module_value in self.config.items():
-                    if module_key == Modbus_Type.Modbus_Slave_Ids.ENM.value['name']:
-                        self.init_enm_config_ui_default(module_key, module_value, self.scroll_area_layout)
-                    elif module_key == Modbus_Type.Modbus_Slave_Ids.EM.value['name']:
-                        self.init_em_config_ui_default(module_key, module_value, self.scroll_area_layout)
-
-            # 添加伸缩空间
-            # self.scroll_area_layout.addStretch()
-
-            self.scroll_area.setWidget(self.scroll_area_content)
-            self.config_layout.addWidget(self.scroll_area, 1)
+        # 添加伸缩空间
+        self.content_layout.addStretch()
 
     def init_basic_config(self, scroll_area_layout):
-        """初始化基本配置"""
-        basic_group_box = QGroupBox("基本配置")
-        basic_group_box.setContentsMargins(5, 5, 5, 5)
-        basic_group_box.setMinimumHeight(80)
-        scroll_area_layout.addWidget(basic_group_box)
+        """
+        设置基础设置
+        :param scroll_area_layout:
+        :return:
+        """
+        # 创建 GroupBox
+        self.group_box = QGroupBox(f"基本配置")
+        self.group_box.setStyleSheet("""
+        QGroupBox {
+            font-size:17px;
+            font-weight:bolder;
+        }
+        """)
+        self.group_box.setContentsMargins(10, 10, 10, 10)
+        scroll_area_layout.addWidget(self.group_box)
+        main_layout = QVBoxLayout()
+        hT_layout = QHBoxLayout()
 
+        self.calibration_checkbox = QCheckBox("启动时校准气路值")
+        self.calibration_checkbox.setStyleSheet("""
+                QCheckBox {
+                    margin-top:17px;
+                    font-weight:bold;
+                }
+                """)
+        self.calibration_checkbox.stateChanged.connect(self.calibration_gas_state_change)
+        self.calibration_checkbox.setChecked(global_setting.get_setting("is_auto_calibration", True))
+        hT_layout.addWidget(self.calibration_checkbox)
+        main_layout.addLayout(hT_layout)
+
+        h0_layout = QHBoxLayout()
+        span_oxygen_desc_label = QLabel("span校准的标准气体的氧浓度数值（单位:%,例如20.9%，请输入20.9）：")
+        span_oxygen_desc_label.setStyleSheet("""
+                      QLabel {
+                          font-weight:bold;
+                      }
+                      """)
+        self.span_oxygen_desc_text = QDoubleSpinBox()
+        self.span_oxygen_desc_text.setValue(global_setting.get_setting("span_standard_oxygen_value", 20.9))
+
+        h0_layout.addWidget(span_oxygen_desc_label)
+        h0_layout.addWidget(self.span_oxygen_desc_text)
+        main_layout.addLayout(h0_layout)
+
+        h1_layout = QHBoxLayout()
+        span_carbon_desc_label = QLabel("span校准的标准气体的CO2浓度数值（单位:%,例如0.03%，请输入0.03）：")
+        span_carbon_desc_label.setStyleSheet("""
+                              QLabel {
+                                  font-weight:bold;
+                              }
+                              """)
+        self.span_carbon_desc_text = QDoubleSpinBox()
+        self.span_carbon_desc_text.setValue(global_setting.get_setting("span_standard_carbon_value", 0.03))
+
+        h1_layout.addWidget(span_carbon_desc_label)
+        h1_layout.addWidget(self.span_carbon_desc_text)
+        main_layout.addLayout(h1_layout)
+
+        # 创建第2个 GridLayout
         h_layout = QHBoxLayout()
-        vr_desc_label = QLabel(
-            "请输入Vr值（实际的标定气体，根据气瓶上的标识确定,单位:%,例如20.9%，请输入20.9）："
-        )
+        vr_desc_label = QLabel("请输入Vr值[已弃用]（实际的标定气体，根据气瓶上的标识确定,单位:%,例如20.9%，请输入20.9）：")
+        vr_desc_label.setStyleSheet("""
+                              QLabel {
+                                  font-weight:bold;
+                              }
+                              """)
         self.vr_desc_text = QDoubleSpinBox()
         self.vr_desc_text.setValue(global_setting.get_setting("Vr", 20.9))
 
         h_layout.addWidget(vr_desc_label)
         h_layout.addWidget(self.vr_desc_text)
-        basic_group_box.setLayout(h_layout)
+        main_layout.addLayout(h_layout)
+
+        self.group_box.setLayout(main_layout)
+
+    def calibration_gas_state_change(self, state):
+        is_checked = bool(state)  # 直接转为布尔值
+        # 是否自动校准气体给其他进程同步设置
+        if self.main_gui is not None:
+            for tool_bar_action in self.main_gui.tool_bar_actions:
+
+                # 特殊按钮需要特殊配置
+                if tool_bar_action['obj_name'] in ["calibration_gas"]:
+                    tool_bar_action["action"].setChecked(is_checked)
+                    break
+        global_setting.set_setting("is_auto_calibration", is_checked)
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        send_message_queue.put(
+            ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_experiment_basic_config',
+                            data={"is_auto_calibration": is_checked},
+                            time=time_util.get_format_from_time(time.time())))
 
     def init_btn_func(self):
         """初始化按钮功能"""
@@ -535,11 +783,14 @@ class Tab_1(ThemedWindow):
         group_box = QGroupBox(
             f"{module_value['desc']}-{module_value['config'][0]['value'][0]['desc']}"
         )
-        group_box.setContentsMargins(10, 10, 10, 10)
+        group_box.setContentsMargins(5,5,5,5)
+        group_box.setMinimumHeight(70)
+        group_box.setMaximumHeight(100)
         scroll_area_layout.addWidget(group_box)
 
         grid_layout1 = QGridLayout()
-        grid_layout1.setContentsMargins(10, 30, 10, 10)
+        grid_layout1.setContentsMargins(5,10,5,5)
+        grid_layout1.setSpacing(5)
         group_box.setLayout(grid_layout1)
 
         label = QLabel("选择鼠笼后将显示具体配置")
@@ -569,11 +820,14 @@ class Tab_1(ThemedWindow):
         group_box = QGroupBox(
             f"{module_value['desc']}-{module_value['config'][0]['value'][0]['desc']}"
         )
-        group_box.setContentsMargins(10, 10, 10, 10)
+        group_box.setContentsMargins(5, 5, 5, 5)
+        group_box.setMinimumHeight(70)
+        group_box.setMaximumHeight(100)
         scroll_area_layout.addWidget(group_box)
 
         grid_layout1 = QGridLayout()
-        grid_layout1.setContentsMargins(10, 30, 10, 10)
+        grid_layout1.setContentsMargins(5, 10, 5, 5)
+        grid_layout1.setSpacing(5)
         group_box.setLayout(grid_layout1)
 
         label = QLabel(f"鼠笼 {group_num}")
@@ -903,11 +1157,27 @@ class Tab_1(ThemedWindow):
 
 
     # ==========事件处理==========
+    def changeEvent(self, event: QEvent):
+        """窗口状态改变事件"""
+        if event.type() == QEvent.Type.ActivationChange:
+            if self.isActiveWindow():
+                if self.calibration_checkbox is not None:
+                    self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
+                # print("窗口被激活")
+            else:
+                # if self.calibration_checkbox is not None:
+                #     self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
+                pass
+                # print("窗口失去焦点")
+
+        super().changeEvent(event)
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         """窗口显示事件"""
         logger.warning("tab1——show")
 
         self._init_customize_ui()
+        if self.calibration_checkbox is not None:
+            self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
         super().showEvent(a0)
 
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
@@ -2095,14 +2365,32 @@ class Tab_1(ThemedWindow):
             if self.main_gui is not None:
                 self.main_gui.change_enable_component_app_state_signal.emit()
                 pass
-            # 设置vr值
-            vr_value = self.vr_desc_text.value()
-            if vr_value:
-                global_setting.set_setting("Vr", float(vr_value))
             send_message_queue = global_setting.get_setting("send_message_queue")
-            send_message_queue.put(ObjectQueueItem(origin='Tab_1', to='main_monitor_data', title='set_port',
+            send_message_queue.put(ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_port',
                                                    data=self.send_message['port'],
                                                    time=time_util.get_format_from_time(time.time())))
+            # 设置vr值
+            basic_experiment_config = {}
+            vr_value = self.vr_desc_text.value()
+            if vr_value:
+                basic_experiment_config['vr_desc'] = float(vr_value)
+                global_setting.set_setting("Vr", float(vr_value))
+            # 设置span校准的标准气体的氧气浓度值 %
+            span_oxygen_value = self.span_oxygen_desc_text.value()
+            if span_oxygen_value:
+                basic_experiment_config["span_standard_oxygen_value"] = float(span_oxygen_value)
+                global_setting.set_setting("span_standard_oxygen_value", float(span_oxygen_value))
+            # 设置span校准的标准气体的二氧化碳浓度值 %
+            span_carbon_value = self.span_carbon_desc_text.value()
+            if span_carbon_value:
+                basic_experiment_config["span_standard_carbon_value"] = float(span_carbon_value)
+                global_setting.set_setting("span_standard_carbon_value", float(span_carbon_value))
+
+            # 给其他进程同步设置
+            send_message_queue.put(
+                ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_experiment_basic_config',
+                                data=basic_experiment_config,
+                                time=time_util.get_format_from_time(time.time())))
             self.close()
             msg_box = InfoDialog(title="确定设备配置", info="确定该设备配置成功!",
                                  icon=QMessageBox.Icon.Information)
