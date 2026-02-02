@@ -279,8 +279,7 @@ class Tab_1(ThemedWindow):
         self.init_port_combox()
         self.config = get_default_config()
 
-        # 初始化基本配置到上方区域
-        self.init_basic_config_at_top()
+        # self.init_basic_config_at_top()
 
         # 初始化模块检测显示
         self.init_module_detection_display()
@@ -288,11 +287,12 @@ class Tab_1(ThemedWindow):
         # 延迟初始化，确保UI完全渲染
         QTimer.singleShot(200, self.init_cage_list)
 
+        # 在这里初始化配置UI（包含基础配置）
         self.init_config_ui()
         super()._init_customize_ui()
 
     def init_module_detection_display(self):
-        """初始化模块检测显示区域"""
+        """初始化模块检测显示区域 - 固定显示 UFC, UGC, ZOS"""
         if self.module_detection_layout is None:
             logger.error("module_detection_layout 未找到！")
             return
@@ -300,25 +300,12 @@ class Tab_1(ThemedWindow):
         # 清空布局
         self.remove_layout_items(self.module_detection_layout)
 
-        # 获取配置中的所有模块
-        modules_to_detect = []
-        if self.config:
-            for module_key, module_value in self.config.items():
-                if isinstance(module_value, dict):
-                    module_name = module_value.get('desc', module_key)
-                    modules_to_detect.append({
-                        'name': module_name,
-                        'key': module_key,
-                        'status': False  # 初始状态为未检测
-                    })
-
-        # 如果没有配置，使用默认模块列表
-        if not modules_to_detect:
-            modules_to_detect = [
-                {'name': 'UFC', 'key': 'UFC', 'status': False},
-                {'name': 'ZOS', 'key': 'ZOS', 'status': False},
-                {'name': 'UGC', 'key': 'UGC', 'status': False},
-            ]
+        # 固定模块列表（从上到下）
+        modules_to_detect = [
+            {'name': 'UFC', 'key': 'UFC', 'status': False},
+            {'name': 'UGC', 'key': 'UGC', 'status': False},
+            {'name': 'ZOS', 'key': 'ZOS', 'status': False},
+        ]
 
         # 创建模块检测标签列表
         self.module_status_labels = {}
@@ -338,16 +325,16 @@ class Tab_1(ThemedWindow):
             h_layout.addWidget(name_label)
 
             # 模块状态标签
-            status_label = QtWidgets.QLabel("○ 未检测")
+            status_label = QtWidgets.QLabel("○ 待检测")
             status_label.setStyleSheet("""
                 QLabel {
-                    color: #666;
+                    color: #999;
                     padding: 5px 10px;
                     border-radius: 3px;
                     background-color: #f0f0f0;
                 }
             """)
-            status_label.setMinimumWidth(100)
+            status_label.setMinimumWidth(120)
             h_layout.addWidget(status_label)
 
             h_layout.addStretch()
@@ -355,29 +342,6 @@ class Tab_1(ThemedWindow):
             self.module_detection_layout.addLayout(h_layout)
             self.module_status_labels[module_key] = status_label
 
-        # 添加总体检测进度
-        progress_layout = QtWidgets.QHBoxLayout()
-        progress_layout.setSpacing(10)
-
-        progress_label = QtWidgets.QLabel("检测进度:")
-        progress_label.setStyleSheet("font-weight: bold;")
-        progress_layout.addWidget(progress_label)
-
-        self.detection_progress_label = QtWidgets.QLabel("0/3")
-        self.detection_progress_label.setStyleSheet("""
-            QLabel {
-                color: #666;
-                padding: 5px 10px;
-                border-radius: 3px;
-                background-color: #f0f0f0;
-            }
-        """)
-        progress_layout.addWidget(self.detection_progress_label)
-
-        progress_layout.addStretch()
-
-        self.module_detection_layout.addLayout(progress_layout)
-        logger.info("✓ 模块检测显示已初始化")
 
     def update_module_detection_status(self, module_key, status, module_name=None):
         """更新单个模块的检测状态"""
@@ -412,53 +376,44 @@ class Tab_1(ThemedWindow):
 
         logger.info(f"✓ 模块 {module_key} 状态已更新为: {'检测成功' if status else '检测失败'}")
 
-        # 更新检测进度
-        self.update_detection_progress()
+        # # 更新检测进度
+        # self.update_detection_progress()
 
-    def update_detection_progress(self):
-        """更新检测进度显示"""
-        if not hasattr(self, 'module_status_labels') or not hasattr(self, 'detection_progress_label'):
-            return
-
-        total_modules = len(self.module_status_labels)
-        detected_modules = 0
-
-        for label in self.module_status_labels.values():
-            if "✓ 已检测" in label.text() or "✗ 检测失败" in label.text():
-                detected_modules += 1
-
-        self.detection_progress_label.setText(f"{detected_modules}/{total_modules}")
-
-        # 如果全部检测完成，改变颜色
-        if detected_modules == total_modules:
-            self.detection_progress_label.setStyleSheet("""
-                QLabel {
-                    color: #27ae60;
-                    padding: 5px 10px;
-                    border-radius: 3px;
-                    background-color: #d5f4e6;
-                    font-weight: bold;
-                }
-            """)
-        elif detected_modules > 0:
-            self.detection_progress_label.setStyleSheet("""
-                QLabel {
-                    color: #f39c12;
-                    padding: 5px 10px;
-                    border-radius: 3px;
-                    background-color: #fdebd0;
-                    font-weight: bold;
-                }
-            """)
-    # 初始化基本配置到上方（自适应高度，不滚动）
-    def init_basic_config_at_top(self):
-        """初始化基本配置到上方专用区域（自适应高度，不需要滚动）"""
-        if self.basic_config_layout is None:
-            logger.error("basic_config_layout 未找到！")
-            return
-
-        self.remove_layout_items(self.basic_config_layout)
-        self.init_basic_config(self.basic_config_layout)
+    # def update_detection_progress(self):
+    #     """更新检测进度显示"""
+    #     if not hasattr(self, 'module_status_labels') or not hasattr(self, 'detection_progress_label'):
+    #         return
+    #
+    #     total_modules = len(self.module_status_labels)
+    #     detected_modules = 0
+    #
+    #     for label in self.module_status_labels.values():
+    #         if "✓ 已检测" in label.text() or "✗ 检测失败" in label.text():
+    #             detected_modules += 1
+    #
+    #     self.detection_progress_label.setText(f"{detected_modules}/{total_modules}")
+    #
+    #     # 如果全部检测完成，改变颜色
+    #     if detected_modules == total_modules:
+    #         self.detection_progress_label.setStyleSheet("""
+    #             QLabel {
+    #                 color: #27ae60;
+    #                 padding: 5px 10px;
+    #                 border-radius: 3px;
+    #                 background-color: #d5f4e6;
+    #                 font-weight: bold;
+    #             }
+    #         """)
+    #     elif detected_modules > 0:
+    #         self.detection_progress_label.setStyleSheet("""
+    #             QLabel {
+    #                 color: #f39c12;
+    #                 padding: 5px 10px;
+    #                 border-radius: 3px;
+    #                 background-color: #fdebd0;
+    #                 font-weight: bold;
+    #             }
+    #         """)
 
     def _init_function(self):
         """初始化功能"""
@@ -635,7 +590,7 @@ class Tab_1(ThemedWindow):
         # logger.info(f"笼子列表初始化完成: 添加 {cage_added_count} 个笼子")
 
     def init_config_ui(self):
-        """初始化配置UI - 显示默认配置"""
+        """初始化配置UI - 显示默认配置和基础配置"""
         if self.experiment_setting is None:
             self.experiment_setting: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
 
@@ -645,12 +600,15 @@ class Tab_1(ThemedWindow):
 
         self.remove_layout_items(self.content_layout)
 
-        # 添加提示标签
+        # ==================== 添加提示标签 ====================
         tip_label = QLabel("请先确认串口，然后选择要配置的鼠笼")
         tip_label.setStyleSheet("color: #666; font-style: italic;")
         self.content_layout.addWidget(tip_label)
 
-        # 如果有config，则显示所有模块的默认配置
+        # ==================== 添加基础配置 ====================
+        self.init_basic_config(self.content_layout)
+
+        # ==================== 添加模块配置 ====================
         if self.config:
             for module_key, module_value in self.config.items():
                 if module_key == Modbus_Type.Modbus_Slave_Ids.ENM.value['name']:
@@ -663,80 +621,86 @@ class Tab_1(ThemedWindow):
 
     def init_basic_config(self, scroll_area_layout):
         """
-        设置基础设置
-        :param scroll_area_layout:
-        :return:
+        设置基础设置 - 直接添加到滚动区域
         """
         # 创建 GroupBox
-        self.group_box = QGroupBox(f"基本配置")
+        self.group_box = QGroupBox("基本配置")
         self.group_box.setStyleSheet("""
         QGroupBox {
-            font-size:17px;
-            font-weight:bolder;
+            font-size:15px;
+            font-weight:bold;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-top: 10px;
+            padding-top: 10px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 3px 0 3px;
         }
         """)
         self.group_box.setContentsMargins(10, 10, 10, 10)
         scroll_area_layout.addWidget(self.group_box)
-        main_layout = QVBoxLayout()
-        hT_layout = QHBoxLayout()
 
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+
+        # ==================== 校准复选框 ====================
+        hT_layout = QHBoxLayout()
         self.calibration_checkbox = QCheckBox("启动时校准气路值")
         self.calibration_checkbox.setStyleSheet("""
                 QCheckBox {
-                    margin-top:17px;
                     font-weight:bold;
                 }
                 """)
         self.calibration_checkbox.stateChanged.connect(self.calibration_gas_state_change)
         self.calibration_checkbox.setChecked(global_setting.get_setting("is_auto_calibration", True))
         hT_layout.addWidget(self.calibration_checkbox)
+        hT_layout.addStretch()
         main_layout.addLayout(hT_layout)
 
+        # ==================== Span氧气浓度 ====================
         h0_layout = QHBoxLayout()
-        span_oxygen_desc_label = QLabel("span校准的标准气体的氧浓度数值（单位:%,例如20.9%，请输入20.9）：")
-        span_oxygen_desc_label.setStyleSheet("""
-                      QLabel {
-                          font-weight:bold;
-                      }
-                      """)
+        span_oxygen_desc_label = QLabel("Span标准气体氧浓度(%):")
+        span_oxygen_desc_label.setStyleSheet("font-weight:bold;")
+        span_oxygen_desc_label.setMinimumWidth(150)
         self.span_oxygen_desc_text = QDoubleSpinBox()
         self.span_oxygen_desc_text.setValue(global_setting.get_setting("span_standard_oxygen_value", 20.9))
-
+        self.span_oxygen_desc_text.setMinimumWidth(100)
         h0_layout.addWidget(span_oxygen_desc_label)
         h0_layout.addWidget(self.span_oxygen_desc_text)
+        h0_layout.addStretch()
         main_layout.addLayout(h0_layout)
 
+        # ==================== Span二氧化碳浓度 ====================
         h1_layout = QHBoxLayout()
-        span_carbon_desc_label = QLabel("span校准的标准气体的CO2浓度数值（单位:%,例如0.03%，请输入0.03）：")
-        span_carbon_desc_label.setStyleSheet("""
-                              QLabel {
-                                  font-weight:bold;
-                              }
-                              """)
+        span_carbon_desc_label = QLabel("Span标准气体CO₂浓度(%):")
+        span_carbon_desc_label.setStyleSheet("font-weight:bold;")
+        span_carbon_desc_label.setMinimumWidth(150)
         self.span_carbon_desc_text = QDoubleSpinBox()
         self.span_carbon_desc_text.setValue(global_setting.get_setting("span_standard_carbon_value", 0.03))
-
+        self.span_carbon_desc_text.setMinimumWidth(100)
         h1_layout.addWidget(span_carbon_desc_label)
         h1_layout.addWidget(self.span_carbon_desc_text)
+        h1_layout.addStretch()
         main_layout.addLayout(h1_layout)
 
-        # 创建第2个 GridLayout
+        # ==================== Vr值 ====================
         h_layout = QHBoxLayout()
-        vr_desc_label = QLabel("请输入Vr值[已弃用]（实际的标定气体，根据气瓶上的标识确定,单位:%,例如20.9%，请输入20.9）：")
-        vr_desc_label.setStyleSheet("""
-                              QLabel {
-                                  font-weight:bold;
-                              }
-                              """)
+        vr_desc_label = QLabel("Vr值[已弃用](%):")
+        vr_desc_label.setStyleSheet("font-weight:bold;")
+        vr_desc_label.setMinimumWidth(150)
         self.vr_desc_text = QDoubleSpinBox()
         self.vr_desc_text.setValue(global_setting.get_setting("Vr", 20.9))
-
+        self.vr_desc_text.setMinimumWidth(100)
         h_layout.addWidget(vr_desc_label)
         h_layout.addWidget(self.vr_desc_text)
+        h_layout.addStretch()
         main_layout.addLayout(h_layout)
 
         self.group_box.setLayout(main_layout)
-
     def calibration_gas_state_change(self, state):
         is_checked = bool(state)  # 直接转为布尔值
         # 是否自动校准气体给其他进程同步设置
@@ -1405,7 +1369,10 @@ class Tab_1(ThemedWindow):
 
         if self.config_btn:
             self.config_btn.setEnabled(False)
-
+        # ==================== 把所有模块状态改为"检测中" ====================
+        for module_key in self.module_status_labels:
+            status_label = self.module_status_labels[module_key]
+            status_label.setText("检测中")
         # 重置已完成笼子集合
         self._completed_cages = set()
         self._detection_completion_timers = {}
@@ -1881,10 +1848,38 @@ class Tab_1(ThemedWindow):
         module_name = state_data.get('module_name', 'UNKNOWN')
         response_state = state_data.get('response_state', False)
 
-        # 获取检测字典
+        # ==================== 实时更新模块显示状态 ====================
+        if module_name in self.module_status_labels:
+            status_label = self.module_status_labels[module_name]
+
+            if response_state:
+                status_label.setText("✓ 检测通过")
+                status_label.setStyleSheet("""
+                    QLabel {
+                        color: #27ae60;
+                        padding: 5px 10px;
+                        border-radius: 3px;
+                        background-color: #d5f4e6;
+                        font-weight: bold;
+                    }
+                """)
+            else:
+                status_label.setText("✗ 检测失败")
+                status_label.setStyleSheet("""
+                    QLabel {
+                        color: #e74c3c;
+                        padding: 5px 10px;
+                        border-radius: 3px;
+                        background-color: #fadbd8;
+                        font-weight: bold;
+                    }
+                """)
+
+            logger.info(f"✓ 模块 {module_name} 状态已更新为: {'检测通过' if response_state else '检测失败'}")
+
+        # ==================== 原有逻辑继续 ====================
         mouse_cage_detect_dict = global_setting.get_setting("mouse_cage_detect_state_dict", {})
 
-        # ==================== 确保cage_enabled_status不为空 ====================
         if not self.cage_enabled_status:
             logger.warning(f"cage_enabled_status 为空，正在初始化...")
             self.init_cage_list()
@@ -1893,7 +1888,6 @@ class Tab_1(ThemedWindow):
                 logger.error(f"cage_enabled_status 初始化失败，无法处理检测数据")
                 return
 
-        # 如果检测字典为空，先为所有已启用的笼子初始化
         if not mouse_cage_detect_dict:
             logger.info("检测字典为空，正在初始化所有已启用的笼子...")
             mouse_cage_detect_dict = {}
@@ -1904,70 +1898,43 @@ class Tab_1(ThemedWindow):
                     'air_states': [],
                     'cage_modules': {},
                     'air_modules': {},
-                    'cage_is_valid': False,  # ← 改为 False
-                    'air_is_valid': False,  # ← 改为 False
-                    'overall_valid': False,  # ← 改为 False
+                    'cage_is_valid': False,
+                    'air_is_valid': False,
+                    'overall_valid': False,
                     'update_time': time_util.get_format_from_time(time.time()),
                     'first_detection_time': time.time()
                 }
 
             global_setting.set_setting("mouse_cage_detect_state_dict", mouse_cage_detect_dict)
-            logger.info(f"已初始化 {len(mouse_cage_detect_dict)} 个笼子的检测状态")
 
         existing_cage_numbers = list(mouse_cage_detect_dict.keys())
-        if not existing_cage_numbers:
-            logger.warning("没有任何已初始化的笼子")
-            return
 
-        logger.info(f"气路模块 {module_name} 检测结果: {response_state}，将更新到笼子: {existing_cage_numbers}")
-
-        # ==================== 为所有鼠笼更新该气路模块的状态 ====================
         for cage_number in existing_cage_numbers:
             cage_data = mouse_cage_detect_dict[cage_number]
 
-            # 确保air_modules字典存在
             if 'air_modules' not in cage_data:
                 cage_data['air_modules'] = {}
 
-            # 将气路模块状态存储到 air_modules 字典
             cage_data['air_modules'][module_name] = response_state
 
-            # 兼容旧代码：同时保存到 air_states 列表
             if 'air_states' not in cage_data:
                 cage_data['air_states'] = []
             cage_data['air_states'].append(response_state)
 
-            # 更新时间戳
             cage_data['update_time'] = time_util.get_format_from_time(time.time())
 
-            # 判断所有气路模块是否都有效
             air_modules = cage_data['air_modules']
             air_is_valid = len(air_modules) > 0 and all(air_modules.values())
             cage_data['air_is_valid'] = air_is_valid
 
-            # 更新整体有效性（两类模块都要检测完成）
             cage_is_valid = cage_data.get('cage_is_valid', False)
             cage_modules = cage_data.get('cage_modules', {})
-            # 只有当两类模块都有数据时才判断overall_valid
             cage_data['overall_valid'] = (cage_is_valid and air_is_valid and
                                           len(cage_modules) > 0 and len(air_modules) > 0)
 
-            # logger.info(
-            #     f"鼠笼 {cage_number} 气路模块更新: "
-            #     f"{module_name}={response_state}, "
-            #     f"当前气路模块: {air_modules}, "
-            #     f"气路有效: {air_is_valid}, "
-            #     f"笼内模块: {len(cage_modules)} 个, "
-            #     f"整体有效: {cage_data['overall_valid']}"
-            # )
-
-            # ==================== 更新该笼子的UI ====================
             self.update_cage_display_to_detecting(cage_number)
-
-            # ==================== 检查该笼子是否完成检测 ====================
             self._check_detection_complete(cage_number)
 
-        # 保存到全局设置
         global_setting.set_setting("mouse_cage_detect_state_dict", mouse_cage_detect_dict)
 
     def update_cage_ui_status(self, cage_number):
@@ -2205,9 +2172,15 @@ class Tab_1(ThemedWindow):
                 return
 
             self.remove_layout_items(self.content_layout)
+
+            # ==================== 保留基础配置 ====================
+            tip_label = QLabel("请先确认串口，然后选择要配置的鼠笼")
+            tip_label.setStyleSheet("color: #666; font-style: italic;")
+            self.content_layout.addWidget(tip_label)
+
             self.init_basic_config(self.content_layout)
 
-            # ==================== 新增：从用户本地加载保存的配置 ====================
+            # ==================== 从用户本地加载保存的配置 ====================
             saved_config = self._load_cage_config_from_json(group_num)
             self.current_cage_config = saved_config.copy()
 
@@ -2218,6 +2191,7 @@ class Tab_1(ThemedWindow):
 
             response_data = self.groups_status[group_num]['response_data']
 
+            # ==================== 加载模块配置 ====================
             for module_key, module_value in self.config.items():
                 if module_key == Modbus_Type.Modbus_Slave_Ids.ENM.value['name']:
                     module_config = saved_config.get('ENM', {})
@@ -2227,6 +2201,10 @@ class Tab_1(ThemedWindow):
                     module_config = saved_config.get('EM', {})
                     self.init_em_config_ui_for_group(module_key, module_value, self.content_layout, group_num,
                                                      module_config)
+
+            # 添加伸缩空间
+            self.content_layout.addStretch()
+
         except Exception as e:
             logger.error(f"加载笼子配置出错: {e}", exc_info=True)
 

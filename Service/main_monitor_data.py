@@ -427,7 +427,7 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
                 'port': port,
                 'data': ['00', '00', '00', '05'],
                 'slave_id': '3',
-                'function_code': '4',
+                'function_code': '5',
                 'timeout': 1,
                 'module_type': 'status_read',
                 'device_type': 'UGC',

@@ -67,16 +67,6 @@ class Ui_tab1_frame(object):
 
         self.main_layout.addLayout(self.top_layout, 0)
 
-        # ========== 基本配置区域（自适应高度，不滚动） ==========
-        self.basic_config_widget = QtWidgets.QWidget()
-        self.basic_config_widget.setObjectName("basic_config_widget")
-
-        self.basic_config_layout = QtWidgets.QVBoxLayout(self.basic_config_widget)
-        self.basic_config_layout.setContentsMargins(10, 10, 10, 10)
-        self.basic_config_layout.setSpacing(10)
-        self.basic_config_layout.setObjectName("basic_config_layout")
-
-        self.main_layout.addWidget(self.basic_config_widget, 0)
 
         # ========== 中间内容区域（左右两栏） ==========
         self.content_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal, parent=self.centralwidget)
@@ -94,7 +84,7 @@ class Ui_tab1_frame(object):
         self.left_layout.setObjectName("left_layout")
 
         # ========== 左侧上部：模块检测状态 ==========
-        self.module_detection_group = QtWidgets.QGroupBox("模块检测状态")
+        self.module_detection_group = QtWidgets.QGroupBox("气路检测")
         self.module_detection_group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
