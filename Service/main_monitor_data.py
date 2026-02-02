@@ -1141,11 +1141,17 @@ def main(q,send_message_q):
     global_setting.set_setting("messages_sent_epoch_for_running",0)
     #每轮运行开始的时间 在气路启动后和一轮结束后会重新赋值
     global_setting.set_setting("start_time_messages_sent_epoch_for_running",time.time())
-    global read_queue_data_thread
+    global read_queue_data_thread,send_thread
 
     read_queue_data_thread.queue = send_message_q
 
     read_queue_data_thread.start()
+
+    # 发送报文线程
+    send_thread = Send_thread(name="monitor_data_send_message")
+    send_thread.start()
+    read_queue_data_thread.send_thread = send_thread
+
     # return store_thread,send_thread,read_queue_data_thread,add_message_thread,ufc_ugc_zos,ufc_ugc_zos_thread
     # 系统退出
     return app.exec()
@@ -1158,7 +1164,8 @@ def start():
     global_setting.set_setting("cage_number_list_index", None)
     # 通道
     experiment_settings = global_setting.get_setting("experiment_setting", None)
-    gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+    gids = [group.id for group in experiment_settings.groups if
+            group.is_selected == 1] if experiment_settings is not None else []
     # UFC_UGC_ZOS
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
     ufc_ugc_zos_thread = None
@@ -1176,10 +1183,7 @@ def start():
     store_thread = Store_Thread(name="monitor_data_store_message")
     store_thread.start()
 
-    # 发送报文线程
-    send_thread = Send_thread(name="monitor_data_send_message")
-    send_thread.start()
-    read_queue_data_thread.send_thread = send_thread
+
 
     global port_use
     add_message_thread = Add_message_thread("monitor_data_add_message", send_thread, port_use)
