@@ -31,7 +31,7 @@ class Main_load_metadata_file_widget(BaseInterfaceWidget):
 
     def get_type(self):
         """获得类型 """
-        return BaseInterfaceType.WINDOW
+        return BaseInterfaceType.WIDGET
 
     def create_middle_window(self) -> BaseWindow:
         tab_window = Monitor_data_new_index()
@@ -74,7 +74,7 @@ class Main_User_monitor_Module(BaseModule):
         return "用户界面"
     def get_menu_name(self):
         """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""
-        return {"id":1,"text":"实验"}
+        return {"id":2,"text":"实验检测"}
         pass
 
     def create_service(self) -> BaseService:

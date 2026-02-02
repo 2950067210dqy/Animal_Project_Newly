@@ -8,6 +8,7 @@ from typing import Optional, Tuple, List, Union
 from contextlib import contextmanager
 from loguru import logger
 from public.config_class.global_setting import global_setting
+from public.entity.enum.Public_Enum import ModBusResponseCode
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser, get_module_name
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
@@ -308,7 +309,10 @@ class ModbusRTUMasterNew:
             'mouse_cage_number': slave_id_int // 16 if slave_id_int > 16 else 0,
             'data': [],
             'slave_id': slave_id,
-            'function_code': function_code
+            'function_code': function_code,
+            'response_state':False,
+            "response_code":ModBusResponseCode.ERROR,
+            'response_msg':""
         }
 
     def send_command(self, slave_id: Union[str, int], function_code: Union[str, int],
@@ -347,6 +351,9 @@ class ModbusRTUMasterNew:
             error_msg = f"{self.sport}-操作超时: {e}"
             logger.error(error_msg)
             return_data['data'].append({'desc': '备注', 'value': error_msg})
+            return_data['response_msg']=error_msg
+            return_data['response_code'] =ModBusResponseCode.OPERATOR_TIMEOUT
+            return_data['response_state'] = False
             return None, None, False, return_data
         except Exception as e:
             error_msg = f"串口通信异常: {e}"
@@ -388,6 +395,9 @@ class ModbusRTUMasterNew:
             error_msg = f"发送接收异常: {e}"
             logger.error(f"{self.sport}-{error_msg}")
             return_data['data'].append({'desc': '备注', 'value': error_msg})
+            return_data['response_msg'] = error_msg
+            return_data['response_code'] = ModBusResponseCode.SEND_RECEIVE_EXCEPTION
+            return_data['response_state'] = False
             return None, None, False, return_data
 
     def _validate_response(self, response_bytes: bytes, slave_id: Union[str, int],
@@ -402,12 +412,18 @@ class ModbusRTUMasterNew:
         if not response:
             error_msg = f"请求报文{send_frame.hex()}-Time OUT1-未获取到响应数据"
             self._log_error(error_msg, return_data)
+            return_data['response_msg'] = error_msg
+            return_data['response_code'] = ModBusResponseCode.VALIDATE_RESP_TIMEOUT1
+            return_data['response_state'] = False
             return None, None, False, return_data
 
         # 数据长度检查
         if len(response) < 5:
             error_msg = f"请求报文{send_frame.hex()}-响应报文{response.hex()}-Time OUT2-返回数据位数错误"
             self._log_error(error_msg, return_data)
+            return_data['response_msg'] = error_msg
+            return_data['response_code'] = ModBusResponseCode.VALIDATE_RESP_TIMEOUT2
+            return_data['response_state'] = False
             return response, response.hex(), False, return_data
 
         # CRC校验
@@ -418,6 +434,9 @@ class ModbusRTUMasterNew:
         if crc_received != crc_expected:
             error_msg = f"请求报文{send_frame.hex()}-响应报文{response.hex()}-Time OUT3-数据错误，CRC验证失败"
             self._log_error(error_msg, return_data)
+            return_data['response_msg'] = error_msg
+            return_data['response_code'] = ModBusResponseCode.VALIDATE_RESP_TIMEOUT3
+            return_data['response_state'] = False
             return response, response.hex(), False, return_data
 
         # 检查异常响应
@@ -426,13 +445,18 @@ class ModbusRTUMasterNew:
             exception_code = response[2]
             error_msg = f"请求报文{send_frame.hex()}-响应报文{response.hex()}-异常：功能码=0x{function_code_response:02X}, 异常码=0x{exception_code:02X}"
             self._log_error(error_msg, return_data)
+            return_data['response_msg'] = error_msg
+            return_data['response_code'] = ModBusResponseCode.VALIDATE_RESP_FUNC_CODE_EXCEPTION
+            return_data['response_state'] = False
             return response, response.hex(), False, return_data
 
         # 响应正常
         success_msg = f"请求报文{send_frame.hex()}-响应报文{response.hex()}-CRC校验通过，正常响应"
         self._send_status_message(success_msg)
         logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-{success_msg}")
-
+        return_data['response_msg'] = success_msg
+        return_data['response_code'] = ModBusResponseCode.SUCCESS
+        return_data['response_state'] = True
         # 解析响应
         if is_parse_response:
             self.parse_response(response, response.hex(), True, slave_id, function_code)

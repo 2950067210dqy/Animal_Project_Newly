@@ -33,7 +33,6 @@ from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.number_util import number_util
-from public.util.string_util import String_util
 from public.util.time_util import time_util
 
 # 全局变量
@@ -47,7 +46,7 @@ wait_UFC_UGC_ZOS_start_event = threading.Event()
 global_setting.set_setting("wait_UFC_UGC_ZOS_start_event",wait_UFC_UGC_ZOS_start_event)
 # 通道
 experiment_settings = global_setting.get_setting("experiment_setting",None)
-gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+gids = [group.id for group in experiment_settings.groups if group.is_selected == 1] if experiment_settings is not None else []
 #气路之间也需要顺序run ufc run->ugc run->zos run
 wait_UFC_run_finish_event = threading.Event()
 wait_UGC_run_finish_event = threading.Event()
@@ -81,7 +80,7 @@ class read_queue_data_Thread(MyQThread):
             except Exception as e:
                 logger.error(f"{self.name}发生错误{e}")
                 return
-            # logger.error(f"{self.name}_get_message:{message}|")
+            logger.error(f"{self.name}_get_message:{message}|")
             if message is not None and message.is_Empty():
                 return
             if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'main_monitor_data':
@@ -93,7 +92,7 @@ class read_queue_data_Thread(MyQThread):
                             self.send_thread.add_message(message=message.data, urgent=True, origin=message.origin)
                             pass
                     case 'set_port':
-                        global port_use
+                        global port_use,send_thread
                         port_use=message.data
                         global_setting.set_setting("port", port_use)
                         modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
@@ -106,12 +105,8 @@ class read_queue_data_Thread(MyQThread):
                             modbus = ModbusRTUMasterNew(port_use, baudrate=115200, timeout=float(
                                 global_setting.get_setting('monitor_data')['Serial']['timeout']), )
                             global_setting.set_setting("modbus", modbus)
-                    case 'set_experiment_basic_config':
-                        data:dict = message.data
-                        if data is not None and isinstance(data, dict):
-                            for key,value in data.items():
-                                # logger.critical(f"{self.name}<UNK>{key}<UNK>{value}")
-                                global_setting.set_setting(key, value)
+                        if send_thread is not None:
+                            send_thread.set_modbus(modbus)
                     case 'start':
                         data = message.data
                         if data is not None:
@@ -149,23 +144,23 @@ class read_queue_data_Thread(MyQThread):
                         data = message.data
                         if data is not None:
                             # 将实验设置存入全局变量
+
                             global_setting.set_setting("experiment_setting", data.get("experiment_setting", None))
                             global_setting.set_setting("experiment_setting_file",
                                                        data.get("experiment_setting_file", ""))
-
-                            # 将鼠笼号存进全局变量来使用
+                            global experiment_settings,gids
                             experiment_settings = global_setting.get_setting("experiment_setting", None)
-
                             gids = [group.id for group in
                                     experiment_settings.groups] if experiment_settings is not None else []
-                            global_setting.set_setting("mouse_cages", gids)
-                            global_setting.set_setting("mouse_cages_2byte_str",
-                                                       String_util.array_to_binary_string(gids))
-
                         pass
                     case 'stop_modbus':
                         logger.critical(f"{self.name},stop_modbus")
                         stop_modbus()
+                    case "start_all_modules_detection":
+                        """
+                        开始检测所有模块是否在线
+                        """
+                        all_modules_check_online_state()
                     case _:
                         pass
 
@@ -180,6 +175,160 @@ class read_queue_data_Thread(MyQThread):
 
 
 read_queue_data_thread = read_queue_data_Thread(name="main_monitor_data_read_queue_data_thread")
+
+
+def  all_modules_check_online_state():
+    port = global_setting.get_setting("port")
+    global gids,send_thread
+    experiment_settings = global_setting.get_setting("experiment_setting", None)
+    gids = [group.id for group in experiment_settings.groups if
+            group.is_selected == 1] if experiment_settings is not None else []
+    mouse_cage_index =None
+    for i in range(len(gids)+1):
+        # 鼠笼内的模块 参考气路则不运行：
+        if mouse_cage_index is not None:
+            all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index)
+        #气路
+        all_modules_check_online_state_Not_Each_Mouse_Cage(port,mouse_cage_index)
+        # print(f"send_messages:{send_messages}")
+        # 将鼠笼下标循环前移动
+        if mouse_cage_index is not None:
+            if mouse_cage_index == len(gids) - 1:
+                # 最后一个鼠笼 则下一个为参考气路
+                mouse_cage_index = None
+            else:
+                mouse_cage_index = mouse_cage_index + 1
+            pass
+        else:
+            # 当前为参考气 则下一个为第一个鼠笼
+            mouse_cage_index = 0
+            pass
+    pass
+def all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index):
+    # 每个笼子里的传感器的send_messages
+
+    send_messages = []
+    for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Module_Info.value:
+        """debugger专用 需要哪个模块的数据监控就放进去"""
+        # 所有消息
+        for message_struct in data_type.value['send_messages']:
+
+            message_temp = copy.deepcopy(message_struct.message)
+            message_temp['port'] = port
+
+            # logger.critical(f"add_message_thread_mouse_cage_index:{self.mouse_cage_index}")
+
+            mouse_cage = gids[mouse_cage_index] if gids else 1
+            message_temp['slave_id'] = copy.copy(
+                format(int(message_temp['slave_id'], 16) + 16 * mouse_cage, '02X'))
+            send_messages.append({'message': message_temp})
+
+
+        pass
+    for msg in send_messages:
+        send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
+    if mouse_cage_index is not None:
+        mouse_cage = gids[mouse_cage_index] if gids else 1
+    else:
+        mouse_cage = None
+    logo_text = f"{time_util.get_format_from_time(time.time())} | 设备在线检测 鼠笼内模块 | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
+    logger.info(logo_text)
+    pass
+
+def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
+    """
+    检测气路模块的在线状态
+    """
+    send_messages = []
+
+    # ==================== 获取鼠笼号 ====================
+    if mouse_cage_index is not None:
+        mouse_cage = gids[mouse_cage_index] if gids else 1
+    else:
+        mouse_cage = None
+
+    # ==================== 处理每个气路模块 ====================
+    for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Module_Info.value:
+        """
+        检测气路模块：UFC、UGC、ZOS
+        """
+        # 判断模块类型
+        is_ufc_module = (data_type.name == 'UFC')
+        is_zos_module = (data_type.name == 'ZOS')
+        is_ugc_module = (data_type.name == 'UGC')
+
+        # ——— 对于 ZOS/UGC，需要先发送切换报文 ———
+        if (is_zos_module or is_ugc_module) and mouse_cage is not None:
+            # 第一步：切换到ZOS采样阀气路
+            switch_zos_valve_message = {
+                'port': port,
+                'slave_id': '02',  # 切换指令发给主控模块
+                'function_code': '05',
+                'address': '0009',  # ZOS采样阀气路地址
+                'data': '00FF',  # 闭合
+                'module_type': 'air_path_switch',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': mouse_cage,  # 实际鼠笼号
+                'switch_step': '1_zos_valve'
+            }
+            send_messages.append({'message': switch_zos_valve_message})
+            # print(f'******当前鼠笼号{mouse_cage}')
+            # logger.debug(f"[{data_type.name}] 步骤1: 切换到ZOS采样阀气路")
+
+            # 第二步：切换到目标鼠笼
+            # 鼠笼地址 = 鼠笼号 - 1 (鼠笼1对应地址0x0000，鼠笼2对应0x0001...)
+            cage_address = format(mouse_cage - 1, '04X')
+
+            switch_cage_message = {
+                'port': port,
+                'slave_id': '02',  # 切换指令发给主控模块
+                'function_code': '05',
+                'address': cage_address,  # 根据鼠笼号动态计算地址
+                'data': '00FF',  # 闭合
+                'module_type': 'air_path_switch',
+                'cage_index': mouse_cage_index,
+                'mouse_cage_number': mouse_cage,  # 实际鼠笼号（1-8）
+                'switch_step': '2_target_cage'
+            }
+            send_messages.append({'message': switch_cage_message})
+            # logger.debug(
+            #     f"[{data_type.name}] 步骤2: 切换到鼠笼{mouse_cage} "
+            #     f"(索引={mouse_cage_index}, 地址=0x{cage_address})"
+            # )
+
+        # ——— 发送查询报文 ———
+        for message_struct in data_type.value['send_messages']:
+            message_temp = copy.deepcopy(message_struct.message)
+            message_temp['port'] = port
+
+            # 标记模块信息
+            message_temp['module_type'] = 'air_path'
+            message_temp['cage_index'] = mouse_cage_index
+            message_temp['mouse_cage_number'] = mouse_cage
+            message_temp['is_ufc'] = is_ufc_module
+
+            send_messages.append({'message': message_temp})
+
+    # ==================== 发送报文 ====================
+    for msg in send_messages:
+        send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
+
+    # ==================== 日志 ====================
+    if mouse_cage is not None:
+        cage_label = f"鼠笼 {mouse_cage}"
+        note = "(已发送切换报文)" if (is_zos_module or is_ugc_module) else ""
+    else:
+        cage_label = "参考气路"
+        note = ""
+
+    valid_messages = [msg for msg in send_messages if msg.get('type') is None]
+    logo_text = (
+        f"{time_util.get_format_from_time(time.time())} | "
+        f"设备在线检测 气路模块 | {cage_label} | "
+        f"发送报文: {len(valid_messages)} 条 {note}"
+    )
+    logger.info(logo_text)
+    pass
 
 """
 数据存储区域 start
@@ -254,29 +403,6 @@ class Store_Thread(MyQThread):
             logger.error(f"{self.name}存储错误：{e}")
 
         return success, error
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     def _send_storage_result(self, data_item, success, error):
         """发送存储结果到对应的结果队列"""
@@ -368,7 +494,7 @@ class Send_thread(MyQThread):
                 try:
                     with self.priority_queue_lock:
                         message = self.priority_queue.get_nowait()
-                    send_message = message['message']
+                    send_message = message['message']['message']
 
                     logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
                     response, response_hex, send_state, return_data= self.modbus.send_command(
@@ -379,7 +505,7 @@ class Send_thread(MyQThread):
                         is_parse_response=False
                     )
                     # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
-
+                    parser_message=""
                     if send_state:
                         return_data, parser_message = self.modbus.parse_response(response=response,
                                                                                  response_hex=response.hex(),
@@ -397,14 +523,45 @@ class Send_thread(MyQThread):
                                 if desc and desc == "大气压测量值(KPa)":
                                     global_setting.set_setting("air_pressure_1104", float(data.get("value")))
                                     break
-                        # 把返回数据返回给源头
-                        message_struct = ObjectQueueItem(to=message['origin'],
-                                                         data=parser_message,
-                                                         origin='main_monitor_data')
 
+
+                    # 把返回数据返回给源头
+                    message_struct = None
+                    if message['origin'] == "New_main_experiment_setting":
+                        # ==================== 判断是否为气路模块 ====================
+                        is_air_path_module = return_data.get('module_name') in ['UFC', 'UGC', 'ZOS']
+
+                        if is_air_path_module:
+                            # 气路模块响应
+                            message_struct = ObjectQueueItem(
+                                to=message['origin'],
+                                data=return_data,
+                                title="Not_Each_Mouse_Cage_detect_finished",  # 气路模块标题
+                                origin='main_monitor_data'
+                            )
+                            logger.debug(f"气路模块 {return_data.get('module_name')} 检测完成")
+                        else:
+                            # 鼠笼内模块响应
+                            message_struct = ObjectQueueItem(
+                                to=message['origin'],
+                                data=return_data,
+                                title="Each_Mouse_Cage_detect_finished",  # 鼠笼内模块标题
+                                origin='main_monitor_data'
+                            )
+                            logger.debug(f"鼠笼内模块 {return_data.get('module_name')} 检测完成")
+
+                    elif send_state:
+                        message_struct = ObjectQueueItem(
+                            to=message['origin'],
+                            data=parser_message,
+                            origin='main_monitor_data'
+                        )
+
+                    if message_struct is not None:
                         global_setting.get_setting("send_message_queue").put(message_struct)
                         logger.debug(f"main_monitor_data将响应报文的解析数据返回源头：{message_struct}")
-                        pass
+
+
                 except queue.Empty:
                     self.priority_queue_empty=True
                     pass
@@ -520,31 +677,6 @@ class Send_thread(MyQThread):
             time.sleep(float(global_setting.get_setting('monitor_data')['SEND']['delay']))
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class Add_message_thread(MyQThread):
     def __init__(self,name,send_thread, port):
         super().__init__(name=name)
@@ -642,6 +774,14 @@ class Add_message_thread(MyQThread):
             batch_complete_event.wait()
 
             logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
+
+
+
+
+
+
+
+
 
 def copy_experiment_setting_file():
     #将实验配置存储到该实验的文件夹中去
@@ -742,10 +882,6 @@ def barrier_action():
     store_Datas.append({'desc': 'ZOS压力span数值',
                         'value': results.get('SpanCalibration_data__zos_pressure_calibration_span_value') if results.get(
                             'SpanCalibration_data__zos_pressure_calibration_span_value') is not None else None})
-    store_Datas.append({'desc': '二氧化碳浓传感器span数值',
-                        'value': results.get(
-                            'SpanCalibration_data__carbon_calibration_span_value') if results.get(
-                            'SpanCalibration_data__carbon_calibration_span_value') is not None else None})
     store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') if results.get(
                             f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') is not None else None   })
     store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
@@ -937,11 +1073,17 @@ def main(q,send_message_q):
     global_setting.set_setting("messages_sent_epoch_for_running",0)
     #每轮运行开始的时间 在气路启动后和一轮结束后会重新赋值
     global_setting.set_setting("start_time_messages_sent_epoch_for_running",time.time())
-    global read_queue_data_thread
+    global read_queue_data_thread,send_thread
 
     read_queue_data_thread.queue = send_message_q
 
     read_queue_data_thread.start()
+
+    # 发送报文线程
+    send_thread = Send_thread(name="monitor_data_send_message")
+    send_thread.start()
+    read_queue_data_thread.send_thread = send_thread
+
     # return store_thread,send_thread,read_queue_data_thread,add_message_thread,ufc_ugc_zos,ufc_ugc_zos_thread
     # 系统退出
     return app.exec()
@@ -954,7 +1096,8 @@ def start():
     global_setting.set_setting("cage_number_list_index", None)
     # 通道
     experiment_settings = global_setting.get_setting("experiment_setting", None)
-    gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+    gids = [group.id for group in experiment_settings.groups if
+            group.is_selected == 1] if experiment_settings is not None else []
     # UFC_UGC_ZOS
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
     ufc_ugc_zos_thread = None
@@ -972,10 +1115,7 @@ def start():
     store_thread = Store_Thread(name="monitor_data_store_message")
     store_thread.start()
 
-    # 发送报文线程
-    send_thread = Send_thread(name="monitor_data_send_message")
-    send_thread.start()
-    read_queue_data_thread.send_thread = send_thread
+
 
     global port_use
     add_message_thread = Add_message_thread("monitor_data_add_message", send_thread, port_use)

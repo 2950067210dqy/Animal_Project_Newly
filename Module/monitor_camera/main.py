@@ -34,7 +34,7 @@ class Main_Monitor_camera_widget(BaseInterfaceWidget):
 
     def get_type(self):
         """获得类型 """
-        return BaseInterfaceType.WINDOW
+        return BaseInterfaceType.WIDGET
 
     def create_middle_window(self) -> BaseWindow:
         tab_window = Tab_4()
@@ -78,7 +78,7 @@ class Main_Monitor_camera_Module(BaseModule):
         return "相机监控（旧版本）"
     def get_menu_name(self):
         """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""
-        return {"id":1,"text":"实验"}
+        return {"id":2,"text":"实验检测"}
         pass
 
     def create_service(self) -> BaseService:

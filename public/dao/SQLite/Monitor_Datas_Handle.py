@@ -937,3 +937,108 @@ class Monitor_Datas_Handle():
     @end
     """
 
+    """
+    @author wangjie
+    @create_time 2026-1-5
+    @start
+    """
+
+    def get_all_cage_ids(self, table_prefix='DetectionResults_data_cage') -> List[int]:
+        """
+        获取指定类型表的笼子编号
+        :param table_prefix: 表前缀，如 'DetectionResults_data_cage', 'MouseInfrared_data_cage' 等
+        """
+        try:
+            with self.execute_transaction(auto_commit=True) as cursor:
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    f"AND name LIKE '{table_prefix}_%' "
+                    "AND name NOT LIKE '%_meta'"
+                )
+                tables = cursor.fetchall()
+
+                cage_ids = []
+                for table_tuple in tables:
+                    table_name = table_tuple[0]
+                    cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+                    count = cursor.fetchone()[0]
+
+                    if count > 0:
+                        import re
+                        match = re.search(r'cage_(\d+)$', table_name)
+                        if match:
+                            cage_id = int(match.group(1))
+                            cage_ids.append(cage_id)
+                            logger.info(f"笼子 {cage_id} 在表 {table_name} 有 {count} 条数据")
+
+                cage_ids = sorted(set(cage_ids))
+                return cage_ids
+
+        except Exception as e:
+            logger.error(f"获取笼子ID失败: {e}")
+            return []
+
+    def get_trajectory_data_by_cage(self, cage_id: int) -> List[Dict[str, Any]]:
+        """
+        获取指定笼子的轨迹数据 (center_x, center_y, center_z)
+        从 DetectionResults_data_cage_* 表中查询
+
+        Args:
+            cage_id: 笼子编号
+
+        Returns:
+            轨迹数据列表，每个元素包含:
+            {
+                'center_x': float,   # X坐标 (水平)
+                'center_y': float,   # Y坐标 (高度)
+                'center_z': float,   # Z坐标 (深度)
+            }
+        """
+        try:
+            # 调用 SQLiteManager 的方法获取轨迹数据
+            trajectory_data = self.sqlite_manager.get_trajectory_data_by_cage(cage_id=cage_id)
+
+            logger.info(f"笼子 {cage_id} 查询到 {len(trajectory_data)} 个轨迹点")
+            return trajectory_data
+
+        except Exception as e:
+            logger.error(f"查询笼子 {cage_id} 的轨迹数据失败: {e}")
+            return []
+
+    def get_cage_data_count(self, cage_id: int) -> int:
+        """
+        获取指定笼子的数据点数量
+
+        Args:
+            cage_id: 笼子编号
+
+        Returns:
+            数据点数量
+        """
+        try:
+            table_name = f"DetectionResults_data_cage_{cage_id}"
+
+            # 检查表是否存在
+            if not self.sqlite_manager.is_exist_table(table_name):
+                logger.warning(f"表 {table_name} 不存在")
+                return 0
+
+            with self.sqlite_manager.execute_transaction(auto_commit=True) as cursor:
+                cursor.execute(
+                    f'SELECT COUNT(*) FROM "{table_name}" '
+                    f'WHERE center_x IS NOT NULL AND center_y IS NOT NULL AND center_z IS NOT NULL'
+                )
+                result = cursor.fetchone()
+                count = result[0] if result else 0
+                logger.debug(f"笼子 {cage_id} 有效数据点数量: {count}")
+                return count
+
+        except Exception as e:
+            logger.error(f"获取笼子 {cage_id} 数据数量失败: {e}")
+            return 0
+
+    """
+    @author wangjie
+    @create_time 2026-1-5
+    @end
+    """
