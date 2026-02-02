@@ -34,6 +34,7 @@ from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.number_util import number_util
+from public.util.string_util import String_util
 from public.util.time_util import time_util
 
 # 全局变量
@@ -81,7 +82,7 @@ class read_queue_data_Thread(MyQThread):
             except Exception as e:
                 logger.error(f"{self.name}发生错误{e}")
                 return
-            logger.error(f"{self.name}_get_message:{message}|")
+            # logger.error(f"{self.name}_get_message:{message}|")
             if message is not None and message.is_Empty():
                 return
             if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'main_monitor_data':
@@ -108,6 +109,12 @@ class read_queue_data_Thread(MyQThread):
                             global_setting.set_setting("modbus", modbus)
                         if send_thread is not None:
                             send_thread.set_modbus(modbus)
+                    case 'set_experiment_basic_config':
+                        data: dict = message.data
+                        if data is not None and isinstance(data, dict):
+                            for key, value in data.items():
+                                # logger.critical(f"{self.name}<UNK>{key}<UNK>{value}")
+                                global_setting.set_setting(key, value)
                     case 'start':
                         data = message.data
                         if data is not None:
@@ -145,14 +152,19 @@ class read_queue_data_Thread(MyQThread):
                         data = message.data
                         if data is not None:
                             # 将实验设置存入全局变量
-
                             global_setting.set_setting("experiment_setting", data.get("experiment_setting", None))
                             global_setting.set_setting("experiment_setting_file",
                                                        data.get("experiment_setting_file", ""))
-                            global experiment_settings,gids
+
+                            # 将鼠笼号存进全局变量来使用
                             experiment_settings = global_setting.get_setting("experiment_setting", None)
+
                             gids = [group.id for group in
                                     experiment_settings.groups] if experiment_settings is not None else []
+                            global_setting.set_setting("mouse_cages", gids)
+                            global_setting.set_setting("mouse_cages_2byte_str",
+                                                       String_util.array_to_binary_string(gids))
+
                         pass
                     case 'stop_modbus':
                         logger.critical(f"{self.name},stop_modbus")
@@ -934,6 +946,10 @@ def barrier_action():
     store_Datas.append({'desc': 'ZOS压力span数值',
                         'value': results.get('SpanCalibration_data__zos_pressure_calibration_span_value') if results.get(
                             'SpanCalibration_data__zos_pressure_calibration_span_value') is not None else None})
+    store_Datas.append({'desc': '二氧化碳浓传感器span数值',
+                        'value': results.get(
+                            'SpanCalibration_data__carbon_calibration_span_value') if results.get(
+                            'SpanCalibration_data__carbon_calibration_span_value') is not None else None})
     store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') if results.get(
                             f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') is not None else None   })
     store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
@@ -1125,17 +1141,11 @@ def main(q,send_message_q):
     global_setting.set_setting("messages_sent_epoch_for_running",0)
     #每轮运行开始的时间 在气路启动后和一轮结束后会重新赋值
     global_setting.set_setting("start_time_messages_sent_epoch_for_running",time.time())
-    global read_queue_data_thread,send_thread
+    global read_queue_data_thread
 
     read_queue_data_thread.queue = send_message_q
 
     read_queue_data_thread.start()
-
-    # 发送报文线程
-    send_thread = Send_thread(name="monitor_data_send_message")
-    send_thread.start()
-    read_queue_data_thread.send_thread = send_thread
-
     # return store_thread,send_thread,read_queue_data_thread,add_message_thread,ufc_ugc_zos,ufc_ugc_zos_thread
     # 系统退出
     return app.exec()
@@ -1148,8 +1158,7 @@ def start():
     global_setting.set_setting("cage_number_list_index", None)
     # 通道
     experiment_settings = global_setting.get_setting("experiment_setting", None)
-    gids = [group.id for group in experiment_settings.groups if
-            group.is_selected == 1] if experiment_settings is not None else []
+    gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
     # UFC_UGC_ZOS
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
     ufc_ugc_zos_thread = None
@@ -1167,7 +1176,10 @@ def start():
     store_thread = Store_Thread(name="monitor_data_store_message")
     store_thread.start()
 
-
+    # 发送报文线程
+    send_thread = Send_thread(name="monitor_data_send_message")
+    send_thread.start()
+    read_queue_data_thread.send_thread = send_thread
 
     global port_use
     add_message_thread = Add_message_thread("monitor_data_add_message", send_thread, port_use)
