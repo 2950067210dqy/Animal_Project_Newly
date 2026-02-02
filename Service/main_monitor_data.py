@@ -703,7 +703,7 @@ class Send_thread(MyQThread):
             except Exception as e:
                 logger.error(f"{e}")
             finally:
-                if self.normal_queue_empty:
+                if self.normal_queue_empty or MESSAGE_BATCH_SIZE ==0:
                     continue
                 if send_message is not None:
                     logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束")
