@@ -1,3 +1,4 @@
+# Module/new_experiment_setting/ui/tab1_frame.py
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 
@@ -49,7 +50,7 @@ class Ui_tab1_frame(object):
         self.tab_1_confirm_port_btn.setObjectName("tab_1_confirm_port_btn")
         self.top_layout.addWidget(self.tab_1_confirm_port_btn)
 
-        # 确定设备配置按钮（移到这里）
+        # 确定设备配置按钮
         self.start_btn = QtWidgets.QPushButton(parent=self.centralwidget)
         self.start_btn.setMinimumSize(QtCore.QSize(120, 35))
         self.start_btn.setText("确定设备配置")
@@ -66,11 +67,12 @@ class Ui_tab1_frame(object):
 
         self.main_layout.addLayout(self.top_layout, 0)
 
-        # ========== 中间内容区域（分左右两栏） ==========
+
+        # ========== 中间内容区域（左右两栏） ==========
         self.content_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal, parent=self.centralwidget)
         self.content_splitter.setObjectName("content_splitter")
 
-        # 左侧：鼠笼列表区域
+        # ========== 左侧：上下两部分 ==========
         self.left_widget = QtWidgets.QWidget()
         self.left_widget.setObjectName("left_widget")
         self.left_widget.setMinimumWidth(300)
@@ -81,8 +83,39 @@ class Ui_tab1_frame(object):
         self.left_layout.setSpacing(8)
         self.left_layout.setObjectName("left_layout")
 
+        # ========== 左侧上部：模块检测状态 ==========
+        self.module_detection_group = QtWidgets.QGroupBox("气路检测")
+        self.module_detection_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px 0 3px;
+            }
+        """)
+        self.module_detection_group.setFixedHeight(150)  # 固定高度
+        self.module_detection_layout = QtWidgets.QVBoxLayout(self.module_detection_group)
+        self.module_detection_layout.setContentsMargins(10, 10, 10, 10)
+        self.module_detection_layout.setSpacing(8)
+        self.module_detection_layout.setObjectName("module_detection_layout")
+
+        self.left_layout.addWidget(self.module_detection_group, 0)  # 不拉伸
+
+        # ========== 左侧下部：鼠笼列表（无边框） ==========
+        self.cage_list_container = QtWidgets.QWidget()
+        self.cage_list_container.setObjectName("cage_list_container")
+        cage_list_container_layout = QtWidgets.QVBoxLayout(self.cage_list_container)
+        cage_list_container_layout.setContentsMargins(0, 0, 0, 0)
+        cage_list_container_layout.setSpacing(5)
+
         # 鼠笼列表
-        self.cage_list_widget = QtWidgets.QListWidget(parent=self.left_widget)
+        self.cage_list_widget = QtWidgets.QListWidget()
         self.cage_list_widget.setObjectName("cage_list_widget")
         self.cage_list_widget.setStyleSheet("""
             QListWidget {
@@ -109,16 +142,17 @@ class Ui_tab1_frame(object):
                 color: #999;
             }
         """)
-        self.left_layout.addWidget(self.cage_list_widget)
+        cage_list_container_layout.addWidget(self.cage_list_widget)
+        self.left_layout.addWidget(self.cage_list_container, 1)
 
         self.content_splitter.addWidget(self.left_widget)
 
-        # 右侧：配置区域
+        # ========== 右侧：配置区域 ==========
         self.right_widget = QtWidgets.QWidget()
         self.right_widget.setObjectName("right_widget")
 
         self.right_layout = QtWidgets.QVBoxLayout(self.right_widget)
-        self.right_layout.setContentsMargins(10, 10, 10, 10)
+        self.right_layout.setContentsMargins(10, 20, 10, 10)
         self.right_layout.setSpacing(8)
         self.right_layout.setObjectName("right_layout")
 
