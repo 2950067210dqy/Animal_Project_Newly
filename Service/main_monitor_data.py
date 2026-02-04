@@ -254,6 +254,12 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
     检测气路模块的在线状态
     """
     send_messages = []
+    # ==================== 获取鼠笼号 ====================
+    if mouse_cage_index is not None:
+        mouse_cage = gids[mouse_cage_index] if gids else 1
+        cage_label = f"鼠笼{mouse_cage}"
+    else:
+        cage_label = "参考气路"
 
     # ==================== 只做状态查询 ====================
     # 查询从站 02 (UFC)
@@ -324,11 +330,14 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
             origin="New_main_experiment_setting"
         )
 
-    # ==================== 日志记录 ====================
+    # ==================== 日志记录（只记录状态查询）====================
+    # 只统计状态查询的消息数量，不记录气路切换操作
+    status_count = sum(1 for msg in send_messages if msg.message.get('module_type') == 'status_read')
+
+    # 使用 debug 级别记录日志，只显示状态查询
     logger.debug(
-        f"气路模块状态检测 | "
-        f"发送{len(send_messages)}条状态查询报文 | "
-        f"模块: UFC, UGC, ZOS"
+        f"气路模块状态检测 | {cage_label} | "
+        f"发送{status_count}条状态查询报文"
     )
 
 
