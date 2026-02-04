@@ -256,8 +256,8 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
     send_messages = []
     # ==================== 获取鼠笼号 ====================
     if mouse_cage_index is not None:
-        mouse_cage = gids[mouse_cage_index] if gids else 1
-        cage_label = f"鼠笼{mouse_cage}"
+        logger.debug(f"笼子 {mouse_cage_index} 跳过气路检测，仅参考气路需要检测")
+        return
     else:
         cage_label = "参考气路"
 
