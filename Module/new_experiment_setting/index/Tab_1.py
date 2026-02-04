@@ -79,7 +79,7 @@ class Tab_1(ThemedWindow):
     update_group_activation_signal = pyqtSignal(dict)
     Each_Mouse_Cage_detect_finished_signal = pyqtSignal(dict)
     Not_Each_Mouse_Cage_detect_finished_signal = pyqtSignal(dict)
-
+    air_module_ui_update_signal = pyqtSignal(str,bool)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
 
@@ -286,8 +286,20 @@ class Tab_1(ThemedWindow):
         """初始化功能"""
         self.init_btn_func()
 
-        self.Each_Mouse_Cage_detect_finished_signal.connect(self.each_Mouse_Cage_detect_update_state)
-        self.Not_Each_Mouse_Cage_detect_finished_signal.connect(self.not_each_Mouse_Cage_detect_update_state)
+        self.Each_Mouse_Cage_detect_finished_signal.connect(
+            self.each_Mouse_Cage_detect_update_state,
+            Qt.ConnectionType.QueuedConnection  # ✨ 使用队列连接确保主线程
+        )
+        self.Not_Each_Mouse_Cage_detect_finished_signal.connect(
+            self.not_each_Mouse_Cage_detect_update_state,
+            Qt.ConnectionType.QueuedConnection  # ✨ 使用队列连接确保主线程
+        )
+
+        # ✨ 新增：UI更新信号连接
+        self.air_module_ui_update_signal.connect(
+            self._update_air_module_status_ui,
+            Qt.ConnectionType.QueuedConnection
+        )
 
         global read_queue_data_thread
 
@@ -1059,11 +1071,21 @@ class Tab_1(ThemedWindow):
             self.air_detection_complete = False
             self.air_detection_complete_event.clear()
 
-        # ==================== 重置气路模块显示为检测中 ====================
+        # ==================== 重置气路模块显示为检测中（新增：设置样式） ====================
         for module_key in self.module_status_labels:
             status_label = self.module_status_labels[module_key]
             status_label.setText("检测中...")
-
+            # ✨ 关键：设置待检测的灰色样式
+            status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 11px;
+                    color: #999;
+                    padding: 5px 8px;
+                    background-color: #f5f5f5;
+                    border-radius: 3px;
+                }
+            """)
+            status_label.repaint()  # 立即重绘
 
         # ==================== 初始化笼内检测状态 ====================
         self._completed_cages = set()
@@ -1081,13 +1103,12 @@ class Tab_1(ThemedWindow):
             }
         global_setting.set_setting("mouse_cage_detect_state_dict", mouse_cage_detect_dict)
 
-        # ==================== ✨ 改动：直接开始检测第一个笼子（包括气路） ====================
+        # ==================== 直接开始检测第一个笼子 ====================
         if self.detection_status_label:
             self.detection_status_label.setText("开始检测笼内模块和气路...")
 
         logger.info("✓ 准备开始检测第一个笼子的所有模块（包括气路）")
 
-        # 直接启动笼内检测（会包括气路检测）
         self.detection_in_progress = True
         self._detect_next_cage()
 
@@ -1113,76 +1134,53 @@ class Tab_1(ThemedWindow):
         self._detect_next_cage()
 
     def _detect_next_cage(self):
-        """检测下一个笼子"""
         try:
-            # 检查是否全部完成
+            # 1. 检查是否全部完成
             if self.current_detecting_index >= len(self.cage_list_to_detect):
                 self._cleanup_all_timers()
                 self.detection_in_progress = False
-
-                logger.critical(
-                    f"\n{'=' * 80}\n"
-                    f"所有笼子检测完成\n"
-                    f"  完成的笼子: {sorted(self._completed_cages)}\n"
-                    f"{'=' * 80}\n"
-                )
+                logger.critical("所有笼子检测队列已处理完毕")
 
                 if self.detection_status_label:
-                    self.detection_status_label.setText("✓ 检测完成！请选择笼子进行配置")
+                    self.detection_status_label.setText("✓ 检测流程结束")
 
+                # 激活配置按钮
                 if self.config_btn:
                     self.config_btn.setEnabled(True)
-
                 return
 
+            # 2. 获取当前要检测的笼子
             cage_number = self.cage_list_to_detect[self.current_detecting_index]
-            self.current_detecting_index += 1
 
-            current_position = self.current_detecting_index
-            total_cages = len(self.cage_list_to_detect)
+            # 3. 检查该笼子是否已经完成（防止重复触发）
+            if cage_number in self._completed_cages:
+                self.current_detecting_index += 1
+                self._detect_next_cage()
+                return
 
-            logger.critical(
-                f"\n{'─' * 80}\n"
-                f"开始检测笼子: {cage_number} ({current_position}/{total_cages})\n"
-                f"{'─' * 80}\n"
-            )
-
-            # 更新列表显示为检测中
+            logger.critical(f"开始检测笼子: {cage_number}")
             self._update_cage_detecting(cage_number)
 
-            if self.detection_status_label:
-                self.detection_status_label.setText(
-                    f"正在检测笼 {cage_number} 的所有模块 ({current_position}/{total_cages})..."
-                )
-
-            # ==================== 检测笼内模块 + 气路模块 ====================
             send_message_queue = global_setting.get_setting("send_message_queue", None)
             if send_message_queue:
-                # 1. 先检测笼子内的模块（ENM, EM, DWM, WM）
-                send_message_queue.put(
-                    ObjectQueueItem(
-                        origin="New_main_experiment_setting",
-                        to="main_monitor_data",
-                        title="start_all_modules_detection",
-                        data={'gids': [cage_number]},
-                        time=time_util.get_format_from_time(time.time())
-                    )
-                )
-                logger.info(f"✓ 已发送笼 {cage_number} 的模块检测命令")
+                # 发送笼子模块检测
+                send_message_queue.put(ObjectQueueItem(
+                    origin="New_main_experiment_setting",
+                    to="main_monitor_data",
+                    title="start_all_modules_detection",
+                    data={'gids': [cage_number]},
+                    time=time_util.get_format_from_time(time.time())
+                ))
 
-                # ✨ 只在第一个笼子检测气路模块（参考气路）
-                # 但要等待笼内模块检测完全完成后再发送！
-                if self.current_detecting_index == 1 and not self.air_detection_complete:
-                    logger.info(f"✓ 对笼 {cage_number} 进行参考气路检测（仅第一个笼子检测）")
-                    # 延迟发送气路检测，等待笼内模块检测开始处理
+                # 如果是第一个笼子，顺便触发气路检测
+                if self.current_detecting_index == 0 and not self.air_detection_complete:
                     QTimer.singleShot(500, lambda: self._send_air_module_detection(send_message_queue))
 
-            # 设置超时（15秒 - 增加时间以容纳气路检测）
+            # 4. 设置超时
             self._set_cage_detection_timeout(cage_number, timeout_seconds=15)
 
         except Exception as e:
-            logger.error(f"检测下一个笼子时出错: {e}", exc_info=True)
-            self.detection_in_progress = False
+            logger.error(f"检测流程异常: {e}")
 
     def _send_air_module_detection(self, send_message_queue):
         """发送气路模块检测请求"""
@@ -1355,42 +1353,35 @@ class Tab_1(ThemedWindow):
             logger.error(f"更新笼内模块状态时出错: {e}", exc_info=True)
 
     def _on_cage_complete(self, cage_number, cage_is_valid):
-        """笼子完成检测（所有4个模块已收到）"""
-        try:
-            logger.critical(
-                f"\n{'=' * 80}\n"
-                f"笼 {cage_number} 已完成检测\n"
-                f"检测结果: {'通过' if cage_is_valid else '失败'}\n"
-                f"立即停止该笼子的检测\n"
-                f"{'=' * 80}\n"
-            )
+        # 必须在主线程执行
+        if threading.current_thread() != threading.main_thread():
+            QTimer.singleShot(0, lambda: self._on_cage_complete(cage_number, cage_is_valid))
+            return
 
-            # 停止该笼子的超时计时器
+        try:
+            # 1. 立即停止计时器
             if cage_number in self.cage_detection_timers:
                 timer = self.cage_detection_timers.pop(cage_number)
-                if timer.isActive():
-                    timer.stop()
-                logger.info(f"✓ 笼 {cage_number} 的检测超时计时器已停止")
+                timer.stop()
+                timer.deleteLater()
 
-            # 避免重复处理
+            # 2. 防止重复进入
             if cage_number in self._completed_cages:
-                logger.warning(f"笼 {cage_number} 已处理过，跳过")
                 return
-
             self._completed_cages.add(cage_number)
 
-            # 更新UI为最终状态
+            # 3. 更新UI
             self._update_cage_detection_complete(cage_number)
 
-            # 延迟后推进到下一个笼子
-            logger.info(f"笼 {cage_number} 处理完成，300ms后推进到下一个笼子")
-            QTimer.singleShot(300, self._detect_next_cage)
+            # 4. 推进索引并检测下一个
+            self.current_detecting_index += 1
+            QTimer.singleShot(500, self._detect_next_cage)
 
         except Exception as e:
-            logger.error(f"处理笼 {cage_number} 完成时出错: {e}", exc_info=True)
+            logger.error(f"完成处理出错: {e}")
 
     def not_each_Mouse_Cage_detect_update_state(self, state_data):
-        """更新气路模块检测状态 - 实时更新（收到一个就立即显示）"""
+        """更新气路模块检测状态"""
         try:
             logger.critical(
                 f"\n{'=' * 80}\n"
@@ -1415,6 +1406,14 @@ class Tab_1(ThemedWindow):
                 self.air_modules_detected.add(module_name)
                 self.air_modules_valid[module_name] = module_is_valid
 
+                # 检查是否 3 个气路模块都齐了
+                if self.required_air_modules.issubset(self.air_modules_detected):
+                    self.air_detection_complete = True
+                    # 这里的 emit 很重要，通知主状态标签更新
+                    QtCore.QMetaObject.invokeMethod(self.detection_status_label, "setText",
+                                                    QtCore.Qt.ConnectionType.QueuedConnection,
+                                                    QtCore.Q_ARG(str, "✓ 气路检测完成，正在同步鼠笼状态..."))
+
                 logger.critical(
                     f"气路模块检测进度: {len(self.air_modules_detected)}/{len(self.required_air_modules)}\n"
                     f"已检测: {sorted(self.air_modules_detected)}\n"
@@ -1434,11 +1433,9 @@ class Tab_1(ThemedWindow):
                     )
                     self.air_detection_complete_event.set()
 
-            # ==================== 实时更新UI - 收到一个就立即更新 ====================
-            QTimer.singleShot(
-                0,
-                partial(self._update_air_module_status_ui, module_name, module_is_valid)
-            )
+            # ==================== 发送信号更新UI（关键改动） ====================
+            logger.info(f"发送 UI 更新信号: {module_name} -> {module_is_valid}")
+            self.air_module_ui_update_signal.emit(module_name, module_is_valid)
 
         except Exception as e:
             logger.error(f"更新气路模块状态时出错: {e}", exc_info=True)
@@ -1464,50 +1461,36 @@ class Tab_1(ThemedWindow):
             return False
 
     def _update_air_module_status_ui(self, module_name, module_is_valid):
-        """实时更新气路模块UI - 收到一个就立即显示"""
         try:
+            # 确保在主线程执行
+            if threading.current_thread() != threading.main_thread():
+                self.air_module_ui_update_signal.emit(module_name, module_is_valid)
+                return
+
             if module_name not in self.module_status_labels:
-                logger.error(
-                    f"气路模块 {module_name} 不在 module_status_labels 中!!!\n"
-                    f"已有的气路模块: {list(self.module_status_labels.keys())}"
-                )
                 return
 
             status_label = self.module_status_labels[module_name]
 
-            # ==================== 根据检测结果立即更新 ====================
             if module_is_valid:
                 status_label.setText("✓ 检测通过")
-                style = """
+                status_label.setStyleSheet("""
                     QLabel {
-                        font-size: 11px;
-                        color: #fff;
-                        padding: 5px 8px;
-                        background-color: #00AA00;
-                        border-radius: 3px;
-                        font-weight: bold;
+                        font-size: 11px; color: #ffffff; padding: 5px 8px;
+                        background-color: #00AA00; border-radius: 3px; font-weight: bold;
                     }
-                """
-                logger.critical(f"✅ 气路模块 {module_name} 已更新为通过状态")
+                """)
             else:
                 status_label.setText("✗ 检测失败")
-                style = """
+                status_label.setStyleSheet("""
                     QLabel {
-                        font-size: 11px;
-                        color: #fff;
-                        padding: 5px 8px;
-                        background-color: #CC0000;
-                        border-radius: 3px;
-                        font-weight: bold;
+                        font-size: 11px; color: #ffffff; padding: 5px 8px;
+                        background-color: #CC0000; border-radius: 3px; font-weight: bold;
                     }
-                """
-                logger.critical(f"气路模块 {module_name} 已更新为失败状态")
-
-            status_label.setStyleSheet(style)
-            status_label.update()
+                """)
 
         except Exception as e:
-            logger.error(f"更新气路模块 {module_name} UI 失败: {e}", exc_info=True)
+            logger.error(f"UI 更新失败: {e}")
 
     def _update_cage_list_display(self, cage_number, cage_data):
         """实时更新笼子列表显示 - 每收到一个模块就更新"""
@@ -1607,9 +1590,26 @@ class Tab_1(ThemedWindow):
                     logger.critical(f"笼 {cage_number} 最终状态：通过")
 
                 else:
+                    # ✨ 改进：显示实际收到的模块，而不是"未收到任何模块"
+                    received_modules = list(cage_modules.keys())
                     failed_modules = [name for name, status in cage_modules.items() if not status]
-                    failed_str = ", ".join(sorted(failed_modules)) if failed_modules else "未收到任何模块"
-                    status_text = f"✗ 检测异常 - {failed_str}"
+
+                    if received_modules:
+                        # 有收到模块但不完整或无效
+                        if failed_modules:
+                            # 有失败的模块
+                            failed_str = ", ".join(sorted(failed_modules))
+                            status_text = f"✗ 检测异常 - 失败模块: {failed_str}"
+                        else:
+                            # 模块都有效但不完整（缺少某些模块）
+                            received_str = ", ".join(sorted(received_modules))
+                            missing = {'ENM', 'EM', 'DWM', 'WM'} - set(received_modules)
+                            missing_str = ", ".join(sorted(missing))
+                            status_text = f"⚠ 检测不完整 - 已收到: {received_str}, 缺少: {missing_str}"
+                    else:
+                        # 完全没有收到任何模块（超时或通信故障）
+                        status_text = f"✗ 检测失败 - 无响应"
+
                     item.setFlags(Qt.ItemFlag.NoItemFlags)
                     item.setBackground(QtGui.QColor(255, 240, 245))
                     item.setForeground(QtGui.QColor(220, 20, 60))
