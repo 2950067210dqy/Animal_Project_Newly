@@ -74,6 +74,7 @@ class read_queue_data_Thread(MyQThread):
             self.send_thread.stop()
         super().stop()
     def dosomething(self):
+        global gids
         if not self.queue.empty():
             # logger.error(f"{self.queue.qsize()}")
             try:
@@ -169,6 +170,32 @@ class read_queue_data_Thread(MyQThread):
                     case 'stop_modbus':
                         logger.critical(f"{self.name},stop_modbus")
                         stop_modbus()
+                    case "detect_air_modules_only":
+                        port = global_setting.get_setting("port")
+                        all_modules_check_online_state_Not_Each_Mouse_Cage(port, None)
+                    case "detect_cage_modules_only":
+                        port = global_setting.get_setting("port")
+
+                        # 【重点】从报文中获取笼号信息
+                        gids_from_message = message.data.get("gids", [])
+                        cage_index = message.data.get("cage_index", None)
+
+                        logger.critical(
+                            f"收到笼内模块检测请求\n"
+                            f"   传入gids: {gids_from_message}\n"
+                            f"   笼子索引: {cage_index}\n"
+                            f"   全局gids: {gids}"
+                        )
+
+                        # 使用传入的笼号进行检测
+                        if gids_from_message and len(gids_from_message) > 0:
+                            # 逐个笼子检测
+                            for cage_num in gids_from_message:
+                                cage_num_int = int(cage_num)
+                                logger.info(f"开始检测笼子 {cage_num_int}")
+                                all_modules_check_online_state_Each_Mouse_Cage(port, cage_num_int)
+                        else:
+                            logger.warning("未收到有效的笼号信息")
                     case "start_all_modules_detection":
                         """
                         开始检测所有模块是否在线
@@ -217,36 +244,62 @@ def  all_modules_check_online_state():
             mouse_cage_index = 0
             pass
     pass
-def all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index):
-    # 每个笼子里的传感器的send_messages
+
+
+def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index):
+    """
+    检测单个笼子的笼内模块
+    关键修复：mouse_cage_index 直接代表笼子号（不是数组索引）
+    """
+    global gids, send_thread
+
+    logger.critical(
+        f"\n{'=' * 80}\n"
+        f"[笼内模块状态检测]\n"
+        f"   笼子号: {mouse_cage_index}\n"
+        f"   全局gids: {gids}\n"
+        f"{'=' * 80}\n"
+    )
 
     send_messages = []
-    for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Module_Info.value:
-        """debugger专用 需要哪个模块的数据监控就放进去"""
-        # 所有消息
-        for message_struct in data_type.value['send_messages']:
 
+    # ==================== 获取该笼子对应的从站ID偏移 ====================
+    if mouse_cage_index is None:
+        logger.error("笼子索引不能为None")
+        return
+
+    # ✅ 直接使用笼子号作为偏移量计算从站ID
+    slave_id_offset = int(mouse_cage_index)
+
+    for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Module_Info.value:
+        """获取该笼子的所有传感器模块"""
+        for message_struct in data_type.value['send_messages']:
             message_temp = copy.deepcopy(message_struct.message)
             message_temp['port'] = port
 
-            # logger.critical(f"add_message_thread_mouse_cage_index:{self.mouse_cage_index}")
+            # ✅ 【关键】根据笼子号计算从站ID
+            base_slave_id = int(message_temp['slave_id'], 16)
+            new_slave_id = base_slave_id + 16 * slave_id_offset
+            message_temp['slave_id'] = format(new_slave_id, '02X')
 
-            mouse_cage = gids[mouse_cage_index] if gids else 1
-            message_temp['slave_id'] = copy.copy(
-                format(int(message_temp['slave_id'], 16) + 16 * mouse_cage, '02X'))
+            # 添加笼号信息用于响应时识别
+            message_temp['mouse_cage_number'] = mouse_cage_index
+
             send_messages.append({'message': message_temp})
 
+            logger.debug(
+                f"  准备报文: 模块={data_type}, 从站ID={message_temp['slave_id']}, "
+                f"笼子={mouse_cage_index}"
+            )
 
-        pass
+    # ==================== 发送所有报文 ====================
     for msg in send_messages:
         send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
-    if mouse_cage_index is not None:
-        mouse_cage = gids[mouse_cage_index] if gids else 1
-    else:
-        mouse_cage = None
-    logo_text = f"{time_util.get_format_from_time(time.time())} | 设备在线检测 鼠笼内模块 | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
-    logger.info(logo_text)
-    pass
+
+    logger.critical(
+        f"✅ 笼子 {mouse_cage_index} 共发送 {len(send_messages)} 条报文\n"
+        f"{'=' * 80}\n"
+    )
 
 
 def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
