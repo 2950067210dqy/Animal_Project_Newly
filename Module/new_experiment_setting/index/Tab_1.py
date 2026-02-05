@@ -54,7 +54,7 @@ class read_queue_data_Thread(MyQThread):
 
             if message is not None and isinstance(message,
                                                   ObjectQueueItem) and message.to == 'New_main_experiment_setting':
-                logger.info(f"{self.name}_get_message: {message.title}")
+                # logger.info(f"{self.name}_get_message: {message.title}")
                 match message.title:
                     case "Each_Mouse_Cage_detect_finished":
                         if self.Each_Mouse_Cage_detect_finished_signal is not None:
@@ -72,9 +72,60 @@ class read_queue_data_Thread(MyQThread):
 read_queue_data_thread = read_queue_data_Thread(name="new_experiment_setting_tab_1_read_queue_data_thread")
 
 
-# ========== 主窗口 ==========
+# ==================== 第一步：修复元类 ====================
+class SafeSingletonMeta(type(QtWidgets.QWidget)):
+    """
+    安全的单例元类 - 解决 super().__init__() 冲突
 
-class Tab_1(ThemedWindow):
+    关键改进：
+    1. 追踪初始化状态，不在初始化中途返回
+    2. 完整的初始化流程
+    3. 线程安全的状态检查
+    """
+    _instances = {}
+    _lock = threading.RLock()
+    _init_in_progress = {}  # 追踪正在初始化的类
+    _init_completed = {}  # 追踪已完成初始化的类
+
+    def __call__(cls, *args, **kwargs):
+        """重写调用方法"""
+
+        if cls not in cls._instances:
+            with cls._lock:
+                # 双重检查
+                if cls not in cls._instances:
+                    # 第一次创建：允许完整的 __init__ 执行
+                    cls._init_in_progress[cls] = True
+                    try:
+                        # 直接调用父元类的 __call__，执行完整的 __init__
+                        instance = super(SafeSingletonMeta, cls).__call__(*args, **kwargs)
+                        cls._instances[cls] = instance
+                        cls._init_completed[cls] = True
+                        logger.warning(f"创建单例: {cls.__name__} (ID: {id(instance)})")
+                    finally:
+                        del cls._init_in_progress[cls]
+
+                    return instance
+                else:
+                    # 在初始化过程中再次调用，返回现有实例
+                    # logger.debug(f"单例已存在，返回现有实例")
+                    return cls._instances[cls]
+
+        # 已经初始化过，直接返回
+        # logger.debug(f"返回已缓存的单例: {cls.__name__}")
+        return cls._instances[cls]
+
+
+# ==================== 第二步：修复 Tab_1 __init__ ====================
+class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
+    """
+    超级健壮的 Tab_1 实现
+
+    核心改进：
+    1. 使用安全的元类
+    2. 在 super().__init__() 之前做最少的检查
+    3. 完整的异常处理和恢复机制
+    """
 
     # ==================== 原有信号 ====================
     update_group_activation_signal = pyqtSignal(dict)
@@ -83,22 +134,168 @@ class Tab_1(ThemedWindow):
     air_module_ui_update_signal = pyqtSignal(str, bool)
 
     # ==================== 新增：跨线程安全的信号 ====================
-    signal_air_module_update = pyqtSignal(str, bool)  # (module_name, is_valid)
-    signal_detection_status_update = pyqtSignal(str)  # (status_text)
-    signal_force_ui_refresh = pyqtSignal()  # 强制UI刷新
+    signal_air_module_update = pyqtSignal(str, bool)
+    signal_detection_status_update = pyqtSignal(str)
+    signal_force_ui_refresh = pyqtSignal()
+
+    # ==================== 类级别的初始化跟踪 ====================
+    _instance_lock = threading.RLock()
+    _initialization_state = {}  # {instance_id: 'pending'|'init_started'|'completed'|'failed'}
+    _failed_instances = set()  # 记录失败的实例
 
     def __init__(self, parent=None, geometry: QRect = None, title=""):
-        super().__init__()
+        """
+        超级健壮的初始化方法
+        """
+        instance_id = id(self)
+
+        # ==================== 第一层：防止重复初始化 ====================
+        with Tab_1._instance_lock:
+            if instance_id in Tab_1._initialization_state:
+                state = Tab_1._initialization_state[instance_id]
+
+                if state == 'completed':
+                    logger.warning(f"实例 {instance_id} 已完成初始化，跳过")
+                    return
+                elif state == 'init_started':
+                    logger.warning(f"实例 {instance_id} 正在初始化中，跳过")
+                    return
+                elif state == 'failed':
+                    logger.error(f"实例 {instance_id} 之前初始化失败，重试")
+                    Tab_1._failed_instances.discard(instance_id)
+                    Tab_1._initialization_state[instance_id] = 'pending'
+
+            # 标记初始化开始
+            Tab_1._initialization_state[instance_id] = 'init_started'
+
+        # ==================== 第二层：调用父类初始化（关键！） ====================
+        try:
+            super().__init__()  # 必须在最前面调用，不能有任何 hasattr() 或属性访问
+            # logger.info(f"父类初始化完成")
+        except Exception as e:
+            logger.error(f"父类初始化失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第三层：初始化属性 ====================
+        try:
+            self._init_attributes()
+            # logger.info(f"属性初始化完成")
+        except Exception as e:
+            logger.error(f"属性初始化失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第四层：初始化UI ====================
+        try:
+            self._init_ui(parent, geometry, title)
+            # logger.info(f"UI初始化完成")
+        except Exception as e:
+            logger.error(f"UI初始化失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第五层：缓存UI组件 ====================
+        try:
+            self._cache_ui_components()
+            # logger.info(f"UI组件缓存完成")
+        except Exception as e:
+            logger.error(f"UI组件缓存失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第六层：初始化数据 ====================
+        try:
+            self._init_data()
+            # logger.info(f"数据初始化完成")
+        except Exception as e:
+            logger.error(f"数据初始化失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第七层：加载配置 ====================
+        try:
+            self.experiment_setting = global_setting.get_setting("experiment_setting", None)
+            self.config = get_default_config()
+            # logger.info(f"配置加载完成")
+        except Exception as e:
+            logger.error(f"配置加载失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第八层：自定义UI初始化 ====================
+        try:
+            self._init_customize_ui()
+            # logger.info(f"自定义UI初始化完成")
+        except Exception as e:
+            logger.error(f"自定义UI初始化失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第九层：连接信号 ====================
+        try:
+            self._connect_air_module_signals()
+            # logger.info(f"信号连接完成")
+        except Exception as e:
+            logger.error(f"信号连接失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第十层：函数初始化 ====================
+        try:
+            self._init_function()
+            # logger.info(f"函数初始化完成")
+        except Exception as e:
+            logger.error(f"函数初始化失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第十一层：样式表 ====================
+        try:
+            self._init_style_sheet()
+            # logger.info(f"样式表初始化完成")
+        except Exception as e:
+            logger.error(f"样式表初始化失败: {e}", exc_info=True)
+            Tab_1._initialization_state[instance_id] = 'failed'
+            Tab_1._failed_instances.add(instance_id)
+            raise
+
+        # ==================== 第十二层：教程设置 ====================
+        try:
+            self.setup_tutorial()
+        except Exception as e:
+            logger.error(f"教程设置失败: {e}", exc_info=True)
+            # 这里不中止，因为教程失败不影响主体功能
+            logger.warning(f"继续执行，教程功能暂时禁用")
+
+        if parent is None:
+            QTimer.singleShot(400, self.start_tutorial_if_exists)
+
+        # ==================== 最后：标记完成 ====================
+        with Tab_1._instance_lock:
+            Tab_1._initialization_state[instance_id] = 'completed'
+
+
+    def _init_attributes(self):
+        """初始化所有属性 - 必须在 super().__init__() 之后调用"""
 
         # ==================== 配置管理相关 ====================
         self.current_cage_config = {}
         self.user_config_dir = Path.home() / ".mouse_experiment_config" / "cage_configs"
         self.user_config_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"配置文件保存位置: {self.user_config_dir}")
 
         # ==================== 线程安全相关 ====================
         self.response_lock = threading.Lock()
-        self.send_thread: Send_thread = None
+        self.send_thread = None
 
         # ==================== 气路检测相关属性 ====================
         self.air_module_detection_lock = threading.RLock()
@@ -130,23 +327,24 @@ class Tab_1(ThemedWindow):
         self.current_detecting_index = 0
         self.cage_detection_timers = {}
         self._completed_cages = {}
+        self._module_labels_initialized = False
+        self._module_labels_object_ids = {}
 
-        self._module_labels_object_ids = {}  # 追踪标签对象ID
-        # ==================== UI 组件 ====================
+        # ==================== UI 组件初始化为 None ====================
         self.port_combox = None
         self.cage_list_widget = None
         self.detection_status_label = None
         self.right_title = None
-        self.vr_desc_text: QDoubleSpinBox = None
-        self.experiment_setting: Experiment_setting_entity = None
-        self.span_oxygen_desc_text: QDoubleSpinBox = None
-        self.span_carbon_desc_text: QDoubleSpinBox = None
+        self.vr_desc_text = None
+        self.experiment_setting = None
+        self.span_oxygen_desc_text = None
+        self.span_carbon_desc_text = None
         self.calibration_checkbox = None
         self.confirm_port_btn = None
         self.config_btn = None
-        self.config_layout: QVBoxLayout = None
-        self.content_layout: QVBoxLayout = None
-        self.start_btn: QPushButton = None
+        self.config_layout = None
+        self.content_layout = None
+        self.start_btn = None
         self.module_status_labels = {}
         self.group_box = None
         self.config_scroll_area = None
@@ -166,25 +364,6 @@ class Tab_1(ThemedWindow):
         self.ports = []
         self.config = None
         self.cage_enabled_status = {}
-
-        # ========== 初始化顺序 ==========
-        if parent is not None:
-            self.setParent(parent)
-            self.setWindowFlags(QtCore.Qt.WindowType.Widget)
-
-        self._init_ui(parent, geometry, title)
-        self._cache_ui_components()
-        self._init_data()
-        self.experiment_setting: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
-        self.config = get_default_config()
-        self._init_customize_ui()
-        self._connect_air_module_signals()  # 连接信号槽
-        self._init_function()
-        self._init_style_sheet()
-        self.setup_tutorial()
-
-        if parent is None:
-            QTimer.singleShot(400, self.start_tutorial_if_exists)
 
     def _init_ui(self, parent=None, geometry: QRect = None, title=""):
         """初始化UI"""
@@ -273,35 +452,37 @@ class Tab_1(ThemedWindow):
             module_key = module_info['key']
 
             h_layout = QtWidgets.QHBoxLayout()
-            h_layout.setSpacing(15)
-            h_layout.setContentsMargins(5, 5, 5, 5)
+            h_layout.setSpacing(10)
+            h_layout.setContentsMargins(5, 1, 5, 1)
 
             # 模块名称标签
             name_label = QtWidgets.QLabel(f"{module_name}:")
-            name_label.setMinimumWidth(50)
-            name_label.setMaximumWidth(60)
-            name_label.setMinimumHeight(35)
+            name_label.setMinimumWidth(45)  # 稍微减小宽度
+            name_label.setMaximumWidth(55)
+            name_label.setMinimumHeight(24)  # 适中的高度
+            name_label.setMaximumHeight(24)
             name_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             name_label.setStyleSheet("""
                 QLabel {
                     font-weight: bold;
-                    font-size: 13px;
+                    font-size: 12px;
                     color: #333;
                 }
             """)
 
             # 状态标签
             status_label = QtWidgets.QLabel("待检测")
-            status_label.setMinimumWidth(120)
-            status_label.setMaximumWidth(200)
-            status_label.setMinimumHeight(35)
+            status_label.setMinimumWidth(110)  # 稍微减小宽度
+            status_label.setMaximumWidth(180)
+            status_label.setMinimumHeight(24)  # 匹配名称标签高度
+            status_label.setMaximumHeight(24)
             status_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             status_label.setWordWrap(False)
             status_label.setStyleSheet("""
                 QLabel {
-                    font-size: 12px;
+                    font-size: 11px;
                     color: #666;
-                    padding: 5px;
+                    padding: 2px;
                     border-radius: 3px;
                     background-color: #f5f5f5;
                     border: 1px solid #ddd;
@@ -318,9 +499,9 @@ class Tab_1(ThemedWindow):
             # 记录对象ID
             self._module_labels_object_ids[module_key] = id(status_label)
 
-            logger.debug(f"✓ 初始化 {module_name} 显示区域 (ID: {id(status_label)})")
-        for i,j in self.module_status_labels.items():
-            logger.critical(f"{i}:{j.text()}:{j}")
+        #     logger.debug(f"✓ 初始化 {module_name} 显示区域 (ID: {id(status_label)})")
+        # for i,j in self.module_status_labels.items():
+        #     logger.critical(f"{i}:{j.text()}:{j}")
         self.module_detection_layout.addStretch()
 
 
@@ -383,10 +564,10 @@ class Tab_1(ThemedWindow):
                     }
                 """)
 
-            logger.info(f"✅ {module_name}: {new_text}:{status_label.text()}:{status_label}")
+            # logger.info(f"{module_name}: {new_text}:{status_label.text()}:{status_label}")
 
         except Exception as e:
-            logger.error(f"❌ 异常: {e}", exc_info=True)
+            logger.error(f"异常: {e}", exc_info=True)
 
     @pyqtSlot(str)
     def _slot_on_detection_status_update(self, status_text: str):
@@ -397,7 +578,7 @@ class Tab_1(ThemedWindow):
                 self.detection_status_label.update()
                 self.detection_status_label.repaint()
 
-                logger.info(f"检测状态已更新: {status_text}")
+                # logger.info(f"检测状态已更新: {status_text}")
 
                 QApplication.processEvents()
 
@@ -1149,9 +1330,9 @@ class Tab_1(ThemedWindow):
         """
         确认串口并启动气路检测（完全修复版）
         """
-        logger.critical("=" * 80)
-        logger.critical("确认串口，启动气路模块检测")
-        logger.critical("=" * 80)
+        # logger.critical("=" * 80)
+        # logger.critical("确认串口，启动气路模块检测")
+        # logger.critical("=" * 80)
 
         # ==================== 【第1步】验证串口 ====================
         if not self.port_combox or self.port_combox.currentIndex() < 0:
@@ -1182,7 +1363,7 @@ class Tab_1(ThemedWindow):
             self.config_btn.setEnabled(False)
 
         # ==================== 【第4步】重置所有气路模块标签为"检测中..." ====================
-        logger.critical("重置所有气路模块标签为检测中状态...")
+        # logger.critical("重置所有气路模块标签为检测中状态...")
 
         for module_name in self.air_modules_to_detect:
             if module_name not in self.module_status_labels:
@@ -1210,12 +1391,12 @@ class Tab_1(ThemedWindow):
             status_label.update()
             status_label.repaint()
 
-            logger.critical(f"✓ {module_name} 标签已重置为: '{status_label.text()}'")
+            # logger.critical(f"✓ {module_name} 标签已重置为: '{status_label.text()}'")
 
         # 强制处理所有待处理的事件
         QtWidgets.QApplication.processEvents()
 
-        logger.critical("所有标签重置完成，界面已更新")
+        # logger.critical("所有标签重置完成，界面已更新")
 
         # ==================== 【第5步】重置气路检测状态（一次性，在循环外） ====================
         with self.air_module_detection_lock:
@@ -1233,7 +1414,7 @@ class Tab_1(ThemedWindow):
                 self.air_modules_detected[module_name] = False
                 self.air_modules_valid[module_name] = False
 
-            logger.debug("[重置] 气路检测状态已完全重置")
+            # logger.debug("[重置] 气路检测状态已完全重置")
 
         # ==================== 【第6步】初始化笼内检测 ====================
         self._completed_cages.clear()
@@ -1241,12 +1422,12 @@ class Tab_1(ThemedWindow):
         self.current_detecting_index = 0
         self.cage_detection_timers.clear()
 
-        logger.debug(f"笼子列表已初始化: {self.cage_list_to_detect}")
+        # logger.debug(f"笼子列表已初始化: {self.cage_list_to_detect}")
 
         for cage_id in self.cage_list_to_detect:
             cage_id_int = int(cage_id)
             self._completed_cages[cage_id_int] = False
-            logger.debug(f"  初始化笼子状态: {cage_id_int} -> False")
+            # logger.debug(f"  初始化笼子状态: {cage_id_int} -> False")
 
         # ==================== 【第7步】初始化全局检测字典 ====================
         mouse_cage_detect_dict = {}
@@ -1259,7 +1440,7 @@ class Tab_1(ThemedWindow):
                 'update_time': time_util.get_format_from_time(time.time())
             }
         global_setting.set_setting("mouse_cage_detect_state_dict", mouse_cage_detect_dict)
-        logger.debug(f"全局检测字典已初始化，共 {len(mouse_cage_detect_dict)} 个笼子")
+        # logger.debug(f"全局检测字典已初始化，共 {len(mouse_cage_detect_dict)} 个笼子")
 
         if self.detection_status_label:
             self.detection_status_label.setText("检测中...")
@@ -1273,9 +1454,9 @@ class Tab_1(ThemedWindow):
             self.show_warning("错误", "消息队列未找到，请重启应用")
             return
 
-        logger.info("=" * 80)
-        logger.info(f"发送气路模块检测报文（UFC、UGC、ZOS）")
-        logger.info("=" * 80)
+        # logger.info("=" * 80)
+        # logger.info(f"发送气路模块检测报文（UFC、UGC、ZOS）")
+        # logger.info("=" * 80)
 
         send_message_queue.put(ObjectQueueItem(
             origin="New_main_experiment_setting",
@@ -1294,13 +1475,12 @@ class Tab_1(ThemedWindow):
             f"Modules: {self.air_modules_to_detect}"
         )
 
-        # ==================== 【第9步】启动鼠笼检测（7秒延迟） ====================
-        logger.info("✓ 气路检测请求已发送，7秒后启动笼内模块检测...")
-        QTimer.singleShot(7000, self._detect_next_cage)
+        # ==================== 【第9步】启动鼠笼内模块检测 ====================
+        QTimer.singleShot(3000, self._detect_next_cage)
 
-        logger.critical("=" * 80)
-        logger.critical("确认串口完成，等待检测结果...")
-        logger.critical("=" * 80)
+        # logger.critical("=" * 80)
+        # logger.critical("确认串口完成，等待检测结果...")
+        # logger.critical("=" * 80)
 
     def not_each_Mouse_Cage_detect_update_state(self, state_data):
         """修复版 - 确保立即发射信号"""
@@ -1310,19 +1490,19 @@ class Tab_1(ThemedWindow):
             # ==================== 判定有效性 ====================
             module_is_valid = state_data.get('response_state', False)
 
-            logger.critical(f"[判定] {module_name}: {'✓ 有效' if module_is_valid else '✗ 无效'}")
+            # logger.critical(f"[判定] {module_name}: {'✓ 有效' if module_is_valid else '✗ 无效'}")
 
             with self.air_module_detection_lock:
                 if self._air_detection_finished:
-                    logger.debug(f"气路检测已结束，忽略 {module_name}")
+                    # logger.debug(f"气路检测已结束，忽略 {module_name}")
                     return
 
                 if self.air_modules_completed.get(module_name, False):
-                    logger.debug(f"{module_name} 已处理过")
+                    # logger.debug(f"{module_name} 已处理过")
                     return
 
                 # 用 emit 发射信号！
-                logger.info(f"📡 [发射信号] {module_name}: {module_is_valid}")
+                # logger.info(f"📡 [发射信号] {module_name}: {module_is_valid}")
                 self.signal_air_module_update.emit(module_name, module_is_valid)  # ← 这里改成 emit
 
                 self.air_modules_completed[module_name] = True
@@ -1347,14 +1527,14 @@ class Tab_1(ThemedWindow):
             with self.air_module_detection_lock:
                 # 防重复检查
                 if self._air_detection_finished:
-                    logger.debug("[防重复] 已结算过，直接返回")
+                    # logger.debug("[防重复] 已结算过，直接返回")
                     return
 
                 # 标记为已完成
                 self._air_detection_finished = True
                 self.air_detection_complete_event.set()
 
-                logger.critical("[结算] 气路检测结算开始")
+                # logger.critical("[结算] 气路检测结算开始")
 
                 # 创建快照
                 air_modules_valid_snapshot = dict(self.air_modules_valid)
@@ -1382,7 +1562,7 @@ class Tab_1(ThemedWindow):
                     self.signal_air_module_update.emit(module_name, False)
                     final_no_response_list.append(module_name)
                 elif is_valid:
-                    logger.info(f"✓ [有效] 模块 {module_name}")
+                    # logger.info(f"✓ [有效] 模块 {module_name}")
                     # 发射信号更新UI - 有效
                     self.signal_air_module_update.emit(module_name, True)
                     final_valid_list.append(module_name)
@@ -1411,7 +1591,7 @@ class Tab_1(ThemedWindow):
             # ==================== 【最后】更新总体检测状态 ====================
             # 这才是通知UI"检测完成"的信号！
             self.signal_detection_status_update.emit("✓ 气路检测完成")
-            logger.critical("已发射【检测完成】信号")
+            # logger.critical("已发射【检测完成】信号")
 
         except Exception as e:
             logger.error(f"[结算异常] {e}", exc_info=True)
@@ -1582,7 +1762,7 @@ class Tab_1(ThemedWindow):
                 item.setForeground(QtGui.QColor(184, 134, 11))
 
                 cage_list_widget.viewport().update()
-                logger.debug(f"✓ 笼子 {cage_number_int} UI已更新为检测中")
+                # logger.debug(f"✓ 笼子 {cage_number_int} UI已更新为检测中")
                 break
 
         except Exception as e:
@@ -1600,16 +1780,16 @@ class Tab_1(ThemedWindow):
     def each_Mouse_Cage_detect_update_state(self, state_data):
         """
         更新鼠笼内模块检测状态
+
+        只负责收集数据，不负责推进索引
         """
         try:
-            logger.critical(f"笼内模块检测结果:\n{state_data}\n")
-
             mouse_cage_number = state_data.get('mouse_cage_number')
             module_name = state_data.get('module_name', 'UNKNOWN')
             module_is_valid = state_data.get('response_state', False)
 
             # logger.critical(
-            #     f"笼 {mouse_cage_number} 模块 {module_name}: "
+            #     f"[笼内模块] 笼 {mouse_cage_number} - {module_name}: "
             #     f"{'✓ 有效' if module_is_valid else '✗ 无效'}"
             # )
 
@@ -1624,7 +1804,7 @@ class Tab_1(ThemedWindow):
                     'update_time': time_util.get_format_from_time(time.time())
                 }
 
-            # 记录模块状态
+            # ==================== 记录模块状态 ====================
             mouse_cage_detect_dict[mouse_cage_number]['cage_modules'][module_name] = module_is_valid
             mouse_cage_detect_dict[mouse_cage_number]['update_time'] = time_util.get_format_from_time(time.time())
 
@@ -1641,8 +1821,8 @@ class Tab_1(ThemedWindow):
             logger.critical(
                 f"笼 {mouse_cage_number} 笼内模块统计:\n"
                 f"  已收到: {list(cage_modules.keys())}\n"
-                f"  有效性: {dict([(k, v) for k, v in cage_modules.items()])}\n"
-                f"  判定: {'完整' if all_received else '不完整'} - {'有效' if all_valid else '无效'}"
+                f"  模块状态: {dict([(k, v) for k, v in cage_modules.items()])}\n"
+                f"  所有收到: {all_received} | 全部有效: {all_valid} | 最终判定: {cage_is_valid}"
             )
 
             global_setting.set_setting("mouse_cage_detect_state_dict", mouse_cage_detect_dict)
@@ -1650,16 +1830,17 @@ class Tab_1(ThemedWindow):
             # ==================== 实时更新UI ====================
             self._update_cage_list_display(mouse_cage_number, mouse_cage_detect_dict[mouse_cage_number])
 
-            # ==================== 笼子完整则调用完成处理 ====================
+            # ==================== 【重要】只在笼子完整时才触发完成 ====================
             if all_received:
+                # 这里调用完成处理
                 self._on_cage_complete(mouse_cage_number, cage_is_valid)
 
         except Exception as e:
-            logger.error(f"更新笼内模块状态时出错: {e}", exc_info=True)
+            logger.error(f"更新笼内模块状态异常: {e}", exc_info=True)
 
     def _on_cage_complete(self, cage_number, cage_is_valid):
         """
-        笼子检测完成处理
+        笼子检测完成处理（完全修复版）
         """
         if threading.current_thread() != threading.main_thread():
             QTimer.singleShot(0, lambda: self._on_cage_complete(cage_number, cage_is_valid))
@@ -1668,34 +1849,57 @@ class Tab_1(ThemedWindow):
         try:
             cage_number_int = int(cage_number)
 
-            logger.critical(
-                f"\n{'=' * 80}\n"
-                f"笼子 {cage_number_int} 检测完成\n"
-                f"有效性: {'✓ 通过' if cage_is_valid else '✗ 失败'}\n"
-                f"{'=' * 80}\n"
-            )
+            # logger.critical(
+            #     f"\n{'=' * 80}\n"
+            #     f"[笼子完成] {cage_number_int}\n"
+            #     f"有效性: {'✓ 通过' if cage_is_valid else '✗ 失败'}\n"
+            #     f"当前索引: {self.current_detecting_index}\n"
+            #     f"笼子列表: {self.cage_list_to_detect}\n"
+            #     f"{'=' * 80}\n"
+            # )
 
-            # ==================== 1. 立即停止计时器 ====================
+            # ==================== 1. 停止计时器 ====================
             if cage_number_int in self.cage_detection_timers:
                 timer = self.cage_detection_timers.pop(cage_number_int)
                 timer.stop()
                 timer.deleteLater()
-                # logger.debug(f"笼子 {cage_number_int} 的超时计时器已停止")
+                # logger.debug(f"✓ 笼 {cage_number_int} 的超时计时器已停止")
 
-            # ==================== 2. 防止重复进入 ====================
+            # ==================== 2. 防止重复处理 ====================
             if self._completed_cages.get(cage_number_int, False) is True:
                 logger.warning(f"笼子 {cage_number_int} 已处理过，跳过")
                 return
 
+            # ==================== 3. 标记为已完成 ====================
             self._completed_cages[cage_number_int] = True
-            # logger.debug(f"笼子 {cage_number_int} 标记为已完成")
+            # logger.debug(f"✓ 笼子 {cage_number_int} 标记为已完成")
 
-            # ==================== 3. 更新UI ====================
+            # ==================== 4. 更新UI显示最终状态 ====================
             self._update_cage_detection_complete(cage_number_int)
 
+            # ==================== 【关键】5. 推进索引 ====================
+            prev_index = self.current_detecting_index
+            self.current_detecting_index += 1
+
+            # logger.critical(
+            #     f"[索引推进]\n"
+            #     f"之前: {prev_index}\n"
+            #     f"现在: {self.current_detecting_index}\n"
+            #     f"下一个笼子: {self.cage_list_to_detect[self.current_detecting_index] if self.current_detecting_index < len(self.cage_list_to_detect) else '无'}\n"
+            # )
+
+            # ==================== 【关键】6. 触发下一个笼子检测 ====================
+            QTimer.singleShot(2000, self._detect_next_cage)
 
         except Exception as e:
             logger.error(f"笼子 {cage_number} 完成处理异常: {e}", exc_info=True)
+            try:
+                # 异常兜底：确保索引推进
+                self.current_detecting_index += 1
+                logger.warning(f"异常兜底：索引已推进到 {self.current_detecting_index}")
+                QTimer.singleShot(2000, self._detect_next_cage)
+            except:
+                pass
 
     def _update_cage_list_display(self, cage_number, cage_data):
         """实时更新笼子列表显示 - 每收到一个模块就更新"""
@@ -1721,13 +1925,13 @@ class Tab_1(ThemedWindow):
                 group = self.cage_enabled_status.get(cage_number)
                 group_name = f"[{group.name}]" if group else ""
 
-                logger.debug(
-                    f"笼 {cage_number} 实时显示:\n"
-                    f"  已收到: {list(cage_modules.keys())}\n"
-                    f"  缺少: {list(missing_modules)}\n"
-                    f"  有效: {cage_is_valid}\n"
-                    f"  进度: {received_count}/4"
-                )
+                # logger.debug(
+                #     f"笼 {cage_number} 实时显示:\n"
+                #     f"  已收到: {list(cage_modules.keys())}\n"
+                #     f"  缺少: {list(missing_modules)}\n"
+                #     f"  有效: {cage_is_valid}\n"
+                #     f"  进度: {received_count}/4"
+                # )
 
                 if cage_is_valid and received_count >= 4:
                     # 检测通过
@@ -1792,9 +1996,9 @@ class Tab_1(ThemedWindow):
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                     item.setBackground(QtGui.QColor(240, 255, 240))
                     item.setForeground(QtGui.QColor(34, 139, 34))
-                    for j,k in self.module_status_labels.items():
-                        logger.critical(f"{j}:{k.text()}:{k}")
-                    logger.critical(f"笼 {cage_number} 最终状态：通过")
+                    # for j,k in self.module_status_labels.items():
+                    #     logger.critical(f"{j}:{k.text()}:{k}")
+                    # logger.critical(f"笼 {cage_number} 最终状态：通过")
 
                 else:
                     received_modules = list(cage_modules.keys())
