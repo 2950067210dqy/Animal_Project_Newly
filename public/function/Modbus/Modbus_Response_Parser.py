@@ -875,7 +875,7 @@ class Modbus_Response_ENM(Modbus_Response_Parents):
                参数长度：17
                """
         pack_struct = "B H H H H H H H H"
-        self.parser_response_pack(pack_struct, struct_type="H", is_pack_return_bytes_nums=True)
+        self.parser_response_pack(pack_struct, struct_type="H", is_pack_return_bytes_nums=False)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
@@ -1832,7 +1832,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                                        参数长度：17
                                        """
         pack_struct = "B H H H H H H H H"
-        self.parser_response_pack(pack_struct, struct_type="H", is_pack_return_bytes_nums=True)
+        self.parser_response_pack(pack_struct, struct_type="H", is_pack_return_bytes_nums=False)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
