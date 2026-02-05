@@ -32,6 +32,7 @@ from public.entity.send_message import Send_Message
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data, Others_Tables
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
+from public.function.promise.AsyPromise import AsyPromise
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.number_util import number_util
 from public.util.string_util import String_util
@@ -550,6 +551,8 @@ class Send_thread(MyQThread):
 
                         is_parse_response=False
                     )
+                    response_return_data =copy.deepcopy(return_data)
+                    final_return_data = response_return_data
                     # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
                     parser_message=""
                     if send_state:
@@ -560,10 +563,11 @@ class Send_thread(MyQThread):
                                                                                  send_message['slave_id'],
                                                                                  function_code=
                                                                                  send_message['function_code'], )
-
+                        if return_data is not None:
+                            final_return_data = {**response_return_data, **return_data}
                         # 如果为1104 环境模块 存储大气压值
-                        if response.hex()[:4] =="1104" and  return_data.get("data") and len(return_data.get("data"))>1:
-                            datas = return_data.get("data")
+                        if response.hex()[:4] =="1104" and  final_return_data.get("data") and len(final_return_data.get("data"))>1:
+                            datas = final_return_data.get("data")
                             for data in datas:
                                 desc = data.get("desc")
                                 if desc and desc == "大气压测量值(KPa)":
@@ -577,26 +581,26 @@ class Send_thread(MyQThread):
                     should_send_to_gui = not send_message.get('no_response', False)
                     if should_send_to_gui and message['origin'] == "New_main_experiment_setting":
                         # ==================== 判断是否为气路模块 ====================
-                        is_air_path_module = return_data.get('module_name') in ['UFC', 'UGC', 'ZOS']
+                        is_air_path_module = final_return_data.get('module_name') in ['UFC', 'UGC', 'ZOS']
 
                         if is_air_path_module:
                             # 气路模块响应
                             message_struct = ObjectQueueItem(
                                 to=message['origin'],
-                                data=return_data,
+                                data=final_return_data,
                                 title="Not_Each_Mouse_Cage_detect_finished",  # 气路模块标题
                                 origin='main_monitor_data'
                             )
-                            logger.debug(f"气路模块 {return_data.get('module_name')} 检测完成")
+                            logger.debug(f"气路模块 {final_return_data.get('module_name')} 检测完成")
                         else:
                             # 鼠笼内模块响应
                             message_struct = ObjectQueueItem(
                                 to=message['origin'],
-                                data=return_data,
+                                data=final_return_data,
                                 title="Each_Mouse_Cage_detect_finished",  # 鼠笼内模块标题
                                 origin='main_monitor_data'
                             )
-                            logger.debug(f"鼠笼内模块 {return_data.get('module_name')} 检测完成")
+                            logger.debug(f"鼠笼内模块 {final_return_data.get('module_name')} 检测完成")
 
 
                     elif should_send_to_gui and send_state:
@@ -688,7 +692,7 @@ class Send_thread(MyQThread):
                     self.normal_queue_empty=True
                     break
             except Exception as e:
-                logger.error(f"{e}")
+                logger.error(f"{AsyPromise._format_error_message('',e)}")
             finally:
                 if self.normal_queue_empty or MESSAGE_BATCH_SIZE ==0:
                     continue

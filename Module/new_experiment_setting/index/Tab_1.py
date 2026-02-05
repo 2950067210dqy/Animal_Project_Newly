@@ -75,6 +75,7 @@ read_queue_data_thread = read_queue_data_Thread(name="new_experiment_setting_tab
 # ========== 主窗口 ==========
 
 class Tab_1(ThemedWindow):
+
     # ==================== 原有信号 ====================
     update_group_activation_signal = pyqtSignal(dict)
     Each_Mouse_Cage_detect_finished_signal = pyqtSignal(dict)
@@ -129,8 +130,7 @@ class Tab_1(ThemedWindow):
         self.current_detecting_index = 0
         self.cage_detection_timers = {}
         self._completed_cages = {}
-        # 用来标记是否已经初始化过
-        self._module_labels_initialized = False
+
         self._module_labels_object_ids = {}  # 追踪标签对象ID
         # ==================== UI 组件 ====================
         self.port_combox = None
@@ -241,8 +241,7 @@ class Tab_1(ThemedWindow):
         self.config = get_default_config()
 
         # 只在第一次调用时初始化模块显示
-        if not self._module_labels_initialized:
-            self.init_module_detection_display()
+        self.init_module_detection_display()
 
         QTimer.singleShot(200, self.init_cage_list)
         self.init_config_ui()
@@ -251,10 +250,7 @@ class Tab_1(ThemedWindow):
     def init_module_detection_display(self):
         """初始化气路模块检测显示 - 修复版（只初始化一次）"""
 
-        # 【改动1】如果已经初始化过，就直接返回
-        if self._module_labels_initialized:
-            logger.debug("✓ 气路模块标签已初始化过，跳过重新初始化")
-            return
+
 
         if self.module_detection_layout is None:
             logger.error("module_detection_layout 未找到！")
@@ -323,12 +319,11 @@ class Tab_1(ThemedWindow):
             self._module_labels_object_ids[module_key] = id(status_label)
 
             logger.debug(f"✓ 初始化 {module_name} 显示区域 (ID: {id(status_label)})")
-
+        for i,j in self.module_status_labels.items():
+            logger.critical(f"{i}:{j.text()}:{j}")
         self.module_detection_layout.addStretch()
 
-        # 标记为已初始化
-        self._module_labels_initialized = True
-        logger.critical("气路模块标签初始化完成（已标记为不再重复初始化）")
+
 
     # ==================== 连接信号槽 ====================
     def _connect_air_module_signals(self):
@@ -353,7 +348,8 @@ class Tab_1(ThemedWindow):
     def _slot_on_air_module_ui_update(self, module_name: str, is_valid: bool):
         """更新气路模块UI"""
         try:
-            if module_name not in self.module_status_labels:
+
+            if module_name not in  self.module_status_labels.keys():
                 return
 
             status_label = self.module_status_labels[module_name]
@@ -387,7 +383,7 @@ class Tab_1(ThemedWindow):
                     }
                 """)
 
-            logger.info(f"✅ {module_name}: {new_text}")
+            logger.info(f"✅ {module_name}: {new_text}:{status_label.text()}:{status_label}")
 
         except Exception as e:
             logger.error(f"❌ 异常: {e}", exc_info=True)
@@ -1171,19 +1167,6 @@ class Tab_1(ThemedWindow):
         self.send_message['port'] = self.ports[self.port_combox.currentIndex()]['device']
         self.port_confirmed = True
 
-        # ==================== 【第2步】检查进程 ====================
-        process_monitor = global_setting.get_setting("process_monitor", None)
-        if process_monitor:
-            p_response_comm_status = process_monitor.get_process_status("p_response_comm")
-            if p_response_comm_status and p_response_comm_status == "UNRESPONSIVE":
-                reply = QMessageBox.question(
-                    self, "进程警告",
-                    "p_response_comm 进程无响应，可能导致串口数据接收异常，是否继续？",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No
-                )
-                if reply == QMessageBox.StandardButton.No:
-                    return
 
         # ==================== 【第3步】禁用按钮 ====================
         self.port_combox.setEnabled(False)
@@ -1323,17 +1306,9 @@ class Tab_1(ThemedWindow):
         """修复版 - 确保立即发射信号"""
         try:
             module_name = state_data.get('module_name', '')
-            data_field = state_data.get('data', [])
 
             # ==================== 判定有效性 ====================
-            module_is_valid = bool(data_field) and len(data_field) > 0
-            if module_is_valid and isinstance(data_field, list):
-                for item in data_field:
-                    if isinstance(item, dict):
-                        value = item.get('value', '')
-                        if 'Time OUT' in str(value) or '未获取到' in str(value):
-                            module_is_valid = False
-                            break
+            module_is_valid = state_data.get('response_state', False)
 
             logger.critical(f"[判定] {module_name}: {'✓ 有效' if module_is_valid else '✗ 无效'}")
 
@@ -1631,22 +1606,7 @@ class Tab_1(ThemedWindow):
 
             mouse_cage_number = state_data.get('mouse_cage_number')
             module_name = state_data.get('module_name', 'UNKNOWN')
-            data_field = state_data.get('data', [])
-
-            if mouse_cage_number is None:
-                logger.error("缺少 mouse_cage_number 信息")
-                return
-
-            # ==================== 判断模块是否有效 ====================
-            module_is_valid = bool(data_field) and len(data_field) > 0
-
-            if module_is_valid and isinstance(data_field, list):
-                for item in data_field:
-                    if isinstance(item, dict) and 'value' in item:
-                        value_str = str(item['value'])
-                        if 'Time OUT' in value_str or '未获取到响应数据' in value_str:
-                            module_is_valid = False
-                            break
+            module_is_valid = state_data.get('response_state', False)
 
             # logger.critical(
             #     f"笼 {mouse_cage_number} 模块 {module_name}: "
@@ -1832,6 +1792,8 @@ class Tab_1(ThemedWindow):
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                     item.setBackground(QtGui.QColor(240, 255, 240))
                     item.setForeground(QtGui.QColor(34, 139, 34))
+                    for j,k in self.module_status_labels.items():
+                        logger.critical(f"{j}:{k.text()}:{k}")
                     logger.critical(f"笼 {cage_number} 最终状态：通过")
 
                 else:
