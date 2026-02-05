@@ -129,7 +129,9 @@ class Tab_1(ThemedWindow):
         self.current_detecting_index = 0
         self.cage_detection_timers = {}
         self._completed_cages = {}
-
+        # 用来标记是否已经初始化过
+        self._module_labels_initialized = False
+        self._module_labels_object_ids = {}  # 追踪标签对象ID
         # ==================== UI 组件 ====================
         self.port_combox = None
         self.cage_list_widget = None
@@ -222,7 +224,6 @@ class Tab_1(ThemedWindow):
             self.detection_status_label = self.findChild(QLabel, "detection_status_label")
             self.config_btn = self.findChild(QPushButton, "config_btn")
 
-            logger.info("✓ 所有UI组件已缓存")
 
         except Exception as e:
             logger.error(f"缓存UI组件失败: {e}", exc_info=True)
@@ -238,13 +239,23 @@ class Tab_1(ThemedWindow):
 
         self.init_port_combox()
         self.config = get_default_config()
-        self.init_module_detection_display()
+
+        # 只在第一次调用时初始化模块显示
+        if not self._module_labels_initialized:
+            self.init_module_detection_display()
+
         QTimer.singleShot(200, self.init_cage_list)
         self.init_config_ui()
         super()._init_customize_ui()
 
     def init_module_detection_display(self):
-        """初始化气路模块检测显示区域 - 固定显示 UFC, UGC, ZOS"""
+        """初始化气路模块检测显示 - 修复版（只初始化一次）"""
+
+        # 【改动1】如果已经初始化过，就直接返回
+        if self._module_labels_initialized:
+            logger.debug("✓ 气路模块标签已初始化过，跳过重新初始化")
+            return
+
         if self.module_detection_layout is None:
             logger.error("module_detection_layout 未找到！")
             return
@@ -269,31 +280,35 @@ class Tab_1(ThemedWindow):
             h_layout.setSpacing(15)
             h_layout.setContentsMargins(5, 5, 5, 5)
 
+            # 模块名称标签
             name_label = QtWidgets.QLabel(f"{module_name}:")
-            name_label.setMinimumWidth(45)
-            name_label.setMaximumWidth(45)
-            name_label.setMinimumHeight(30)
-            name_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            name_label.setMinimumWidth(50)
+            name_label.setMaximumWidth(60)
+            name_label.setMinimumHeight(35)
+            name_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             name_label.setStyleSheet("""
                 QLabel {
                     font-weight: bold;
-                    font-size: 12px;
+                    font-size: 13px;
                     color: #333;
                 }
             """)
 
+            # 状态标签
             status_label = QtWidgets.QLabel("待检测")
-            status_label.setMinimumWidth(80)
-            status_label.setMinimumHeight(30)
+            status_label.setMinimumWidth(120)
+            status_label.setMaximumWidth(200)
+            status_label.setMinimumHeight(35)
             status_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             status_label.setWordWrap(False)
             status_label.setStyleSheet("""
                 QLabel {
-                    font-size: 11px;
-                    color: #999;
-                    padding: 5px 8px;
-                    background-color: #f5f5f5;
+                    font-size: 12px;
+                    color: #666;
+                    padding: 5px;
                     border-radius: 3px;
+                    background-color: #f5f5f5;
+                    border: 1px solid #ddd;
                 }
             """)
 
@@ -304,100 +319,82 @@ class Tab_1(ThemedWindow):
             self.module_detection_layout.addLayout(h_layout)
             self.module_status_labels[module_key] = status_label
 
-    # ==================== 新增：连接信号槽 ====================
+            # 记录对象ID
+            self._module_labels_object_ids[module_key] = id(status_label)
+
+            logger.debug(f"✓ 初始化 {module_name} 显示区域 (ID: {id(status_label)})")
+
+        self.module_detection_layout.addStretch()
+
+        # 标记为已初始化
+        self._module_labels_initialized = True
+        logger.critical("气路模块标签初始化完成（已标记为不再重复初始化）")
+
+    # ==================== 连接信号槽 ====================
     def _connect_air_module_signals(self):
-        """
-        连接气路检测相关的信号槽
-        这确保所有UI更新都在主线程执行
-        """
+        """连接信号槽 - 确保连接"""
         try:
-            # 气路模块UI更新 - 直接在主线程处理
+            # 改用 QueuedConnection，让槽在主线程执行
             self.signal_air_module_update.connect(
                 self._slot_on_air_module_ui_update,
-                Qt.ConnectionType.QueuedConnection  # 排队方式，确保在主线程
+                Qt.ConnectionType.QueuedConnection  # 改成 QueuedConnection
             )
 
-            # 检测状态更新
             self.signal_detection_status_update.connect(
                 self._slot_on_detection_status_update,
                 Qt.ConnectionType.QueuedConnection
             )
 
-            # UI强制刷新
-            self.signal_force_ui_refresh.connect(
-                self._slot_on_force_ui_refresh,
-                Qt.ConnectionType.QueuedConnection
-            )
-
-            logger.info("气路检测信号槽已连接")
-
         except Exception as e:
             logger.error(f"连接信号槽失败: {e}", exc_info=True)
 
-    # ==================== 新增：槽函数 ====================
+    # ==================== 槽函数 ====================
     @pyqtSlot(str, bool)
     def _slot_on_air_module_ui_update(self, module_name: str, is_valid: bool):
-        """
-        【主线程槽函数】更新气路模块UI
-        这是唯一修改UI的地方，保证线程安全
-        """
+        """更新气路模块UI"""
         try:
-            logger.critical(f"[主线程槽函数] 准备更新 {module_name} UI: {'✓ 有效' if is_valid else '✗ 无效'}")
-
             if module_name not in self.module_status_labels:
-                logger.warning(f"模块 {module_name} 在 UI 中不存在")
                 return
 
             status_label = self.module_status_labels[module_name]
 
-            # ==================== 更新UI文本和样式 ====================
+            new_text = "✓ 有效" if is_valid else "✗ 无效"
+            status_label.setText(new_text)
+
+            # 设置样式
             if is_valid:
-                # 有效状态
-                status_label.setText("有效")
                 status_label.setStyleSheet("""
                     QLabel {
-                        color: #27AE60;
-                        font-weight: bold;
                         font-size: 12px;
-                        background-color: #E8F8F5;
-                        border: 1px solid #27AE60;
+                        color: #228B22;
+                        padding: 5px;
                         border-radius: 3px;
-                        padding: 5px 8px;
+                        background-color: #F0FFF0;
+                        border: 1px solid #90EE90;
+                        font-weight: bold;
                     }
                 """)
-                logger.info(f"{module_name} UI 已更新为【有效】")
-
             else:
-                # 无效状态
-                status_label.setText("无效")
                 status_label.setStyleSheet("""
                     QLabel {
-                        color: #E74C3C;
-                        font-weight: bold;
                         font-size: 12px;
-                        background-color: #FADBD8;
-                        border: 1px solid #E74C3C;
+                        color: #DC143C;
+                        padding: 5px;
                         border-radius: 3px;
-                        padding: 5px 8px;
+                        background-color: #FFF0F5;
+                        border: 1px solid #FFB6C1;
+                        font-weight: bold;
                     }
                 """)
-                logger.warning(f"{module_name} UI 已更新为【无效】")
 
-            # ==================== 强制刷新控件 ====================
-            status_label.update()
-            status_label.repaint()  # 强制重绘
-
-            # ==================== 处理事件队列 ====================
-            QApplication.processEvents()  # 立即处理待处理事件
-
-            logger.info(f"{module_name} UI 已重绘完成")
+            logger.info(f"✅ {module_name}: {new_text}")
 
         except Exception as e:
-            logger.error(f"更新 {module_name} UI 失败: {e}", exc_info=True)
+            logger.error(f"❌ 异常: {e}", exc_info=True)
 
     @pyqtSlot(str)
     def _slot_on_detection_status_update(self, status_text: str):
-        """【主线程槽函数】更新检测状态"""
+        """更新检测状态"""
         try:
             if self.detection_status_label:
                 self.detection_status_label.setText(status_text)
@@ -411,33 +408,6 @@ class Tab_1(ThemedWindow):
         except Exception as e:
             logger.error(f"更新检测状态失败: {e}", exc_info=True)
 
-    @pyqtSlot()
-    def _slot_on_force_ui_refresh(self):
-        """【主线程槽函数】强制刷新整个UI"""
-        try:
-            logger.info("执行UI强制刷新...")
-
-            # 刷新所有模块标签
-            for module_name, status_label in self.module_status_labels.items():
-                status_label.update()
-                status_label.repaint()
-
-            # 刷新检测状态标签
-            if self.detection_status_label:
-                self.detection_status_label.update()
-                self.detection_status_label.repaint()
-
-            # 刷新整个Widget
-            self.update()
-            self.repaint()
-
-            # 处理事件队列
-            QApplication.processEvents()
-
-            logger.info("UI 强制刷新完成")
-
-        except Exception as e:
-            logger.error(f"UI 刷新失败: {e}", exc_info=True)
 
     def _init_function(self):
         """初始化功能"""
@@ -1167,7 +1137,7 @@ class Tab_1(ThemedWindow):
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
                 return
 
-            logger.info(f"✓ 笼子 {group_id} 笼内模块检测通过，允许配置")
+            # logger.info(f"✓ 笼子 {group_id} 笼内模块检测通过，允许配置")
             self.load_cage_config(group_id)
 
             if self.right_title:
@@ -1181,13 +1151,13 @@ class Tab_1(ThemedWindow):
     # ========== 气路检测流程（修改版 - 改用信号槽） ==========
     def confirm_port(self):
         """
-        确认串口并启动气路检测（修复版）
+        确认串口并启动气路检测（完全修复版）
         """
         logger.critical("=" * 80)
         logger.critical("确认串口，启动气路模块检测")
         logger.critical("=" * 80)
 
-        # ==================== 验证串口 ====================
+        # ==================== 【第1步】验证串口 ====================
         if not self.port_combox or self.port_combox.currentIndex() < 0:
             self.show_warning("错误", "请先选择有效的串口")
             return
@@ -1201,7 +1171,7 @@ class Tab_1(ThemedWindow):
         self.send_message['port'] = self.ports[self.port_combox.currentIndex()]['device']
         self.port_confirmed = True
 
-        # ==================== 进程状态检查 ====================
+        # ==================== 【第2步】检查进程 ====================
         process_monitor = global_setting.get_setting("process_monitor", None)
         if process_monitor:
             p_response_comm_status = process_monitor.get_process_status("p_response_comm")
@@ -1215,7 +1185,7 @@ class Tab_1(ThemedWindow):
                 if reply == QMessageBox.StandardButton.No:
                     return
 
-        # ==================== 禁用按钮 ====================
+        # ==================== 【第3步】禁用按钮 ====================
         self.port_combox.setEnabled(False)
         if self.confirm_port_btn:
             self.confirm_port_btn.setEnabled(False)
@@ -1228,57 +1198,74 @@ class Tab_1(ThemedWindow):
         if self.config_btn:
             self.config_btn.setEnabled(False)
 
-        # ==================== 重置气路检测状态 ====================
-        with self.air_module_detection_lock:
-            if not self._air_detection_finished or not self._air_ui_has_been_updated:
-                self.air_detection_complete_event.clear()
-                self._air_detection_finished = False
-                self._air_ui_has_been_updated = False
-                self._air_detection_final_result_cached = None
+        # ==================== 【第4步】重置所有气路模块标签为"检测中..." ====================
+        logger.critical("重置所有气路模块标签为检测中状态...")
 
-                self.air_modules_completed.clear()
-                self.air_modules_detected.clear()
-                self.air_modules_valid.clear()
-
-                for module_name in ['UFC', 'UGC', 'ZOS']:
-                    self.air_modules_completed[module_name] = False
-                    self.air_modules_detected[module_name] = False
-                    self.air_modules_valid[module_name] = False
-
-                logger.debug("[重置] 气路检测状态已重置")
-
-        # ==================== 重置气路模块UI ====================
         for module_name in self.air_modules_to_detect:
-            if module_name in self.module_status_labels:
-                status_label = self.module_status_labels[module_name]
-                status_label.setText("检测中...")
-                status_label.setStyleSheet("""
-                    QLabel {
-                        font-size: 11px;
-                        color: #FF8C00;
-                        padding: 5px 8px;
-                        background-color: #FFE4B5;
-                        border-radius: 3px;
-                    }
-                """)
-                status_label.update()
-                status_label.repaint()
+            if module_name not in self.module_status_labels:
+                logger.error(f"模块 {module_name} 不在标签字典中！")
+                continue
 
-        # ==================== 初始化笼内检测 - 类型统一为int ====================
+            status_label = self.module_status_labels[module_name]
+
+            # 【关键】这里直接设置，不通过信号
+            status_label.blockSignals(True)
+            status_label.setText("检测中...")
+            status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    color: #FF8C00;
+                    padding: 5px;
+                    border-radius: 3px;
+                    background-color: #FFFACD;
+                    border: 1px solid #FFD700;
+                }
+            """)
+            status_label.blockSignals(False)
+
+            # 【关键】强制刷新
+            status_label.update()
+            status_label.repaint()
+
+            logger.critical(f"✓ {module_name} 标签已重置为: '{status_label.text()}'")
+
+        # 强制处理所有待处理的事件
+        QtWidgets.QApplication.processEvents()
+
+        logger.critical("所有标签重置完成，界面已更新")
+
+        # ==================== 【第5步】重置气路检测状态（一次性，在循环外） ====================
+        with self.air_module_detection_lock:
+            self.air_detection_complete_event.clear()
+            self._air_detection_finished = False
+            self._air_ui_has_been_updated = False
+            self._air_detection_final_result_cached = None
+
+            self.air_modules_completed.clear()
+            self.air_modules_detected.clear()
+            self.air_modules_valid.clear()
+
+            for module_name in ['UFC', 'UGC', 'ZOS']:
+                self.air_modules_completed[module_name] = False
+                self.air_modules_detected[module_name] = False
+                self.air_modules_valid[module_name] = False
+
+            logger.debug("[重置] 气路检测状态已完全重置")
+
+        # ==================== 【第6步】初始化笼内检测 ====================
         self._completed_cages.clear()
         self.cage_list_to_detect = [int(cage_id) for cage_id in self.cage_enabled_status.keys()]
         self.current_detecting_index = 0
         self.cage_detection_timers.clear()
 
-        logger.debug(f"笼子列表已初始化: {self.cage_list_to_detect} (类型统一为int)")
+        logger.debug(f"笼子列表已初始化: {self.cage_list_to_detect}")
 
-        # 初始化所有笼子的完成状态
         for cage_id in self.cage_list_to_detect:
             cage_id_int = int(cage_id)
             self._completed_cages[cage_id_int] = False
             logger.debug(f"  初始化笼子状态: {cage_id_int} -> False")
 
-        # ==================== 初始化全局检测字典 ====================
+        # ==================== 【第7步】初始化全局检测字典 ====================
         mouse_cage_detect_dict = {}
         for cage_id in self.cage_list_to_detect:
             cage_id_int = int(cage_id)
@@ -1296,7 +1283,7 @@ class Tab_1(ThemedWindow):
 
         self.detection_in_progress = True
 
-        # ==================== 发送气路检测请求 ====================
+        # ==================== 【第8步】发送气路检测请求 ====================
         send_message_queue = global_setting.get_setting("send_message_queue", None)
         if not send_message_queue:
             logger.error("send_message_queue 未找到，无法发送报文")
@@ -1324,119 +1311,77 @@ class Tab_1(ThemedWindow):
             f"Modules: {self.air_modules_to_detect}"
         )
 
-        # ==================== 启动鼠笼检测（7秒延迟） ====================
+        # ==================== 【第9步】启动鼠笼检测（7秒延迟） ====================
         logger.info("✓ 气路检测请求已发送，7秒后启动笼内模块检测...")
         QTimer.singleShot(7000, self._detect_next_cage)
 
-    def not_each_Mouse_Cage_detect_update_state(self, state_data):
-        """
-        更新气路模块检测状态（改用信号槽）
+        logger.critical("=" * 80)
+        logger.critical("确认串口完成，等待检测结果...")
+        logger.critical("=" * 80)
 
-        当收到气路模块响应时，立即记录状态
-        当3个模块全部收到时，立即强制结算气路检测
-        """
+    def not_each_Mouse_Cage_detect_update_state(self, state_data):
+        """修复版 - 确保立即发射信号"""
         try:
             module_name = state_data.get('module_name', '')
             data_field = state_data.get('data', [])
 
-            # ==================== 1. 判定有效性 ====================
+            # ==================== 判定有效性 ====================
             module_is_valid = bool(data_field) and len(data_field) > 0
-
             if module_is_valid and isinstance(data_field, list):
                 for item in data_field:
                     if isinstance(item, dict):
                         value = item.get('value', '')
                         if 'Time OUT' in str(value) or '未获取到' in str(value):
                             module_is_valid = False
-                            logger.warning(f"   [错误值] {value}")
                             break
 
             logger.critical(f"[判定] {module_name}: {'✓ 有效' if module_is_valid else '✗ 无效'}")
 
-            # ==================== 2. 记录状态 ====================
-            should_trigger_final = False
-
             with self.air_module_detection_lock:
-                # 如果已结束则直接返回
                 if self._air_detection_finished:
-                    logger.debug(f"气路检测已结束，忽略 {module_name} 的回复")
+                    logger.debug(f"气路检测已结束，忽略 {module_name}")
                     return
 
-                # 防御性检查：确保模块在字典中存在
-                if module_name not in self.air_modules_completed:
-                    logger.debug(f"{module_name} 字典项不存在，现在初始化")
-                    self.air_modules_completed[module_name] = False
-                    self.air_modules_detected[module_name] = False
-                    self.air_modules_valid[module_name] = False
-
-                # 如果已处理过则直接返回
-                if self.air_modules_completed.get(module_name, False) is True:
+                if self.air_modules_completed.get(module_name, False):
                     logger.debug(f"{module_name} 已处理过")
                     return
 
-                # ==================== 写入数据 ====================
+                # 用 emit 发射信号！
+                logger.info(f"📡 [发射信号] {module_name}: {module_is_valid}")
+                self.signal_air_module_update.emit(module_name, module_is_valid)  # ← 这里改成 emit
+
                 self.air_modules_completed[module_name] = True
-                self.air_modules_detected[module_name] = True
                 self.air_modules_valid[module_name] = module_is_valid
 
-                # 计算字典中 Value 为 True 的数量
                 received_count = sum(1 for v in self.air_modules_completed.values() if v)
                 total_count = len(self.air_modules_to_detect)
 
-                logger.critical(
-                    f"[记录] {module_name} 已记录\n"
-                    f"   状态: {'✓ 有效' if module_is_valid else '✗ 无效'}\n"
-                    f"   进度: {received_count}/{total_count}"
-                )
-
-                # ==================== 检查是否全部齐了 ====================
                 if received_count >= total_count:
-                    logger.critical(
-                        f"所有 {total_count} 个模块已齐，准备触发结算"
-                    )
-                    should_trigger_final = True
-
-            # ==================== 3. 【关键】发射信号更新UI（而不是直接调用） ====================
-            logger.info(f"发射信号: {module_name} -> {'有效' if module_is_valid else '无效'}")
-            self.signal_air_module_update.emit(module_name, module_is_valid)
-
-            # ==================== 4. 更新检测状态标签 ====================
-            self.signal_detection_status_update.emit("检测中...")
-
-            # ==================== 5. 强制刷新UI ====================
-            self.signal_force_ui_refresh.emit()
-
-            # ==================== 6. 如果全齐了，触发结算 ====================
-            if should_trigger_final:
-                logger.info("[全齐] 所有模块已到齐，立即触发结算...")
-                QTimer.singleShot(100, self._process_air_detection_final_results)
+                    # 所有齐了，触发结算
+                    self._process_air_detection_final_results()
 
         except Exception as e:
-            logger.error(f"[处理异常] {e}", exc_info=True)
+            logger.error(f"异常: {e}", exc_info=True)
 
     def _process_air_detection_final_results(self):
         """
-        气路检测的唯一终点 - 改用信号槽版本
-
-        仅负责结算气路检测结果并更新UI
-        不触发笼内检测，笼内检测由confirm_port()中的定时器控制
+        气路检测结算
+        在这里才是发射信号更新UI的地方
         """
         try:
-            # ==================== 1. 锁内提前设置标志位（核心：优先防重复） ====================
             with self.air_module_detection_lock:
-                # 第一时间检查：已完成/已有缓存/UI已更新，直接返回，不执行任何操作
-                if self._air_detection_finished or self._air_detection_final_result_cached or self._air_ui_has_been_updated:
-                    logger.debug(
-                        f"[防重复] 检测已完成（finished={self._air_detection_finished}，cached={bool(self._air_detection_final_result_cached)}，ui_updated={self._air_ui_has_been_updated}），直接返回")
+                # 防重复检查
+                if self._air_detection_finished:
+                    logger.debug("[防重复] 已结算过，直接返回")
                     return
 
-                # 提前标记为已完成（锁内），确保超时入口能立即检测到
+                # 标记为已完成
                 self._air_detection_finished = True
                 self.air_detection_complete_event.set()
 
-                logger.critical("[结算] 气路检测进入结算阶段...")
+                logger.critical("[结算] 气路检测结算开始")
 
-                # 锁内创建永久快照
+                # 创建快照
                 air_modules_valid_snapshot = dict(self.air_modules_valid)
                 air_modules_completed_snapshot = dict(self.air_modules_completed)
 
@@ -1447,22 +1392,7 @@ class Tab_1(ThemedWindow):
                     if module_name not in air_modules_completed_snapshot:
                         air_modules_completed_snapshot[module_name] = False
 
-            # ==================== 2. 检查是否已有正确UI更新，禁止重复修改 ====================
-            if self._air_ui_has_been_updated:
-                logger.debug("[防重复] UI已被正确更新，禁止二次修改")
-                return
-
-            # ==================== 3. 处理结果（仅执行一次） ====================
-            completed_modules = [k for k, v in air_modules_completed_snapshot.items() if v]
-
-            logger.critical(
-                f"\n{'=' * 80}\n"
-                f"[结算开始]\n"
-                f"预期模块: {self.air_modules_to_detect}\n"
-                f"已收到: {completed_modules}\n"
-                f"真值表: {air_modules_valid_snapshot}\n"
-            )
-
+            # ==================== 统计结果 ====================
             final_valid_list = []
             final_invalid_list = []
             final_no_response_list = []
@@ -1472,34 +1402,27 @@ class Tab_1(ThemedWindow):
                 is_valid = air_modules_valid_snapshot.get(module_name, False)
 
                 if not has_responded:
-                    logger.warning(
-                        f"✗ [未响应] 模块 {module_name} 最终未响应"
-                    )
-                    # 使用信号槽确保UI更新
+                    logger.warning(f"✗ [未响应] 模块 {module_name}")
+                    # 发射信号更新UI - 无效
                     self.signal_air_module_update.emit(module_name, False)
                     final_no_response_list.append(module_name)
+                elif is_valid:
+                    logger.info(f"✓ [有效] 模块 {module_name}")
+                    # 发射信号更新UI - 有效
+                    self.signal_air_module_update.emit(module_name, True)
+                    final_valid_list.append(module_name)
                 else:
-                    logger.info(
-                        f"✓ [已回复] 模块 {module_name} 已回复，状态: {'有效' if is_valid else '无效'}"
-                    )
-                    # 使用信号槽确保UI更新
-                    self.signal_air_module_update.emit(module_name, is_valid)
-                    if is_valid:
-                        final_valid_list.append(module_name)
-                    else:
-                        final_invalid_list.append(module_name)
+                    logger.warning(f"[无效] 模块 {module_name}")
+                    # 发射信号更新UI - 无效
+                    self.signal_air_module_update.emit(module_name, False)
+                    final_invalid_list.append(module_name)
 
-            # ==================== 强制UI刷新 ====================
-            QTimer.singleShot(50, self.signal_force_ui_refresh.emit)
-
+            # ==================== 缓存结果 ====================
             self._air_detection_final_result_cached = {
                 'valid': final_valid_list,
                 'invalid': final_invalid_list,
-                'no_response': final_no_response_list,
-                'snapshot': air_modules_valid_snapshot,
-                'completed': completed_modules
+                'no_response': final_no_response_list
             }
-            self._air_ui_has_been_updated = True  # 标记UI已正确更新，禁止所有后续入口修改
 
             logger.critical(
                 f"\n{'=' * 80}\n"
@@ -1510,15 +1433,15 @@ class Tab_1(ThemedWindow):
                 f"{'=' * 80}\n"
             )
 
-            # ==================== 更新总体检测状态 ====================
+            # ==================== 【最后】更新总体检测状态 ====================
+            # 这才是通知UI"检测完成"的信号！
             self.signal_detection_status_update.emit("✓ 气路检测完成")
+            logger.critical("已发射【检测完成】信号")
 
         except Exception as e:
             logger.error(f"[结算异常] {e}", exc_info=True)
-            # 异常时也要标记所有标志位，防止死锁
             with self.air_module_detection_lock:
                 self._air_detection_finished = True
-                self._air_ui_has_been_updated = True
 
     # ========== 笼内检测流程 ==========
     def _detect_next_cage(self):
@@ -1529,11 +1452,11 @@ class Tab_1(ThemedWindow):
         try:
             # ==================== 1. 边界检查 ====================
             if self.current_detecting_index >= len(self.cage_list_to_detect):
-                logger.critical(
-                    f"\n{'=' * 80}\n"
-                    f"[检测完成] 所有 {len(self.cage_list_to_detect)} 个笼子已检测完毕\n"
-                    f"{'=' * 80}\n"
-                )
+                # logger.critical(
+                #     f"\n{'=' * 80}\n"
+                #     f"[检测完成] 所有 {len(self.cage_list_to_detect)} 个笼子已检测完毕\n"
+                #     f"{'=' * 80}\n"
+                # )
                 self._cleanup_all_timers()
                 self.detection_in_progress = False
 
@@ -1547,13 +1470,13 @@ class Tab_1(ThemedWindow):
             # ==================== 2. 获取当前笼子（修复：确保类型一致） ====================
             cage_number = int(self.cage_list_to_detect[self.current_detecting_index])
 
-            logger.critical(
-                f"\n{'=' * 80}\n"
-                f"[开始检测笼子] {cage_number}\n"
-                f"索引: {self.current_detecting_index}/{len(self.cage_list_to_detect) - 1}\n"
-                f"笼子列表: {self.cage_list_to_detect}\n"
-                f"{'=' * 80}\n"
-            )
+            # logger.critical(
+            #     f"\n{'=' * 80}\n"
+            #     f"[开始检测笼子] {cage_number}\n"
+            #     f"索引: {self.current_detecting_index}/{len(self.cage_list_to_detect) - 1}\n"
+            #     f"笼子列表: {self.cage_list_to_detect}\n"
+            #     f"{'=' * 80}\n"
+            # )
 
             # ==================== 3. 防重复检测 ====================
             if self._completed_cages.get(cage_number, False) is True:
@@ -1585,10 +1508,10 @@ class Tab_1(ThemedWindow):
                 )
                 send_message_queue.put(detect_item)
 
-                logger.critical(
-                    f"笼子 {cage_number} 检测报文已发送\n"
-                    f"报文内容: gids=[{cage_number}], cage_index={cage_number}"
-                )
+                # logger.critical(
+                #     f"笼子 {cage_number} 检测报文已发送\n"
+                #     f"报文内容: gids=[{cage_number}], cage_index={cage_number}"
+                # )
 
             except Exception as queue_error:
                 logger.error(f"笼子 {cage_number} 检测报文发送异常: {queue_error}")
@@ -1612,7 +1535,7 @@ class Tab_1(ThemedWindow):
         timer.start(timeout_seconds * 1000)
 
         self.cage_detection_timers[cage_number] = timer
-        logger.debug(f"✓ 笼 {cage_number} 的 {timeout_seconds}秒检测超时已设置")
+        # logger.debug(f"✓ 笼 {cage_number} 的 {timeout_seconds}秒检测超时已设置")
 
     def _on_cage_detection_timeout(self, cage_number):
         """笼子检测超时处理（修复版：确保索引稳定推进）"""
@@ -1628,11 +1551,11 @@ class Tab_1(ThemedWindow):
                 logger.warning(f"笼子 {cage_number_int} 已处理过，跳过超时处理")
                 return
 
-            logger.warning(
-                f"\n{'=' * 80}\n"
-                f"[超时] 笼子 {cage_number_int} 检测超时（15秒）\n"
-                f"{'=' * 80}\n"
-            )
+            # logger.warning(
+            #     f"\n{'=' * 80}\n"
+            #     f"[超时] 笼子 {cage_number_int} 检测超时（15秒）\n"
+            #     f"{'=' * 80}\n"
+            # )
 
             # ==================== 标记完成 ====================
             self._completed_cages[cage_number_int] = True
@@ -1642,11 +1565,11 @@ class Tab_1(ThemedWindow):
             prev_index = self.current_detecting_index
             self.current_detecting_index += 1
 
-            logger.critical(
-                f"索引推进: {prev_index} → {self.current_detecting_index}\n"
-                f"当前完成笼子: {cage_number_int}\n"
-                f"下一个将检测: {self.cage_list_to_detect[self.current_detecting_index] if self.current_detecting_index < len(self.cage_list_to_detect) else '无'}\n"
-            )
+            # logger.critical(
+            #     f"索引推进: {prev_index} → {self.current_detecting_index}\n"
+            #     f"当前完成笼子: {cage_number_int}\n"
+            #     f"下一个将检测: {self.cage_list_to_detect[self.current_detecting_index] if self.current_detecting_index < len(self.cage_list_to_detect) else '无'}\n"
+            # )
 
             # ==================== 触发下一个笼子检测 ====================
             QTimer.singleShot(300, self._detect_next_cage)
@@ -1725,10 +1648,10 @@ class Tab_1(ThemedWindow):
                             module_is_valid = False
                             break
 
-            logger.critical(
-                f"笼 {mouse_cage_number} 模块 {module_name}: "
-                f"{'✓ 有效' if module_is_valid else '✗ 无效'}"
-            )
+            # logger.critical(
+            #     f"笼 {mouse_cage_number} 模块 {module_name}: "
+            #     f"{'✓ 有效' if module_is_valid else '✗ 无效'}"
+            # )
 
             # ==================== 更新全局检测字典 ====================
             mouse_cage_detect_dict = global_setting.get_setting("mouse_cage_detect_state_dict", {})
@@ -1797,7 +1720,7 @@ class Tab_1(ThemedWindow):
                 timer = self.cage_detection_timers.pop(cage_number_int)
                 timer.stop()
                 timer.deleteLater()
-                logger.debug(f"笼子 {cage_number_int} 的超时计时器已停止")
+                # logger.debug(f"笼子 {cage_number_int} 的超时计时器已停止")
 
             # ==================== 2. 防止重复进入 ====================
             if self._completed_cages.get(cage_number_int, False) is True:
@@ -1805,7 +1728,7 @@ class Tab_1(ThemedWindow):
                 return
 
             self._completed_cages[cage_number_int] = True
-            logger.debug(f"笼子 {cage_number_int} 标记为已完成")
+            # logger.debug(f"笼子 {cage_number_int} 标记为已完成")
 
             # ==================== 3. 更新UI ====================
             self._update_cage_detection_complete(cage_number_int)
@@ -1874,7 +1797,7 @@ class Tab_1(ThemedWindow):
                 cage_list_widget.viewport().update()
                 cage_list_widget.repaint()
 
-                logger.debug(f"✓ 笼 {cage_number} 列表显示已更新")
+                # logger.debug(f"✓ 笼 {cage_number} 列表显示已更新")
                 break
 
         except Exception as e:
@@ -1959,7 +1882,7 @@ class Tab_1(ThemedWindow):
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2, ensure_ascii=False)
 
-            logger.info(f"✓ 笼子 {cage_id} 配置已保存到: {config_path}")
+            # logger.info(f"✓ 笼子 {cage_id} 配置已保存到: {config_path}")
             return True
         except Exception as e:
             logger.error(f"保存笼子 {cage_id} 配置失败: {e}")
@@ -1971,13 +1894,13 @@ class Tab_1(ThemedWindow):
             config_path = self._get_cage_config_path(cage_id)
 
             if not config_path.exists():
-                logger.debug(f"笼子 {cage_id} 配置文件不存在，使用默认配置")
+                # logger.debug(f"笼子 {cage_id} 配置文件不存在，使用默认配置")
                 return {}
 
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
 
-            logger.info(f"✓ 笼子 {cage_id} 配置已从本地加载")
+            # logger.info(f"✓ 笼子 {cage_id} 配置已从本地加载")
             return config_data
         except Exception as e:
             logger.error(f"加载笼子 {cage_id} 配置失败: {e}")
@@ -1998,9 +1921,11 @@ class Tab_1(ThemedWindow):
             self.current_cage_config = saved_config.copy()
 
             if saved_config:
-                logger.info(f"✓ 已加载笼子 {group_num} 的本地保存配置")
+                pass
+                # logger.info(f"✓ 已加载笼子 {group_num} 的本地保存配置")
             else:
-                logger.info(f"笼子 {group_num} 首次配置，将创建新配置文件")
+                pass
+                # logger.info(f"笼子 {group_num} 首次配置，将创建新配置文件")
 
             for module_key, module_value in self.config.items():
                 if module_key == Modbus_Type.Modbus_Slave_Ids.ENM.value['name']:
@@ -2088,7 +2013,7 @@ class Tab_1(ThemedWindow):
         self.send_message['function_code'] = format(function_code, '02X')
 
         self.send_data()
-        logger.info(f"✓ 笼子 {mouse_cage_number} 滑块配置已保存: {config_key}={value}")
+        # logger.info(f"✓ 笼子 {mouse_cage_number} 滑块配置已保存: {config_key}={value}")
 
     def update_slider_label(self, value, label):
         """更新滑块标签"""
@@ -2101,13 +2026,13 @@ class Tab_1(ThemedWindow):
         if state is None or state != AppState.MONITORING:
             try:
                 if self.send_thread is None:
-                    logger.info("初始化串口")
+                    # logger.info("初始化串口")
                     self.send_thread = Send_thread(name="tab_3_COM_Send_Thread",
                                                    modbus=None, send_message=self.send_message)
                     self.send_thread.is_start = True
                     self.send_thread.start()
                     return
-                logger.info("未初始化串口对象,使用之前串口实例化对象")
+                # logger.info("未初始化串口对象,使用之前串口实例化对象")
                 self.send_thread.set_send_message(self.send_message)
                 self.send_thread.is_start = True
             except Exception as e:
@@ -2118,7 +2043,7 @@ class Tab_1(ThemedWindow):
                                              origin='Tab_1')
 
             global_setting.get_setting("send_message_queue").put(message_struct)
-            logger.debug(f"Tab_1开始发送消息:{message_struct}")
+            # logger.debug(f"Tab_1开始发送消息:{message_struct}")
 
     # ==========操作按钮==========
     def refresh_port(self):

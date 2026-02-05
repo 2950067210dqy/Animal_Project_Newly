@@ -175,17 +175,7 @@ class read_queue_data_Thread(MyQThread):
                         all_modules_check_online_state_Not_Each_Mouse_Cage(port, None)
                     case "detect_cage_modules_only":
                         port = global_setting.get_setting("port")
-
-                        # 【重点】从报文中获取笼号信息
                         gids_from_message = message.data.get("gids", [])
-                        cage_index = message.data.get("cage_index", None)
-
-                        logger.critical(
-                            f"收到笼内模块检测请求\n"
-                            f"   传入gids: {gids_from_message}\n"
-                            f"   笼子索引: {cage_index}\n"
-                            f"   全局gids: {gids}"
-                        )
 
                         # 使用传入的笼号进行检测
                         if gids_from_message and len(gids_from_message) > 0:
@@ -253,14 +243,6 @@ def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index):
     """
     global gids, send_thread
 
-    logger.critical(
-        f"\n{'=' * 80}\n"
-        f"[笼内模块状态检测]\n"
-        f"   笼子号: {mouse_cage_index}\n"
-        f"   全局gids: {gids}\n"
-        f"{'=' * 80}\n"
-    )
-
     send_messages = []
 
     # ==================== 获取该笼子对应的从站ID偏移 ====================
@@ -268,7 +250,7 @@ def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index):
         logger.error("笼子索引不能为None")
         return
 
-    # ✅ 直接使用笼子号作为偏移量计算从站ID
+    # 直接使用笼子号作为偏移量计算从站ID
     slave_id_offset = int(mouse_cage_index)
 
     for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Module_Info.value:
@@ -277,7 +259,7 @@ def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index):
             message_temp = copy.deepcopy(message_struct.message)
             message_temp['port'] = port
 
-            # ✅ 【关键】根据笼子号计算从站ID
+            # 根据笼子号计算从站ID
             base_slave_id = int(message_temp['slave_id'], 16)
             new_slave_id = base_slave_id + 16 * slave_id_offset
             message_temp['slave_id'] = format(new_slave_id, '02X')
@@ -287,19 +269,19 @@ def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index):
 
             send_messages.append({'message': message_temp})
 
-            logger.debug(
-                f"  准备报文: 模块={data_type}, 从站ID={message_temp['slave_id']}, "
-                f"笼子={mouse_cage_index}"
-            )
+            # logger.debug(
+            #     f"  准备报文: 模块={data_type}, 从站ID={message_temp['slave_id']}, "
+            #     f"笼子={mouse_cage_index}"
+            # )
 
     # ==================== 发送所有报文 ====================
     for msg in send_messages:
         send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
 
-    logger.critical(
-        f"✅ 笼子 {mouse_cage_index} 共发送 {len(send_messages)} 条报文\n"
-        f"{'=' * 80}\n"
-    )
+    # logger.critical(
+    #     f"笼子 {mouse_cage_index} 共发送 {len(send_messages)} 条报文\n"
+    #     f"{'=' * 80}\n"
+    # )
 
 
 def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
