@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QTableWidget, QAbstractItemView, QTableWidgetItem, QHeaderView
 from PyQt6.QtGui import QCursor
 
-from Module.new_monitor_data.ui.custom.table.TableCellDetailDialog import CellDetailDialog
+from Module.User_monitor.ui.custom.table.UserTableCellDetailDialog import CellDetailDialog
 
 
 class BiDirectionalFrozenTable(QTableWidget):
@@ -79,8 +79,8 @@ class BiDirectionalFrozenTable(QTableWidget):
         self.left_frozen_indices.sort()
         self.right_frozen_indices.sort()
 
-        print(f"左侧冻结列索引: {self.left_frozen_indices}")
-        print(f"右侧冻结列索引: {self.right_frozen_indices}")
+        # print(f"左侧冻结列索引: {self.left_frozen_indices}")
+        # print(f"右侧冻结列索引: {self.right_frozen_indices}")
 
     def _create_frozen_tables(self):
         """根据冻结列数量创建冻结表格"""
@@ -393,7 +393,6 @@ class BiDirectionalFrozenTable(QTableWidget):
                 self.right_frozen_table.show()
                 self.right_frozen_table.raise_()
 
-
     def update_frozen_tables_geometry(self):
         """更新冻结表格的几何位置"""
         if not self.parent() or not self.headers_set:
@@ -566,4 +565,3 @@ class CustomTableWidget(BiDirectionalFrozenTable):
 
         dialog = CellDetailDialog(cell_value, row, column, column_name, self)
         dialog.exec()
-

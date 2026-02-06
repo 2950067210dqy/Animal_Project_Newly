@@ -1,17 +1,15 @@
 import copy
-import math
 import time
 import typing
 from enum import Enum
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import Qt, QRect, QTimer, QLine, pyqtSignal
-from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel, QHBoxLayout, QButtonGroup, QRadioButton, \
-    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame, QApplication
+from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QButtonGroup, QRadioButton, \
+    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame
 from loguru import logger
 
-from Module.User_monitor.ui.User_Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
+from Module.User_monitor.ui.custom.table.User_Table_select_columns_paging_bottom import User_table_select_columns_paging_bottom
 from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.component.dock_widget.DraggableWindow import DemoDraggableDockWidget
 from public.config_class.global_setting import global_setting
@@ -20,8 +18,8 @@ from public.entity.BaseWidget import BaseWidget
 from public.entity.BaseWindow import BaseWindow
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.time_util import time_util
-from theme.ThemeQt6 import ThemedWindow, ThemedWidget
-
+from theme.ThemeQt6 import ThemedWidget
+# 暂时隐藏！！！！！！！！！！！！！！！！！！！！！！！！！！！ 没有用到这个页面
 class Show_Type(Enum):
     ALL = 0
     EACH = 1
@@ -55,9 +53,10 @@ class Show_Type(Enum):
         if other is None:
             return False
         return self.value != other.value
-class MonitorDataWindows(ThemedWidget):
-    enabled_zero_calibration_btn_signal =pyqtSignal()
-    enabled_range_calibration_btn_signal =pyqtSignal()
+class UserMonitorDataChartsWindows(ThemedWidget):
+    enabled_zero_calibration_btn_signal = pyqtSignal()
+    enabled_range_calibration_btn_signal = pyqtSignal()
+
     def resizeEvent(self, a0: typing.Optional[QtGui.QResizeEvent]):
         self.setMinimumSize(0, 0)
 
@@ -86,16 +85,18 @@ class MonitorDataWindows(ThemedWidget):
     def _check_both_calibration_status(self):
         """检查两个标定状态是否都为False"""
         # 如果是按了一起标定的按钮
-        logger.critical(f"is_all_calibration:{self.is_all_calibration}|_is_zero_calibration:{self._is_zero_calibration}|_is_range_calibration:{self._is_range_calibration}")
+        logger.critical(
+            f"is_all_calibration:{self.is_all_calibration}|_is_zero_calibration:{self._is_zero_calibration}|_is_range_calibration:{self._is_range_calibration}")
         if self.is_all_calibration:
             if not self._is_zero_calibration and not self._is_range_calibration:
                 if self.calibration_btn is not None:
-                    self.is_all_calibration=False
+                    self.is_all_calibration = False
                     self.calibration_btn.setDisabled(False)
         else:
-            if not self._is_zero_calibration or not  self._is_range_calibration:
+            if not self._is_zero_calibration or not self._is_range_calibration:
                 if self.calibration_btn is not None:
                     self.calibration_btn.setDisabled(False)
+
     def __init__(self):
         super().__init__()
         self.gids = []
@@ -106,14 +107,14 @@ class MonitorDataWindows(ThemedWidget):
         # 正在零点标定
         self._is_zero_calibration = False
         # 正在量程标定
-        self._is_range_calibration =False
+        self._is_range_calibration = False
         # 默认看总表
         self.default_show = Show_Type.ALL
         # 当前看
         self.current_show = copy.deepcopy(self.default_show)
         self.show_radio_data = [
             {"text": "总表查看", "value": Show_Type.ALL},
-            {"text": "分表查看", "value":  Show_Type.EACH}
+            {"text": "分表查看", "value": Show_Type.EACH}
         ]
 
         self.main_layout = QVBoxLayout()
@@ -126,15 +127,15 @@ class MonitorDataWindows(ThemedWidget):
         self.show_radios = []
         for i, data in enumerate(self.show_radio_data):
             radio = QRadioButton(data["text"])
-            if i ==0:
+            if i == 0:
                 radio.setStyleSheet("""
-                QRadioButton{
-                    margin-left:15px;
-                }
-                """)
+                    QRadioButton{
+                        margin-left:15px;
+                    }
+                    """)
             radio.setProperty("value", data["value"])  # 存储数据值
             # 设置默认选择
-            if data["value"]==self.default_show:
+            if data["value"] == self.default_show:
                 radio.setChecked(True)
             self.show_radios.append(radio)
             self.button_group.addButton(radio, i)
@@ -150,14 +151,14 @@ class MonitorDataWindows(ThemedWidget):
         btn_layout.addLayout(btn_right_layout)
         self.top_layout.addLayout(btn_layout)
         # Scroll area2 包含 QListView
-        opera_layout =QVBoxLayout()
+        opera_layout = QVBoxLayout()
         h_layout = QHBoxLayout()
         tip_label = QLabel("操作（操作必须手动导出数据，否则停止实验和关闭程序不会导出操作数据！）:")
         tip_label.setStyleSheet("""
-                        QLabel{
-                            margin-left:15px;
-                        }
-                        """)
+                            QLabel{
+                                margin-left:15px;
+                            }
+                            """)
         # 创建导出按钮
         self.export_button = QPushButton("导出操作")
         self.export_button.setMaximumHeight(40)
@@ -166,7 +167,7 @@ class MonitorDataWindows(ThemedWidget):
         h_layout.addWidget(self.export_button)
 
         opera_layout.addLayout(h_layout)
-        h_layout_2 =QHBoxLayout()
+        h_layout_2 = QHBoxLayout()
         self.scroll_area_2 = QScrollArea()
         self.scroll_area_2.setWidgetResizable(True)
         # 创建滚动区域内的内容窗口部件
@@ -204,21 +205,21 @@ class MonitorDataWindows(ThemedWidget):
         self.button_group.buttonClicked.connect(self.on_show_selection_changed)
 
         self.content_layout = QVBoxLayout()
-        self.content_widget=DemoDraggableDockWidget()
+        self.content_widget = DemoDraggableDockWidget()
         self.content_layout.addWidget(self.content_widget)
 
-
-        self.main_layout.addLayout(self.content_layout,stretch=9)
+        self.main_layout.addLayout(self.content_layout, stretch=9)
         self.setLayout(self.main_layout)
         # 存放创建的 dock 引用
         self._docks_widget = []
+
     def clear_existing_docks(self):
         self.content_widget.remove_all()
         for d in self._docks_widget:
-            d:BaseWindow|BaseWidget|BaseFrame
+            d: BaseWindow | BaseWidget | BaseFrame
             # 把悬浮出去的窗口也关闭
             d.get_ancestor()
-            if hasattr(d.ancestor,"detached_window"):
+            if hasattr(d.ancestor, "detached_window"):
                 if d.ancestor.detached_window is not None:
                     d.ancestor.detached_window.close()
             d.ancestor.hide()
@@ -229,22 +230,23 @@ class MonitorDataWindows(ThemedWidget):
         self._docks_widget = []
 
     def create_tiled_docks(self, n=8, gids=[]):
-        if n !=0:
-            self.n=n
-        if len(gids)>0:
+        if n != 0:
+            self.n = n
+        if len(gids) > 0:
             self.gids = gids
         self.clear_existing_docks()
         if self.current_show == Show_Type.EACH:
             for gid in gids:
-                widget = Table_select_columns_paging_bottom(gid=gid)
-                widget.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid==8 else ''}")
+                widget = User_table_select_columns_paging_bottom(gid=gid)
+                widget.setWindowTitle(
+                    f"通道/鼠笼 {gid} {'(参考气)' if gid == int(global_setting.get_setting('configer')['mouse_cage']['reference']) else ''}")
                 # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
                 widget.on_replace_headers([1])
 
                 self._docks_widget.append(widget)
             self.content_widget.addFrames(self._docks_widget)
         else:
-            widget = Table_select_columns_paging_bottom(gid=-1)
+            widget = User_table_select_columns_paging_bottom(gid=-1)
             widget.setWindowTitle(f"通道/鼠笼 总表")
             # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
             widget.on_replace_headers([1])
@@ -256,15 +258,17 @@ class MonitorDataWindows(ThemedWidget):
         self.setRadiosEnable(enable=False)
         value = button.property("value")
         if self.current_show != value:
-            self.current_show =value
+            self.current_show = value
             if self.current_show == Show_Type.EACH:
                 self.create_tiled_docks(n=self.n, gids=self.gids)
             else:
                 self.create_tiled_docks()
         QTimer.singleShot(3000, lambda: self.setRadiosEnable(enable=True))
-    def setRadiosEnable(self,enable = True):
+
+    def setRadiosEnable(self, enable=True):
         for radios in self.show_radios:
             radios.setEnabled(enable)
+
     def export_opera_data(self):
         """导出所有操作数据功能"""
         try:
@@ -306,7 +310,7 @@ class MonitorDataWindows(ThemedWidget):
         self.disabled_zero_calibration_btn()
         # 校0按钮事件
         send_message_queue = global_setting.get_setting("send_message_queue")
-        send_message_queue.put(ObjectQueueItem(origin='monitor_data_windows', to='main_monitor_data',
+        send_message_queue.put(ObjectQueueItem(origin='user_monitor_data_windows', to='user_main_monitor_data',
                                                title='start_zero_calibration',
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))
@@ -322,7 +326,7 @@ class MonitorDataWindows(ThemedWidget):
         # 校span按钮事件
         # 校0按钮事件
         send_message_queue = global_setting.get_setting("send_message_queue")
-        send_message_queue.put(ObjectQueueItem(origin='monitor_data_windows', to='main_monitor_data',
+        send_message_queue.put(ObjectQueueItem(origin='user_monitor_data_windows', to='user_main_monitor_data',
                                                title='start_span_calibration',
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))
@@ -341,7 +345,7 @@ class MonitorDataWindows(ThemedWidget):
         # 校0校span按钮事件
         # 校0按钮事件
         send_message_queue = global_setting.get_setting("send_message_queue")
-        send_message_queue.put(ObjectQueueItem(origin='monitor_data_windows', to='main_monitor_data',
+        send_message_queue.put(ObjectQueueItem(origin='user_monitor_data_windows', to='user_main_monitor_data',
                                                title='start_calibration',
                                                data=None,
                                                time=time_util.get_format_from_time(time.time())))

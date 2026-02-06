@@ -6,10 +6,10 @@ from PyQt6.QtCore import QRect, QSize, Qt, QTimer
 from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel, QSizePolicy, QSplitter, QHBoxLayout
 from loguru import logger
 
-from Module.User_monitor.ui.User_Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
-from Module.User_monitor.ui.user_monitor_data_new import Ui_monitor_data_new
-from Module.User_monitor.ui.user_monitor_data_windows import MonitorDataWindows
-from Module.User_monitor.ui.user_table_column_check_list_view import Table_Column_check_list_view
+from Module.User_monitor.ui.custom.table.User_Table_select_columns_paging_bottom import User_table_select_columns_paging_bottom
+from Module.User_monitor.ui.user_monitor_data_new import Ui_user_monitor_data_new
+from Module.User_monitor.index.left_top_widget.user_monitor_data_windows import UserMonitorDataWindows
+from Module.User_monitor.index.right_top_widget.user_table_column_check_list_view import User_table_Column_check_list_view
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
@@ -20,13 +20,11 @@ from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids
 from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
-
-
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name, window=None):
         super().__init__(name)
         self.queue = None
-        self.window: Monitor_data_new_index = window
+        self.window: User_monitor_data_new_index = window
         pass
 
     def stop(self):
@@ -44,7 +42,6 @@ class read_queue_data_Thread(MyQThread):
                 # logger.error(f"{self.name}_get_message:{message}|")
             if message is not None and message.is_Empty():
                 return
-            # 不要乱复制  message.to不要为monitor_data_new_index
             if message is not None and isinstance(message, ObjectQueueItem) and message.to == 'user_monitor_data_new_index':
                 logger.error(f"{self.name}_get_message:{message}")
                 match message.title:
@@ -54,16 +51,44 @@ class read_queue_data_Thread(MyQThread):
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
                             self.window.left_top_widget_content.enabled_zero_calibration_btn_signal.emit()
-                            self.window.left_top_widget_content.list_widget.insertItem(0,
-                                                                                       f"{time_util.get_format_from_time(time.time())}-校零完成时间")
+                            self.close_calibration_window()
                     case 'range_calibration_finish':
                         """
                         量程标定结束
                         """
                         if self.window is not None and self.window.left_top_widget_content is not None:
                             self.window.left_top_widget_content.enabled_range_calibration_btn_signal.emit()
-                            self.window.left_top_widget_content.list_widget.insertItem(0,
-                                                                                       f"{time_util.get_format_from_time(time.time())}-校量程完成时间")
+                            self.close_calibration_window()
+                    case 'stop_zero_calibration_finish':
+                        """
+                        stop零点标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_stop_zero_calibration_btn_signal.emit()
+                            self.close_calibration_window()
+
+                    case 'stop_range_calibration_finish':
+                        """
+                        stop量程标定结束
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.enabled_stop_range_calibration_btn_signal.emit()
+                            self.close_calibration_window()
+                    case 'calibration_msg':
+                        """
+                        标定的消息
+                        """
+                        if self.window is not None and self.window.left_top_widget_content is not None:
+                            self.window.left_top_widget_content.logger_calibration_msg_signal.emit(message.data)
+                    case 'open_calibration_window':
+                        """
+                        打开标定详情弹窗
+                        """
+                        if self.window is not None and self.window.main_gui is not None:
+                            # logger.critical('open_calibration_window')
+                            self.window.main_gui.show_calibration_window_signal.emit(
+                                {'type': message.data, 'time': message.time})
+
                     case _:
                         pass
 
@@ -75,16 +100,29 @@ class read_queue_data_Thread(MyQThread):
                 self.queue.put(message)
 
         pass
+    def close_calibration_window(self):
+        """
+        关闭标定详情弹窗
+        :return:
+        """
+        # if self.window is not None and self.window.main_gui is not None:
+        #     self.window.main_gui.release_calibration_window_signal.emit()
+        pass
+
+read_queue_data_thread = read_queue_data_Thread(name="user_monitor_data_new_index_read_queue_data_thread")
 
 
-read_queue_data_thread = read_queue_data_Thread(name="monitor_data_new_index_read_queue_data_thread")
-
-
-class Monitor_data_new_index(ThemedWindow):
+class User_monitor_data_new_index(ThemedWindow):
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
         for widget in self.left_top_widget_content._docks_widget:
-            widget: Table_select_columns_paging_bottom
-            if widget is not None and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
+            widget: User_table_select_columns_paging_bottom
+            if widget is not None and hasattr(widget,
+                                              "data_fetcher_thread") and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
+                widget.data_fetcher_thread.pause()
+        for widget in self.left_top_widget_content._docks_widget_charts:
+            widget: User_table_select_columns_paging_bottom
+            if widget is not None and hasattr(widget,
+                                              "data_fetcher_thread") and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.pause()
         pass
 
@@ -95,10 +133,20 @@ class Monitor_data_new_index(ThemedWindow):
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         for widget in self.left_top_widget_content._docks_widget:
-            widget: Table_select_columns_paging_bottom
-            if widget is not None and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
+            widget: User_table_select_columns_paging_bottom
+            if widget is not None and hasattr(widget,
+                                              "data_fetcher_thread") and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.resume()
-            elif widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
+            elif widget is not None and hasattr(widget,
+                                                "data_fetcher_thread") and widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
+                widget.data_fetcher_thread.start()
+        for widget in self.left_top_widget_content._docks_widget_charts:
+            widget: User_table_select_columns_paging_bottom
+            if widget is not None and hasattr(widget,
+                                              "data_fetcher_thread") and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
+                widget.data_fetcher_thread.resume()
+            elif widget is not None and hasattr(widget,
+                                                "data_fetcher_thread") and widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.start()
 
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
@@ -155,12 +203,13 @@ class Monitor_data_new_index(ThemedWindow):
 
         # 用QWidget替代QDockWidget
         self.left_top_widget: QWidget = None
-        self.left_top_widget_content: MonitorDataWindows = None
+        self.left_top_widget_content: UserMonitorDataWindows = None
         self.left_bottom_widget: QWidget = None
+        # self.left_bottom_widget_content: MonitorDataChartsWindows = None
         self.right_top_widget: QWidget = None
-        self.right_top_widget_content: Table_Column_check_list_view = None
+        self.right_top_widget_content: User_table_Column_check_list_view = None
         self.right_bottom_widget: QWidget = None
-        self.right_bottom_widget_content: Table_Column_check_list_view = None
+        self.right_bottom_widget_content: User_table_Column_check_list_view = None
 
         # Splitter组件
         self.main_splitter: QSplitter = None
@@ -189,7 +238,7 @@ class Monitor_data_new_index(ThemedWindow):
         else:
             pass
 
-        self.ui = Ui_monitor_data_new()
+        self.ui = Ui_user_monitor_data_new()
         self.ui.setupUi(self)
         self._retranslateUi()
 
@@ -244,14 +293,26 @@ class Monitor_data_new_index(ThemedWindow):
         left_top_layout.setContentsMargins(0, 0, 0, 0)
 
         # 创建DemoDraggableDockWidget
-        self.left_top_widget_content = MonitorDataWindows()
+        self.left_top_widget_content = UserMonitorDataWindows()
         left_top_layout.addWidget(self.left_top_widget_content)
 
         self.left_splitter.addWidget(self.left_top_widget)
 
-        # 创建左下widget（暂时隐藏）
+        # 创建左下widget （暂时隐藏）
         self.left_bottom_widget = QWidget()
         self.left_bottom_widget.hide()
+        # self.left_bottom_widget.setMinimumSize(600, 400)
+        # self.left_bottom_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        #
+        # # 为左下widget创建布局
+        # left_bottom_layout = QVBoxLayout(self.left_bottom_widget)
+        # left_bottom_layout.setContentsMargins(0, 0, 0, 0)
+        #
+        # # 创建widget
+        # self.left_bottom_widget_content = MonitorDataChartsWindows()
+        # left_bottom_layout.addWidget(self.left_bottom_widget_content)
+
         self.left_splitter.addWidget(self.left_bottom_widget)
 
         # 创建右上widget
@@ -259,7 +320,7 @@ class Monitor_data_new_index(ThemedWindow):
         right_top_layout = QVBoxLayout(self.right_top_widget)
         right_top_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.right_top_widget_content = Table_Column_check_list_view(ok_btn_text="确定选择通道", datas_type=1)
+        self.right_top_widget_content = User_table_Column_check_list_view(ok_btn_text="确定选择通道", datas_type=1)
         right_top_layout.addWidget(self.right_top_widget_content)
 
         self.right_splitter.addWidget(self.right_top_widget)
@@ -311,7 +372,7 @@ class Monitor_data_new_index(ThemedWindow):
             # 选择数据项
             if type == "column":
                 for widget in self._docks_widget:
-                    widget: Table_select_columns_paging_bottom
+                    widget: User_table_select_columns_paging_bottom
                     widget.on_replace_headers(dict_ids['data'])
                 pass
             # 选择通道
@@ -320,7 +381,11 @@ class Monitor_data_new_index(ThemedWindow):
                 if settings:
                     # logger.critical(f"monitor_data_new_index | experiment_setting:{settings}")
                     # 将参考气也放进去
-                    gids = [8] + [group.id for group in settings.groups if group.id in dict_ids['data']]
+                    gids = [int(global_setting.get_setting('configer')['mouse_cage']['reference'])] + [group.id for
+                                                                                                       group in
+                                                                                                       settings.groups
+                                                                                                       if group.id in
+                                                                                                       dict_ids['data']]
                     # logger.critical(f"monitor_data_new_index | gids{gids}")
                     self.left_top_widget_content.create_tiled_docks(n=len(gids), gids=gids)
                 pass

@@ -18,26 +18,25 @@ from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.util.class_util import class_util
 from theme.ThemeQt6 import ThemedWindow
 
-class Table_Column_check_list_view(BaseWindow):
+class User_table_Column_check_list_view(BaseWindow):
     set_table_column_signal = pyqtSignal(dict)
+
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载数据
         if self.datas_type == 0:
             self.load_json()
         else:
             self.load_group()
-     
+
         self.select_all()
         pass
 
-
-    def __init__(self,ok_btn_text="",datas_type=0):
+    def __init__(self, ok_btn_text="", datas_type=0):
         super().__init__()
         self.ok_btn_text = ok_btn_text
         self.datas_type = datas_type
         self._init_ui()
         self._init_function()
-
 
     def _init_ui(self):
         self.setWindowTitle("PyQt6 -- 搜索/过滤 / 全选 / 反选 示例（已去除排序）")
@@ -120,7 +119,6 @@ class Table_Column_check_list_view(BaseWindow):
         self.invert_btn.setEnabled(has_items)
         self.show_selected_btn.setEnabled(has_items)
         self.search_edit.setEnabled(has_items)
-
     def load_group(self):
         """
 
@@ -335,7 +333,7 @@ class Table_Column_check_list_view(BaseWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = Table_Column_check_list_view()
+    window = User_table_Column_check_list_view()
     window.resize(300, 400)
     window.show()
     sys.exit(app.exec())

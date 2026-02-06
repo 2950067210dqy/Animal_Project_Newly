@@ -1,22 +1,21 @@
+"""
+表头初始为空，通过信号（按钮点击）置换表头并分页加载数据（每页 10 条），
+当垂直滚动条滑到底部时自动加载下一页。
+"""
 import sys
 import time
 
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton,
+    QApplication, QWidget, QVBoxLayout, QPushButton,
     QScrollArea, QTableWidget, QTableWidgetItem, QMessageBox, QLabel, QHBoxLayout, QListWidget, QFileDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal
 from loguru import logger
 
-from Module.User_monitor.ui.User_Custom_table import CustomTableWidget
-from public.component.dialog.custom.InfoDialog import InfoDialog
+from Module.User_monitor.ui.custom.table.User_Custom_table import CustomTableWidget
 from public.config.Data_Column import Data_column_list
-from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
-from public.entity.BaseWindow import BaseWindow
 from public.entity.MyQThread import MyQThread
-from public.entity.queue.ObjectQueueItem import ObjectQueueItem
-from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -60,10 +59,10 @@ class DataFetcher(MyQThread):
 
         self.data_fetched.emit(datas)
 
-        time.sleep(0.3)  # 每秒获取一次数据
+        time.sleep(3)  # 每秒获取一次数据
 
 
-class Table_select_columns_paging_bottom(ThemedWindow):
+class User_table_select_columns_paging_bottom(ThemedWindow):
     def hide(self):
         # 窗口隐藏时停止数据线程
         if self.data_fetcher_thread is not None:

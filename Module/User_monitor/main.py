@@ -1,4 +1,4 @@
-from Module.User_monitor.index.user_monitor_data_new_index import Monitor_data_new_index
+from Module.User_monitor.index.user_monitor_data_new_index import User_monitor_data_new_index
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
@@ -34,7 +34,7 @@ class Main_load_metadata_file_widget(BaseInterfaceWidget):
         return BaseInterfaceType.WIDGET
 
     def create_middle_window(self) -> BaseWindow:
-        tab_window = Monitor_data_new_index()
+        tab_window = User_monitor_data_new_index()
         return tab_window
 
     def create_left_window(self) -> BaseWindow:
@@ -67,7 +67,7 @@ class Main_User_monitor_Module(BaseModule):
         return AppState.MONITORING
     def get_name(self):
         """返回组件名称"""
-        return "Main_User_monitor"
+        return "Main_User_monitor_data"
         pass
     def get_title(self):
         """获取组件title"""

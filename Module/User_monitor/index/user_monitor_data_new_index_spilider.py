@@ -5,9 +5,9 @@ from PyQt6.QtCore import QRect, QSize, Qt, QTimer
 from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel, QSizePolicy, QSplitter, QHBoxLayout
 from loguru import logger
 
-from Module.User_monitor.ui.User_Table_select_columns_paging_bottom import Table_select_columns_paging_bottom
-from Module.User_monitor.ui.user_monitor_data_new import Ui_monitor_data_new
-from Module.User_monitor.ui.user_table_column_check_list_view import Table_Column_check_list_view
+from Module.User_monitor.ui.custom.table.User_Table_select_columns_paging_bottom import User_table_select_columns_paging_bottom
+from Module.User_monitor.ui.user_monitor_data_new import Ui_user_monitor_data_new
+from Module.User_monitor.index.right_top_widget.user_table_column_check_list_view import User_table_Column_check_list_view
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.component.dock_widget.DraggableWindow import DemoDraggableDockWidget
 from public.config_class.App_Setting import AppSettings
@@ -20,14 +20,14 @@ from theme.ThemeQt6 import ThemedWindow
 class Monitor_data_new_index(ThemedWindow):
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
         for widget in self._docks_widget:
-            widget: Table_select_columns_paging_bottom
+            widget: User_table_select_columns_paging_bottom
             if widget is not None and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.pause()
         pass
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         for widget in self._docks_widget:
-            widget: Table_select_columns_paging_bottom
+            widget: User_table_select_columns_paging_bottom
             if widget is not None and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.resume()
             elif widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
@@ -91,9 +91,9 @@ class Monitor_data_new_index(ThemedWindow):
         self.left_top_widget_content: DemoDraggableDockWidget = None
         self.left_bottom_widget: QWidget = None
         self.right_top_widget: QWidget = None
-        self.right_top_widget_content: Table_Column_check_list_view = None
+        self.right_top_widget_content: User_table_Column_check_list_view = None
         self.right_bottom_widget: QWidget = None
-        self.right_bottom_widget_content: Table_Column_check_list_view = None
+        self.right_bottom_widget_content: User_table_Column_check_list_view = None
 
         # Splitter组件
         self.main_splitter: QSplitter = None
@@ -125,7 +125,7 @@ class Monitor_data_new_index(ThemedWindow):
         else:
             pass
 
-        self.ui = Ui_monitor_data_new()
+        self.ui = Ui_user_monitor_data_new()
         self.ui.setupUi(self)
         self._retranslateUi()
 
@@ -188,7 +188,7 @@ class Monitor_data_new_index(ThemedWindow):
         right_top_layout = QVBoxLayout(self.right_top_widget)
         right_top_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.right_top_widget_content = Table_Column_check_list_view(ok_btn_text="确定选择通道", datas_type=1)
+        self.right_top_widget_content = User_table_Column_check_list_view(ok_btn_text="确定选择通道", datas_type=1)
         right_top_layout.addWidget(self.right_top_widget_content)
 
         self.right_splitter.addWidget(self.right_top_widget)
@@ -240,7 +240,7 @@ class Monitor_data_new_index(ThemedWindow):
             # 选择数据项
             if type == "column":
                 for widget in self._docks_widget:
-                    widget: Table_select_columns_paging_bottom
+                    widget: User_table_select_columns_paging_bottom
                     widget.on_replace_headers(dict_ids['data'])
                 pass
             # 选择通道
@@ -267,7 +267,7 @@ class Monitor_data_new_index(ThemedWindow):
         self.clear_existing_docks()
 
         for gid in gids:
-            widget = Table_select_columns_paging_bottom(gid=gid)
+            widget = User_table_select_columns_paging_bottom(gid=gid)
             widget.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid == 0 else ''}")
             # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
             widget.on_replace_headers([1])

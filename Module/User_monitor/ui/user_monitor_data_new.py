@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'monitor_data_new.ui'
+# Form implementation generated from reading ui file 'user_monitor_data_new.ui'
 #
 # Created by: PyQt6 UI code generator 6.9.1
 #
@@ -9,7 +9,7 @@
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 
-class Ui_monitor_data_new(object):
+class Ui_user_monitor_data_new(object):
     def setupUi(self, user_monitor_data_new):
         user_monitor_data_new.setObjectName("user_monitor_data_new")
         user_monitor_data_new.resize(867, 600)
@@ -27,6 +27,6 @@ class Ui_monitor_data_new(object):
         self.retranslateUi(user_monitor_data_new)
         QtCore.QMetaObject.connectSlotsByName(user_monitor_data_new)
 
-    def retranslateUi(self, monitor_data_new):
+    def retranslateUi(self, user_monitor_data_new):
         _translate = QtCore.QCoreApplication.translate
-        monitor_data_new.setWindowTitle(_translate("user_monitor_data_new", "MainWindow"))
+        user_monitor_data_new.setWindowTitle(_translate("user_monitor_data_new", "MainWindow"))
