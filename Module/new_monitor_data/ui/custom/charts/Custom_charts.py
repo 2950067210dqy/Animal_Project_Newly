@@ -782,10 +782,24 @@ class AdvancedChartWidget(BaseWidget):
 
         first_val = valid_data[0]
 
-        # 检查是否为时间格式 (HH:MM:SS 或 MM:SS)
+        # 检查是否为时间格式
         if isinstance(first_val, str):
             try:
-                # 尝试解析时间格式
+                # 尝试解析完整的日期时间格式 (YYYY-MM-DD HH:MM:SS 或类似格式)
+                import re
+                # 匹配各种日期时间格式
+                datetime_patterns = [
+                    r'\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}',  # 2024-01-01 12:30:45
+                    r'\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}',  # 2024/01/01 12:30:45
+                    r'\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}',  # 01-01-2024 12:30:45
+                    r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}',  # 2024-01-01T12:30:45 (ISO格式)
+                ]
+
+                for pattern in datetime_patterns:
+                    if re.match(pattern, first_val.strip()):
+                        return "日期时间"
+
+                # 检查是否为纯时间格式 (HH:MM:SS 或 MM:SS)
                 if ':' in first_val:
                     parts = first_val.split(':')
                     if len(parts) == 2 or len(parts) == 3:
@@ -831,11 +845,7 @@ class AdvancedChartWidget(BaseWidget):
             return 0
 
     def _get_data_range(self, data: list, data_type: str) -> Tuple[float, float]:
-        """获取数据的最小值和最大值
-
-        Returns:
-            (min_val, max_val) 元组
-        """
+        """获取数据的最小值和最大值"""
         if not data:
             return 0, 100
 
@@ -845,8 +855,38 @@ class AdvancedChartWidget(BaseWidget):
             return 0, 100
 
         try:
-            if data_type == "时间":
-                # 将时间字符串转换为秒数
+            if data_type == "日期时间":
+                # 将日期时间字符串转换为时间戳
+                timestamp_values = []
+                for v in valid_data:
+                    if isinstance(v, str):
+                        timestamp = self._convert_datetime_to_timestamp(v)
+                        if timestamp > 0:  # 只添加有效的时间戳
+                            timestamp_values.append(timestamp)
+                    else:
+                        try:
+                            timestamp_values.append(float(v))
+                        except (TypeError, ValueError):
+                            continue
+
+                if not timestamp_values:
+                    # 如果没有有效时间戳，返回当前时间前后24小时
+                    from datetime import datetime
+                    now = datetime.now().timestamp()
+                    return float(now - 86400), float(now + 86400)
+
+                min_val = min(timestamp_values)
+                max_val = max(timestamp_values)
+
+                # 处理边界情况
+                if min_val == max_val:
+                    min_val = min_val - 3600  # 减少1小时
+                    max_val = max_val + 3600  # 增加1小时
+
+                return float(min_val), float(max_val)
+
+            elif data_type == "时间":
+                # 原有的时间处理逻辑保持不变
                 time_values = []
                 for v in valid_data:
                     if isinstance(v, str):
@@ -864,7 +904,6 @@ class AdvancedChartWidget(BaseWidget):
                 min_val = min(time_values)
                 max_val = max(time_values)
 
-                # 处理边界情况
                 if min_val == max_val:
                     min_val = max(0, min_val - 600)  # 减少10分钟
                     max_val = min_val + 3600  # 加1小时
@@ -872,7 +911,7 @@ class AdvancedChartWidget(BaseWidget):
                 return float(min_val), float(max_val)
 
             else:
-                # 浮点数和整数
+                # 数值类型处理保持不变
                 numeric_data = []
                 for v in valid_data:
                     try:
@@ -886,7 +925,6 @@ class AdvancedChartWidget(BaseWidget):
                 min_val = min(numeric_data)
                 max_val = max(numeric_data)
 
-                # 防止min_val == max_val的情况
                 if min_val == max_val:
                     if min_val == 0:
                         min_val = -10
@@ -896,16 +934,13 @@ class AdvancedChartWidget(BaseWidget):
                         min_val = min_val - abs_val * 0.1
                         max_val = max_val + abs_val * 0.1
 
-                # 检查结果有效性
                 if np.isnan(min_val) or np.isnan(max_val) or np.isinf(min_val) or np.isinf(max_val):
                     return 0, 100
 
                 return float(min_val), float(max_val)
 
         except Exception as e:
-            print(f"获取数据范围出错: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"获取数据范围出错: {e}")
             return 0, 100
 
     def time_string_to_seconds(self,time_str: str) -> int:
@@ -976,27 +1011,94 @@ class AdvancedChartWidget(BaseWidget):
         except Exception as e:
             print(f"格式化时间标签出错: {e}")
             return str(value)
+    """
+    新增 start
+    """
+
+    def _convert_datetime_to_timestamp(self, datetime_str: str) -> float:
+        """将日期时间字符串转换为时间戳（秒）"""
+        try:
+            import re
+            from datetime import datetime
+
+            datetime_str = datetime_str.strip()
+
+            # 定义各种日期时间格式
+            formats = [
+                '%Y-%m-%d %H:%M:%S',  # 2024-01-01 12:30:45
+                '%Y/%m/%d %H:%M:%S',  # 2024/01/01 12:30:45
+                '%d-%m-%Y %H:%M:%S',  # 01-01-2024 12:30:45
+                '%Y-%m-%dT%H:%M:%S',  # 2024-01-01T12:30:45
+                '%Y-%m-%d',  # 2024-01-01 (只有日期)
+                '%Y/%m/%d',  # 2024/01/01
+                '%d-%m-%Y',  # 01-01-2024
+            ]
+
+            # 尝试每种格式
+            for fmt in formats:
+                try:
+                    dt = datetime.strptime(datetime_str, fmt)
+                    # 返回时间戳（秒）
+                    return dt.timestamp()
+                except ValueError:
+                    continue
+
+            # 如果都不匹配，尝试ISO格式解析
+            try:
+                dt = datetime.fromisoformat(datetime_str.replace('T', ' '))
+                return dt.timestamp()
+            except:
+                pass
+
+            logger.warning(f"无法解析日期时间格式: {datetime_str}")
+            return 0
+
+        except Exception as e:
+            logger.error(f"转换日期时间出错: {e}")
+            return 0
+
+    def _format_datetime_label(self, timestamp: float) -> str:
+        """将时间戳格式化为日期时间标签"""
+        try:
+            if timestamp is None:
+                return ""
+
+            timestamp = float(timestamp)
+
+            # 处理负数时间戳
+            if timestamp < 0:
+                return "Invalid Time"
+
+            from datetime import datetime
+            dt = datetime.fromtimestamp(timestamp)
+
+            # 根据时间范围选择合适的格式
+            now = datetime.now()
+            time_diff = abs((now - dt).total_seconds())
+
+            if time_diff < 86400:  # 24小时内，只显示时间
+                return dt.strftime('%H:%M:%S')
+            elif time_diff < 86400 * 30:  # 30天内，显示月-日 时:分
+                return dt.strftime('%m-%d %H:%M')
+            else:  # 超过30天，显示完整日期时间
+                return dt.strftime('%Y-%m-%d %H:%M')
+
+        except Exception as e:
+            logger.error(f"格式化日期时间标签出错: {e}")
+            return str(timestamp)
+    """
+    新增 end
+    """
 
     def _calculate_optimal_step(self, min_val: float, max_val: float, data_type: str) -> float:
-        """根据数据范围计算最优的步长
-
-        Args:
-            min_val: 最小值
-            max_val: 最大值
-            data_type: 数据类型 ('整数', '浮点数', '时间')
-
-        Returns:
-            最优步长
-        """
+        """根据数据范围计算最优的步长"""
         try:
-            # 处理无效值
             if min_val is None or max_val is None:
                 return 1
 
             min_val = float(min_val)
             max_val = float(max_val)
 
-            # 检查NaN和无穷大
             if np.isnan(min_val) or np.isnan(max_val) or np.isinf(min_val) or np.isinf(max_val):
                 return 1
 
@@ -1005,68 +1107,73 @@ class AdvancedChartWidget(BaseWidget):
             if range_val == 0 or range_val < 0:
                 return 1
 
-            if data_type == "时间":
-                # 时间类型：返回秒数
-                # 理想情况下显示8-10个刻度
+            if data_type == "日期时间":
+                # 日期时间类型：返回时间戳秒数
                 ideal_step = range_val / 8
 
-                # 常用的时间步长：1秒、5秒、10秒、30秒、1分、5分、10分、30分、1小时等
+                # 常用的时间步长（秒）
+                datetime_steps = [
+                    60,  # 1分钟
+                    300,  # 5分钟
+                    600,  # 10分钟
+                    1800,  # 30分钟
+                    3600,  # 1小时
+                    7200,  # 2小时
+                    10800,  # 3小时
+                    21600,  # 6小时
+                    43200,  # 12小时
+                    86400,  # 1天
+                    172800,  # 2天
+                    604800,  # 1周
+                    2592000,  # 30天
+                    7776000,  # 90天
+                    31536000  # 1年
+                ]
+
+                optimal_step = min(datetime_steps, key=lambda x: abs(x - ideal_step))
+                return float(optimal_step)
+
+            elif data_type == "时间":
+                # 原有时间类型处理保持不变
+                ideal_step = range_val / 8
                 time_steps = [
                     1, 5, 10, 15, 30,  # 秒
                     60, 300, 600, 900, 1800,  # 分
                     3600, 7200, 10800, 21600, 86400  # 小时和更大
                 ]
-
-                # 选择最接近ideal_step的时间步长
                 optimal_step = min(time_steps, key=lambda x: abs(x - ideal_step))
                 return float(optimal_step)
 
             elif data_type == "整数":
-                # 整数类型：步长必须是整数
+                # 整数处理保持不变
                 ideal_step = range_val / 8
-
-                # 常用的整数步长
                 int_steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000,
                              50000, 100000, 500000, 1000000]
-
-                # 选择最接近ideal_step的步长
                 optimal_step = min(int_steps, key=lambda x: abs(x - ideal_step))
                 return float(optimal_step)
 
             else:  # 浮点数
-                # 浮点数类型：使用科学记数法计算
+                # 浮点数处理保持不变
                 ideal_step = range_val / 8
-
-                # 计算数量级
                 if ideal_step == 0 or ideal_step < 0:
                     return 0.1
 
-                # 获取步长的数量级
                 log_val = np.log10(abs(ideal_step))
-
-                # 检查log_val是否为有效数字
                 if np.isnan(log_val) or np.isinf(log_val):
                     return 0.1
 
                 magnitude = 10 ** int(np.floor(log_val))
-
-                # 防止magnitude为0或NaN
                 if magnitude <= 0 or np.isnan(magnitude) or np.isinf(magnitude):
                     magnitude = 0.1
 
                 normalized_step = ideal_step / magnitude
-
-                # 选择最接近的步长倍数 (0.1, 0.2, 0.5, 1, 1.5, 2, 2.5, 5)
                 step_options = [0.1, 0.2, 0.5, 1, 1.5, 2, 2.5, 5]
                 best_normalized = min(step_options, key=lambda x: abs(x - normalized_step))
-
                 optimal_step = best_normalized * magnitude
 
-                # 检查最终结果
                 if optimal_step <= 0 or np.isnan(optimal_step) or np.isinf(optimal_step):
                     return 0.1
 
-                # 限制小数位数
                 log_step = np.log10(optimal_step)
                 if np.isnan(log_step) or np.isinf(log_step):
                     decimals = 2
@@ -1076,9 +1183,8 @@ class AdvancedChartWidget(BaseWidget):
                 return round(optimal_step, min(decimals + 1, 10))
 
         except Exception as e:
-            print(f"计算最优步长出错: {e}")
+            logger.error(f"计算最优步长出错: {e}")
             return 1
-
 
     def _setup_ticks(self, axis, axis_config: Dict, data_list: list, is_y_axis: bool = False):
         """设置坐标轴刻度"""
@@ -1093,11 +1199,9 @@ class AdvancedChartWidget(BaseWidget):
                 axis_obj = axis.xaxis
                 set_lim = lambda min_val, max_val: axis.set_xlim(min_val, max_val)
 
-            # 清除自动定位器
             axis_obj.set_major_locator(mticker.NullLocator())
             axis_obj.set_minor_locator(mticker.NullLocator())
 
-            # 检测数据类型
             data_type = axis_config.get("data_type", "自动检测")
             if data_type == "自动检测":
                 data_type = self._get_data_type(data_list)
@@ -1106,13 +1210,9 @@ class AdvancedChartWidget(BaseWidget):
             if not valid_data:
                 return
 
-            # 获取数据范围
             min_val, max_val = self._get_data_range(data_list, data_type)
 
             if axis_config.get("auto_ticks", True):
-                # 自动刻度模式：根据数据范围自动设置
-
-                # 添加上下margin（5%）
                 margin = (max_val - min_val) * 0.05
                 if margin == 0:
                     margin = abs(max_val) * 0.1 if max_val != 0 else 1
@@ -1120,10 +1220,8 @@ class AdvancedChartWidget(BaseWidget):
                 auto_min = min_val - margin
                 auto_max = max_val + margin
 
-                # 计算最优步长
                 optimal_step = self._calculate_optimal_step(auto_min, auto_max, data_type)
 
-                # 调整最小值和最大值以符合步长
                 if data_type == "整数":
                     auto_min = int(np.floor(auto_min / optimal_step) * optimal_step)
                     auto_max = int(np.ceil(auto_max / optimal_step) * optimal_step)
@@ -1133,7 +1231,6 @@ class AdvancedChartWidget(BaseWidget):
 
                 set_lim(auto_min, auto_max)
 
-                # 生成刻度
                 ticks = []
                 tick_labels = []
                 current = auto_min
@@ -1147,12 +1244,14 @@ class AdvancedChartWidget(BaseWidget):
                     ticks.append(tick_value)
 
                     # 格式化刻度标签
-                    if data_type == "时间":
+                    if data_type == "日期时间":
+                        tick_labels.append(self._format_datetime_label(tick_value))
+                    elif data_type == "时间":
                         tick_labels.append(self._format_time_label(tick_value))
                     elif data_type == "整数":
                         tick_labels.append(str(int(tick_value)))
                     else:
-                        # 浮点数
+                        # 浮点数处理保持不变
                         if optimal_step < 0.01:
                             tick_labels.append(f"{tick_value:.4f}")
                         elif optimal_step < 0.1:
@@ -1172,10 +1271,12 @@ class AdvancedChartWidget(BaseWidget):
                 else:
                     axis.set_xticks(ticks)
                     if tick_labels:
-                        axis.set_xticklabels(tick_labels, rotation=45)
+                        # 日期时间标签可能较长，设置旋转角度
+                        rotation = 45 if data_type == "日期时间" else 0
+                        axis.set_xticklabels(tick_labels, rotation=rotation)
 
             else:
-                # 手动刻度模式：使用用户指定的值
+                # 手动刻度模式处理，类似上面的逻辑
                 manual_min = float(axis_config.get("ticks_min", min_val))
                 manual_max = float(axis_config.get("ticks_max", max_val))
                 manual_step = float(axis_config.get("ticks_step", 10))
@@ -1197,13 +1298,13 @@ class AdvancedChartWidget(BaseWidget):
                     tick_value = round(current, 10)
                     ticks.append(tick_value)
 
-                    # 格式化刻度标签
-                    if data_type == "时间":
+                    if data_type == "日期时间":
+                        tick_labels.append(self._format_datetime_label(tick_value))
+                    elif data_type == "时间":
                         tick_labels.append(self._format_time_label(tick_value))
                     elif data_type == "整数":
                         tick_labels.append(str(int(tick_value)))
                     else:
-                        # 浮点数
                         if manual_step < 0.01:
                             tick_labels.append(f"{tick_value:.4f}")
                         elif manual_step < 0.1:
@@ -1223,10 +1324,11 @@ class AdvancedChartWidget(BaseWidget):
                 else:
                     axis.set_xticks(ticks)
                     if tick_labels:
-                        axis.set_xticklabels(tick_labels, rotation=45)
+                        rotation = 45 if data_type == "日期时间" else 0
+                        axis.set_xticklabels(tick_labels, rotation=rotation)
 
         except Exception as e:
-            print(f"设置刻度出错: {e}")
+            logger.error(f"设置刻度出错: {e}")
             import traceback
             traceback.print_exc()
             try:
@@ -1273,19 +1375,31 @@ class AdvancedChartWidget(BaseWidget):
                 # 只在第一段显示标签
                 if 'label' in kwargs:
                     kwargs.pop('label')
+
     def refresh_chart(self):
         """刷新图表显示"""
         try:
-
             self.ax.clear()
             self._setup_chart()
 
             if not self.cage_data or len(self.x_data) == 0 or not self.current_data_type:
                 self.canvas.draw()
                 return
+
             self._setup_ticks(self.ax, self.x_axis_config, list(self.x_data), False)
-            # 时间文本转成秒
-            x_data_list = [self.time_string_to_seconds(i) for i in list(self.x_data)]
+
+            # 根据X轴数据类型进行转换
+            x_data_type = self._get_data_type(list(self.x_data))
+
+            if x_data_type == "日期时间":
+                # 将日期时间字符串转换为时间戳
+                x_data_list = [self._convert_datetime_to_timestamp(i) for i in list(self.x_data)]
+            elif x_data_type == "时间":
+                # 将时间字符串转换为秒数（保持原有逻辑）
+                x_data_list = [self.time_string_to_seconds(i) for i in list(self.x_data)]
+            else:
+                # 数值类型直接使用
+                x_data_list = list(self.x_data)
 
             all_y_data = []
 
@@ -1325,15 +1439,9 @@ class AdvancedChartWidget(BaseWidget):
                     marker = None
 
                 if self.chart_type == "折线图":
-                    # print(f"ticks:{self.ax.get_xticks()},data:{x_display}")
-                    # print(f"cage_name: {cage_name} | x：{x_display} | y：{data_list} ")
                     self.ax.plot(x_display, data_list, label=cage_name,
                                  color=color, marker=marker, markersize=markersize,
                                  linewidth=linewidth, alpha=alpha)
-                    # self._plot_line_with_gaps(x_display, data_list,
-                    #                          label=cage_name, color=color,
-                    #                          marker=marker, markersize=markersize,
-                    #                          linewidth=linewidth, alpha=alpha)
                 elif self.chart_type == "柱状图":
                     visible_cages = [c for c in sorted_cages if c in self.visible_series
                                      and self.current_data_type in self.cage_data[c]]
@@ -1379,7 +1487,6 @@ class AdvancedChartWidget(BaseWidget):
                                 colors=self.y_axis_config["tick_color"])
 
             if all_y_data:
-
                 self._setup_ticks(self.ax, self.y_axis_config, all_y_data, True)
 
             # 应用主题

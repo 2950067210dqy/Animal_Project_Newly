@@ -7,7 +7,7 @@ from typing import Any
 
 from blinker.base import _PNamespaceSignal
 from loguru import logger
-from blinker import signal
+from blinker import signal, Signal
 
 from Service.UFC_UGC_ZOS_Service.function.gas_calibration.Gas_Carlibration import Zero_Carlibration, Range_Carlibration
 from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
@@ -38,7 +38,7 @@ class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
         super().__init__(name)
         self.queue = None
-        self.update_status_main_signal_gui_update = signal('update_status_main_signal_gui_update')
+        self.update_status_main_signal_gui_update = None
         pass
 
     def dosomething(self):
@@ -115,7 +115,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.gas_state_check_timer: PeriodicTimer = None
         self.monitor_start_state_Thread: MyQThread = None
 
-        self.update_status_main_signal_gui_update: _PNamespaceSignal=None
+        self.update_status_main_signal_gui_update: Signal=None
         self._init_data()
         self._init_function()
 
@@ -434,7 +434,8 @@ class UFC_UGC_ZOS_index(MyQThread):
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.stop).then(
                     lambda v22: AsyPromise(self.Zero_carlibration_obj.stop_calibrate).then(
                         lambda _: AsyPromise(self.Range_carlibration_obj.stop_calibrate).then(
-                            lambda _: AsyPromise(self.finished_stop)
+                            lambda _: AsyPromise(self.finished_stop).then()
+                            .catch(lambda e: logger.error(f"{e}"))
                         ).catch(lambda e: logger.error(f"{e}"))
                     ).catch(lambda e: logger.error(f"{e}"))
                 ).catch( lambda e: logger.error(f"{e}"))
@@ -442,7 +443,7 @@ class UFC_UGC_ZOS_index(MyQThread):
             ).catch( lambda e: logger.error(f"{e}"))
         ).catch( lambda e: logger.error(f"{e}"))
         return p
-    def finished_stop(self):
+    def finished_stop(self,resolve,reject):
         """
         完成停止
         :return:
@@ -451,13 +452,23 @@ class UFC_UGC_ZOS_index(MyQThread):
             self.UFC_gas_path_system_obj.ufc_gas_path_system_close_thread.stop()
             self.UFC_gas_path_system_obj.ufc_gas_path_system_close_thread.deleteLater()
             self.UFC_gas_path_system_obj.ufc_gas_path_system_close_thread=None
+        # 将信号解绑
+        if self.update_status_main_signal_gui_update is not None:
+            self.update_status_main_signal_gui_update.disconnect(self.logger_info)
+            self.update_status_main_signal_gui_update = None
+        if self.update_start_state_signal is not None:
+            self.update_start_state_signal.disconnect(self.update_start_state)
+            self.update_start_state_signal = None
+
         if self.UFC_gas_path_system_obj is not None:
             self.UFC_gas_path_system_obj=None
         if self.UGC_gas_path_system_obj is not None:
             self.UGC_gas_path_system_obj=None
         if self.ZOS_gas_path_system_obj is not None:
             self.ZOS_gas_path_system_obj=None
+
         #返回响应
+        logger.error(f"停止气路完成")
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
@@ -465,7 +476,7 @@ class UFC_UGC_ZOS_index(MyQThread):
                                 data="停止气路完成",
                                 time=time_util.get_format_from_time(time.time())))
 
-
+        resolve()
 
     def pause_running_gap_system(self):
         #暂停正在运行的气路模块

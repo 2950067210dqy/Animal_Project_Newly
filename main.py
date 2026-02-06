@@ -127,7 +127,7 @@ def test_integrated_monitor():
     main_config = LogConfig(
         log_dir="./log/main",
         log_level="DEBUG",
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | MAIN | {module}:{function}:{line} | {message} </level>",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} |{process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message} </level>",
         enable_console=True,
         console_level="DEBUG"
     )
@@ -135,7 +135,7 @@ def test_integrated_monitor():
     exception_config = LogConfig(
         log_dir="./log/exceptions",
         log_level="ERROR",
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | EXCEPTION | {module}:{function}:{line} | {message} </level>",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | EXCEPTION |{process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message} </level>",
         enable_console=True,
         console_level="ERROR"
     )
@@ -181,7 +181,7 @@ def test_integrated_monitor():
     p_monitor_data_config = monitor.create_process_log_config(
         "p_monitor_data",
         log_level="DEBUG",
-        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_monitor_data | {module}:{function}:{line} | {message} </level> ",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_monitor_data |{process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message} </level> ",
         enable_console=True
     )
     monitor.start_worker(
@@ -195,7 +195,7 @@ def test_integrated_monitor():
     p_deep_camera_config = monitor.create_process_log_config(
         "p_deep_camera",
         log_level="DEBUG",
-        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | p_deep_camera | {module}:{function}:{line} | {message} </level>",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | p_deep_camera | {process.name} | {thread.name} |  {name} : {module}:{function}:{line} | {message} </level>",
         enable_console=True
     )
 
@@ -211,7 +211,7 @@ def test_integrated_monitor():
     p_infrared_camera_config = monitor.create_process_log_config(
         "p_infrared_camera",
         log_level="DEBUG",
-        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_infrared_camera | {module}:{function}:{line} | {message} </level> ",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_infrared_camera | {process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message} </level> ",
         enable_console=True
     )
     monitor.start_worker(
@@ -225,7 +225,7 @@ def test_integrated_monitor():
     p_main_gui_config = monitor.create_process_log_config(
         "p_main_gui",
         log_level="DEBUG",
-        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | p_main_gui | {module}:{function}:{line} | {message}  </level>",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | p_main_gui | {process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message}  </level>",
         enable_console=True
     )
     monitor.start_worker(
