@@ -66,7 +66,7 @@ lock = threading.Lock()
 
 # 过滤日志
 # logger = logger.bind(category="infrared_camera_logger")
-class read_queue_data_Thread(MyThread):
+class read_queue_data_Thread(MyQThread):
     def __init__(self, name):
         super().__init__(name)
         self.queue = None
@@ -405,7 +405,7 @@ class TIP:
         return self.execute(thermal_data)
 
 
-class Thermal_process(MyThread):
+class Thermal_process(MyQThread):
     """
     温度处理线程
     """
@@ -619,7 +619,7 @@ class Thermal_process(MyThread):
     pass
 
 
-class Delete_file(MyThread):
+class Delete_file(MyQThread):
     """
     清除文件线程
     """

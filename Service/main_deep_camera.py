@@ -1486,6 +1486,7 @@ def stop():
             try:
                 if camera_struct_l['camera'] is not None:
                     camera_struct_l['camera'].stop()
+                    camera_struct_l['camera'].deleteLater()
                     # 返回响应
                     queue = global_setting.get_setting("queue", None)
                     if queue:
@@ -1509,6 +1510,7 @@ def stop():
             try:
                 if camera_struct_l['img_process'] is not None :
                     camera_struct_l['img_process'].stop()
+                    camera_struct_l['img_process'].deleteLater()
                     # 返回响应
                     queue = global_setting.get_setting("queue", None)
                     if queue:
@@ -1532,6 +1534,7 @@ def stop():
     try:
         if delete_file_thread is not None :
            delete_file_thread.stop()
+           delete_file_thread.deleteLater()
            # 返回响应
            queue = global_setting.get_setting("queue", None)
            if queue:

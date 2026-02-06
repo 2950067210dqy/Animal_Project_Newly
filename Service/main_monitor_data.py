@@ -1064,6 +1064,7 @@ def stop():
         logger.error("stop_store_thread")
         if store_thread is not None and store_thread.isRunning():
             store_thread.stop()
+            store_thread.deleteLater()
             # 返回响应
             queue = global_setting.get_setting("queue", None)
             if queue:
@@ -1085,6 +1086,7 @@ def stop():
         logger.error("stop_add_message_thread")
         if add_message_thread is not None and add_message_thread.isRunning():
             add_message_thread.stop()
+            add_message_thread.deleteLater()
             add_message_thread=None
             # 返回响应
             queue = global_setting.get_setting("queue", None)
@@ -1106,6 +1108,7 @@ def stop():
         logger.error("stop_send_thread")
         if send_thread is not None and send_thread.isRunning():
             send_thread.stop()
+            send_thread.deleteLater()
             send_thread=None
             # 返回响应
             queue = global_setting.get_setting("queue", None)

@@ -163,7 +163,7 @@ class read_queue_data_Thread(MyQThread):
 
 read_queue_data_thread = read_queue_data_Thread(name="UFC_UGC_ZOS_index_read_queue_data_thread")
 
-class Monitor_start_state_Thread(MyThread):
+class Monitor_start_state_Thread(MyQThread):
     def __init__(self, name,UFC_gas_path_system_obj=None,UGC_gas_path_system_obj=None,ZOS_gas_path_system_obj=None,update_start_state_signal=None):
         # UFC气路系统
         self.UFC_gas_path_system_obj: UFC_gas_path_system = UFC_gas_path_system_obj

@@ -127,7 +127,7 @@ class read_queue_data_Thread(MyQThread):
                                 self.old_Stop_experiment_status_text_reTurn = None
                                 self.old_stop_status_counts =0
 
-                                QTimer.singleShot(3000,self.close_stop_experiment_dialog)
+                                QTimer.singleShot(5000,self.close_stop_experiment_dialog)
 
                         pass
                     case 'close_stop_experiment_dialog':
