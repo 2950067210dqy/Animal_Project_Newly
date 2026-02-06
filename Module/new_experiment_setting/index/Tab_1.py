@@ -101,7 +101,7 @@ class SafeSingletonMeta(type(QtWidgets.QWidget)):
                         instance = super(SafeSingletonMeta, cls).__call__(*args, **kwargs)
                         cls._instances[cls] = instance
                         cls._init_completed[cls] = True
-                        logger.warning(f"创建单例: {cls.__name__} (ID: {id(instance)})")
+                        # logger.warning(f"创建单例: {cls.__name__} (ID: {id(instance)})")
                     finally:
                         del cls._init_in_progress[cls]
 
@@ -692,7 +692,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             self.experiment_setting = global_setting.get_setting("experiment_setting", None)
 
         if self.experiment_setting is None:
-            logger.error("experiment_setting 仍未加载，无法初始化笼子列表")
+            # logger.error("experiment_setting 仍未加载，无法初始化笼子列表")
             return
 
         if self.cage_list_widget is None:
@@ -1567,7 +1567,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                     self.signal_air_module_update.emit(module_name, True)
                     final_valid_list.append(module_name)
                 else:
-                    logger.warning(f"[无效] 模块 {module_name}")
+                    # logger.warning(f"[无效] 模块 {module_name}")
                     # 发射信号更新UI - 无效
                     self.signal_air_module_update.emit(module_name, False)
                     final_invalid_list.append(module_name)

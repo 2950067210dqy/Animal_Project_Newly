@@ -444,13 +444,23 @@ class MainWindow_Index(ThemedWindow):
         pass
     # 创建工具栏
     def create_tool_bar(self):
+        from PyQt6.QtGui import QPixmap, QPainter, QFont, QIcon, QColor
+        from PyQt6.QtCore import Qt
+
         # 创建 QToolBar
         self.toolbar = QToolBar("Toolbar")
+
+        # 设置工具栏样式为图标在左，文字在右
+        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toolbar.setIconSize(QtCore.QSize(20, 20))  # 设置图标大小
+
         self.addToolBar(self.toolbar)
+
         # 初始化动态内容相关列表
         self.dynamic_tool_bar_actions = []
         self.dynamic_toolbar_separators = []
         self.current_active_menu_id = None
+
         # ==================== 创建通用功能按钮 ====================
         static_buttons = [
             {
@@ -458,7 +468,7 @@ class MainWindow_Index(ThemedWindow):
                 "method": self.exchange_widget_and_window,
                 "short_name": "变换",
                 "obj_name": "window_exchange",
-                "icon": "⇄",  # 或使用图标文件: ":/icons/exchange.png"
+                "icon": "⇄",
                 "callback": self.exchange_widget_and_window,
                 "app_state": AppState.INITIALIZED,
                 "tip": "单击此按钮会将打开的窗口变成内嵌抽屉页。",
@@ -546,12 +556,18 @@ class MainWindow_Index(ThemedWindow):
             }
         ]
 
-        # 创建静态按钮
+        # 创建按钮，图标在前，文字在后
         for i, button_config in enumerate(static_buttons):
-            action = QAction(button_config["name"], self)
+            # 使用短名称作为显示文字
+            action = QAction(button_config["short_name"], self)
             action.setObjectName(button_config["obj_name"])
-            action.setToolTip(button_config["name"])
+            action.setToolTip(button_config["tip"])  # 详细提示
             action.triggered.connect(button_config["method"])
+
+            # 设置图标（图标会显示在文字前面）
+            if "icon" in button_config and button_config["icon"]:
+                icon = self.create_text_icon(button_config["icon"])
+                action.setIcon(icon)
 
             if button_config.get("disabled", False):
                 action.setDisabled(True)
@@ -574,10 +590,37 @@ class MainWindow_Index(ThemedWindow):
 
             # 在某些按钮后添加分隔符
             if button_config["obj_name"] in ["window_exchange", "toggle_mode", "stop_experiment",
-                                             "export_experiment_datas"]:
+                                             "export_experiment_datas", "reset_guidance"]:
                 self.toolbar.addSeparator()
 
         self.hide_common_tools()
+
+    # 创建文本图标的方法
+    def create_text_icon(self, text, size=18):
+        """创建文本图标"""
+        from PyQt6.QtGui import QPixmap, QPainter, QFont, QIcon, QColor
+        from PyQt6.QtCore import Qt
+
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        # 设置字体
+        font = QFont()
+        font.setPixelSize(size - 2)  # emoji 稍小一点
+        painter.setFont(font)
+
+        # 设置文字颜色
+        painter.setPen(QColor("#333333"))
+
+        # 绘制文本
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, text)
+        painter.end()
+
+        return QIcon(pixmap)
 
     def create_menu_bar(self):
         """创建菜单栏 - 触发工具栏切换"""
