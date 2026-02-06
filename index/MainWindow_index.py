@@ -7,10 +7,10 @@ from PyQt6 import QtCore
 from PyQt6.QtCore import QTimer, QObject, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog, QMenu, QMenuBar, QWidget, \
-    QApplication
+    QApplication, QCheckBox
 from loguru import logger
 
-
+from PyQt6.QtCore import Qt
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
     UFC_gas_path_system, UGC_gas_path_system
@@ -284,8 +284,12 @@ class MainWindow_Index(ThemedWindow):
                     self.tutorial.add_step(widget,
                                            f"单击此按钮是{action.text()}\n{menu.toolTip()}")
         for tool_bar_action in self.tool_bar_actions:
-            self.tutorial.add_step(tool_bar_action['action'].associatedObjects()[1],
-                               f"单击此按钮是{tool_bar_action['name']}\n{tool_bar_action['tip']}")
+            if isinstance(tool_bar_action['action'], QAction):
+                self.tutorial.add_step(tool_bar_action['action'].associatedObjects()[1],
+                                       f"单击此按钮是{tool_bar_action['text']}\n{tool_bar_action['tip']}")
+            else:
+                self.tutorial.add_step(tool_bar_action['action'],
+                                       f"单击此是{tool_bar_action['text']}\n{tool_bar_action['tip']}")
         # 状态栏提示
         self.tutorial.add_step(self.status_bar.time_label,
                                f"显示当前时间。")
@@ -444,9 +448,6 @@ class MainWindow_Index(ThemedWindow):
         pass
     # 创建工具栏
     def create_tool_bar(self):
-        from PyQt6.QtGui import QPixmap, QPainter, QFont, QIcon, QColor
-        from PyQt6.QtCore import Qt
-
         # 创建 QToolBar
         self.toolbar = QToolBar("Toolbar")
 
@@ -462,13 +463,14 @@ class MainWindow_Index(ThemedWindow):
         self.current_active_menu_id = None
 
         # ==================== 创建通用功能按钮 ====================
+        # 定义工具栏按钮数据
         static_buttons = [
             {
                 "name": "窗口变换",
-                "method": self.exchange_widget_and_window,
                 "short_name": "变换",
                 "obj_name": "window_exchange",
-                "icon": "⇄",
+                "type": "button",
+                "icon": "⇄",  # 或使用图标文件: ":/icons/exchange.png"
                 "callback": self.exchange_widget_and_window,
                 "app_state": AppState.INITIALIZED,
                 "tip": "单击此按钮会将打开的窗口变成内嵌抽屉页。",
@@ -478,9 +480,9 @@ class MainWindow_Index(ThemedWindow):
             },
             {
                 "name": "更改主题颜色",
-                "method": self.toggle_theme,
                 "short_name": "主题",
                 "obj_name": "toggle_mode",
+                "type": "button",
                 "icon": "🌓",
                 "callback": self.toggle_theme,
                 "app_state": AppState.INITIALIZED,
@@ -489,11 +491,12 @@ class MainWindow_Index(ThemedWindow):
                 "separator_before": False,
                 "separator_after": True
             },
+
             {
                 "name": "开始实验",
-                "method": self.start_experiment,
                 "short_name": "开始",
                 "obj_name": "start_experiment",
+                "type": "button",
                 "icon": "▶",
                 "callback": self.start_experiment,
                 "app_state": AppState.CONFIGURING,
@@ -503,10 +506,23 @@ class MainWindow_Index(ThemedWindow):
                 "separator_after": False
             },
             {
+                "name": "开始实验时校准气体",
+                "short_name": "校准",
+                "obj_name": "calibration_gas",
+                "type": "checkbox",
+                "icon": "📏",
+                "callback": self.calibration_gas_state_change,
+                "app_state": AppState.INITIALIZED,
+                "tip": "单击此按钮会将选择开始实验时是否校准气体。",
+                "disabled": True,
+                "separator_before": False,
+                "separator_after": False
+            },
+            {
                 "name": "暂停实验",
-                "method": self.pause_experiment,
                 "short_name": "暂停",
                 "obj_name": "pause_experiment",
+                "type": "button",
                 "icon": "⏸",
                 "callback": self.pause_experiment,
                 "app_state": AppState.CONFIGURING,
@@ -517,9 +533,9 @@ class MainWindow_Index(ThemedWindow):
             },
             {
                 "name": "停止实验",
-                "method": self.stop_experiment,
                 "short_name": "停止",
                 "obj_name": "stop_experiment",
+                "type": "button",
                 "icon": "⏹",
                 "callback": self.stop_experiment,
                 "app_state": AppState.CONFIGURING,
@@ -530,9 +546,9 @@ class MainWindow_Index(ThemedWindow):
             },
             {
                 "name": "导出实验数据",
-                "method": self.export_experiment_datas,
                 "short_name": "导出",
                 "obj_name": "export_experiment_datas",
+                "type": "button",
                 "icon": "💾",
                 "callback": self.export_experiment_datas,
                 "app_state": AppState.MONITORING,
@@ -543,9 +559,9 @@ class MainWindow_Index(ThemedWindow):
             },
             {
                 "name": "重置教程页",
-                "method": self.reset_guidance,
                 "short_name": "重置教程",
                 "obj_name": "reset_guidance",
+                "type": "button",
                 "icon": "🔄",
                 "callback": self.reset_guidance,
                 "app_state": AppState.INITIALIZED,
@@ -558,43 +574,74 @@ class MainWindow_Index(ThemedWindow):
 
         # 创建按钮，图标在前，文字在后
         for i, button_config in enumerate(static_buttons):
-            # 使用短名称作为显示文字
-            action = QAction(button_config["short_name"], self)
-            action.setObjectName(button_config["obj_name"])
-            action.setToolTip(button_config["tip"])  # 详细提示
-            action.triggered.connect(button_config["method"])
+            if button_config["separator_before"]:
+                self.toolbar.addSeparator()
+            if button_config["type"] == "button":
+                action = QAction(button_config["short_name"], self)
+                action.setObjectName(button_config["obj_name"])
+                action.setToolTip(button_config["tip"])
+                action.triggered.connect(button_config["callback"])
+                # 设置图标
+                if button_config["icon"]:
+                    action.setText(button_config["icon"] + " " + button_config["short_name"])
 
-            # 设置图标（图标会显示在文字前面）
-            if "icon" in button_config and button_config["icon"]:
-                icon = self.create_text_icon(button_config["icon"])
-                action.setIcon(icon)
+                if button_config["disabled"]:
+                    action.setDisabled(True)
 
-            if button_config.get("disabled", False):
-                action.setDisabled(True)
+                self.tool_bar_actions.append({
+                    "text": button_config["name"],
+                    "obj_name": button_config["obj_name"],
+                    "action": action,
+                    "app_state": button_config["app_state"],
+                    "tip": button_config["tip"]
+                })
 
-            # 添加到工具栏动作列表
-            self.tool_bar_actions.append({
-                "name": button_config["name"],
-                "obj_name": button_config["obj_name"],
-                "action": action,
-                "app_state": button_config["app_state"],
-                "tip": button_config["tip"]
-            })
+                self.toolbar.addAction(action)
+                # 记录静态按钮（用于插入动态按钮时定位）
+                if i == 0:
+                    self.static_toolbar_actions.append(action)
+            elif button_config["type"] == "checkbox":
+                if button_config["icon"]:
+                    checkBox = QCheckBox(button_config["icon"] + " " + button_config["name"])
+                else:
+                    checkBox = QCheckBox(button_config["name"])
+                checkBox.setChecked(True)
+                checkBox.stateChanged.connect(button_config["callback"])
+                checkBox.setObjectName(button_config["obj_name"])
+                if button_config["disabled"]:
+                    checkBox.setDisabled(True)
+                self.tool_bar_actions.append({
+                    "text": button_config["name"],
+                    "obj_name": button_config["obj_name"],
+                    "action": checkBox,
+                    "app_state": button_config["app_state"],
+                    "tip": button_config["tip"]
+                })
 
-            # 添加到工具栏
-            self.toolbar.addAction(action)
-
-            # 记录静态按钮（用于插入动态按钮时定位）
-            if i == 0:
-                self.static_toolbar_actions.append(action)
-
-            # 在某些按钮后添加分隔符
-            if button_config["obj_name"] in ["window_exchange", "toggle_mode", "stop_experiment",
-                                             "export_experiment_datas", "reset_guidance"]:
+                self.toolbar.addWidget(checkBox)
+            if button_config["separator_after"]:
                 self.toolbar.addSeparator()
 
-        self.hide_common_tools()
 
+            # # 在某些按钮后添加分隔符
+            # if button_config["obj_name"] in ["window_exchange", "toggle_mode", "stop_experiment",
+            #                                  "export_experiment_datas", "reset_guidance"]:
+            #     self.toolbar.addSeparator()
+
+        self.initialize_toolbar_visibility()
+
+    def initialize_toolbar_visibility(self):
+        """初始化工具栏可见性 - 根据当前菜单配置"""
+        if self.menu_name and len(self.menu_name) > 0:
+            first_menu = self.menu_name[0]
+            hide_common_tools = first_menu.get('hide_common_tools', False)
+
+            if hide_common_tools:
+                self.hide_common_tools()
+            else:
+                self.show_common_tools()
+        else:
+            self.show_common_tools()
     # 创建文本图标的方法
     def create_text_icon(self, text, size=18):
         """创建文本图标"""
@@ -748,23 +795,36 @@ class MainWindow_Index(ThemedWindow):
 
     def hide_common_tools(self):
         """隐藏通用工具按钮"""
-        for action_dict in self.tool_bar_actions:
-            action_dict["action"].setVisible(False)
-
-        # 隐藏所有工具栏分隔符（除了动态分隔符）
+        # 隐藏所有工具栏中的 action
         for action in self.toolbar.actions():
-            if action.isSeparator() and action not in self.dynamic_toolbar_separators:
+            if not action.isSeparator():
                 action.setVisible(False)
+            elif action not in self.dynamic_toolbar_separators:
+                # 隐藏非动态分隔符
+                action.setVisible(False)
+
+        # 同时隐藏通过 addWidget 添加的 checkbox 等 widget
+        for i in range(self.toolbar.layout().count()):
+            widget = self.toolbar.layout().itemAt(i).widget()
+            if widget is not None and isinstance(widget, QCheckBox):
+                widget.setVisible(False)
+
 
     def show_common_tools(self):
         """显示通用工具按钮"""
-        for action_dict in self.tool_bar_actions:
-            action_dict["action"].setVisible(True)
-
-        # 显示所有工具栏分隔符
+        # 显示所有 action
         for action in self.toolbar.actions():
-            if action.isSeparator():
+            if not action.isSeparator():
                 action.setVisible(True)
+            elif action not in self.dynamic_toolbar_separators:
+                action.setVisible(True)
+
+        # 显示通过 addWidget 添加的 checkbox 等 widget
+        for i in range(self.toolbar.layout().count()):
+            widget = self.toolbar.layout().itemAt(i).widget()
+            if widget is not None and isinstance(widget, QCheckBox):
+                widget.setVisible(True)
+
 
     def get_dynamic_content_insert_position(self, hide_common_tools):
         """获取动态内容插入位置"""
