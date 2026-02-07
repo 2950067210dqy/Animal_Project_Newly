@@ -441,7 +441,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             AsyPromise(self.finsh_one_batch,port=None, mouse_cages_inc=mouse_cages_inc).then(
 
             ).catch(lambda e: logger.error(f"{e}"))
-
+        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
 
 
         pass
@@ -936,12 +936,13 @@ class UGC_gas_path_system_run_thread(MyQThread):
             logger.info(f"数据存储成功，ID: {result.item_id}")
         else:
             logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
-        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
+
         #通知zos 运行
         wait_UGC_run_finish_event=global_setting.get_setting("wait_UGC_run_finish_event",None )
         if wait_UGC_run_finish_event:
             wait_UGC_run_finish_event.set()
             wait_UGC_run_finish_event.clear()
+
         # # 让鼠笼内的传感器开始运行
         # ufc_ugc_zos_barrier = global_setting.get_setting("ufc_ugc_zos_barrier")
         # if ufc_ugc_zos_barrier is not None:
@@ -952,6 +953,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
             logger.debug(f"barrier_UGC run one batch done ! ")
             barrier.wait()
         pass
+        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
 class UGC_gas_path_system(Gas_path_system):
     """
     UGC 气路系统
