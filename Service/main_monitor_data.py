@@ -1088,6 +1088,18 @@ def stop():
                 ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
                                 data=f"关闭气路模块错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_ufc_gap_system_return",
+                                data=f"关闭ufc气路模块错误，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_ugc_gap_system_return",
+                                data=f"关闭ugc气路模块错误，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_zos_gap_system_return",
+                                data=f"关闭zos气路模块错误，原因：{e}",
+                                time=time_util.get_format_from_time(time.time())))
 
     try:
         logger.error("stop_store_thread")
@@ -1098,7 +1110,7 @@ def stop():
             queue = global_setting.get_setting("queue", None)
             if queue:
                 queue.put(
-                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_monitor_data_return",
+                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_show_info_except_status_counts",
                                     data=" 存储线程 已关闭",
                                     time=time_util.get_format_from_time(time.time())))
             store_thread=None
@@ -1108,7 +1120,7 @@ def stop():
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_show_info_except_status_counts",
                                 data=f"关闭实验监测store_thread错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
     try:
@@ -1121,7 +1133,7 @@ def stop():
             queue = global_setting.get_setting("queue", None)
             if queue:
                 queue.put(
-                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_monitor_data_return",
+                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_show_info_except_status_counts",
                                     data=" 鼠笼内模块报文装载线程 已关闭",
                                     time=time_util.get_format_from_time(time.time())))
     except Exception as e:
@@ -1130,7 +1142,7 @@ def stop():
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_show_info_except_status_counts",
                                 data=f"关闭鼠笼内模块报文装载线程错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
     try:
@@ -1152,7 +1164,7 @@ def stop():
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_monitor_data_return",
                                 data=f"关闭鼠笼内模块报文发送线程错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
 

@@ -57,10 +57,10 @@ class read_queue_data_Thread(MyQThread):
         self.camera_list = None
         self.window:MainWindow_Index = window
 
-        # 停止实验用到的 返回状态，当深度相机、红外相机、气路、鼠笼内、存储数据都发过返回消息则关闭关闭实验窗口
+        # 停止实验用到的 返回状态，当深度相机、红外相机、整体气路、UFC气路、ugc气路、zos气路、鼠笼内、存储数据都发过返回消息则关闭关闭实验窗口
         self.old_Stop_experiment_status_text_reTurn =None
         self.old_stop_status_counts = 0
-        self.old_stop_status_max = 4
+        self.old_stop_status_max = 7
         pass
 
     def dosomething(self):
@@ -105,7 +105,7 @@ class read_queue_data_Thread(MyQThread):
                         if self.window is not None and self.window.start_dialog is not None :
 
                             self.window.start_dialog.update_progress_value(self.window.start_dialog.progress_max)
-                    case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_monitor_data_return"|"stop_show_info_except_status_counts":
+                    case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_ufc_gap_system_return"|"stop_ugc_gap_system_return"|"stop_zos_gap_system_return"|"stop_monitor_data_return"|"stop_show_info_except_status_counts":
                         if message.data and self.window:
                             #  更新气路运行消息
                             # 将运行信息放入status栏中
