@@ -27,12 +27,15 @@ def on_process_start(process_id, **kwargs):
 
 def on_process_crash(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
-    logger.error(f"💥 进程崩溃: {process_id} {critical_info}")
-    logger.error(f"   退出码: {kwargs.get('exitcode')}")
-    logger.error(f"   运行时间: {kwargs.get('runtime', 0)}")
-    if kwargs.get('error_info'):
-        logger.error(f"   错误信息: {kwargs.get('error_info')}")
 
+    error_msg = (
+            f"💥 进程崩溃: {process_id} {critical_info}\n"
+            f"   退出码: {kwargs.get('exitcode')}\n"
+            f"   运行时间: {kwargs.get('runtime', 0)}"
+            + (f"\n   错误信息: {kwargs.get('error_info')}" if kwargs.get('error_info') else "")
+    )
+    logger.error(error_msg)
+    main_gui.on_crash(error_msg)
 def on_process_complete(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
     logger.info(f"✅ 进程完成: {process_id} {critical_info} (运行时间: {kwargs.get('runtime', 0)})")
@@ -51,9 +54,12 @@ def on_process_timeout(process_id, **kwargs):
 
 def on_process_unresponsive(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
-    logger.warning(f"😵 进程无响应: {process_id} {critical_info}")
-    logger.warning(f"   心跳超时: {kwargs.get('heartbeat_age', 0)}")
-
+    error_msg = f"""😵 进程无响应: {process_id} {critical_info}
+       心跳超时: {kwargs.get('heartbeat_age', 0)}"""
+    logger.warning(
+        error_msg
+    )
+    main_gui.on_crash(error_msg)
 def on_high_cpu(process_id, **kwargs):
     logger.warning(f"🔥 CPU使用率过高: {process_id}")
     logger.warning(f"   当前: {kwargs.get('cpu_percent', 0):.1f}%")
@@ -65,10 +71,13 @@ def on_high_memory(process_id, **kwargs):
     logger.warning(f"   阈值: {kwargs.get('threshold', 0):.1f}MB")
 
 def on_critical_failure(process_id, **kwargs):
-    logger.critical(f"🚨 关键进程失败: {process_id}")
-    logger.critical(f"   退出码: {kwargs.get('exitcode')}")
-    logger.critical("   系统将关闭所有其他进程")
-
+    error_msg = f"""🚨 关键进程失败: {process_id}
+       退出码: {kwargs.get('exitcode')}
+       系统将关闭所有其他进程"""
+    logger.critical(
+        error_msg
+    )
+    main_gui.on_crash(error_msg)
 def on_shutdown_triggered(process_id, **kwargs):
     failed_processes = kwargs.get('failed_processes', [])
     logger.critical(f"🛑 触发系统关闭，原因: 关键进程失败 {failed_processes}")

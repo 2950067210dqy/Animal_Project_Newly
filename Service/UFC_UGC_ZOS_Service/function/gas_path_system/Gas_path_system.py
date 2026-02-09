@@ -441,7 +441,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             AsyPromise(self.finsh_one_batch,port=None, mouse_cages_inc=mouse_cages_inc).then(
 
             ).catch(lambda e: logger.error(f"{e}"))
-        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
+
 
 
         pass
@@ -664,7 +664,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         if barrier is not None:
             logger.debug(f"barrier_UFC run one batch done ! ")
             barrier.wait()
-
+        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
         resolve()
 class UFC_gas_path_system(Gas_path_system):
     """
@@ -952,7 +952,6 @@ class UGC_gas_path_system_run_thread(MyQThread):
         if barrier is not None:
             logger.debug(f"barrier_UGC run one batch done ! ")
             barrier.wait()
-        pass
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
 class UGC_gas_path_system(Gas_path_system):
     """

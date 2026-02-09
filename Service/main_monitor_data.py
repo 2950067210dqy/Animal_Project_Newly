@@ -349,175 +349,223 @@ class Send_thread(MyQThread):
         self.modbus = modbus
 
     def run(self):
-        logger.warning(f"{self.name} thread has been started！")
-        self._running=True
 
+        logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
+        self._running = True
+        self._stop_requested = False
+        self._paused = False  # 启动时重置状态
         global lock, total_messages_processed, store_Q, store_Q_lock
         global MESSAGE_BATCH_SIZE
-        while self._running:
-            self.mutex.lock()
-            if self._paused:
-                self.condition.wait(self.mutex)  # 等待条件变量
-            self.mutex.unlock()
-            self.priority_queue_empty = False
-            self.normal_queue_empty=False
-            send_message =None
-            try:
-                # logger.info(self.send_messages)
+        try:
+            self.before_Runing_work()
 
-                try:
-                    with self.priority_queue_lock:
-                        message = self.priority_queue.get_nowait()
-                    send_message = message['message']
+            while not self._stop_requested and not self.isInterruptionRequested():
+                self.mutex.lock()
 
-                    logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
-                    response, response_hex, send_state, return_data= self.modbus.send_command(
-                        slave_id=send_message['slave_id'],
-                        function_code=send_message['function_code'],
-                        data_hex_list=send_message['data'],
+                # 如果被暂停，就等待
+                while self._paused and not self._stop_requested and not self.isInterruptionRequested():
+                    self.condition.wait(self.mutex, 1000)  # 1秒超时
 
-                        is_parse_response=False
-                    )
-                    # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
+                # 检查是否需要退出
+                should_exit = self._stop_requested or self.isInterruptionRequested()
+                self.mutex.unlock()
 
-                    if send_state:
-                        return_data, parser_message = self.modbus.parse_response(response=response,
-                                                                                 response_hex=response.hex(),
-                                                                                 send_state=True,
-                                                                                 slave_id=
-                                                                                 send_message['slave_id'],
-                                                                                 function_code=
-                                                                                 send_message['function_code'], )
-
-                        # 如果为1104 环境模块 存储大气压值
-                        if response.hex()[:4] =="1104" and  return_data.get("data") and len(return_data.get("data"))>1:
-                            datas = return_data.get("data")
-                            for data in datas:
-                                desc = data.get("desc")
-                                if desc and desc == "大气压测量值(KPa)":
-                                    global_setting.set_setting("air_pressure_1104", float(data.get("value")))
-                                    break
-                        # 把返回数据返回给源头
-                        message_struct = ObjectQueueItem(to=message['origin'],
-                                                         data=parser_message,
-                                                         origin='main_monitor_data')
-
-                        global_setting.get_setting("send_message_queue").put(message_struct)
-                        logger.debug(f"main_monitor_data将响应报文的解析数据返回源头：{message_struct}")
-                        pass
-                except queue.Empty:
-                    self.priority_queue_empty=True
-                    pass
-                send_message=None
-                # 处理普通消息
-                try:
-                    #!
-                    with self.normal_queue_lock:
-                        message = self.normal_queue.get(timeout=0.1)
-                    send_message = message['message']
-                    # logger.critical(f"send_thread:{self.name}<UNK>{message}")
-                    # 消息没带type则当前不为参考气路，则进行鼠笼内传感器值获取 否则不获取
-                    if message and message.get('type',None) is None:
-                        start_time=time.time()
-                        response, response_hex, send_state,return_data = self.modbus.send_command(
-                            slave_id=send_message['slave_id'],
-                            function_code=send_message['function_code'],
-                            data_hex_list=send_message['data'],
-                            is_parse_response=False
-                        )
-                        end_time = time.time()
-                        if response is not None:
-                            logger.critical(f"报文{response.hex()}发收时间：{(end_time - start_time):.3f}秒")
-                        else:
-                            logger.critical(f"报文{send_message['slave_id']}{send_message['function_code']}{send_message['data']},出现问题！：发收时间：{(end_time - start_time):.3f}秒")
-                        # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
-                        if send_state:
-                            # start_time =time.time()
-                            return_data, parser_message = self.modbus.parse_response(response=response,
-                                                                                     response_hex=response.hex(),
-                                                                                     send_state=True,
-                                                                                     slave_id=
-                                                                                     send_message['slave_id'],
-                                                                                     function_code=
-                                                                                     send_message['function_code'], )
-
-                            # end_time = time.time()
-                            # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
-                            return_data['data'].append({'desc': '备注', 'value': None})
-                            logo_text = f"{time_util.get_format_from_time(time.time())} | {parser_message}"
-                            q = global_setting.get_setting("queue", None)
-                            if q:
-                                q.put(
-                                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
-                                                    title="mouse_cage_inner_module_running_state",
-                                                    data=logo_text,
-                                                    time=time_util.get_format_from_time(time.time())))
-                        else:
-                            # 将错误信息返回给主菜单
-                            if return_data:
-                                for data in return_data['data']:
-                                    if data and data.get('desc') and data.get('desc') == '备注':
-                                        q = global_setting.get_setting("queue", None)
-                                        if q:
-                                            q.put(
-                                                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
-                                                                title="mouse_cage_inner_module_running_state",
-                                                                data=f"{time_util.get_format_from_time(time.time())} | {data.get('value')}",
-                                                                time=time_util.get_format_from_time(time.time())))
-                                        break
-                            pass
-                        return_data['time']= datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-
-                        result = store_data_with_result(return_data, need_result=True, timeout=5)
-                        if result and result.success:
-                            logger.debug(f"数据存储成功{response_hex}，ID: {result.item_id}")
-                        else:
-                            logger.error(f"数据{response_hex}存储失败: {result.error if result else '未知错误'}")
-                        # logger.info(f"{total_messages_processed}|{return_data}")
-                            pass
-
-                except queue.Empty:
-                    self.normal_queue_empty=True
+                if should_exit:
                     break
-            except Exception as e:
-                logger.error(f"{e}")
-            finally:
-                if self.normal_queue_empty:
-                    continue
-                if send_message is not None:
-                    logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束")
-                    with lock:
-                        if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
-                            barrier: threading.Barrier = global_setting.get_setting("barrier")
-                            if barrier is not None:
-                                logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
-                                barrier.wait()
-                            total_messages_processed = 1
-                            MESSAGE_BATCH_SIZE = 0
+                # 执行实际工作
+                try:
+                    self.priority_queue_empty = False
+                    self.normal_queue_empty = False
+                    send_message = None
+                    try:
+                        # logger.info(self.send_messages)
 
-                            batch_complete_event.set()  # 通知主线程当前批次完成
-                            batch_complete_event.clear()  # 重置事件
+                        try:
+                            with self.priority_queue_lock:
+                                message = self.priority_queue.get_nowait()
+                            send_message = message['message']
+
+                            logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
+                            response, response_hex, send_state, return_data = self.modbus.send_command(
+                                slave_id=send_message['slave_id'],
+                                function_code=send_message['function_code'],
+                                data_hex_list=send_message['data'],
+
+                                is_parse_response=False
+                            )
+                            # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
+
+                            if send_state:
+                                return_data, parser_message = self.modbus.parse_response(response=response,
+                                                                                         response_hex=response.hex(),
+                                                                                         send_state=True,
+                                                                                         slave_id=
+                                                                                         send_message['slave_id'],
+                                                                                         function_code=
+                                                                                         send_message[
+                                                                                             'function_code'], )
+
+                                # 如果为1104 环境模块 存储大气压值
+                                if response.hex()[:4] == "1104" and return_data.get("data") and len(
+                                        return_data.get("data")) > 1:
+                                    datas = return_data.get("data")
+                                    for data in datas:
+                                        desc = data.get("desc")
+                                        if desc and desc == "大气压测量值(KPa)":
+                                            global_setting.set_setting("air_pressure_1104", float(data.get("value")))
+                                            break
+                                # 把返回数据返回给源头
+                                message_struct = ObjectQueueItem(to=message['origin'],
+                                                                 data=parser_message,
+                                                                 origin='main_monitor_data')
+
+                                global_setting.get_setting("send_message_queue").put(message_struct)
+                                logger.debug(f"main_monitor_data将响应报文的解析数据返回源头：{message_struct}")
+                                pass
+                        except queue.Empty:
+                            self.priority_queue_empty = True
+                            pass
+                        send_message = None
+                        # 处理普通消息
+                        try:
+                            # !
+                            with self.normal_queue_lock:
+                                message = self.normal_queue.get(timeout=0.1)
+                            send_message = message['message']
+                            # logger.critical(f"send_thread:{self.name}<UNK>{message}")
+                            # 消息没带type则当前不为参考气路，则进行鼠笼内传感器值获取 否则不获取
+                            if message and message.get('type', None) is None:
+                                start_time = time.time()
+                                response, response_hex, send_state, return_data = self.modbus.send_command(
+                                    slave_id=send_message['slave_id'],
+                                    function_code=send_message['function_code'],
+                                    data_hex_list=send_message['data'],
+                                    is_parse_response=False
+                                )
+                                end_time = time.time()
+                                if response is not None:
+                                    logger.critical(f"报文{response.hex()}发收时间：{(end_time - start_time):.3f}秒")
+                                else:
+                                    logger.critical(
+                                        f"报文{send_message['slave_id']}{send_message['function_code']}{send_message['data']},出现问题！：发收时间：{(end_time - start_time):.3f}秒")
+                                # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
+                                if send_state:
+                                    # start_time =time.time()
+                                    return_data, parser_message = self.modbus.parse_response(response=response,
+                                                                                             response_hex=response.hex(),
+                                                                                             send_state=True,
+                                                                                             slave_id=
+                                                                                             send_message['slave_id'],
+                                                                                             function_code=
+                                                                                             send_message[
+                                                                                                 'function_code'], )
+
+                                    # end_time = time.time()
+                                    # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
+                                    return_data['data'].append({'desc': '备注', 'value': None})
+                                    logo_text = f"{time_util.get_format_from_time(time.time())} | {parser_message}"
+                                    q = global_setting.get_setting("queue", None)
+                                    if q:
+                                        q.put(
+                                            ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                                                            title="mouse_cage_inner_module_running_state",
+                                                            data=logo_text,
+                                                            time=time_util.get_format_from_time(time.time())))
+                                else:
+                                    # 将错误信息返回给主菜单
+                                    if return_data:
+                                        for data in return_data['data']:
+                                            if data and data.get('desc') and data.get('desc') == '备注':
+                                                q = global_setting.get_setting("queue", None)
+                                                if q:
+                                                    q.put(
+                                                        ObjectQueueItem(origin="main_monitor_data",
+                                                                        to="MainWindow_index",
+                                                                        title="mouse_cage_inner_module_running_state",
+                                                                        data=f"{time_util.get_format_from_time(time.time())} | {data.get('value')}",
+                                                                        time=time_util.get_format_from_time(
+                                                                            time.time())))
+                                                break
+                                    pass
+                                return_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
+                                result = store_data_with_result(return_data, need_result=True, timeout=5)
+                                if result and result.success:
+                                    logger.debug(f"数据存储成功{response_hex}，ID: {result.item_id}")
+                                else:
+                                    logger.error(
+                                        f"数据{response_hex}存储失败: {result.error if result else '未知错误'}")
+                                    # logger.info(f"{total_messages_processed}|{return_data}")
+                                    pass
+
+                        except queue.Empty:
+                            self.normal_queue_empty = True
+                            break
+                    except Exception as e:
+                        logger.error(f"{e}")
+                    finally:
+                        if self.normal_queue_empty:
+                            continue
+                        if send_message is not None:
+                            logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束")
+                            with lock:
+                                if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
+                                    barrier: threading.Barrier = global_setting.get_setting("barrier")
+                                    if barrier is not None:
+                                        logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
+                                        barrier.wait()
+                                    total_messages_processed = 1
+                                    MESSAGE_BATCH_SIZE = 0
+
+                                    batch_complete_event.set()  # 通知主线程当前批次完成
+                                    batch_complete_event.clear()  # 重置事件
+                                else:
+                                    total_messages_processed += 1
                         else:
-                            total_messages_processed += 1
-                else:
-                    #如果遇到未知错误，则跳过这条报文
-                    logger.error(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束")
-                    with lock:
+                            # 如果遇到未知错误，则跳过这条报文
+                            logger.error(
+                                f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束")
+                            with lock:
 
-                        if MESSAGE_BATCH_SIZE == 0 or total_messages_processed % MESSAGE_BATCH_SIZE == 0:
-                            barrier: threading.Barrier = global_setting.get_setting("barrier")
-                            if barrier is not None:
-                                logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
-                                barrier.wait()
+                                if MESSAGE_BATCH_SIZE == 0 or total_messages_processed % MESSAGE_BATCH_SIZE == 0:
+                                    barrier: threading.Barrier = global_setting.get_setting("barrier")
+                                    if barrier is not None:
+                                        logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
+                                        barrier.wait()
 
-                            total_messages_processed = 1
-                            MESSAGE_BATCH_SIZE = 0
-                            batch_complete_event.set()  # 通知主线程当前批次完成
-                            batch_complete_event.clear()  # 重置事件
-                        else:
-                            total_messages_processed += 1
+                                    total_messages_processed = 1
+                                    MESSAGE_BATCH_SIZE = 0
+                                    batch_complete_event.set()  # 通知主线程当前批次完成
+                                    batch_complete_event.clear()  # 重置事件
+                                else:
+                                    total_messages_processed += 1
 
-            time.sleep(float(global_setting.get_setting('monitor_data')['SEND']['delay']))
+                    time.sleep(float(global_setting.get_setting('monitor_data')['SEND']['delay']))
+                except Exception as e:
+                    error_msg = [f"{self.name} dosomething error: {e}"]
+                    # 错误处理代码...
+                    logger.error("\n".join(error_msg))
+                    break
+
+        except Exception as e:
+            logger.error(f"{self.name} run() exception: {e}")
+        finally:
+            self._running = False
+            logger.warning(f"{self.name} thread run() ended")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -552,96 +600,73 @@ class Add_message_thread(MyQThread):
         self.port=port
         self.mouse_cage_index=None
         pass
-    def run(self):
-        logger.warning(f"{self.name} thread has been started！")
-        self._running=True
-        # 发送消息
-        global MESSAGE_BATCH_SIZE,gids
-
+    def before_Runing_work(self):
         # 等待气路启动
         wait_UFC_UGC_ZOS_start_event.wait()
-        while self._running:
-            self.mutex.lock()
-            if self._paused:
-                self.condition.wait(self.mutex)  # 等待条件变量
-            self.mutex.unlock()
+        pass
+    def dosomething(self):
+        global MESSAGE_BATCH_SIZE
+        send_messages = []
+        # 每个笼子里的传感器的send_messages
+        for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
+            """debugger专用 需要哪个模块的数据监控就放进去"""
+            # logger.critical(f"data type : {data_type}")
+            if data_type in [
+                            Modbus_Slave_Send_Messages_Senior_Data.ENM,
+                              Modbus_Slave_Send_Messages_Senior_Data.EM,
+                              Modbus_Slave_Send_Messages_Senior_Data.DWM,
+                              Modbus_Slave_Send_Messages_Senior_Data.WM
+            ]:
+                # 所有消息
+                for message_struct in data_type.value['send_messages']:
 
-            send_messages = []
-            # # 公共传感器数据的send_messages  现在只发传感器数值查询报文DEBUGGER
-            # for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Senior_Data.value:
-            #     """debugger专用 需要哪个模块的数据监控就放进去"""
-            #     if data_type in [
-            #         Modbus_Slave_Send_Messages_Senior_Data.UFC,
-            #         Modbus_Slave_Send_Messages_Senior_Data.UGC,
-            #         Modbus_Slave_Send_Messages_Senior_Data.ZOS
-            #     ]:
-            #         # 所有消息
-            #         for message_struct in data_type.value['send_messages']:
-            #             message_temp = message_struct.message
-            #             message_temp['port'] =  self.port
-            #             self.send_thread.add_message(message=message_temp, urgent=False)
-            #             send_messages.append(message_temp)
-            #             MESSAGE_BATCH_SIZE += 1
-            # 每个笼子里的传感器的send_messages
-            for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
-                """debugger专用 需要哪个模块的数据监控就放进去"""
-                # logger.critical(f"data type : {data_type}")
-                if data_type in [
-                                Modbus_Slave_Send_Messages_Senior_Data.ENM,
-                                  Modbus_Slave_Send_Messages_Senior_Data.EM,
-                                  Modbus_Slave_Send_Messages_Senior_Data.DWM,
-                                  Modbus_Slave_Send_Messages_Senior_Data.WM
-                ]:
-                    # 所有消息
-                    for message_struct in data_type.value['send_messages']:
+                    message_temp = copy.deepcopy(message_struct.message)
+                    message_temp['port'] =  self.port
 
-                        message_temp = copy.deepcopy(message_struct.message)
-                        message_temp['port'] =  self.port
+                    # logger.critical(f"add_message_thread_mouse_cage_index:{self.mouse_cage_index}")
+                    if self.mouse_cage_index is not None:
 
-                        # logger.critical(f"add_message_thread_mouse_cage_index:{self.mouse_cage_index}")
-                        if self.mouse_cage_index is not None:
-
-                            mouse_cage = gids[self.mouse_cage_index] if gids else 1
-                            message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
-                            send_messages.append({'message': message_temp})
-                        else:
-                            #参考气路则没有发送鼠笼内传感器
-                            send_messages.append({'message': message_temp,'type':'reference'})
-                        MESSAGE_BATCH_SIZE += 1
+                        mouse_cage = gids[self.mouse_cage_index] if gids else 1
+                        message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
+                        send_messages.append({'message': message_temp})
+                    else:
+                        #参考气路则没有发送鼠笼内传感器
+                        send_messages.append({'message': message_temp,'type':'reference'})
+                    MESSAGE_BATCH_SIZE += 1
 
 
-                pass
-            for msg in send_messages:
-                self.send_thread.add_message(message=msg, urgent=False)
-            if self.mouse_cage_index is not None:
-                mouse_cage = gids[self.mouse_cage_index] if gids else 1
+            pass
+        for msg in send_messages:
+            self.send_thread.add_message(message=msg, urgent=False)
+        if self.mouse_cage_index is not None:
+            mouse_cage = gids[self.mouse_cage_index] if gids else 1
+        else:
+            mouse_cage = None
+        #     # 等待从线程处理完当前批次
+        logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
+        logger.info(logo_text)
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="mouse_cage_inner_module_running_state",
+                                data=logo_text,
+                                time=time_util.get_format_from_time(time.time())))
+        # print(f"send_messages:{send_messages}")
+        # 将鼠笼下标循环前移动
+        if self.mouse_cage_index is not None:
+            if self.mouse_cage_index == len(gids) - 1:
+                # 最后一个鼠笼 则下一个为参考气路
+                self.mouse_cage_index = None
             else:
-                mouse_cage = None
-            #     # 等待从线程处理完当前批次
-            logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
-            logger.info(logo_text)
-            queue = global_setting.get_setting("queue", None)
-            if queue:
-                queue.put(
-                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="mouse_cage_inner_module_running_state",
-                                    data=logo_text,
-                                    time=time_util.get_format_from_time(time.time())))
-            # print(f"send_messages:{send_messages}")
-            # 将鼠笼下标循环前移动
-            if self.mouse_cage_index is not None:
-                if self.mouse_cage_index == len(gids) - 1:
-                    # 最后一个鼠笼 则下一个为参考气路
-                    self.mouse_cage_index = None
-                else:
-                    self.mouse_cage_index = self.mouse_cage_index + 1
-                pass
-            else:
-                # 当前为参考气 则下一个为第一个鼠笼
-                self.mouse_cage_index = 0
-                pass
-            batch_complete_event.wait()
+                self.mouse_cage_index = self.mouse_cage_index + 1
+            pass
+        else:
+            # 当前为参考气 则下一个为第一个鼠笼
+            self.mouse_cage_index = 0
+            pass
+        batch_complete_event.wait()
 
-            logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
+        logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
 
 def copy_experiment_setting_file():
     #将实验配置存储到该实验的文件夹中去
