@@ -822,7 +822,16 @@ class IntegratedProcessMonitor:
         health_queue = multiprocessing.Queue() if health_check else None
 
         # 创建进程
-        process = multiprocessing.Process(
+
+        # process = multiprocessing.Process(
+        #     target=monitored_target,
+        #     args=(target_func, args, health_queue, process_id,
+        #           self.exception_queue, asdict(log_config)),
+        #     name=process_id
+        # )
+        #spawn模式启动子进程
+        ctx = multiprocessing.get_context('spawn')
+        process = ctx.Process(
             target=monitored_target,
             args=(target_func, args, health_queue, process_id,
                   self.exception_queue, asdict(log_config)),
