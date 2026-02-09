@@ -118,7 +118,10 @@ class read_queue_data_Thread(MyQThread):
                             global_setting.set_setting("start_experiment_time", data.get("start_experiment_time",time.time()))
                             global_setting.set_setting("pause_experiment_time", data.get("pause_experiment_time",[]))
                             global_setting.set_setting("relieve_pause_experiment_time", data.get("relieve_pause_experiment_time",[]))
-                        start()
+                        try:
+                            start()
+                        except Exception as e:
+                            logger.error(f"{self.name}出现问题：{e}")
                     case 'start_zero_calibration':
                         start_zero_calibration()
                         pass
@@ -971,6 +974,7 @@ def main(q,send_message_q):
     # 系统退出
     return app.exec()
 def start():
+
     logger.info(f"{'-' * 30}monitor_data_run{'-' * 30}")
     global MESSAGE_BATCH_SIZE, total_messages_processed,gids
     MESSAGE_BATCH_SIZE = 0
@@ -991,7 +995,7 @@ def start():
         ufc_ugc_zos_thread.start()
 
     except Exception as ex:
-        logger.error(f"<UNK>{ex}")
+        logger.error(f"气路模块进程启动失败：{ex}")
 
     # 存储线程
     store_thread = Store_Thread(name="monitor_data_store_message")
@@ -1162,4 +1166,5 @@ def stop_modbus():
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     send_message_q = multiprocessing.Queue()
-    main("COM5",q,send_message_q)
+    main(q,send_message_q)
+    start(q,send_message_q)
