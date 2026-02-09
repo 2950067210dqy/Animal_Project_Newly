@@ -35,7 +35,7 @@ def on_process_crash(process_id, **kwargs):
             + (f"\n   错误信息: {kwargs.get('error_info')}" if kwargs.get('error_info') else "")
     )
     logger.error(error_msg)
-    main_gui.on_crash(error_msg)
+    # main_gui.on_crash(error_msg)
 def on_process_complete(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
     logger.info(f"✅ 进程完成: {process_id} {critical_info} (运行时间: {kwargs.get('runtime', 0)})")
@@ -59,7 +59,7 @@ def on_process_unresponsive(process_id, **kwargs):
     logger.warning(
         error_msg
     )
-    main_gui.on_crash(error_msg)
+    # main_gui.on_crash(error_msg)
 def on_high_cpu(process_id, **kwargs):
     logger.warning(f"🔥 CPU使用率过高: {process_id}")
     logger.warning(f"   当前: {kwargs.get('cpu_percent', 0):.1f}%")
@@ -77,7 +77,7 @@ def on_critical_failure(process_id, **kwargs):
     logger.critical(
         error_msg
     )
-    main_gui.on_crash(error_msg)
+    # main_gui.on_crash(error_msg)
 def on_shutdown_triggered(process_id, **kwargs):
     failed_processes = kwargs.get('failed_processes', [])
     logger.critical(f"🛑 触发系统关闭，原因: 关键进程失败 {failed_processes}")

@@ -1270,7 +1270,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
 
 
-        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
+
 
 
 
@@ -1391,7 +1391,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             logger.debug(f"barrier_ZOS run one batch done ! ")
             barrier.wait()
         pass
-
+        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
         resolve()
 
 class ZOS_gas_path_system(Gas_path_system):
