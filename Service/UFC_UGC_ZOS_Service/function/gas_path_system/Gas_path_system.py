@@ -425,7 +425,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
                 self.update_status_main_signal_gui_update.send(
                     f"{time_util.get_format_from_time(time.time())} | UFC运行失败，未选择串口！")
                 logger.error("UFC运行失败，未选择串口！")
-                AsyPromise(self.finsh_one_batch, port=None, mouse_cages_inc=mouse_cages_inc).then(
+                AsyPromise(self.finsh_one_batch, port=None, mouse_cages_inc=mouse_cages_inc)  .then(
 
                 ).catch(lambda e: logger.error(f"{e}"))
                 return
@@ -1284,8 +1284,8 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         :param mouse_cages_inc:
         :return:
         """
-        # 等待15秒在读
-        time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time']))
+        # 等待15秒在读 UFC那边一开始已经等了15秒 已经弃用！！！
+        # time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time']))
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取{'鼠笼' + str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的氧浓度")
