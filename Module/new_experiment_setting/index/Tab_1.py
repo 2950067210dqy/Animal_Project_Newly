@@ -1925,43 +1925,47 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                 group = self.cage_enabled_status.get(cage_number)
                 group_name = f"[{group.name}]" if group else ""
 
-                # logger.debug(
-                #     f"笼 {cage_number} 实时显示:\n"
-                #     f"  已收到: {list(cage_modules.keys())}\n"
-                #     f"  缺少: {list(missing_modules)}\n"
-                #     f"  有效: {cage_is_valid}\n"
-                #     f"  进度: {received_count}/4"
-                # )
+                # ==================== 修复逻辑 ====================
 
-                if cage_is_valid and received_count >= 4:
-                    # 检测通过
+                # 情况1：所有4个模块都收到了，且全部有效
+                if received_count >= 4 and all(cage_modules.values()):
                     status_text = "✓ 检测完成（可配置）"
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                     item.setBackground(QtGui.QColor(240, 255, 240))
                     item.setForeground(QtGui.QColor(34, 139, 34))
+                    # logger.info(f"笼 {cage_number} 检测通过")
 
+                # 情况2：所有4个模块都收到了，但有无效的
+                elif received_count >= 4 and not all(cage_modules.values()):
+                    failed_str = ", ".join(sorted(failed_modules))
+                    status_text = f"✗ 检测异常 - 失败模块: {failed_str}"
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
+                    item.setBackground(QtGui.QColor(255, 240, 245))
+                    item.setForeground(QtGui.QColor(220, 20, 60))
+                    logger.error(f"笼{cage_number}检测失败: {failed_str}")
+
+                # 情况3：还在检测中（少于4个或有缺失）
                 elif received_count > 0:
-                    # 检测中
                     modules_str = ", ".join(sorted(cage_modules.keys()))
                     status_text = f"检测中... ({received_count}/4 模块: {modules_str})"
                     item.setFlags(Qt.ItemFlag.NoItemFlags)
                     item.setBackground(QtGui.QColor(255, 255, 240))
                     item.setForeground(QtGui.QColor(184, 134, 11))
+                    # logger.debug(f"笼 {cage_number} 检测中: {status_text}")
 
+                # 情况4：还未收到任何模块
                 else:
-                    # 等待中
                     status_text = "检测中..."
                     item.setFlags(Qt.ItemFlag.NoItemFlags)
                     item.setBackground(QtGui.QColor(255, 255, 240))
                     item.setForeground(QtGui.QColor(184, 134, 11))
+                    # logger.debug(f"笼 {cage_number} 等待模块响应")
 
                 item_text = f"鼠笼 {cage_number} {group_name} - {status_text}"
                 item.setText(item_text)
 
                 cage_list_widget.viewport().update()
                 cage_list_widget.repaint()
-
-                # logger.debug(f"✓ 笼 {cage_number} 列表显示已更新")
                 break
 
         except Exception as e:
