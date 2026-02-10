@@ -20,27 +20,35 @@ class ChartCanvas(FigureCanvas):
         # 添加关键：启用鼠标事件
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-    def _format_time_label(self, value: float) -> str:
-        """将秒数格式化为时间标签 (HH:MM:SS)"""
+    def _format_time_label(self, timestamp: float) -> str:
+        """将时间戳格式化为日期时间标签"""
         try:
-            # 处理None值
-            if value is None:
+            if timestamp is None:
                 return ""
 
-            # 转换为float
-            value = float(value)
+            timestamp = float(timestamp)
 
-            # 处理负数
-            if value < 0:
-                return f"-{self._format_time_label(-value)}"
+            # 处理负数时间戳
+            if timestamp < 0:
+                return "Invalid Time"
 
-            hours = int(value // 3600)
-            minutes = int((value % 3600) // 60)
-            seconds = int(value % 60)
-            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            from datetime import datetime
+            dt = datetime.fromtimestamp(timestamp)
+
+            # # 根据时间范围选择合适的格式
+            # now = datetime.now()
+            # time_diff = abs((now - dt).total_seconds())
+            #
+            # if time_diff < 86400:  # 24小时内，只显示时间
+            #     return dt.strftime('%H:%M:%S')
+            # elif time_diff < 86400 * 30:  # 30天内，显示月-日 时:分
+            #     return dt.strftime('%m-%d %H:%M')
+            # else:  # 超过30天，显示完整日期时间
+            #     return dt.strftime('%Y-%m-%d %H:%M')
+            return dt.strftime('%m-%d %H:%M')
         except Exception as e:
-            print(f"格式化时间标签出错: {e}")
-            return str(value)
+            logger.error(f"格式化日期时间标签出错: {e}")
+            return str(timestamp)
     def on_mouse_move(self, event):
         """鼠标移动事件 - 显示数据点提示"""
         # 检查事件是否有效

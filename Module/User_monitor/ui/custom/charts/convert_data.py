@@ -13,11 +13,16 @@ def convert_data_to_cage_format(original_data):
     # 处理每一行数据
     for row in original_data['rows']:
         # 获取时间字符串，从time字段中提取时分秒
-        if row.get('time'):
-            # 假设time格式是 '2026-01-07 18:00:28.572'
-            time_str = row['time'].split(' ')[1].split('.')[0]  # 提取 '18:00:28' 部分
-        else:
+        # if row.get('time'):
+        #     # 假设time格式是 '2026-01-07 18:00:28.572'
+        #     time_str = row['time'].split(' ')[1].split('.')[0]  # 提取 '18:00:28' 部分
+        # else:
+        #     time_str = None
+        if row.get('time') is None:
             time_str = None
+        else:
+            # 假设time格式是 '2026-01-07 18:00:28.572'
+            time_str = row['time'].split('.')[0]  # 提取 '2026-01-07 18:00:28' 部分
 
         # 如果该时间还未在字典中，则初始化
         if time_str not in time_grouped_data:
