@@ -133,7 +133,6 @@ class MyQThread(QThread):
                 self.wait(1000)
             except Exception as e2:
                 logger.error(f"{self.name}强制终止失败: {e2}")
-        super().deleteLater()
     def isStart(self):
         return self._running and not self._stop_requested
 

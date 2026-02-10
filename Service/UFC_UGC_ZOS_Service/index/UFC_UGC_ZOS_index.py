@@ -379,7 +379,6 @@ class UFC_UGC_ZOS_index(MyQThread):
     def run_btn_handle(self):
 
         global auto_wait_event,stop_flag
-        # 测试timeout
         auto_wait_event.wait()
         if stop_flag:
             return AsyPromise.reject_immediately("run_btn_handle在启动过程中时遇到停止指令")
@@ -608,6 +607,13 @@ class UFC_UGC_ZOS_index(MyQThread):
                 )
             )
 
+        # self.run_btn_handle().then(
+        #
+        #     self.gas_state_check_handle().then(
+        #         self.stop()
+        #     )
+        #
+        # )
 
     def pause(self):
         if self.UFC_gas_path_system_obj is not None and self.UFC_gas_path_system_obj.ufc_gas_path_system_run_thread is not None:

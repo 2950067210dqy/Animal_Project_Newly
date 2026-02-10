@@ -1072,17 +1072,17 @@ class AdvancedChartWidget(BaseWidget):
             from datetime import datetime
             dt = datetime.fromtimestamp(timestamp)
 
-            # 根据时间范围选择合适的格式
-            now = datetime.now()
-            time_diff = abs((now - dt).total_seconds())
-
-            if time_diff < 86400:  # 24小时内，只显示时间
-                return dt.strftime('%H:%M:%S')
-            elif time_diff < 86400 * 30:  # 30天内，显示月-日 时:分
-                return dt.strftime('%m-%d %H:%M')
-            else:  # 超过30天，显示完整日期时间
-                return dt.strftime('%Y-%m-%d %H:%M')
-
+            # # 根据时间范围选择合适的格式
+            # now = datetime.now()
+            # time_diff = abs((now - dt).total_seconds())
+            #
+            # if time_diff < 86400:  # 24小时内，只显示时间
+            #     return dt.strftime('%H:%M:%S')
+            # elif time_diff < 86400 * 30:  # 30天内，显示月-日 时:分
+            #     return dt.strftime('%m-%d %H:%M')
+            # else:  # 超过30天，显示完整日期时间
+            #     return dt.strftime('%Y-%m-%d %H:%M')
+            return dt.strftime('%m-%d %H:%M')
         except Exception as e:
             logger.error(f"格式化日期时间标签出错: {e}")
             return str(timestamp)
@@ -1400,7 +1400,7 @@ class AdvancedChartWidget(BaseWidget):
             else:
                 # 数值类型直接使用
                 x_data_list = list(self.x_data)
-
+            # logger.critical(f"<UNK>: x_data:{list(self.x_data)},x_data_type:{x_data_type},x_data_list:{x_data_list}")
             all_y_data = []
 
             # 按照鼠笼ID排序显示

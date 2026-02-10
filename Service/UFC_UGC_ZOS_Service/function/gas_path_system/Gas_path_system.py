@@ -386,10 +386,11 @@ class UFC_gas_path_system_close_thread(MyQThread):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 已关闭")
         # 返回响应
+
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index", title="stop_show_info_except_status_counts",
+                ObjectQueueItem(origin="Gas_path_system_ufc", to="MainWindow_index", title="stop_ufc_gap_system_return",
                                 data=f"{time_util.get_format_from_time(time.time())} | UFC 已关闭",
                                 time=time_util.get_format_from_time(time.time())))
         resolve()
@@ -441,7 +442,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             AsyPromise(self.finsh_one_batch,port=None, mouse_cages_inc=mouse_cages_inc).then(
 
             ).catch(lambda e: logger.error(f"{e}"))
-        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
+
 
 
         pass
@@ -664,7 +665,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         if barrier is not None:
             logger.debug(f"barrier_UFC run one batch done ! ")
             barrier.wait()
-
+        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
         resolve()
 class UFC_gas_path_system(Gas_path_system):
     """
@@ -952,7 +953,6 @@ class UGC_gas_path_system_run_thread(MyQThread):
         if barrier is not None:
             logger.debug(f"barrier_UGC run one batch done ! ")
             barrier.wait()
-        pass
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
 class UGC_gas_path_system(Gas_path_system):
     """
@@ -1204,8 +1204,8 @@ class UGC_gas_path_system(Gas_path_system):
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index",
-                                title="stop_show_info_except_status_counts",
+                ObjectQueueItem(origin="Gas_path_system_ugc", to="MainWindow_index",
+                                title="stop_ugc_gap_system_return",
                                 data=f"{time_util.get_format_from_time(time.time())} |  UGC 已停止",
                                 time=time_util.get_format_from_time(time.time())))
 
@@ -1271,7 +1271,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
 
 
-        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
+
 
 
 
@@ -1392,7 +1392,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             logger.debug(f"barrier_ZOS run one batch done ! ")
             barrier.wait()
         pass
-
+        time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
         resolve()
 
 class ZOS_gas_path_system(Gas_path_system):
@@ -1848,7 +1848,7 @@ class ZOS_gas_path_system(Gas_path_system):
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="Gas_path_system", to="MainWindow_index", title="stop_gap_system_return",
+                ObjectQueueItem(origin="Gas_path_system_zos", to="MainWindow_index", title="stop_zos_gap_system_return",
                                 data=" ZOS 已停止",
                                 time=time_util.get_format_from_time(time.time())))
         resolve()
