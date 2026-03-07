@@ -2305,3 +2305,21 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
     def show_success(self, title: str, message: str):
         """显示成功对话框"""
         QMessageBox.information(self, title, message)
+
+    def closeEvent(self, event):
+        """关闭时清除单例缓存，允许下次重新创建"""
+        cls = type(self)
+        instance_id = id(self)
+
+        with SafeSingletonMeta._lock:
+            if cls in SafeSingletonMeta._instances:
+                del SafeSingletonMeta._instances[cls]
+            if cls in SafeSingletonMeta._init_completed:
+                del SafeSingletonMeta._init_completed[cls]
+
+        with Tab_1._instance_lock:
+            if instance_id in Tab_1._initialization_state:
+                del Tab_1._initialization_state[instance_id]
+            Tab_1._failed_instances.discard(instance_id)
+
+        super().closeEvent(event)

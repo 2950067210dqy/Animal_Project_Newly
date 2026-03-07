@@ -34,6 +34,18 @@ class Main_experiment_setting_widget(BaseInterfaceWidget):
         return BaseInterfaceType.WIDGET
 
     def create_middle_window(self) -> BaseWindow:
+        # 清除旧的单例缓存，确保每次都能创建新实例
+        from Module.new_experiment_setting.index.Tab_1 import SafeSingletonMeta
+        with SafeSingletonMeta._lock:
+            if Tab_1 in SafeSingletonMeta._instances:
+                del SafeSingletonMeta._instances[Tab_1]
+            if Tab_1 in SafeSingletonMeta._init_completed:
+                del SafeSingletonMeta._init_completed[Tab_1]
+
+        with Tab_1._instance_lock:
+            Tab_1._initialization_state.clear()
+            Tab_1._failed_instances.clear()
+
         return Tab_1()
 
     def create_left_window(self) -> BaseWindow:
