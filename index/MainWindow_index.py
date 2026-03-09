@@ -3,6 +3,8 @@ import json
 import os
 import time
 from json import JSONDecodeError
+
+from PyQt6.QtGui import QFont
 from PyQt6 import QtCore
 from PyQt6.QtCore import QTimer, QObject, pyqtSignal
 from PyQt6.QtGui import QAction
@@ -430,6 +432,15 @@ class MainWindow_Index(ThemedWindow):
             if self.menu_name is not None:
                 # 创建菜单栏
                 self.create_menu_bar()
+                self.menuBar().setStyleSheet("""
+                    QMenuBar{
+                        font-size:15px;
+                    }
+                    QMenuBar::item {
+                        font-size: 15px;
+                        padding: 4px 10px;
+                    }
+                """)
             pass
         # 创建工具栏
         self.create_tool_bar()
@@ -748,25 +759,87 @@ class MainWindow_Index(ThemedWindow):
             module.set_main_gui(main_gui=self)
             name = module.title
             obj_name = f"dynamic_{module.name}"
-            action = QAction(name, self)
-            action.setObjectName(obj_name)
-            action.setToolTip(f"{name}")
-            action.triggered.connect(module.click_method)
 
-            # 添加到动态工具栏动作列表
+            # 图标映射表
+            MODULE_ICON_MAP = {
+                "新建实验": "🧪",
+                "打开实验文件": "📂",
+                "设置设备": "🔧",
+                "设备配置": "🖥️",
+                "老鼠轨迹监测": "🐭",
+                "相机监控": "📷",
+                "用户界面": "👤",
+                "数据监控": "📊",
+            }
+
+            # 根据模块名匹配图标
+            icon_char = None
+            for key, icon in MODULE_ICON_MAP.items():
+                if key in name:
+                    icon_char = icon
+                    break
+
+            # 用 QToolButton 替代 QAction
+            from PyQt6.QtWidgets import QToolButton
+            btn = QToolButton()
+            btn.setObjectName(obj_name)
+            btn.setToolTip(name)
+            btn.clicked.connect(module.click_method)
+
+            # 文字竖排
+            btn.setText("\n".join(name))
+
+            # 图标在上，文字在下
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+
+            # 图标：优先模块自带，其次映射表，最后首字
+            if hasattr(module, 'icon') and module.icon:
+                from PyQt6.QtGui import QIcon
+                btn.setIcon(QIcon(module.icon))
+            elif icon_char:
+                btn.setIcon(self.create_text_icon(icon_char, size=28))
+            else:
+                btn.setIcon(self.create_text_icon(name[0] if name else "●", size=28))
+            btn.setIconSize(QtCore.QSize(28, 28))
+
+            # 字体
+            font = QFont()
+            font.setPixelSize(12)
+            btn.setFont(font)
+
+            # 固定宽度
+            btn.setFixedWidth(72)
+
+            # 样式
+            btn.setStyleSheet("""
+                            QToolButton {
+                                border: none;
+                                padding: 0px 2px;
+                                background: transparent;
+                            }
+                            QToolButton:hover {
+                                background: rgba(128,128,128,0.15);
+                                border-radius: 6px;
+                            }
+                            QToolButton:pressed {
+                                background: rgba(128,128,128,0.3);
+                                border-radius: 6px;
+                            }
+                        """)
+
             self.dynamic_tool_bar_actions.append({
                 "name": name,
                 "obj_name": obj_name,
-                "action": action,
+                "action": btn,  # 存btn
                 "app_state": module.app_state,
                 "menu_id": menu_id
             })
 
-            # 插入到适当位置
+            # 用insertWidget/addWidget
             if insert_position:
-                self.toolbar.insertAction(insert_position, action)
+                self.toolbar.insertWidget(insert_position, btn)
             else:
-                self.toolbar.addAction(action)
+                self.toolbar.addWidget(btn)
 
         # 添加分隔符（只有在显示通用工具且有动态内容时才添加）
         if menu_modules and not hide_common_tools and self.static_toolbar_actions:
@@ -778,19 +851,21 @@ class MainWindow_Index(ThemedWindow):
 
     def clear_dynamic_toolbar_content(self):
         """清除工具栏中的动态内容"""
-        # 移除所有动态动作
+        from PyQt6.QtWidgets import QToolButton
         for action_dict in self.dynamic_tool_bar_actions:
-            self.toolbar.removeAction(action_dict["action"])
+            widget_or_action = action_dict["action"]
+            if isinstance(widget_or_action, QAction):
+                self.toolbar.removeAction(widget_or_action)
+            else:
+                # ✅ QToolButton 直接隐藏并销毁
+                widget_or_action.hide()
+                widget_or_action.deleteLater()
 
-        # 移除所有动态分隔符
         for separator in self.dynamic_toolbar_separators:
             self.toolbar.removeAction(separator)
 
-        # 清空列表
         self.dynamic_tool_bar_actions.clear()
         self.dynamic_toolbar_separators.clear()
-
-        # 确保通用工具可见（当切换到其他菜单时）
         self.show_common_tools()
 
     def hide_common_tools(self):

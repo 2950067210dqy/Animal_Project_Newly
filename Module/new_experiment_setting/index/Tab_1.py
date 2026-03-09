@@ -585,7 +585,6 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         except Exception as e:
             logger.error(f"更新检测状态失败: {e}", exc_info=True)
 
-
     def _init_function(self):
         """初始化功能"""
         self.init_btn_func()
@@ -602,11 +601,13 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         global read_queue_data_thread
 
         if read_queue_data_thread is not None:
+            # 无论线程是否在跑，都重新绑定信号到当前实例
+            read_queue_data_thread.queue = global_setting.get_setting("send_message_queue")
+            read_queue_data_thread.Each_Mouse_Cage_detect_finished_signal = self.Each_Mouse_Cage_detect_finished_signal
+            read_queue_data_thread.Not_Each_Mouse_Cage_detect_finished_signal = self.Not_Each_Mouse_Cage_detect_finished_signal
+            read_queue_data_thread.update_group_activation_signal = self.update_group_activation_signal
+
             if not read_queue_data_thread.isRunning():
-                read_queue_data_thread.queue = global_setting.get_setting("send_message_queue")
-                read_queue_data_thread.Each_Mouse_Cage_detect_finished_signal = self.Each_Mouse_Cage_detect_finished_signal
-                read_queue_data_thread.Not_Each_Mouse_Cage_detect_finished_signal = self.Not_Each_Mouse_Cage_detect_finished_signal
-                read_queue_data_thread.update_group_activation_signal = self.update_group_activation_signal
                 read_queue_data_thread.start()
 
     def setup_tutorial(self):
