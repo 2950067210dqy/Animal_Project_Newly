@@ -102,10 +102,13 @@ class read_queue_data_Thread(MyQThread):
                             self.window.status_bar.update_tip(message.data)
                             pass
                     case 'close_start_experiment_dialog':
-                        #启动气路完成，关闭开始实验窗口
-                        if self.window is not None and self.window.start_dialog is not None :
-
+                        if self.window is not None and self.window.start_dialog is not None:
                             self.window.start_dialog.update_progress_value(self.window.start_dialog.progress_max)
+                        else:
+                            # 60秒强制进入后收到完成信号
+                            if self.window is not None:
+                                # 绿色显示"启动成功"，3秒后自动恢复实验状态文字
+                                self.window.show_temp_status_tip_signal.emit("气路启动成功！", "#00aa00", 3000)
                     case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_ufc_gap_system_return"|"stop_ugc_gap_system_return"|"stop_zos_gap_system_return"|"stop_monitor_data_return"|"stop_show_info_except_status_counts":
                         if message.data and self.window:
                             #  更新气路运行消息
@@ -201,6 +204,10 @@ class MainWindow_Index(ThemedWindow):
     show_calibration_window_signal = QtCore.pyqtSignal(dict)
     # 释放校准详情dialog的信号
     release_calibration_window_signal = QtCore.pyqtSignal()
+    # 线程安全的状态栏提示信号
+    update_status_tip_signal = QtCore.pyqtSignal(str)
+    # 临时覆盖状态栏中间文字的信号 (message, color, duration_ms)
+    show_temp_status_tip_signal = QtCore.pyqtSignal(str, str, int)
     def close_window_handle(self):
         """
         关闭窗口执行的事件
@@ -456,6 +463,9 @@ class MainWindow_Index(ThemedWindow):
         self.change_enable_component_app_state_signal.connect(self.change_enable_component_app_state)
         self.show_calibration_window_signal.connect(self.show_calibration_windows)
         self.release_calibration_window_signal.connect(self.release_calibration_windows)
+        # 新增连接
+        self.update_status_tip_signal.connect(self.status_bar.update_tip)
+        self.show_temp_status_tip_signal.connect(self.status_bar.show_temp_tip)
         pass
     # 创建工具栏
     def create_tool_bar(self):
@@ -1121,7 +1131,6 @@ class MainWindow_Index(ThemedWindow):
         pass
 
     def show_open_dialog(self, resolve, reject):
-        # 弹窗最晚持续时间
         start_wait_times = float(global_setting.get_setting('configer')['dialog_timeout']['timeout']) + float(
             global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + float(
             global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time']) / float(
@@ -1139,22 +1148,23 @@ class MainWindow_Index(ThemedWindow):
                 countdown_seconds=start_wait_times,
                 title="开始实验", message="正在启动气路...")
 
-        # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
-
-        # 如果勾选了自动校准，就添加自动校准界面在弹窗里
         is_auto_calibration = global_setting.get_setting('is_auto_calibration', True)
         if is_auto_calibration:
             self.init__calibration_windows()
             self.start_dialog.insert_calibration_dialog(self.calibration_details_windows)
+
         result = self.start_dialog.exec()
-        # 关闭校准窗口
         self.release_calibration_windows()
+
         if result == QDialog.DialogCode.Accepted:
+            # 判断是否是60秒强制进入
+            if self.start_dialog is not None and self.start_dialog.force_entered:
+                # 橙色显示，一直保持到气路启动完成
+                self.show_temp_status_tip_signal.emit("⏳ 后台正在启动气路，请稍候...", "#ff8800", 0)
             resolve()
         else:
             self.stop_experiment()
             reject()
-
         pass
     def init__calibration_windows(self):
         #初始化标定窗口

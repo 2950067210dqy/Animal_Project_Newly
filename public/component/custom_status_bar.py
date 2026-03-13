@@ -1,7 +1,7 @@
 import time
 from datetime import datetime
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QStatusBar, QLabel, QProgressBar, QPushButton
 
 from public.component.list_view.Custom_List_view import CustomListView
@@ -164,6 +164,40 @@ class CustomStatusBar(QStatusBar):
 
             self.update_experiment_time_main_signal_gui_update.connect(self.update_experiment_time_gui_update)
 
+    def show_temp_tip(self, message, color="#ff8800", duration_ms=0):
+        # 只在第一次进入临时模式时保存备份，避免二次覆盖备份
+        if not getattr(self, '_temp_tip_active', False):
+            self._status_label_backup = self.status_label.text()
+            self._status_label_style_backup = self.status_label.styleSheet()
+
+        self._temp_tip_active = True
+        self.status_label.setText(message)
+        self.status_label.setStyleSheet(
+            f"QLabel {{ color: {color}; font-weight: bold; font-size: 13px; }}"
+        )
+        if duration_ms > 0:
+            QTimer.singleShot(duration_ms, self.restore_status_label)
+
+    def restore_status_label(self):
+        self._temp_tip_active = False  # 解除阻止，恢复正常更新
+        if hasattr(self, '_status_label_backup'):
+            self.status_label.setText(self._status_label_backup)
+            self.status_label.setStyleSheet(
+                getattr(self, '_status_label_style_backup', "QLabel { color: green; }")
+            )
+
+    def update_experiment_time_gui_update(self, timeDict={"is_paused": False, "text": ""}):
+        # 临时提示激活时跳过，不覆盖
+        if getattr(self, '_temp_tip_active', False):
+            return
+        if timeDict['is_paused']:
+            self.status_label.setText(
+                f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time', time.time()))}-暂停监测数据-已经暂停监测 {timeDict['text']}")
+            self.status_label.setStyleSheet("QLabel { color:blue; }")
+        else:
+            self.status_label.setText(
+                f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time', time.time()))}-正在监测数据-已经监测 {timeDict['text']}")
+            self.status_label.setStyleSheet("QLabel { color:green; }")
     def update_tip(self, message):
         if self.tip_label is None:
             self.tip_label = CustomListView()
@@ -200,16 +234,16 @@ class CustomStatusBar(QStatusBar):
             self.status_label.setText("未开始监测数据")
             self.status_label.setStyleSheet("QLabel { color: red; }")
 
-     # 更新时间功能 界面更新
-    def update_experiment_time_gui_update(self, timeDict={"is_paused":False, "text":""}):
-        if timeDict['is_paused']:
-            self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-暂停监测数据-已经暂停监测 {timeDict['text']}")
-            self.status_label.setStyleSheet("QLabel { color:blue; }")
-        else:
-            self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-正在监测数据-已经监测 {timeDict['text']}")
-            self.status_label.setStyleSheet("QLabel { color:green; }")
-            pass
-        pass
+    #  # 更新时间功能 界面更新
+    # def update_experiment_time_gui_update(self, timeDict={"is_paused":False, "text":""}):
+    #     if timeDict['is_paused']:
+    #         self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-暂停监测数据-已经暂停监测 {timeDict['text']}")
+    #         self.status_label.setStyleSheet("QLabel { color:blue; }")
+    #     else:
+    #         self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-正在监测数据-已经监测 {timeDict['text']}")
+    #         self.status_label.setStyleSheet("QLabel { color:green; }")
+    #         pass
+    #     pass
     def update_time_function_start_gui_update(self, timeStr=""):
         #  获取控件
         # time_label: QLabel = self.findChild(QLabel, "time_label")

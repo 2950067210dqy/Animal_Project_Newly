@@ -20,14 +20,17 @@ class AnimatedLoadingDialog(QDialog):
         self.message = message
         self.title = title
         self.show_listview = show_listview
-        self.calibration_dialog = calibration_dialog  # 接收CalibrationDialog
+        self.calibration_dialog = calibration_dialog
 
-        # 进度条相关属性
         self.manual_progress = 0
         self.progress_max = 100
-        self.use_manual_progress = False  # 是否使用手动进度控制
-        self.task_completed = False  # 任务是否完成标志
-        self.is_closing = False  # 防止重复关闭
+        self.use_manual_progress = False
+        self.task_completed = False
+        self.is_closing = False
+
+        # 60秒强制进入标志
+        self.force_enter_seconds = 60
+        self.force_entered = False  # 是否已经强制进入过
 
         self.init_ui()
         self.init_listview()
@@ -378,23 +381,31 @@ class AnimatedLoadingDialog(QDialog):
         self.current_seconds -= 1
         self.countdown_label.setText(f"剩余时间: {self.current_seconds}s")
 
+        # 计算已经过去了多少秒
+        elapsed = self.countdown_seconds - self.current_seconds
+
+        # 超过60秒且任务未完成 → 强制进入主界面
+        if elapsed >= self.force_enter_seconds and not self.task_completed and not self.force_entered:
+            self.force_entered = True
+            self.message_label.setText("后台继续启动中，正在进入监控页面...")
+            QTimer.singleShot(500, self._safe_accept)
+            return
+
         # 根据剩余时间更新消息
         if self.current_seconds <= 3 and not self.task_completed:
             self.message_label.setText("即将超时...")
         elif self.current_seconds <= 5 and not self.task_completed:
             self.message_label.setText("正在处理最后步骤...")
 
-        # 倒计时结束处理
+        # 倒计时结束处理（原逻辑不变）
         if self.current_seconds <= 0:
             self.timer.stop()
             if hasattr(self, 'progress_timer'):
                 self.progress_timer.stop()
 
-            # 修正逻辑：只有在任务未完成时才显示超时错误
             if not self.task_completed:
                 self.show_timeout_error()
             else:
-                # 任务已完成，正常关闭
                 self.progress_bar.setValue(100)
                 self.message_label.setText("加载完成！")
                 QTimer.singleShot(500, self._safe_accept)
