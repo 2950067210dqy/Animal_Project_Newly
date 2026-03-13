@@ -464,7 +464,8 @@ class MainWindow_Index(ThemedWindow):
 
         # 设置工具栏样式为图标在左，文字在右
         self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.toolbar.setIconSize(QtCore.QSize(20, 20))  # 设置图标大小
+        self.toolbar.setIconSize(QtCore.QSize(48, 48))
+        self.toolbar.setMinimumHeight(70)
 
         self.addToolBar(self.toolbar)
 
@@ -786,8 +787,9 @@ class MainWindow_Index(ThemedWindow):
             btn.setToolTip(name)
             btn.clicked.connect(module.click_method)
 
-            # 文字竖排
-            btn.setText("\n".join(name))
+            # # 文字竖排
+            # btn.setText("\n".join(name))
+            btn.setText(name)
 
             # 图标在上，文字在下
             btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
@@ -808,7 +810,7 @@ class MainWindow_Index(ThemedWindow):
             btn.setFont(font)
 
             # 固定宽度
-            btn.setFixedWidth(72)
+            btn.setFixedWidth(150)
 
             # 样式
             btn.setStyleSheet("""
@@ -857,7 +859,7 @@ class MainWindow_Index(ThemedWindow):
             if isinstance(widget_or_action, QAction):
                 self.toolbar.removeAction(widget_or_action)
             else:
-                # ✅ QToolButton 直接隐藏并销毁
+                # QToolButton 直接隐藏并销毁
                 widget_or_action.hide()
                 widget_or_action.deleteLater()
 
