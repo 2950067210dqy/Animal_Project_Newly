@@ -781,6 +781,7 @@ class MainWindow_Index(ThemedWindow):
                 "相机监控": "📷",
                 "用户界面": "👤",
                 "数据监控": "📊",
+                "串口调试":"🔌"
             }
 
             # 根据模块名匹配图标
@@ -1160,7 +1161,7 @@ class MainWindow_Index(ThemedWindow):
             # 判断是否是60秒强制进入
             if self.start_dialog is not None and self.start_dialog.force_entered:
                 # 橙色显示，一直保持到气路启动完成
-                self.show_temp_status_tip_signal.emit("⏳ 后台正在启动气路，请稍候...", "#ff8800", 0)
+                self.show_temp_status_tip_signal.emit("后台正在启动气路，请稍候...", "#ff8800", 0)
             resolve()
         else:
             self.stop_experiment()
