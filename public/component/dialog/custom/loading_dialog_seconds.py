@@ -11,6 +11,7 @@ class AnimatedLoadingDialog(QDialog):
     progress_updated = pyqtSignal(int)
     insert_data_signal = pyqtSignal(str)
     task_completed_signal = pyqtSignal()
+    timeout_signal = pyqtSignal()  # 超时信号
 
     def __init__(self, countdown_seconds=10, message="正在加载数据...", title="系统加载中",
                  show_listview=True, calibration_dialog=None):
@@ -459,6 +460,7 @@ class AnimatedLoadingDialog(QDialog):
 
         # 显示弹窗并等待用户点击
         result = msg_box.exec()
+        self.timeout_signal.emit()
         self._safe_reject()
 
     def _safe_accept(self):
@@ -737,7 +739,7 @@ def main():
     # 测试场景1：超时情况（不调用complete_task）
 
     dialog = AnimatedLoadingDialog(
-        countdown_seconds=5,  # 短倒计时用于测试
+         countdown_seconds=5,  # 短倒计时用于测试
         message="正在处理数据...",
         title="数据处理中",
         show_listview=True
