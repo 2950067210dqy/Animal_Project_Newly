@@ -223,67 +223,58 @@ class Tab_4(ThemedWindow):
         if pixmap_path_dict is None or "deep_camera" not in pixmap_path_dict or "infrared_camera" not in pixmap_path_dict:
             logger.error("未获取到数据")
             return
+
         for i in range(len(pixmap_path_dict['deep_camera'])):
-            # logger.critical(f"deep_camera | {pixmap_path_dict['deep_camera'][i]}")
             position = pixmap_path_dict['deep_camera'][i].find(
                 global_setting.get_setting('camera_config')['DEEP_CAMERA']['mouse_cage_prefix']) + len(
                 global_setting.get_setting('camera_config')['DEEP_CAMERA']['mouse_cage_prefix'])
             if pixmap_path_dict['deep_camera'][i] == "":
                 pixmap = QPixmap()
             else:
-                # 按比例缩放到目标宽高内
-                pixmap = QPixmap(pixmap_path_dict['deep_camera'][i]).scaled(200, 200,
-                                                                            Qt.AspectRatioMode.KeepAspectRatio)
-            for graphics_view in self.graphics_view_left:
+                pixmap = QPixmap(pixmap_path_dict['deep_camera'][i])  # ← 不再手动scaled，交给fitInView处理
 
+            for graphics_view in self.graphics_view_left:
                 if position < len(pixmap_path_dict['deep_camera'][i]) and graphics_view.objectName() != "" and \
-                        graphics_view.objectName()[-1] == \
-                        pixmap_path_dict['deep_camera'][i][position]:
+                        graphics_view.objectName()[-1] == pixmap_path_dict['deep_camera'][i][position]:
                     if graphics_view.scene() is None:
-                        # 无就创建
                         scene = QGraphicsScene()
                         pixmap_item = QGraphicsPixmapItem(pixmap)
                         scene.addItem(pixmap_item)
-
-                        # 设置场景给视图
                         graphics_view.setScene(scene)
                     else:
-                        # 有就更新
                         graphics_view.scene().clear()
                         graphics_view.scene().addPixmap(pixmap)
-
-            else:
-                pass
+                    # ↓ 关键：每次更新后让图片自适应视图大小
+                    graphics_view.fitInView(
+                        graphics_view.scene().itemsBoundingRect(),
+                        Qt.AspectRatioMode.KeepAspectRatio
+                    )
 
         for i in range(len(pixmap_path_dict['infrared_camera'])):
-            # logger.critical(f"infrared_camera | {pixmap_path_dict['infrared_camera'][i]}")
             position = pixmap_path_dict['infrared_camera'][i].find(
                 global_setting.get_setting('camera_config')['INFRARED_CAMERA']['mouse_cage_prefix']) + len(
                 global_setting.get_setting('camera_config')['INFRARED_CAMERA']['mouse_cage_prefix'])
             if pixmap_path_dict['infrared_camera'][i] == "":
                 pixmap = QPixmap()
             else:
-                # 按比例缩放到目标宽高内
-                pixmap = QPixmap(pixmap_path_dict['infrared_camera'][i]).scaled(200, 200,
-                                                                                Qt.AspectRatioMode.KeepAspectRatio)
-            for graphics_view in self.graphics_view_right:
+                pixmap = QPixmap(pixmap_path_dict['infrared_camera'][i])  # ← 不再手动scaled
 
+            for graphics_view in self.graphics_view_right:
                 if position < len(pixmap_path_dict['infrared_camera'][i]) and graphics_view.objectName() != "" and \
-                        graphics_view.objectName()[-1] == \
-                        pixmap_path_dict['infrared_camera'][i][position]:
+                        graphics_view.objectName()[-1] == pixmap_path_dict['infrared_camera'][i][position]:
                     if graphics_view.scene() is None:
-                        # 无就创建
                         scene = QGraphicsScene()
                         pixmap_item = QGraphicsPixmapItem(pixmap)
                         scene.addItem(pixmap_item)
-
-                        # 设置场景给视图
                         graphics_view.setScene(scene)
                     else:
-                        # 有就更新
                         graphics_view.scene().clear()
                         graphics_view.scene().addPixmap(pixmap)
-                        pass
+                    # 每次更新后让图片自适应视图大小
+                    graphics_view.fitInView(
+                        graphics_view.scene().itemsBoundingRect(),
+                        Qt.AspectRatioMode.KeepAspectRatio
+                    )
 
             else:
                 pass
