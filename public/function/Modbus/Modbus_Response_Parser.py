@@ -1520,9 +1520,9 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                 return_data, parser_message = self.parser_function_code_17()
                 table_name = "module_information"
             #hex 65
-            case 101:
-                return_data, parser_message = self.parser_function_code_101()
-                table_name = "monitor_data"
+            # case 101:
+            #     return_data, parser_message = self.parser_function_code_101()
+            #     table_name = "monitor_data"
             case _:
                 return_data, parser_message = self.parser_function_code_others()
         return_data_struct = {}
@@ -1540,38 +1540,16 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
            """
 
     def parser_function_code_1(self):
-        function_desc = """
-               读输出端口状态信息
-               参数长度：2
-               """
+        function_desc = "读传感器状态信息 参数长度：2"
         pack_struct = "B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
-        data_binary_str_list = self.int_to_8bit_binary(num_list=self.response_struct['data'])
-        data_binary_str_list_all = "".join(data_binary_str_list)
-        return_datas = []
-        port_types = ['ZOS状态', '氧传感器']
-        index = 0
-        for str_single in data_binary_str_list_all:
-            if index >= 6:
-                return_datas.append({
-                    "desc": port_types[index - 6],
-                    'value': int(str_single)
-                }
-                )
-            index += 1
-
-        return_data_str = ""
-        for return_data in return_datas:
-            if return_data['desc'] == port_types[1]:
-                return_data_str += f"{return_data['desc']}状态：{'打开' if return_data['value'] == 1 else '关闭'} | "
-                pass
-            else:
-                return_data_str += f"{return_data['desc']}状态：{'运行' if return_data['value'] == 1 else '停止(预热)'} | "
-                pass
-
-        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        status = self.response_struct['data'][0]  # 01=正常 00=故障
+        return_datas = [{"desc": "氧传感器状态", "value": status}]
+        return_data_str = f"氧传感器状态：{'正常' if status == 1 else '故障'}"
+        parser_message = (f"{time_util.get_format_from_time(time.time())} | "
+                          f"{self.response_hex}-ZOS-{function_desc}-{return_data_str}")
         logger.info(parser_message)
         return return_datas, parser_message
 
@@ -1648,61 +1626,33 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                04 04 X
                """
 
+    # Modbus_Response_ZOS.parser_function_code_4 替换为：
     def parser_function_code_4(self):
-        function_desc = """
-                               读传感器测量值
-                               参数长度：80
-                                """
-        pack_struct = "B " * 80
+        function_desc = "读传感器测量值 参数长度：21"
+        pack_struct = "B " * 21  # 1字节返回字节数 + 20字节数据
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
-        return_datas = []
-        port_types = ['预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)','流量(sccm)']
-        values = []
-        j = 0
-        for i in range(len(self.response_struct['data'])):
-            match i:
-                case 4|9|14|19|24|29|34|39|44|49|54|59|64|69|74:
 
-                    oxygen_num=  float(
-                            str(self.response_struct['data'][i - 4]) + "." + str(self.response_struct['data'][i-3]).zfill(2)+str(self.response_struct['data'][i-2]).zfill(2))
-                    air_pressure_num =  round(float(
-                            str(self.response_struct['data'][i - 1]) + "." +str(self.response_struct['data'][i])),3)
-                    # logger.info(f"i:{i},oxy:{oxygen_num},press:{air_pressure_num},lens:{len(self.response_struct['data'])}")
-                    values.append((oxygen_num, air_pressure_num))
-                    if i ==74:
-                        return_datas.append({
-                            "desc": port_types[j],
-                            'value': values
-                        }
-                        )
-                        j += 1
-                case 78:
-                    # 流量测量值 四字节IEEE754码
-                    # 首先将其展开为二进制数，
-                    data_str = "".join(self.int_to_8bit_binary(
-                        num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
-                                  self.response_struct['data'][i - 1], self.response_struct['data'][i]]))
+        d = self.response_struct['data']  # 20个字节
 
-                    # # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
-                    value = self.ieee754_single_to_float(data_str)
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': value
-                    }
-                    )
-                    j += 1
-                    pass
-                case _:
-                    pass
-        return_data_str = ""
-        for return_data in return_datas:
-            return_data_str += f"{return_data['desc']}:{return_data['value']} | "
-        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
-        logger.info(f"{return_data}|{parser_message}")
+        def to_uint32(b0, b1, b2, b3):
+            return int("".join(self.int_to_8bit_binary([b0, b1, b2, b3])), 2)
+
+        # 氧浓度直接使用，不做气压补偿
+        return_datas = [
+            {"desc": "氧分压(mmHg)", "value": round(to_uint32(d[0], d[1], d[2], d[3]) / 10, 1)},
+            {"desc": "温度(°C)", "value": round(to_uint32(d[4], d[5], d[6], d[7]) / 10, 1)},
+            {"desc": "气压(kPa)", "value": round(to_uint32(d[8], d[9], d[10], d[11]) / 10, 1)},
+            {"desc": "氧浓度(%)", "value": round(to_uint32(d[12], d[13], d[14], d[15]) / 10000, 4)},
+            {"desc": "故障码", "value": to_uint32(d[16], d[17], d[18], d[19])},
+        ]
+
+        return_data_str = " | ".join(f"{r['desc']}:{r['value']}" for r in return_datas)
+        parser_message = (f"{time_util.get_format_from_time(time.time())} | "
+                          f"{self.response_hex}-ZOS-{function_desc}-{return_data_str}")
+        logger.info(parser_message)
         return return_datas, parser_message
-        pass
 
     """
                04 05 X
@@ -1857,68 +1807,68 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                    04 65 X
                    """
 
-    def parser_function_code_101(self):
-        function_desc = """
-                                   读传感器测量值
-                                   参数长度：11
-                                    """
-        pack_struct = "B " * 11
-        self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
-        logger.info(
-            f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
-        return_datas = []
-        port_types = ['氧气浓度(%)', '气压力(kPa)','流量计(ml/min)']
-
-        j = 0
-        for i in range(len(self.response_struct['data'])):
-            match i:
-                case 3:
-                    oxygen_num = float(
-                        str(self.response_struct['data'][i - 3]) + "." + str(self.response_struct['data'][i - 2]).zfill(2)+str(self.response_struct['data'][i-1]).zfill(2)
-                    )
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': oxygen_num
-                    }
-                    )
-                    j += 1
-                case 5:
-                    pressure_num = float(
-                        str(self.response_struct['data'][i -1]) + "." + str(self.response_struct['data'][i]).zfill(
-                            1)
-                    )
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': pressure_num
-                    }
-                    )
-                    j += 1
-                    pass
-                case 9:
-                    # 流量测量值 四字节IEEE754码
-                    # 首先将其展开为二进制数，
-                    data_str = "".join(self.int_to_8bit_binary(
-                        num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
-                                  self.response_struct['data'][i - 1], self.response_struct['data'][i]]))
-
-                    # # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
-                    value = self.ieee754_single_to_float(data_str)
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': value
-                    }
-                    )
-                    j += 1
-                    pass
-                case _:
-                    pass
-        return_data_str = ""
-        for return_data in return_datas:
-            return_data_str += f"{return_data['desc']}:{return_data['value']} | "
-        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
-        logger.info(parser_message)
-        return return_datas, parser_message
-        pass
+    # def parser_function_code_101(self):
+    #     function_desc = """
+    #                                读传感器测量值
+    #                                参数长度：11
+    #                                 """
+    #     pack_struct = "B " * 11
+    #     self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
+    #     logger.info(
+    #         f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
+    #     return_datas = []
+    #     port_types = ['氧气浓度(%)', '气压力(kPa)','流量计(ml/min)']
+    #
+    #     j = 0
+    #     for i in range(len(self.response_struct['data'])):
+    #         match i:
+    #             case 3:
+    #                 oxygen_num = float(
+    #                     str(self.response_struct['data'][i - 3]) + "." + str(self.response_struct['data'][i - 2]).zfill(2)+str(self.response_struct['data'][i-1]).zfill(2)
+    #                 )
+    #                 return_datas.append({
+    #                     "desc": port_types[j],
+    #                     'value': oxygen_num
+    #                 }
+    #                 )
+    #                 j += 1
+    #             case 5:
+    #                 pressure_num = float(
+    #                     str(self.response_struct['data'][i -1]) + "." + str(self.response_struct['data'][i]).zfill(
+    #                         1)
+    #                 )
+    #                 return_datas.append({
+    #                     "desc": port_types[j],
+    #                     'value': pressure_num
+    #                 }
+    #                 )
+    #                 j += 1
+    #                 pass
+    #             case 9:
+    #                 # 流量测量值 四字节IEEE754码
+    #                 # 首先将其展开为二进制数，
+    #                 data_str = "".join(self.int_to_8bit_binary(
+    #                     num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
+    #                               self.response_struct['data'][i - 1], self.response_struct['data'][i]]))
+    #
+    #                 # # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
+    #                 value = self.ieee754_single_to_float(data_str)
+    #                 return_datas.append({
+    #                     "desc": port_types[j],
+    #                     'value': value
+    #                 }
+    #                 )
+    #                 j += 1
+    #                 pass
+    #             case _:
+    #                 pass
+    #     return_data_str = ""
+    #     for return_data in return_datas:
+    #         return_data_str += f"{return_data['desc']}:{return_data['value']} | "
+    #     parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+    #     logger.info(parser_message)
+    #     return return_datas, parser_message
+    #     pass
     def parser_function_code_others(self):
         parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文-{self.type.value['name']}-{self.type.value['description']}-无法解析功能码：{self.function_code}"
         logger.error(parser_message)

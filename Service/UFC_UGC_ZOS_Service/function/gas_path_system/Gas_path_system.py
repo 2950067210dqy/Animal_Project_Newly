@@ -1269,90 +1269,132 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
             ).catch(lambda e: logger.error(f"{e}"))
 
-
-
-
-
-
-
-    def circular_read(self,resolve,reject,port,mouse_cages_inc):
+    def circular_read(self, resolve, reject, port, mouse_cages_inc):
         """
-        ZOS-运行 1. 循环读氧气值
-        :param resolve:
-        :param reject:
-        :param port:
-        :param mouse_cages_inc:
-        :return:
+        ZOS-运行 1. 循环多次调用FC04采集氧浓度和气压，攒够数组后走预测逻辑
         """
-        # 等待15秒在读 UFC那边一开始已经等了15秒 已经弃用！！！
-        # time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time']))
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+        cage_addr = (mouse_cages_inc[mouse_cage_index] - 1
+                     if mouse_cage_index is not None else 8)
+
+        read_count = int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time'])
+        read_delay = float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay'])
+
+        oxygen_values = []
+        pressure_values = []
+        last_result_data = None
+
+        cage_desc = (f"鼠笼{mouse_cages_inc[mouse_cage_index]}"
+                     if mouse_cage_index is not None else "参考气")
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. 循环读取{'鼠笼' + str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的氧浓度")
-        # 3.循环读取CO2浓度
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"00000003"),
-            'slave_id': '4',
-            'function_code': '4',
-            'timeout': 1
-        }
-        self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            # 2.处理15秒的氧气值
-            lambda r: AsyPromise(self.handle_oxygen_value, port=port, r=r)
+            f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. "
+            f"开始循环{read_count}次读取[{cage_desc}]氧浓度（间隔{read_delay}s）")
+
+        for i in range(read_count):
+            self.send_message = {
+                'port': port,
+                'data': number_util.set_int_to_4_bytes_list(f"00{cage_addr:02X}000A"),
+                'slave_id': '4',
+                'function_code': '4',
+                'timeout': 1
+            }
+            self.send_thread.send_message = self.send_message
+            result_data, message = self.send_thread.Send_no_promise()
+
+            if result_data and result_data.get('data'):
+                last_result_data = result_data
+                oxy_list = [d['value'] for d in result_data['data']
+                            if d['desc'] == '氧浓度(%)']
+                pres_list = [d['value'] for d in result_data['data']
+                             if d['desc'] == '气压(kPa)']
+                if oxy_list:
+                    oxygen_values.append(oxy_list[0])
+                if pres_list:
+                    pressure_values.append(pres_list[0])
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | ZOS-运行 1. "
+                    f"第{i + 1}/{read_count}次 [{cage_desc}] "
+                    f"氧浓度:{oxy_list[0] if oxy_list else 'N/A'}% "
+                    f"气压:{pres_list[0] if pres_list else 'N/A'}kPa")
+            else:
+                logger.warning(f"ZOS FC04 第{i + 1}次读取失败：{message}")
+
+            if i < read_count - 1:
+                time.sleep(read_delay)
+
+        AsyPromise(self.handle_oxygen_value,
+                   port=port,
+                   oxygen_values=oxygen_values,
+                   pressure_values=pressure_values,
+                   last_result_data=last_result_data,
+                   mouse_cages_inc=mouse_cages_inc).then(
+            lambda r: resolve()
         ).catch(lambda e: logger.error(f"{e}"))
-    def handle_oxygen_value(self,resolve,reject,port,r):
+
+    def handle_oxygen_value(self, resolve, reject, port,
+                            oxygen_values, pressure_values,
+                            last_result_data, mouse_cages_inc):
+        """
+        ZOS-运行 2. 用收集好的数组走原有预测逻辑，氧浓度不做气压补偿
+        """
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        #存储值
-        result_data = r['data']
-        result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
-        result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        logger.error(f"zos:{result_data}")
-        if len(result_data['data'])>0:
-            values = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)']
-            flow_nums =[data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='流量(sccm)']
-            if len(values)>0 and len(flow_nums)>0:
-                # # 氧浓度V应校准为（V-Vzero）* K
-                # oxygen_and_pressure_values = [(round((float(oxygen) - global_setting.get_setting("Vzero", 0)) * global_setting.get_setting("K", 1), 6), pressure) for oxygen, pressure in values[0]]
-                oxygen_and_pressure_values=values[0]
-                # 流量计值
-                flow_num = flow_nums[0]
-                result_data["data"].append({"desc": "流量(sccm)", "value": flow_num})
-                result_data["data"].append({"desc": "预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", "value": str(oxygen_and_pressure_values)})
-                # 得到15秒的氧气值和压力值
-                oxygen__values, pressure_values = map(list, zip(*oxygen_and_pressure_values))
 
-                if mouse_cage_index is not None:
-                    mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index] - 1
-                    pred = predict_steady_o2(oxygen__values, pressure_values, is_reference=False,
-                                                    calibration_factor=self.factor)
-                    logger.warning(f'鼠笼{mouse_cage_number_addr_single}的氧气传感器测量值(%)经过校准后得:{pred}，用于计算的预测因子为：{self.factor}')
-                else:
-                    # 下标为None 则为参考气
-                    pred, factor = predict_steady_o2( oxygen__values, pressure_values, is_reference=True)
-                    logger.warning(f'参考气的氧气传感器测量值(%)经过校准后得:{pred}，得到的预测因子为：{factor}')
-                    # 更新预测因子
-                    self.factor = factor
+        if last_result_data is None:
+            last_result_data = {
+                'data': [], 'module_name': 'ZOS',
+                'table_name': 'monitor_data',
+                'slave_id': '04', 'function_code': 4,
+            }
 
-                for i in range(len(result_data['data'])):
-                    if result_data['data'][i]['desc'] == '氧气传感器测量值(%)':
-                        result_data['data'][i]['value'] =pred
-                        break
-                else:
-                    result_data["data"].append({"desc": "氧气传感器测量值(%)",
-                                                "value": pred})
+        last_result_data['mouse_cage_number'] = (
+            mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None
+            else int(global_setting.get_setting('configer')['mouse_cage']['reference']))
+        last_result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        logger.error(f"zos 采集完毕，共{len(oxygen_values)}个值：{oxygen_values}")
 
-        logger.info(f"result_data:{result_data}")
-        result = store_data_with_result(result_data, need_result=True, timeout=5)
-        if result and result.success:
-            logger.info(f"数据存储成功，ID: {result.item_id}")
+        if oxygen_values and pressure_values:
+            origin_pairs = list(zip(oxygen_values, pressure_values))
+            # 保留与旧协议相同的字段名，供 Epoch 汇总使用
+            last_result_data["data"].append({
+                "desc": "预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)",
+                "value": str(origin_pairs)
+            })
+
+            # 氧浓度不做气压补偿，直接走预测逻辑
+            if mouse_cage_index is not None:
+                pred = predict_steady_o2(
+                    oxygen_values, pressure_values,
+                    is_reference=False,
+                    calibration_factor=self.factor)
+                logger.warning(
+                    f"鼠笼{mouse_cages_inc[mouse_cage_index] - 1} "
+                    f"预测值:{pred} 因子:{self.factor}")
+            else:
+                pred, factor = predict_steady_o2(
+                    oxygen_values, pressure_values,
+                    is_reference=True)
+                logger.warning(f"参考气 预测值:{pred} 新因子:{factor}")
+                self.factor = factor
+
+            for item in last_result_data["data"]:
+                if item['desc'] == '氧气传感器测量值(%)':
+                    item['value'] = pred
+                    break
+            else:
+                last_result_data["data"].append(
+                    {"desc": "氧气传感器测量值(%)", "value": pred})
         else:
-            logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
+            logger.error("ZOS 本轮无有效数据，跳过预测")
 
-        AsyPromise(self.finsh_one_batch, port=None, mouse_cages_inc=mouse_cages_inc).then(
-            lambda r:resolve()
+        result = store_data_with_result(last_result_data, need_result=True, timeout=5)
+        if result and result.success:
+            logger.info(f"ZOS 存储成功 ID:{result.item_id}")
+        else:
+            logger.error(f"ZOS 存储失败:{result.error if result else '未知'}")
+
+        AsyPromise(self.finsh_one_batch, port=None,
+                   mouse_cages_inc=mouse_cages_inc).then(
+            lambda r: resolve()
         ).catch(lambda e: logger.error(f"{e}"))
 
     def finsh_one_batch(self,resolve,reject,port,mouse_cages_inc):
@@ -1717,9 +1759,10 @@ class ZOS_gas_path_system(Gas_path_system):
             # 3.循环读取CO2浓度
             self.send_message = {
                 'port': port,
-                'data': number_util.set_int_to_4_bytes_list(f"00000003"),
+                'data': number_util.set_int_to_4_bytes_list(
+                    f"00{mouse_cage_index if mouse_cage_index is not None else 8:02X}000A"),
                 'slave_id': '4',
-                'function_code': '65',
+                'function_code': '4',  # ← FC65 改为 FC04
                 'timeout': 1
             }
             self.send_thread.send_message = self.send_message
@@ -1742,8 +1785,8 @@ class ZOS_gas_path_system(Gas_path_system):
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         logger.error(f"zos_start:{result_data}")
         if len(result_data['data'])>0:
-            values = [data_struct['value']  for data_struct in result_data['data'] if data_struct['desc']=='气压力(kPa)']
-
+            values = [data_struct['value'] for data_struct in result_data['data']
+                      if data_struct['desc'] == '气压(kPa)']
             if len(values)>0 :
                 pressure_values = values[0]
                 warning_msg = f" ZOS-启动 4) ZOS通道压力初始化:【3】. 循环读取压力值 （推荐每1秒读取一次）（读取5次） 循环读取{'鼠笼' + str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的压力值，当前：{self.circular_nums}/{int(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])}S,当前压力值:{pressure_values}"
