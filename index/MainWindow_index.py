@@ -1067,6 +1067,13 @@ class MainWindow_Index(ThemedWindow):
 
     def start_experiment(self):
 
+        # ★ 重置上一次实验残留的临时提示状态，确保从绿色开始
+        self.status_bar._temp_tip_active = False
+        self._gas_path_success = False
+        if self._gas_path_timeout_timer is not None:
+            self._gas_path_timeout_timer.stop()
+            self._gas_path_timeout_timer = None
+
         self.setEnabled(False)
         self.status_bar.update_tip(f"正在开启实验监测...")
         port = global_setting.get_setting("port")
@@ -1168,9 +1175,7 @@ class MainWindow_Index(ThemedWindow):
 
         if result == QDialog.DialogCode.Accepted:
             if self.start_dialog is not None and self.start_dialog.force_entered:
-                # 显示橙色等待提示
                 self.show_temp_status_tip_signal.emit("后台正在启动气路，请稍候...", "#ff8800", 0)
-                # ★ 核心修复：dialog 60s关闭后，启动备用计时器监听剩余时间
                 self._gas_path_success = False
                 remaining_ms = int((start_wait_times - 60) * 1000)
                 if self._gas_path_timeout_timer is not None:
@@ -1181,8 +1186,10 @@ class MainWindow_Index(ThemedWindow):
                 self._gas_path_timeout_timer.start(max(remaining_ms, 1000))
             resolve()
         else:
-            self.stop_experiment()
+            # ★ 先 reject 解除当前 Promise 链，再延迟调用 stop_experiment
+            #    避免 reject() 与 stop_experiment 内部的异步链互相干扰
             reject()
+            QTimer.singleShot(100, self.stop_experiment)
         pass
 
     def _on_start_experiment_timeout(self):
@@ -1192,7 +1199,17 @@ class MainWindow_Index(ThemedWindow):
     def _on_gas_path_final_timeout(self):
         """备用计时器到期：force_entered后气路仍未成功"""
         if not self._gas_path_success:
-            self.show_temp_status_tip_signal.emit("气路启动超时，请检查设备连接！", "#cc0000", 0)
+            # 显示红色提示，duration=0 不自动清除
+            self.show_temp_status_tip_signal.emit("气路启动超时，即将自动停止实验...", "#cc0000", 0)
+            # ★ 延迟10秒再停止，让用户看清红色提示
+            QTimer.singleShot(10000, self._delayed_stop_on_timeout)
+
+    def _delayed_stop_on_timeout(self):
+        """10秒后执行的超时停止"""
+        # 二次确认：防止10秒内用户手动停止或成功
+        if not self._gas_path_success and \
+                global_setting.get_setting("app_state", AppState.INITIALIZED) == AppState.MONITORING:
+            self.stop_experiment()
     def init__calibration_windows(self):
         #初始化标定窗口
         if self.calibration_details_windows is None:
@@ -1377,6 +1394,14 @@ class MainWindow_Index(ThemedWindow):
         pass
 
     def stop_experiment(self):
+        if global_setting.get_setting("app_state", AppState.INITIALIZED) != AppState.MONITORING:
+            return
+
+            # ★ 停止实验时清掉所有临时提示，状态栏恢复正常
+        self.status_bar._temp_tip_active = False
+        if self._gas_path_timeout_timer is not None:
+            self._gas_path_timeout_timer.stop()
+            self._gas_path_timeout_timer = None
 
         self.setEnabled(False)
         self.status_bar.update_tip(f"正在关闭实验监测...")
