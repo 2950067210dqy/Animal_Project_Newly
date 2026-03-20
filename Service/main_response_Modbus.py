@@ -1154,76 +1154,187 @@ class communication(threading.Thread):
                                             pass
                                     pass
                                 case 4:
-                                    # ZOS 氧气含量测量模块
+                                    # ZOS	氧气含量测量模块
+                                    # 功能码
                                     match function_code_int:
                                         case 1:
                                             """
-                                            04 01 00 0X 00 01 CRC
-                                            读传感器状态 返回1字节：01=正常 00=故障
+                                            04 01 X
+                                            读输出端口状态信息
+                                            参数长度：3
                                             """
-                                            return_bytes = self.build_frame(
-                                                slave_id=f"{slave_id_int:X}",
-                                                function_code=f"{function_code_int:X}",
-                                                return_bytes_nums='1',
-                                                data_hex_list=[random.choice(["0x01", "0x01", "0x00"])],
-                                                struct_type="B"
-                                            )
+                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
+                                                                            function_code=f"{function_code_int:X}",
+                                                                            return_bytes_nums='1',
+                                                                            data_hex_list=
+                                                                            random.choice([
+                                                                                [
+                                                                                    self.binary_to_hex_for_all(
+                                                                                        "00000010")
+                                                                                ],
+                                                                                [
+                                                                                    self.binary_to_hex_for_all(
+                                                                                        "00000001")
+                                                                                ],
+                                                                                [
+                                                                                    self.binary_to_hex_for_all(
+                                                                                        "00000011")
+                                                                                ],
+                                                                            ]),
+                                                                            struct_type="B"
+                                                                            )
+
+                                            pass
+                                        case 2:
+                                            """
+                                           04 02 X
+                                           读输传感器状态信息
+                                           参数长度：2
+                                           """
+                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
+                                                                            function_code=f"{function_code_int:X}",
+                                                                            return_bytes_nums='1',
+                                                                            data_hex_list=[
+                                                                                self.binary_to_hex_for_all("00000010")
+
+                                                                            ],
+                                                                            struct_type="B"
+                                                                            )
+                                            pass
+                                        case 3:
+                                            """
+                                                   04 03 X
+                                                   读配置寄存器
+                                                   参数长度：3
+                                            """
+                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
+                                                                            function_code=f"{function_code_int:X}",
+                                                                            return_bytes_nums='2',
+
+                                                                            data_hex_list=[
+                                                                                "0x0001",
+
+                                                                            ],
+                                                                            struct_type="H"
+
+                                                                            )
+
+                                            pass
                                         case 4:
                                             """
-                                            04 04 00 0X 00 0A CRC
-                                            读传感器测量值 返回20字节：
-                                            [0-3]  氧分压  ÷10 → mmHg
-                                            [4-7]  温度    ÷10 → °C
-                                            [8-11] 气压    ÷10 → kPa
-                                            [12-15]氧浓度  ÷10000 → %
-                                            [16-19]故障码
+                                            04 04 X
+                                            读传感器测量值
+                                            返回20字节：氧分压(÷10) | 温度(÷10) | 气体压力(÷10) | 氧浓度(÷10000) | 故障码
                                             """
-                                            return_bytes = self.build_frame(
-                                                slave_id=f"{slave_id_int:X}",
-                                                function_code=f"{function_code_int:X}",
-                                                return_bytes_nums='14',
-                                                data_hex_list=random.choice([
-                                                    ["0x00", "0x00", "0x07", "0xDD",
-                                                     "0x00", "0x00", "0x00", "0xD0",
-                                                     "0x00", "0x00", "0x03", "0xFF",
-                                                     "0x00", "0x03", "0x29", "0xC0",
-                                                     "0x00", "0x00", "0x00", "0x00"],
-                                                    ["0x00", "0x00", "0x08", "0x04",
-                                                     "0x00", "0x00", "0x00", "0xD8",
-                                                     "0x00", "0x00", "0x04", "0x02",
-                                                     "0x00", "0x03", "0x33", "0x10",
-                                                     "0x00", "0x00", "0x00", "0x00"],
-                                                    ["0x00", "0x00", "0x07", "0xA2",
-                                                     "0x00", "0x00", "0x00", "0xCC",
-                                                     "0x00", "0x00", "0x03", "0xE8",
-                                                     "0x00", "0x03", "0x20", "0x50",
-                                                     "0x00", "0x00", "0x00", "0x00"],
-                                                ]),
-                                                struct_type="B"
-                                            )
+                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
+                                                                            function_code=f"{function_code_int:X}",
+                                                                            return_bytes_nums='14',  # 20字节
+                                                                            data_hex_list=random.choice([
+                                                                                [
+                                                                                    # 氧分压 2013 → 201.3 hPa
+                                                                                    "0x00", "0x00", "0x07", "0xDD",
+                                                                                    # 温度 208 → 20.8 °C
+                                                                                    "0x00", "0x00", "0x00", "0xD0",
+                                                                                    # 气体压力 1006 → 100.6 hPa
+                                                                                    "0x00", "0x00", "0x03", "0xEE",
+                                                                                    # 氧浓度 197200 → 19.7200 %
+                                                                                    "0x00", "0x03", "0x02", "0x50",
+                                                                                    # 故障码 0
+                                                                                    "0x00", "0x00", "0x00", "0x00",
+                                                                                ],
+                                                                                [
+                                                                                    # 氧分压 1980 → 198.0 hPa
+                                                                                    "0x00", "0x00", "0x07", "0xBC",
+                                                                                    # 温度 215 → 21.5 °C
+                                                                                    "0x00", "0x00", "0x00", "0xD7",
+                                                                                    # 气体压力 1013 → 101.3 hPa
+                                                                                    "0x00", "0x00", "0x03", "0xF5",
+                                                                                    # 氧浓度 208500 → 20.8500 %
+                                                                                    "0x00", "0x03", "0x2D", "0x14",
+                                                                                    # 故障码 0
+                                                                                    "0x00", "0x00", "0x00", "0x00",
+                                                                                ],
+                                                                                [
+                                                                                    # 氧分压 2050 → 205.0 hPa
+                                                                                    "0x00", "0x00", "0x08", "0x02",
+                                                                                    # 温度 196 → 19.6 °C
+                                                                                    "0x00", "0x00", "0x00", "0xC4",
+                                                                                    # 气体压力 998 → 99.8 hPa
+                                                                                    "0x00", "0x00", "0x03", "0xE6",
+                                                                                    # 氧浓度 195800 → 19.5800 %
+                                                                                    "0x00", "0x02", "0xFC", "0x96",
+                                                                                    # 故障码 0
+                                                                                    "0x00", "0x00", "0x00", "0x00",
+                                                                                ],
+                                                                            ]),
+                                                                            struct_type="B"
+                                                                            )
+                                            pass
                                         case 5:
-                                            """04 05 写从机单个开关量输出"""
-                                            return_bytes = self.build_frame(
-                                                slave_id=f"{slave_id_int:X}",
-                                                function_code=f"{function_code_int:X}",
-                                                return_bytes_nums=None,
-                                                data_hex_list=["0x00", "0x00", "0xFF", "0x00"],
-                                                struct_type="B"
-                                            )
+                                            """
+                                             04 05 X
+                                             写从机单个开关量输出（ON/OFF）
+                                             参数长度：4
+                                                                                   """
+                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
+                                                                            function_code=f"{function_code_int:X}",
+                                                                            return_bytes_nums=None,
+                                                                            data_hex_list=[
+                                                                                "0x00",
+                                                                                "0x00",
+                                                                                "0xFF",
+                                                                                "0x00",
+                                                                            ],
+                                                                            struct_type="B"
+                                                                            )
+                                            pass
+                                        case 6:
+                                            """
+                                            04 06 X
+                                                写单个保持寄存器
+                                                参数长度：4
+                                            """
+                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
+                                                                            function_code=f"{function_code_int:X}",
+                                                                            return_bytes_nums=None,
+                                                                            data_hex_list=[
+                                                                                "0x00",
+                                                                                "0x01",
+                                                                                "0x00",
+                                                                                "0x2F",
+                                                                            ],
+                                                                            struct_type="B"
+                                                                            )
+                                            pass
+                                            pass
                                         case 17:
-                                            """04 11 读取模块ID信息等"""
-                                            return_bytes = self.build_frame(
-                                                slave_id=f"{slave_id_int:X}",
-                                                function_code=f"{function_code_int:X}",
-                                                return_bytes_nums='11',
-                                                data_hex_list=[
-                                                    "0xAFCF", "0x2311", "0xFF32",
-                                                    "0xABCD", "0xE21F", "0xDDDD",
-                                                    "0x1234", "0x1111",
-                                                ],
-                                                struct_type="H"
-                                            )
+                                            """
+                                           04 11 X
+                                               读取模块ID信息等
+                                            参数长度：17
+                                           """
+                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
+                                                                            function_code=f"{function_code_int:X}",
+                                                                            return_bytes_nums='11',
+                                                                            data_hex_list=[
+                                                                                "0xAFCF",
+                                                                                "0x2311",
+                                                                                "0xFF32",
+                                                                                "0xABCD",
+                                                                                "0xE21F",
+                                                                                "0xDDDD",
+                                                                                "0x1234",
+                                                                                "0x1111",
+                                                                            ],
+                                                                            struct_type="H")
+
+                                            pass
+
                                         case _:
+                                            """
+                                            04 _ X
+                                            没有该function_code
+                                            """
                                             logger.warning(
                                                 f"传感器slave_id:{slave_id_int:X}没有该function_code{function_code_int:X},把接收的报文直接传回去。")
                                             return_bytes = data

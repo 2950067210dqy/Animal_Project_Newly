@@ -100,10 +100,7 @@ class Others_Tables(Enum):
                 ("ZOS_oxygen_num", "氧气传感器测量值(%)", " REAL "),
                 ("reference_oxygen_num", "参考气氧气测量值(%)", " INTEGER "),
                 ("oxygen_consumption_num", "耗氧量(%)", " REAL "),
-                ("ZOS_oxygen_partial_pressure", "ZOS氧分压(mmHg)", " REAL "),
-                ("ZOS_temperature", "ZOS温度(°C)", " REAL "),
-                ("ZOS_gas_pressure", "ZOS气压(kPa)", " REAL "),
-                ("ZOS_fault_code", "ZOS故障码", " INTEGER "),
+                ("ZOS_flow_nums", "ZOS_流量(sccm)", " REAL "),
                 ("ZOS_oxygen_origin_nums", "预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", " TEXT "),
                 ("ENM_temperature_num", "温度测量值(°C)", " REAL "),
                 ("ENM_humidity_num", "湿度测量值(%RH)", " REAL "),
@@ -300,21 +297,17 @@ class Modbus_Slave_Tables(Enum):
         }
     }
     #04 04
-    ZOS_monitor_data = {
+    ZOS_monitor_data={
         "monitor_data": {
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-                ("oxygen_partial_pressure", "氧分压(mmHg)", " REAL "),
-                ("temperature", "温度(°C)", " REAL "),
-                ("gas_pressure", "气压(kPa)", " REAL "),
-                ("oxygen_num", "氧浓度(%)", " REAL "),
-                ("fault_code", "故障码", " INTEGER "),
-                ("oxygen_consumption_num", "耗氧量(%)", " REAL "),
-                ("oxygen_origin_nums",
-                 "预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", " TEXT "),
+                ("oxygen_num", "氧气传感器测量值(%)", " REAL "),
+                ("oxygen_origin_nums", "预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", " TEXT "),
+                ("oxygen_consumption_num", "氧气消耗量(%)", " REAL "),
+                ("flow_nums", "流量(sccm)", " REAL "),
                 ("remarks", "备注", " TEXT "),
-                ("time", "获取时间", " TIMESTAMP "),
+                ("time", "获取时间", " TIMESTAMP ")
             ]
         }
     }
@@ -870,18 +863,16 @@ class Modbus_Slave_Send_Messages_Senior_State(Enum):
     ZOS = {
         'type': Modbus_Slave_Ids.ZOS,
         'send_messages': [
-            Send_Message(
-                slave_address=Modbus_Slave_Ids.ZOS.value['address'],
-                slave_desc=Modbus_Slave_Ids.ZOS.value['description'],
-                function_code=1,
-                function_desc="读传感器状态",
-                message={
+
+            Send_Message(slave_address=Modbus_Slave_Ids.ZOS.value['address'],
+                         slave_desc=Modbus_Slave_Ids.ZOS.value['description'], function_code=2,
+                         function_desc="读传感器状态信息", message={
                     'port': None,
-                    'data': number_util.set_int_to_4_bytes_list("00000001"),
+                    'data': number_util.set_int_to_4_bytes_list(2),
                     'slave_id': format(int(Modbus_Slave_Ids.ZOS.value['address']), '02X'),
-                    'function_code': format(1, '02X'),
-                }
-            ),
+                    'function_code': format(int(f"{2}", 16), '02X'),
+                }),
+
         ]
     }
     ENM = {
@@ -1109,19 +1100,14 @@ class  Modbus_Slave_Send_Messages_Senior_Data(Enum):
     ZOS = {
         'type': Modbus_Slave_Ids.ZOS,
         'send_messages': [
-            Send_Message(
-                slave_address=Modbus_Slave_Ids.ZOS.value['address'],
-                slave_desc=Modbus_Slave_Ids.ZOS.value['description'],
-                function_code=4,
-                function_desc="读传感器测量值",
-                message={
+            Send_Message(slave_address=Modbus_Slave_Ids.ZOS.value['address'],
+                         slave_desc=Modbus_Slave_Ids.ZOS.value['description'], function_code=4,
+                         function_desc="读传感器测量值", message={
                     'port': None,
-                    # 第2字节为通道号(0-7鼠笼 8参考气)，运行时动态覆盖，默认通道0
-                    'data': number_util.set_int_to_4_bytes_list("0000000A"),
+                    'data': number_util.set_int_to_4_bytes_list(2),
                     'slave_id': format(int(Modbus_Slave_Ids.ZOS.value['address']), '02X'),
-                    'function_code': format(4, '02X'),
-                }
-            ),
+                    'function_code': format(int(f"{4}", 16), '02X'),
+                }),
         ]
     }
     ENM = {
@@ -1220,13 +1206,13 @@ class Modbus_Slave_Send_Messages_All(Enum):
     ZOS = {
         'type': Modbus_Slave_Ids.ZOS,
         'send_messages': [
-            # send_message
-            # for send_message in list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.ZOS.value['send_messages'],
-            #                                          Modbus_Slave_Send_Messages_Senior_State.ZOS.value['send_messages'],
-            #                                          Modbus_Slave_Send_Messages_Senior_Config.ZOS.value['send_messages'],
-            #                                          Modbus_Slave_Send_Messages_Module_Info.ZOS.value['send_messages'],
-            #                                          )
-            #                          )
+            send_message
+            for send_message in list(itertools.chain(Modbus_Slave_Send_Messages_Senior_Data.ZOS.value['send_messages'],
+                                                     Modbus_Slave_Send_Messages_Senior_State.ZOS.value['send_messages'],
+                                                     Modbus_Slave_Send_Messages_Senior_Config.ZOS.value['send_messages'],
+                                                     Modbus_Slave_Send_Messages_Module_Info.ZOS.value['send_messages'],
+                                                     )
+                                     )
         ]
     }
     ENM = {

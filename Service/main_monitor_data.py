@@ -981,16 +981,23 @@ def barrier_action():
             f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_origin_num') is not None else None})
     store_Datas.append({'desc': 'CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
                             f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None })
-    store_Datas.append({'desc': '预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)', 'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_nums') if results.get(
-                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_nums') is not None else None })
-    store_Datas.append({'desc': '氧气传感器测量值(%)',
+    store_Datas.append({'desc': '氧分压(hPa)',
+                        'value': results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_partial_pressure') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_partial_pressure') is not None else None})
+    store_Datas.append({'desc': 'ZOS温度测量值(°C)',
+                        'value': results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__zos_temperature_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__zos_temperature_num') is not None else None})
+    store_Datas.append({'desc': '气体压力(hPa)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') is not None else None})
+    store_Datas.append({'desc': '氧浓度(%)',
                         'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') if results.get(
                             f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None else None})
-
-    store_Datas.append({'desc': 'ZOS_流量(sccm)',
-                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__flow_nums') if results.get(
-                            f'ZOS_monitor_data_cage_{mouse_cage_number}__flow_nums') is not None else None})
-
+    store_Datas.append({'desc': 'ZOS故障码',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__fault_code') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__fault_code') is not None else None})
 
 
 
@@ -1014,14 +1021,10 @@ def barrier_action():
                  'value': reference_data.get(f'UGC_CO2_num') if reference_data.get(
                             f'UGC_CO2_num') is not None else None })
 
-
-
-
-
             store_Datas.append(
-                {'desc': '参考气氧气测量值(%)',
+                {'desc': '参考气氧浓度(%)',
                  'value': reference_data.get(f'ZOS_oxygen_num') if reference_data.get(
-                            f'ZOS_oxygen_num') is not None else None })
+                     f'ZOS_oxygen_num') is not None else None})
 
             if results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None and reference_data.get(f'UGC_CO2_num') is not None:
 

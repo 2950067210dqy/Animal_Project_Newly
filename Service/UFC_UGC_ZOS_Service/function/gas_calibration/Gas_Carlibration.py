@@ -654,22 +654,20 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
             # 采集氧气
             self.send_message = {
                 'port': port,
-                'data': number_util.set_int_to_4_bytes_list("0008000A"),
+                'data': number_util.set_int_to_4_bytes_list(f"00000003"),
                 'slave_id': '4',
-                'function_code': '4',
+                'function_code': '65',
                 'timeout': 1
             }
             self.send_thread.send_message = self.send_message
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} |  零点标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。2）采集氧气浓度",title=self.title )
             oxygen_data,oxygen_message =  self.send_thread.Send_no_promise()
-            now_oxygen_values = [item['value'] for item in oxygen_data['data']
-                                 if item['desc'] == '氧浓度(%)']
+            now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
             last_oxygen_value = copy.deepcopy(now_oxygen_value)
             now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
 
-            now_pressure_values = [item['value'] for item in oxygen_data['data']
-                                   if item['desc'] == '气压(kPa)']
+            now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
             last_pressure_value = copy.deepcopy(now_pressure_value)
             now_pressure_value = now_pressure_values[0] if now_pressure_values else None
             end_time = time.time()
@@ -712,21 +710,19 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
         # 采集氧气
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("0008000A"),
+            'data': number_util.set_int_to_4_bytes_list("3"),
             'slave_id': '4',
-            'function_code': '4',  # ← FC65 → FC04
+            'function_code': '65',
             'timeout': 1
         }
         self.send_thread.send_message = self.send_message
         if self.is_STOP:
             reject()
         oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-        now_oxygen_values = [item['value'] for item in oxygen_data['data']
-                             if item['desc'] == '氧浓度(%)']
+        now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
         now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
 
-        now_pressure_values = [item['value'] for item in oxygen_data['data']
-                               if item['desc'] == '气压(kPa)']
+        now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
         now_pressure_value = now_pressure_values[0] if now_pressure_values else None
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  零点标定 8.氧浓传感器零点记录值 zos气压：{now_pressure_value}，氧气浓度：{now_oxygen_values}",title=self.title )
@@ -890,9 +886,9 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
             # 采集氧气
             self.send_message = {
                 'port': port,
-                'data': number_util.set_int_to_4_bytes_list("0008000A"),
+                'data': number_util.set_int_to_4_bytes_list(f"00000003"),
                 'slave_id': '4',
-                'function_code': '4',
+                'function_code': '65',
                 'timeout': 1
             }
             self.send_thread.send_message = self.send_message
@@ -900,13 +896,11 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
                 f"{time_util.get_format_from_time(time.time())} |  SPan量程标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。2）采集氧气浓度",
                 title=self.title)
             oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-            now_oxygen_values = [item['value'] for item in oxygen_data['data']
-                                 if item['desc'] == '氧浓度(%)']
+            now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
             last_oxygen_value = copy.deepcopy(now_oxygen_value)
             now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
 
-            now_pressure_values = [item['value'] for item in oxygen_data['data']
-                                   if item['desc'] == '气压(kPa)']
+            now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
             last_pressure_value = copy.deepcopy(now_pressure_value)
             now_pressure_value = now_pressure_values[0] if now_pressure_values else None
             end_time = time.time()
@@ -932,20 +926,18 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
         # 7. 氧浓传感器span数值记录。
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("0008000A"),
+            'data': number_util.set_int_to_4_bytes_list(f"00000003"),
             'slave_id': '4',
-            'function_code': '4',
+            'function_code': '65',
             'timeout': 1
         }
         self.send_thread.send_message = self.send_message
 
         oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-        now_oxygen_values = [item['value'] for item in oxygen_data['data']
-                             if item['desc'] == '氧浓度(%)']
+        now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
         now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
 
-        now_pressure_values = [item['value'] for item in oxygen_data['data']
-                               if item['desc'] == '气压(kPa)']
+        now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
         now_pressure_value = now_pressure_values[0] if now_pressure_values else None
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 7.氧浓传感器span数值记录。氧气浓度：{now_oxygen_value}%，zos气压：{now_pressure_value}KPa，CO2：{now_carbon_value}%",title=self.title )
