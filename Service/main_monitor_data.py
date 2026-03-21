@@ -843,6 +843,8 @@ class Add_message_thread(MyQThread):
                                     time=time_util.get_format_from_time(time.time())))
             # print(f"send_messages:{send_messages}")
             # 将鼠笼下标循环前移动
+            # ★ 关键修复：在移动笼子索引之前，先把当前笼子索引同步给 barrier_action
+            global_setting.set_setting("cage_number_list_index", self.mouse_cage_index)
             if self.mouse_cage_index is not None:
                 if self.mouse_cage_index == len(gids) - 1:
                     # 最后一个鼠笼 则下一个为参考气路
@@ -865,6 +867,8 @@ class Add_message_thread(MyQThread):
                 logger.error("barrier broken，跳过本轮")
 
             logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
+
+            time.sleep(5)
 
 
 
