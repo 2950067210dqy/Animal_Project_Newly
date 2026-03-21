@@ -933,15 +933,15 @@ def barrier_action():
     mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
     # logger.critical(f"barrier action run :mouse_cage_index before:{mouse_cage_index}")
     # 因为在zos运行完之后就更新了mouse_cage_index,所以现在得到的index是比上一轮多1的，所以需要往回退1
-    if mouse_cage_index is  None:
-        mouse_cage_index= len(mouse_cages_inc)-1
-        pass
-    elif mouse_cage_index ==0:
-        mouse_cage_index=None
-        pass
-    else:
-        mouse_cage_index=mouse_cage_index-1
-        pass
+    # if mouse_cage_index is  None:
+    #     mouse_cage_index= len(mouse_cages_inc)-1
+    #     pass
+    # elif mouse_cage_index ==0:
+    #     mouse_cage_index=None
+    #     pass
+    # else:
+    #     mouse_cage_index=mouse_cage_index-1
+    #     pass
     # logger.critical(f"barrier action  run :mouse_cage_index after:{mouse_cage_index}")
     mouse_cage_number = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
 
