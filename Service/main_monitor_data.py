@@ -717,10 +717,10 @@ class Send_thread(MyQThread):
                             logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束")
                             with lock:
                                 if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
-                                    barrier: threading.Barrier = global_setting.get_setting("barrier")
-                                    if barrier is not None:
-                                        logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
-                                        barrier.wait()
+                                    # barrier: threading.Barrier = global_setting.get_setting("barrier")
+                                    # if barrier is not None:
+                                    #     logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
+                                    #     barrier.wait()
                                     total_messages_processed = 1
                                     MESSAGE_BATCH_SIZE = 0
 
@@ -734,10 +734,10 @@ class Send_thread(MyQThread):
                             with lock:
 
                                 if MESSAGE_BATCH_SIZE == 0 or total_messages_processed % MESSAGE_BATCH_SIZE == 0:
-                                    barrier: threading.Barrier = global_setting.get_setting("barrier")
-                                    if barrier is not None:
-                                        logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
-                                        barrier.wait()
+                                    # barrier: threading.Barrier = global_setting.get_setting("barrier")
+                                    # if barrier is not None:
+                                    #     logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
+                                    #     barrier.wait()
 
                                     total_messages_processed = 1
                                     MESSAGE_BATCH_SIZE = 0
@@ -774,7 +774,7 @@ class Add_message_thread(MyQThread):
         global MESSAGE_BATCH_SIZE,gids
 
         # 等待气路启动
-        wait_UFC_UGC_ZOS_start_event.wait()
+        # wait_UFC_UGC_ZOS_start_event.wait()
         while self._running:
             self.mutex.lock()
             if self._paused:
@@ -855,6 +855,14 @@ class Add_message_thread(MyQThread):
                 self.mouse_cage_index = 0
                 pass
             batch_complete_event.wait()
+
+            # 在这里手动触发 barrier（只有自己一个线程，立刻触发 barrier_action）
+            try:
+                barrier = global_setting.get_setting("barrier")
+                if barrier is not None:
+                    barrier.wait()
+            except threading.BrokenBarrierError:
+                logger.error("barrier broken，跳过本轮")
 
             logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
 
@@ -1154,7 +1162,7 @@ def main(q,send_message_q):
     # barrier专门用于多个线程需要在某个点同步等待的场景。每个线程执行完自己的工作后调用
     # barrier.wait()，当所有线程都到达这个同步点时，它们会同时继续执行下一轮循环。
     # barrier = ActionCompleteBarrier(4,action=barrier_action)
-    barrier = threading.Barrier(4,action=barrier_action)
+    barrier = threading.Barrier(1,action=barrier_action)
     global_setting.set_setting("barrier", barrier)
     #专属于ufc ugc zos 的run的barrier
     # ufc_ugc_zos_barrier =ActionCompleteBarrier(3,action=after_run_of_ufc_ugc_zos_barrier_action)

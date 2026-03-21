@@ -1823,7 +1823,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                 f"笼 {mouse_cage_number} 笼内模块统计:\n"
                 f"  已收到: {list(cage_modules.keys())}\n"
                 f"  模块状态: {dict([(k, v) for k, v in cage_modules.items()])}\n"
-                f"  所有收到: {all_received} | 全部有效: {all_valid} | 最终判定: {cage_is_valid}"
+                f"  当前收到: {all_received} | 全部有效: {all_valid} | 最终判定: {cage_is_valid}"
             )
 
             global_setting.set_setting("mouse_cage_detect_state_dict", mouse_cage_detect_dict)

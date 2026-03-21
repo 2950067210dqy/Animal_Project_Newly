@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import (
 from loguru import logger
 
 from Module.User_monitor.ui.custom.table.User_Custom_table import CustomTableWidget
+from Module.new_monitor_data.ui.custom.table.Table_select_columns_paging_bottom import \
+    Table_select_columns_paging_bottom
 from public.config.Data_Column import Data_column_list
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
