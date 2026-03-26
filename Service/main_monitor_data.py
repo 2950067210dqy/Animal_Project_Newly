@@ -341,17 +341,17 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
     )
     send_messages.append(status_msg_03)
 
-    # 查询从站 04 (ZOS)
+    # 查询从站 04 (ZOS) - 改用功能码01读传感器状态
     status_msg_04 = Send_Message(
         slave_address='4',
         slave_desc="04-ZOS状态查询",
-        function_code=3,
-        function_desc="读取ZOS模块状态",
+        function_code=1,
+        function_desc="读取ZOS传感器状态",
         message={
             'port': port,
-            'data': ['00', '01', '00', '01'],
+            'data': ['00', '08', '00', '01'],  # 读参考气(08)状态
             'slave_id': '4',
-            'function_code': '11',
+            'function_code': '1',  # 改为功能码01
             'timeout': 1,
             'module_type': 'status_read',
             'device_type': 'ZOS',

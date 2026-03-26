@@ -32,7 +32,7 @@ class communication(threading.Thread):
         self.index = index
         self.category = category
 
-        self.port = "COM5"
+        self.port = "COM3"
         self.ser = None  # 串口类
         self.running = True  # 控制线程运行的标志
         # 串口接收实例化
@@ -1223,53 +1223,40 @@ class communication(threading.Thread):
                                         case 4:
                                             """
                                             04 04 X
-                                            读传感器测量值
-                                            返回20字节：氧分压(÷10) | 温度(÷10) | 气体压力(÷10) | 氧浓度(÷10000) | 故障码
+                                            读传感器测量值 - 新协议20字节
                                             """
-                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
-                                                                            function_code=f"{function_code_int:X}",
-                                                                            return_bytes_nums='14',  # 20字节
-                                                                            data_hex_list=random.choice([
-                                                                                [
-                                                                                    # 氧分压 2013 → 201.3 hPa
-                                                                                    "0x00", "0x00", "0x07", "0xDD",
-                                                                                    # 温度 208 → 20.8 °C
-                                                                                    "0x00", "0x00", "0x00", "0xD0",
-                                                                                    # 气体压力 1006 → 100.6 hPa
-                                                                                    "0x00", "0x00", "0x03", "0xEE",
-                                                                                    # 氧浓度 197200 → 19.7200 %
-                                                                                    "0x00", "0x03", "0x02", "0x50",
-                                                                                    # 故障码 0
-                                                                                    "0x00", "0x00", "0x00", "0x00",
-                                                                                ],
-                                                                                [
-                                                                                    # 氧分压 1980 → 198.0 hPa
-                                                                                    "0x00", "0x00", "0x07", "0xBC",
-                                                                                    # 温度 215 → 21.5 °C
-                                                                                    "0x00", "0x00", "0x00", "0xD7",
-                                                                                    # 气体压力 1013 → 101.3 hPa
-                                                                                    "0x00", "0x00", "0x03", "0xF5",
-                                                                                    # 氧浓度 208500 → 20.8500 %
-                                                                                    "0x00", "0x03", "0x2D", "0x14",
-                                                                                    # 故障码 0
-                                                                                    "0x00", "0x00", "0x00", "0x00",
-                                                                                ],
-                                                                                [
-                                                                                    # 氧分压 2050 → 205.0 hPa
-                                                                                    "0x00", "0x00", "0x08", "0x02",
-                                                                                    # 温度 196 → 19.6 °C
-                                                                                    "0x00", "0x00", "0x00", "0xC4",
-                                                                                    # 气体压力 998 → 99.8 hPa
-                                                                                    "0x00", "0x00", "0x03", "0xE6",
-                                                                                    # 氧浓度 195800 → 19.5800 %
-                                                                                    "0x00", "0x02", "0xFC", "0x96",
-                                                                                    # 故障码 0
-                                                                                    "0x00", "0x00", "0x00", "0x00",
-                                                                                ],
-                                                                            ]),
-                                                                            struct_type="B"
-                                                                            )
-                                            pass
+                                            return_bytes = self.build_frame(
+                                                slave_id=f"{slave_id_int:X}",
+                                                function_code=f"{function_code_int:X}",
+                                                return_bytes_nums='14',  # 20字节 = 0x14
+                                                data_hex_list=random.choice([
+                                                    [
+                                                        # 氧分压 2013 → 201.3 hPa
+                                                        "0x00", "0x00", "0x07", "0xDD",
+                                                        # 温度 208 → 20.8 °C
+                                                        "0x00", "0x00", "0x00", "0xD0",
+                                                        # 气体压力 1006 → 100.6 hPa
+                                                        "0x00", "0x00", "0x03", "0xEE",
+                                                        # 氧浓度 197200 → 19.7200 %
+                                                        "0x00", "0x03", "0x02", "0x50",
+                                                        # 故障码 0
+                                                        "0x00", "0x00", "0x00", "0x00",
+                                                    ],
+                                                    [
+                                                        # 氧分压 1980 → 198.0 hPa
+                                                        "0x00", "0x00", "0x07", "0xBC",
+                                                        # 温度 215 → 21.5 °C
+                                                        "0x00", "0x00", "0x00", "0xD7",
+                                                        # 气体压力 1013 → 101.3 hPa
+                                                        "0x00", "0x00", "0x03", "0xF5",
+                                                        # 氧浓度 208500 → 20.8500 %
+                                                        "0x00", "0x03", "0x2D", "0x14",
+                                                        # 故障码 0
+                                                        "0x00", "0x00", "0x00", "0x00",
+                                                    ],
+                                                ]),
+                                                struct_type="B"
+                                            )
                                         case 5:
                                             """
                                              04 05 X

@@ -863,16 +863,18 @@ class Modbus_Slave_Send_Messages_Senior_State(Enum):
     ZOS = {
         'type': Modbus_Slave_Ids.ZOS,
         'send_messages': [
-
-            Send_Message(slave_address=Modbus_Slave_Ids.ZOS.value['address'],
-                         slave_desc=Modbus_Slave_Ids.ZOS.value['description'], function_code=2,
-                         function_desc="读传感器状态信息", message={
+            Send_Message(
+                slave_address=Modbus_Slave_Ids.ZOS.value['address'],
+                slave_desc=Modbus_Slave_Ids.ZOS.value['description'],
+                function_code=1,
+                function_desc="读ZOS传感器状态",
+                message={
                     'port': None,
-                    'data': number_util.set_int_to_4_bytes_list(2),
+                    'data': number_util.set_int_to_4_bytes_list('00080001'),  # 读参考气(08)状态
                     'slave_id': format(int(Modbus_Slave_Ids.ZOS.value['address']), '02X'),
-                    'function_code': format(int(f"{2}", 16), '02X'),
-                }),
-
+                    'function_code': format(int(f"{1}", 16), '02X'),  # 功能码01
+                }
+            ),
         ]
     }
     ENM = {

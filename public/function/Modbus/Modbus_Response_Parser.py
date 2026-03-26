@@ -1650,59 +1650,59 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
 
     def parser_function_code_4(self):
         function_desc = """
-                               读传感器测量值
-                               参数长度：80
-                                """
-        pack_struct = "B " * 80
+            读传感器测量值
+            参数长度：20字节（5个变量，每个4字节）
+            氧分压(÷10) | 温度(÷10) | 气体压力(÷10) | 氧浓度(÷10000) | 故障码
+        """
+        # 20字节数据
+        pack_struct = "B " * 20
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
+
         return_datas = []
-        port_types = ['预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)','流量(sccm)']
-        values = []
-        j = 0
-        for i in range(len(self.response_struct['data'])):
-            match i:
-                case 4|9|14|19|24|29|34|39|44|49|54|59|64|69|74:
+        data = self.response_struct['data']
 
-                    oxygen_num=  float(
-                            str(self.response_struct['data'][i - 4]) + "." + str(self.response_struct['data'][i-3]).zfill(2)+str(self.response_struct['data'][i-2]).zfill(2))
-                    air_pressure_num =  round(float(
-                            str(self.response_struct['data'][i - 1]) + "." +str(self.response_struct['data'][i])),3)
-                    # logger.info(f"i:{i},oxy:{oxygen_num},press:{air_pressure_num},lens:{len(self.response_struct['data'])}")
-                    values.append((oxygen_num, air_pressure_num))
-                    if i ==74:
-                        return_datas.append({
-                            "desc": port_types[j],
-                            'value': values
-                        }
-                        )
-                        j += 1
-                case 78:
-                    # 流量测量值 四字节IEEE754码
-                    # 首先将其展开为二进制数，
-                    data_str = "".join(self.int_to_8bit_binary(
-                        num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
-                                  self.response_struct['data'][i - 1], self.response_struct['data'][i]]))
+        if len(data) < 20:
+            logger.error(f"ZOS响应数据长度不足: {len(data)}, 期望20字节")
+            return return_datas, f"ZOS数据长度错误: {len(data)}"
 
-                    # # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
-                    value = self.ieee754_single_to_float(data_str)
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': value
-                    }
-                    )
-                    j += 1
-                    pass
-                case _:
-                    pass
-        return_data_str = ""
-        for return_data in return_datas:
-            return_data_str += f"{return_data['desc']}:{return_data['value']} | "
-        parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
-        logger.info(f"{return_data}|{parser_message}")
+        # 氧分压: 字节0-3, ÷10, 1位小数
+        oxygen_partial_pressure = round(
+            int("".join(self.int_to_8bit_binary([data[0], data[1], data[2], data[3]])), 2) / 10, 1
+        )
+        return_datas.append({"desc": "氧分压(hPa)", "value": oxygen_partial_pressure})
+
+        # 温度: 字节4-7, ÷10, 1位小数
+        temperature = round(
+            self.get_signed_int("".join(self.int_to_8bit_binary([data[4], data[5], data[6], data[7]]))) / 10, 1
+        )
+        return_datas.append({"desc": "ZOS温度测量值(°C)", "value": temperature})
+
+        # 气体压力: 字节8-11, ÷10, 1位小数
+        gas_pressure = round(
+            int("".join(self.int_to_8bit_binary([data[8], data[9], data[10], data[11]])), 2) / 10, 1
+        )
+        return_datas.append({"desc": "气体压力(hPa)", "value": gas_pressure})
+
+        # 氧浓度: 字节12-15, ÷10000, 4位小数
+        oxygen_concentration = round(
+            int("".join(self.int_to_8bit_binary([data[12], data[13], data[14], data[15]])), 2) / 10000, 4
+        )
+        return_datas.append({"desc": "氧气传感器测量值(%)", "value": oxygen_concentration})
+
+        # 故障码: 字节16-19
+        fault_code = int("".join(self.int_to_8bit_binary([data[16], data[17], data[18], data[19]])), 2)
+        return_datas.append({"desc": "ZOS故障码", "value": fault_code})
+
+        return_data_str = " | ".join([f"{d['desc']}:{d['value']}" for d in return_datas])
+        parser_message = (
+            f"{time_util.get_format_from_time(time.time())} | {self.response_hex}"
+            f"-响应报文解析-{self.type.value['name']}-{self.type.value['description']}"
+            f"-{function_desc}-{return_data_str}"
+        )
+        logger.info(parser_message)
         return return_datas, parser_message
-        pass
 
     """
                04 05 X
