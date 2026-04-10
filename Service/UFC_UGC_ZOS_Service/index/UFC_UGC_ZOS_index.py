@@ -291,17 +291,17 @@ class UFC_UGC_ZOS_index(MyQThread):
                 lambda _: AsyPromise(self.UGC_gas_path_system_obj.start).then(
                     lambda _: AsyPromise(self.set_start_timers).then(
                         # 添加UFC运行但是不读取数值 UGC运行但是不读取数值
-                        lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
-                            lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
-                                lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
+                        # lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
+                        #     lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
+                        #         lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
                                     lambda _: AsyPromise(self.calibration_start).then(
                                         lambda _: AsyPromise(
                                             self.finish_start).then(
 
                                         ).catch(lambda e: logger.error(f"{e}"))
-                                    ).catch(lambda e: logger.error(f"{e}"))
-                                ).catch(lambda e: logger.error(f"{e}"))
-                            ).catch(lambda e: logger.error(f"{e}"))
+                                    # ).catch(lambda e: logger.error(f"{e}"))
+                            #     ).catch(lambda e: logger.error(f"{e}"))
+                            # ).catch(lambda e: logger.error(f"{e}"))
                         ).catch(lambda e: logger.error(f"{e}"))
 
                     ).catch(lambda e: logger.error(f"{e}"))
@@ -344,16 +344,16 @@ class UFC_UGC_ZOS_index(MyQThread):
                 lambda _:AsyPromise(self.UGC_gas_path_system_obj.start).then(
                     lambda _:AsyPromise(self.set_start_timers).then(
                         # 添加UFC运行但是不读取数值 UGC运行但是不读取数值
-                        lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
-                            lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
-                                lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
+                        # lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
+                        #     lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
+                        #         lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start_zos_cage_pressure_init).then(
                                     lambda _: AsyPromise(
                                         self.finish_start).then(
 
                                     ).catch(lambda e: logger.error(f"{e}"))
-                                ).catch(lambda e: logger.error(f"{e}"))
-                            ).catch(lambda e: logger.error(f"{e}"))
-                        ).catch(lambda e: logger.error(f"{e}"))
+                        #         ).catch(lambda e: logger.error(f"{e}"))
+                        #     ).catch(lambda e: logger.error(f"{e}"))
+                        # ).catch(lambda e: logger.error(f"{e}"))
 
                     ).catch( lambda e: logger.error(f"{e}"))
                 ).catch( lambda e: logger.error(f"{e}"))
@@ -588,24 +588,20 @@ class UFC_UGC_ZOS_index(MyQThread):
         logger.critical(f"{self.name}<UNK>is_auto_calibration：{is_auto_calibration}")
         if is_auto_calibration:
             self.start_btn_handle_with_calibration().then(
-                self.run_btn_handle().then(
-
-                    self.gas_state_check_handle().then(
-                        self.stop()
-                    )
-
-                )
-            )
+                lambda _: self.run_btn_handle().then(
+                    lambda _: self.gas_state_check_handle().then(
+                        lambda _: self.stop_btn_handle()
+                    ).catch(lambda e: logger.error(f"{e}"))
+                ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: logger.error(f"{e}"))
         else:
             self.start_btn_handle().then(
-                self.run_btn_handle().then(
-
-                    self.gas_state_check_handle().then(
-                        self.stop()
-                    )
-
-                )
-            )
+                lambda _: self.run_btn_handle().then(
+                    lambda _: self.gas_state_check_handle().then(
+                        lambda _: self.stop_btn_handle()
+                    ).catch(lambda e: logger.error(f"{e}"))
+                ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: logger.error(f"{e}"))
 
         # self.run_btn_handle().then(
         #

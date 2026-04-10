@@ -24,6 +24,7 @@ from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread, MyThread
 from public.entity.barrier.ActionCompleteBarrier import ActionCompleteBarrier
+from public.entity.barrier.DynamicBarrier import DynamicBarrier
 from public.entity.dict.AdvancedFuzzyDict import FuzzyDict
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
@@ -868,7 +869,7 @@ class Add_message_thread(MyQThread):
 
             logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
 
-            time.sleep(5)
+            # time.sleep(5)
 
 
 
@@ -1166,7 +1167,7 @@ def main(q,send_message_q):
     # barrier专门用于多个线程需要在某个点同步等待的场景。每个线程执行完自己的工作后调用
     # barrier.wait()，当所有线程都到达这个同步点时，它们会同时继续执行下一轮循环。
     # barrier = ActionCompleteBarrier(4,action=barrier_action)
-    barrier = threading.Barrier(1,action=barrier_action)
+    barrier = DynamicBarrier(1, action=barrier_action)
     global_setting.set_setting("barrier", barrier)
     #专属于ufc ugc zos 的run的barrier
     # ufc_ugc_zos_barrier =ActionCompleteBarrier(3,action=after_run_of_ufc_ugc_zos_barrier_action)
@@ -1284,6 +1285,10 @@ def pause():
 
 def stop():
     logger.info(f"{'-' * 30}monitor_data_stop{'-' * 30}")
+    # 重置barrier回1，下次实验从1开始
+    barrier = global_setting.get_setting("barrier")
+    if barrier is not None:
+        barrier.reset(parties=1)
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
     try:
         logger.error("stop_ufc_ugc_zos")
