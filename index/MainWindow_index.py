@@ -1198,19 +1198,9 @@ class MainWindow_Index(ThemedWindow):
         pass
 
     def _on_gas_path_final_timeout(self):
-        """备用计时器到期：force_entered后气路仍未成功"""
+        """备用计时器到期：force_entered后气路仍未成功，仅显示红色提示，不停止"""
         if not self._gas_path_success:
-            # 显示红色提示，duration=0 不自动清除
-            self.show_temp_status_tip_signal.emit("气路启动超时，即将自动停止实验...", "#cc0000", 0)
-            # ★ 延迟10秒再停止，让用户看清红色提示
-            QTimer.singleShot(10000, self._delayed_stop_on_timeout)
-
-    def _delayed_stop_on_timeout(self):
-        """10秒后执行的超时停止"""
-        # 二次确认：防止10秒内用户手动停止或成功
-        if not self._gas_path_success and \
-                global_setting.get_setting("app_state", AppState.INITIALIZED) == AppState.MONITORING:
-            self.stop_experiment()
+            self.show_temp_status_tip_signal.emit("气路初始化失败", "#cc0000", 0)
     def init__calibration_windows(self):
         #初始化标定窗口
         if self.calibration_details_windows is None:

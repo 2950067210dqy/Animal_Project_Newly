@@ -152,26 +152,6 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
 
         self.scroll_area.setWidget(self.table)
 
-        # ---- 操作日志与导出区域（保留原有功能）----
-        h_layout = QHBoxLayout()
-        tip_label = QLabel("操作（操作必须手动导出数据，否则停止实验和关闭程序不会导出操作数据！）:")
-        self.export_button = QPushButton("导出操作")
-        self.export_button.setMaximumHeight(40)
-        h_layout.addWidget(tip_label)
-        h_layout.addWidget(self.export_button)
-        main_vbox.addLayout(h_layout)
-
-        # 操作日志列表
-        self.scroll_area_2 = QScrollArea()
-        self.scroll_area_2.setWidgetResizable(True)
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
-        self.list_widget = QListWidget()
-        self.list_widget.setMinimumHeight(300)
-        scroll_layout.addWidget(self.list_widget)
-        self.scroll_area_2.setWidget(scroll_content)
-        main_vbox.addWidget(self.scroll_area_2, stretch=1)
-
         # 初始时分页器禁用（需先置换表头）
         self.set_pager_enabled(False)
 
