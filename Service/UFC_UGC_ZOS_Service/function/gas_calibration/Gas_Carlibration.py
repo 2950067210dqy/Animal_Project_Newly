@@ -102,55 +102,18 @@ class Gas_Carlibration:
         """
         pass
     """start   start"""
-    def start_calibration_common(self,resolve,reject,port,next_function):
-        """
-        开始标定时 共有的报文
-        :param resolve:
-        :param reject:
-        :param port:
-        :param next_function:
-        :return:
-        """
-        AsyPromise(self.close_ufc_current_cage_valve, port=port).then(
-            lambda r: AsyPromise(next_function, port=port).then(lambda r1: resolve()).catch(lambda e: logger.error(e))
-        ).catch(lambda e: logger.error(e))
-    # 0.关闭UFC当前鼠笼阀门
-    def close_ufc_current_cage_valve(self,resolve,reject,port):
-        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        # 一开始index是None则是从参考气开始
-        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-        if mouse_cages_inc is not None and len(mouse_cages_inc) > 0:
-            if mouse_cage_index is not None:
-                mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index] - 1
-            else:
-                # 下标为None 则为参考气
-                mouse_cage_number_addr_single = 8
-            if self.is_STOP:
-                reject("stop")
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list(f"000{mouse_cage_number_addr_single}0000"),
-                'slave_id': '2',
-                'function_code': '5',
-                'timeout': 1
-            }
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | {self.name}标定：0.关闭ufc当前{mouse_cage_number_addr_single if mouse_cage_number_addr_single!=8 else '参考气路'}号鼠笼阀门")
-            self.send_thread.send_message = self.send_message
-            AsyPromise(self.send_thread.Send).then(
-                #1. 打开ugc调零或者SPan阀门
-               lambda r:AsyPromise(self.open_ugc_zero_or_span_valve,port=port).then(lambda r1:resolve()).catch(lambda e: logger.error(e))
-            ).catch(lambda e:logger.error(e))
-        reject("关闭UFC当前鼠笼阀门获取鼠笼数据失败")
-    def open_ugc_zero_or_span_valve(self,resolve,reject,port):
-        # 1. 打开ugc调零或者SPan阀门
+    # 简化的阀门控制函数
+    def open_ugc_zero_or_span_valve(self, resolve, reject, port):
+        """打开 UGC Zero/Span 气电磁阀"""
         if self.is_STOP:
-            reject("stop")
+            reject("stopped")
+            return
+
         match self.type:
             case Gas_Carlibration_Type.ZERO:
                 self.send_message = {
                     'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"0001FF00"),
+                    'data': number_util.set_int_to_4_bytes_list(f"00010000"),
                     'slave_id': '3',
                     'function_code': '5',
                     'timeout': 1
@@ -160,7 +123,7 @@ class Gas_Carlibration:
             case Gas_Carlibration_Type.SPAN:
                 self.send_message = {
                     'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"0002FF00"),
+                    'data': number_util.set_int_to_4_bytes_list(f"00020000"),
                     'slave_id': '3',
                     'function_code': '5',
                     'timeout': 1
@@ -171,313 +134,47 @@ class Gas_Carlibration:
                 reject("默认标定")
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            # 2. 关闭ugc采样阀
-            lambda r: AsyPromise(self.close_ugc_sample_valve, port=port).then(lambda r1: resolve()).catch(
-                lambda e: logger.error(e))
-        ).catch(lambda e: logger.error(e))
-    def close_ugc_sample_valve(self,resolve,reject,port):
-        # 2. 关闭ugc采样阀
+            lambda r: resolve()
+        ).catch(lambda e: reject(e))
+    def close_ugc_zero_or_span_valve(self, resolve, reject, port):
+        """关闭 UGC Zero/Span 气电磁阀"""
         if self.is_STOP:
-            reject("stop")
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"0"),
-            'slave_id': '3',
-            'function_code': '5',
-            'timeout': 1
-        }
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {self.name}标定：2. 关闭ugc采样阀")
-        self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            # 3. 关闭ugc 校零阀门或校span阀门
-            lambda r: AsyPromise(self.close_ugc_zero_or_span_valve, port=port).then(lambda r1: resolve()).catch(
-                lambda e: logger.error(e))
-        ).catch(lambda e: logger.error(e))
-    def close_ugc_zero_or_span_valve(self,resolve,reject,port):
-        # 3. 关闭ugc 校0阀门或校span阀门
-        if self.is_STOP:
-            reject("stop")
-        match self.type:
-            case Gas_Carlibration_Type.ZERO:
-                self.send_message = {
-                    'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"00020000"),
-                    'slave_id': '3',
-                    'function_code': '5',
-                    'timeout': 1
-                }
-                self.update_status_main_signal_gui_update.send(
-                    f"{time_util.get_format_from_time(time.time())} | {self.name}标定： 3. 关闭ugc 校span阀门")
-            case Gas_Carlibration_Type.SPAN:
-                self.send_message = {
-                    'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"00010000"),
-                    'slave_id': '3',
-                    'function_code': '5',
-                    'timeout': 1
-                }
-                self.update_status_main_signal_gui_update.send(
-                    f"{time_util.get_format_from_time(time.time())} | {self.name}标定： 3. 关闭ugc 校0阀门")
-            case _:
-                reject("默认标定")
-        self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            # 4. 启动zos 校0通道或校span通道
-            lambda r: AsyPromise(self.open_zos_zero_or_span_valve, port=port).then(lambda r1: resolve()).catch(
-                lambda e: logger.error(e))
-        ).catch(lambda e: logger.error(e))
-    def open_zos_zero_or_span_valve(self,resolve,reject,port):
-        # 4. 启动zos 校0通道或校span通道
-        if self.is_STOP:
-            reject("stop")
-        match self.type:
-            case Gas_Carlibration_Type.ZERO:
-                self.send_message = {
-                    'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"0009FF00"),
-                    'slave_id': '4',
-                    'function_code': '5',
-                    'timeout': 1
-                }
-                self.update_status_main_signal_gui_update.send(
-                    f"{time_util.get_format_from_time(time.time())} | {self.name}标定： 4. 启动zos 校0通道")
-            case Gas_Carlibration_Type.SPAN:
-                self.send_message = {
-                    'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"000AFF00"),
-                    'slave_id': '4',
-                    'function_code': '5',
-                    'timeout': 1
-                }
-                self.update_status_main_signal_gui_update.send(
-                    f"{time_util.get_format_from_time(time.time())} | {self.name}标定： 4. 启动zos 校span通道")
-            case _:
-                reject("默认标定")
-        self.send_thread.send_message = self.send_message
-        AsyPromise(self.send_thread.Send).then(
-            # 5.关闭zos当前运行鼠笼通道
-            lambda r: AsyPromise(self.close_zos_current_cage_valve, port=port).then(lambda r1: resolve()).catch(
-                lambda e: logger.error(e))
-        ).catch(lambda e: logger.error(e))
+            reject("stopped")
+            return
 
-    # 5.关闭zos当前运行鼠笼通道
-    def close_zos_current_cage_valve(self, resolve, reject, port):
-        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        # 一开始index是None则是从参考气开始
-        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-        if mouse_cages_inc is not None and len(mouse_cages_inc) > 0:
-            if mouse_cage_index is not None:
-                mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index] - 1
-            else:
-                # 下标为None 则为参考气
-                mouse_cage_number_addr_single = 8
-            if self.is_STOP:
-                reject("stop")
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list(f"000{mouse_cage_number_addr_single}0000"),
-                'slave_id': '4',
-                'function_code': '5',
-                'timeout': 1
-            }
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | {self.name}标定：5.关闭zos当前{mouse_cage_number_addr_single+1 if mouse_cage_number_addr_single!=8 else '参考气路'}号鼠笼通道")
-            self.send_thread.send_message = self.send_message
-            AsyPromise(self.send_thread.Send).then(
-                lambda r1: resolve()
-            ).catch(lambda e: logger.error(e))
-        reject("关闭ZOS当前鼠笼通道获取鼠笼数据失败")
+        match self.type:
+            case Gas_Carlibration_Type.ZERO:
+                self.send_message = {
+                    'port': port,
+                    'data': number_util.set_int_to_4_bytes_list(f"0001FF00"),
+                    'slave_id': '3',
+                    'function_code': '5',
+                    'timeout': 1
+                }
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | {self.name}标定： 2. 关闭ugc 校0阀门")
+            case Gas_Carlibration_Type.SPAN:
+                self.send_message = {
+                    'port': port,
+                    'data': number_util.set_int_to_4_bytes_list(f"0002FF00"),
+                    'slave_id': '3',
+                    'function_code': '5',
+                    'timeout': 1
+                }
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | {self.name}标定： 2. 关闭ugc SPan阀门")
+            case _:
+                reject("默认标定")
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: resolve()
+        ).catch(lambda e: reject(e))
     """start   end"""
 
 
-
-    """exit  start"""
-    def return_to_running_state(self, resolve, reject, port):
-        """
-        返回系统工作运行状态
-        :return:
-        """
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {self.name}标定  开始返回系统工作运行状态",
-            title=self.title)
-        #1. ugc sample电磁阀打开
-        AsyPromise(self.ugc_sample_open,port=port).then(
-            lambda r:resolve()
-        ).catch(lambda e:logger.error(e))
-
-
-    def ugc_sample_open(self, resolve, reject, port):
-        #1. ugc sample电磁阀打开
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("0000FF00"),
-            'slave_id': '3',
-            'function_code': '5',
-            'timeout': 1
-        }
-        self.send_thread.send_message = self.send_message
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'停止' if self.is_STOP else ''} {self.name}标定 1. ugc sample电磁阀打开",
-            title=self.title)
-        # 2.校零气路（Zero气）电磁阀关闭
-        AsyPromise(self.solenoid_valve_of_zero_gas_close,port=port).then(
-            lambda _: resolve()
-            ).catch(lambda e: reject(e))
-        pass
-    def solenoid_valve_of_zero_gas_close(self, resolve, reject, port):
-        #2.校零气路（Zero气）电磁阀关闭
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("00010000"),
-            'slave_id': '3',
-            'function_code': '5',
-            'timeout': 1
-        }
-
-        self.send_thread.send_message = self.send_message
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {'停止' if self.is_STOP else ''} {self.name}标定 2.校零气路（Zero气）电磁阀关闭",
-            title=self.title)
-        AsyPromise(self.send_thread.Send).then(
-            # 3.ugc span电磁阀关闭
-            lambda r: AsyPromise(self.ugc_span_close, port=port).then(lambda r2: resolve()).catch(
-                lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: reject(e))
-        pass
-
-    def ugc_span_close(self, resolve, reject, port):
-        # 3.ugc span电磁阀关闭。
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("00020000"),
-            'slave_id': '3',
-            'function_code': '5',
-            'timeout': 1
-        }
-
-        self.send_thread.send_message = self.send_message
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} {'停止' if self.is_STOP else ''} {self.name}标定 3.ugc span电磁阀关闭",
-            title=self.title)
-        AsyPromise(self.send_thread.Send).then(
-            # 4. 关闭zos凋零通道
-            lambda r: AsyPromise(self.zos_zero_close, port=port).then(lambda r2: resolve()).catch(
-                lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
-        pass
-
-
-    def zos_zero_close(self, resolve, reject, port):
-        # 4. 关闭zos凋零通道
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("00090000"),
-            'slave_id': '4',
-            'function_code': '5',
-            'timeout': 1
-        }
-
-        self.send_thread.send_message = self.send_message
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} {'停止' if self.is_STOP else ''} {self.name}标定 4. 关闭zos凋零通道",
-            title=self.title)
-        AsyPromise(self.send_thread.Send).then(
-            # 5. 关闭zos凋span通道
-            lambda r: AsyPromise(self.zos_span_close, port=port).then(lambda r2: resolve()).catch(
-                lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
-    def zos_span_close(self, resolve, reject, port):
-        # 5. 关闭zos凋span通道
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("000A0000"),
-            'slave_id': '4',
-            'function_code': '5',
-            'timeout': 1
-        }
-
-        self.send_thread.send_message = self.send_message
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} {'停止' if self.is_STOP else ''} {self.name}标定 5. 关闭zos凋span通道",
-            title=self.title)
-        AsyPromise(self.send_thread.Send).then(
-            # 6. UFC切换回工作时的鼠笼
-            lambda r: AsyPromise(self.switch_return_mouse_cage_UFC, port=port).then(lambda r2: resolve()).catch(
-                lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
-    def switch_return_mouse_cage_UFC(self, resolve, reject, port):
-        # 6. UFC切换回工作时的鼠笼
-        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        # 一开始index是None则是从参考气开始
-        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-        if mouse_cages_inc is not None and len(mouse_cages_inc) > 0:
-            if mouse_cage_index is not None:
-                mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index] - 1
-            else:
-                # 下标为None 则为参考气
-                mouse_cage_number_addr_single = 8
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list(f"000{mouse_cage_number_addr_single}00FF"),
-                'slave_id': '2',
-                'function_code': '5',
-                'timeout': 1
-            }
-
-            self.send_thread.send_message = self.send_message
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} {'停止' if self.is_STOP else ''} {self.name}标定 6. UFC切换回工作时的鼠笼{mouse_cage_number_addr_single+1 if mouse_cage_number_addr_single!=8 else '参考气路'}",
-                title=self.title)
-            AsyPromise(self.send_thread.Send).then(
-                # 7. ZOS切换回工作时的鼠笼
-                lambda r: AsyPromise(self.switch_return_mouse_cage_ZOS, port=port).then(lambda r2: resolve()).catch(
-                    lambda e: logger.error(f"{e}"))
-            ).catch(lambda e: logger.error(f"{e}"))
-        reject("切换UFC没有获取到鼠笼数据")
-    def switch_return_mouse_cage_ZOS(self, resolve, reject, port):
-        # 7. ZOS切换回工作时的鼠笼
-        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        # 一开始index是None则是从参考气开始
-        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-        if mouse_cages_inc is not None and len(mouse_cages_inc) > 0:
-            if mouse_cage_index is not None:
-                mouse_cage_number_addr_single = mouse_cages_inc[mouse_cage_index] - 1
-            else:
-                # 下标为None 则为参考气
-                mouse_cage_number_addr_single = 8
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list(f"000{mouse_cage_number_addr_single}FF00"),
-                'slave_id': '4',
-                'function_code': '5',
-                'timeout': 1
-            }
-
-            self.send_thread.send_message = self.send_message
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} {'停止' if self.is_STOP else ''} {self.name}标定 7. ZOS切换回工作时的鼠笼{mouse_cage_number_addr_single+1 if mouse_cage_number_addr_single!=8 else '参考气路'}",
-                title=self.title)
-            if self.is_STOP:
-                AsyPromise(self.send_thread.Send).then(
-                    # 停止标定完成。
-                    lambda _: AsyPromise(self.stop_finish_calibration).then(
-                        lambda r: resolve()
-                    ).catch(lambda e: reject(e))
-
-                ).catch(lambda e: reject(e))
-            else:
-                AsyPromise(self.send_thread.Send).then(
-                    # 9 标定完成。
-                    lambda _: AsyPromise(self.finish_calibration).then(
-                        lambda r: resolve()
-                    ).catch(lambda e: reject(e))
-
-                ).catch(lambda e: reject(e))
-        reject("切换ZOS没有获取到鼠笼数据")
     def finish_calibration(self, resolve, reject):
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  {self.name}标定 8. 标定完成", title=self.title)
+            f"{time_util.get_format_from_time(time.time())} |  {self.name}标定 5. 标定完成", title=self.title)
         # 标定完成通知
         send_message_queue = global_setting.get_setting("send_message_queue")
         match self.type:
@@ -545,11 +242,19 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
         self.title = GapSystem_Running_Type.ZERO_CALIBRATION
         self.port=None
         Gas_Carlibration.__init__(self, title=self.title,type =Gas_Carlibration_Type.ZERO)
-        MyQThread.__init__(self,name='Zero_Carlibration_thread')
+
+        mouse_cages = global_setting.get_setting("mouse_cages", [])
+        num_cages = len(mouse_cages) + 1
+        timeout_ms = 300000 + (num_cages * 20000)
+
+        MyQThread.__init__(self, name='Zero_Carlibration_thread', deletion_timeout_ms=timeout_ms)
     def dosomething(self):
-        AsyPromise(self.start_calibration_common,port=self.port,next_function =self.cyclic_sampling_of_ugc_carbon_sensor_and_zos_oxygen_sensor ).then(
-            lambda r:self.stop()
-        ).catch(lambda e:self.stop())
+        # 新版流程：直接打开 Zero 阀门并开始采样 CO2
+        AsyPromise(self.open_ugc_zero_or_span_valve, port=self.port).then(
+            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_co2_sensor, port=self.port).then(
+                lambda r2: self.stop()
+            ).catch(lambda e: self.stop())
+        ).catch(lambda e: self.stop())
         pass
     def calibrate(self,resolve,reject):
         """零点标定"""
@@ -562,134 +267,41 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
             title=self.title
         )
         self.is_STOP = False
-        # resolve()
         self.port = global_setting.get_setting("port", None)
         if self.port is None:
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！",title=self.title )
             reject()
+            return
         if self.is_STOP:
             reject()
-        self.start()
-        resolve()
+            return
+
+
+        AsyPromise(self.open_ugc_zero_or_span_valve, port=self.port).then(
+            lambda _: AsyPromise(self.cyclic_sampling_of_ugc_co2_sensor, port=self.port).then(
+                lambda _: resolve()
+            ).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
         pass
     def stop_calibrate(self,resolve,reject):
         """
-        取消零点标定
+        取消零点标定（发送零点设置指令 + 关闭阀门，让设备退出标定模式）
         :param resolve:
         :param reject:
         :return:
         """
         self.is_STOP=True
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  停止零点量程标定 开始{'.' * 100}", title=self.title)
-        # resolve()
+            f"{time_util.get_format_from_time(time.time())} |  停止零点标定", title=self.title)
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！", title=self.title)
+                f"{time_util.get_format_from_time(time.time())} | 停止失败，未选择串口！", title=self.title)
             reject()
-        AsyPromise(self.return_to_running_state, port=port).then(lambda r: resolve()).catch(lambda e: logger.error(f"{e}"))
-        resolve()
-    # 6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。
-    def cyclic_sampling_of_ugc_carbon_sensor_and_zos_oxygen_sensor(self, resolve, reject, port):
-        if self.is_STOP:
-            reject()
-        global last_carbon_value,last_oxygen_value,last_pressure_value
-        #现在测量的氧气值
-        now_oxygen_value = None
-        now_pressure_value = None
-        #现在测量的二氧化碳值
-        now_carbon_value = None
+            return
 
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  零点标定 6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。",title=self.title )
-        start_time = time.time()
-        end_time = None
-        #小于阈值稳定0 或者 至少循环60秒
-        while (
-                (
-                        (now_oxygen_value is  None or now_carbon_value is  None) or
-                        (last_carbon_value is None or last_oxygen_value is None) or
-
-                        (
-                                abs(now_oxygen_value - last_oxygen_value) > float(
-                            global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
-                                'zero_calibration_oxygen_threshold'])
-                                or
-                                abs(now_carbon_value - last_carbon_value) > float(
-                            global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
-                                'zero_calibration_carbon_threshold'])
-                        )
-                        or
-                        (
-                                now_carbon_value != 0 or now_oxygen_value != 0
-                        )
-
-
-                ) and
-                (
-                      end_time is None or int(end_time - start_time) <= float(
-                  global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])
-                )
-
-        ):
-            if self.is_STOP:
-                break
-            # 循环读取CO2浓度
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list("5"),
-                'slave_id': '3',
-                'function_code': '4',
-                'timeout': 1
-            }
-            self.send_thread.send_message = self.send_message
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。1）采集二氧化碳浓度，is_STOP={self.is_STOP}",title=self.title )
-            carbon_data, carbon_message =self.send_thread.Send_no_promise()
-            now_carbon_values = [item['value'] for item in carbon_data['data'] if "CO2" in item['desc']]
-            last_carbon_value = copy.deepcopy(now_carbon_value)
-            now_carbon_value =now_carbon_values[0] if  now_carbon_values else None
-            # 采集氧气
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list(f"00000003"),
-                'slave_id': '4',
-                'function_code': '65',
-                'timeout': 1
-            }
-            self.send_thread.send_message = self.send_message
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。2）采集氧气浓度",title=self.title )
-            oxygen_data,oxygen_message =  self.send_thread.Send_no_promise()
-            now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
-            last_oxygen_value = copy.deepcopy(now_oxygen_value)
-            now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
-
-            now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
-            last_pressure_value = copy.deepcopy(now_pressure_value)
-            now_pressure_value = now_pressure_values[0] if now_pressure_values else None
-            end_time = time.time()
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定 6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度、zos气压（{now_oxygen_value}，{now_pressure_value}）之前氧气浓度、zos气压（{last_oxygen_value}，{last_pressure_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time),b=datetime.fromtimestamp(start_time),zero_pad=True,signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])}秒",title=self.title )
-            # 发送标定数据消息
-            self.update_status_main_signal_gui_update.send(
-                {'type': 'set_calibration_values',
-                 'value': {
-                            'oxygen_value':now_oxygen_value,
-                            'carbon_value':now_carbon_value,
-                            'oxygen_pressure_value':now_pressure_value,
-                            }
-
-                 }, title=self.title
-            )
-            time.sleep(1)
-            pass
-        last_carbon_value, last_oxygen_value, last_pressure_value =None, None, None
-        if self.is_STOP:
-            reject()
-        #7.二氧化碳零点设置。
+        # 发送零点设置指令，让设备退出标定模式
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list("00100000"),
@@ -698,77 +310,155 @@ class Zero_Carlibration(Gas_Carlibration,MyQThread):
             'timeout': 1
         }
         self.send_thread.send_message = self.send_message
+
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  零点标定 7.二氧化碳零点设置",title=self.title )
+            f"{time_util.get_format_from_time(time.time())} | 停止零点标定：发送零点设置指令", title=self.title)
+
+        # 发送指令 -> 关闭阀门 -> 完成
         AsyPromise(self.send_thread.Send).then(
-            # 8.氧浓传感器零点记录。
-            lambda r: AsyPromise(self.zero_point_recording_of_oxygen_sensor, port=port).then(lambda r2:resolve()).catch(lambda e: logger.error(f"{e}"))
+            lambda r: AsyPromise(self.close_ugc_zero_or_span_valve, port=port).then(
+                lambda r2: AsyPromise(self.stop_finish_calibration).then(lambda r3: resolve()).catch(lambda e: reject(e))
+            ).catch(lambda e: reject(e))
         ).catch(lambda e: reject(e))
-        pass
-    # 8.氧浓传感器零点记录。
-    def zero_point_recording_of_oxygen_sensor(self,resolve,reject,port):
-        # 采集氧气
+
+    def cyclic_sampling_of_ugc_co2_sensor(self, resolve, reject, port):
+        """
+        UGC 零点标定 CO2 采样（逐笼完成）
+        按用户开启的笼子顺序，逐个笼子读取并等待稳定后再进入下一个
+        """
+        if self.is_STOP:
+            reject("stopped")
+            return
+
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UGC零点标定：开始逐笼采样 CO2浓度",
+            title=self.title
+        )
+
+        config = global_setting.get_setting("UFC_UGC_ZOS_config")
+        threshold = float(config['Calibration']['zero_calibration_carbon_threshold'])
+        total_timeout = float(config['Calibration']['zero_calibration_circular_times'])
+        stable_required_count = 15  # 连续15秒稳定
+
+        # 获取用户开启的笼子列表
+        mouse_cages = global_setting.get_setting("mouse_cages", [])
+        # 转换为路号（笼子号-1），并添加参考气路8
+        routes_to_calibrate = [cage - 1 for cage in mouse_cages] + [8]
+
+        # 逐个路完成标定
+        for route_x in routes_to_calibrate:
+            if self.is_STOP:
+                reject("stopped")
+                return
+
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | UGC零点标定：开始标定路{route_x}",
+                title=self.title
+            )
+
+            # 该路的状态
+            last_value = None
+            current_value = None
+            stable_count = 0
+            start_time = time.time()
+
+            # 循环读取该路直到稳定
+            while True:
+                if self.is_STOP:
+                    reject("stopped")
+                    return
+
+                # 检查该路超时
+                if time.time() - start_time > total_timeout:
+                    self.update_status_main_signal_gui_update.send(
+                        f"{time_util.get_format_from_time(time.time())} | UGC零点标定：路{route_x}超时失败",
+                        title=self.title)
+                    reject(f"route {route_x} timeout")
+                    return
+
+                # 读取该路的 CO2 浓度
+                self.send_message = {
+                    'port': port,
+                    'data': number_util.set_int_to_4_bytes_list(f"{route_x:04X}0005"),
+                    'slave_id': '3',
+                    'function_code': '4',
+                    'timeout': 1
+                }
+                self.send_thread.send_message = self.send_message
+                carbon_data, carbon_message = self.send_thread.Send_no_promise()
+
+                if not carbon_data or 'data' not in carbon_data:
+                    time.sleep(1)
+                    continue
+
+                now_carbon_values = [
+                    item.get('value')
+                    for item in carbon_data.get('data', [])
+                    if "CO2" in str(item.get('desc', ''))
+                ]
+                last_value = current_value
+                current_value = now_carbon_values[0] if now_carbon_values else None
+
+                # 判断稳定性
+                is_stable = False
+                if current_value is not None and last_value is not None:
+                    change = abs(current_value - last_value)
+                    in_range = 0 <= current_value <= 50
+                    is_stable = (change < threshold) and in_range
+
+                if is_stable:
+                    stable_count += 1
+                else:
+                    stable_count = 0
+
+                # 立即发送该路的数据给UI显示
+                self.update_status_main_signal_gui_update.send(
+                    {'type': 'set_calibration_values',
+                     'value': {
+                         'carbon_value': current_value,
+                     }
+                     }, title=self.title
+                )
+
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | UGC零点标定：路{route_x} CO2={current_value}%, 稳定计数={stable_count}/{stable_required_count}",
+                    title=self.title
+                )
+
+                # 该路稳定15秒后完成
+                if stable_count >= stable_required_count:
+                    self.update_status_main_signal_gui_update.send(
+                        f"{time_util.get_format_from_time(time.time())} | UGC零点标定：路{route_x}已稳定，完成",
+                        title=self.title
+                    )
+                    break
+
+                time.sleep(1)
+
+        # 所有路都完成后，发送全局零点设置指令
+        if self.is_STOP:
+            reject("stopped")
+            return
+
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("3"),
-            'slave_id': '4',
-            'function_code': '65',
+            'data': number_util.set_int_to_4_bytes_list("00100000"),
+            'slave_id': '3',
+            'function_code': '6',
             'timeout': 1
         }
         self.send_thread.send_message = self.send_message
-        if self.is_STOP:
-            reject()
-        oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-        now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
-        now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
 
-        now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
-        now_pressure_value = now_pressure_values[0] if now_pressure_values else None
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  零点标定 8.氧浓传感器零点记录值 zos气压：{now_pressure_value}，氧气浓度：{now_oxygen_values}",title=self.title )
-        # 存储值----------------------------------------------------
-        return_data_struct={}
-        return_data_struct['module_name']='ZeroCalibration'
-        return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        return_data_struct['table_name'] = next(iter(Others_Tables.Zero_Carlibration_Data.value.keys()))
-        return_data_struct['mouse_cage_number']=-1
-        # 添加Vzero参数到全局变量 方便氧传感器的值校准
-        try:
-            if now_oxygen_value is None:
-                now_oxygen_value=[data['value'] for data in oxygen_data['data'] if data['desc'] =="备注"]
-                if len(now_oxygen_value)==0:
-                    now_oxygen_value=None
-                else:
-                    now_oxygen_value=now_oxygen_value[0]
-                logger.critical(f"zero_calibration_None:{now_oxygen_value}")
-                return_data_struct['data'] =oxygen_data['data']+ [{'desc': '氧浓度0点校准值', 'value':now_oxygen_value}]
+            f"{time_util.get_format_from_time(time.time())} | UGC零点标定：发送全局 CO2 零点设置指令",
+            title=self.title
+        )
 
-            else:
-                logger.critical(f"zero_calibration:{now_oxygen_value}")
-                global_setting.set_setting("Vzero", now_oxygen_value)
-                return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value},{'desc':'ZOS压力0点校准值','value':now_pressure_value}]
-        except Exception as e:
-            return_data_struct['data']=[{'desc':'氧浓度0点校准值','value':now_oxygen_value}]
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  零点标定 8.出错，错误：{e} |氧浓传感器零点记录值{now_oxygen_value}，zos压力：{now_pressure_value},oxygen_data：{oxygen_data}，now_oxygen_values：{now_oxygen_values}",title=self.title )
-        return_data_struct['slave_id']=0
-        return_data_struct['function_code']=0
-        result = store_data_with_result(return_data_struct, need_result=True, timeout=5)
-        if result and result.success:
-            logger.info(f"数据存储成功，ID: {result.item_id}")
-        else:
-            logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
-
-        if self.is_STOP:
-            reject()
-
-        else:
-            AsyPromise(self.send_thread.Send).then(
-                # 9.校零返回系统工作运行状态
-                lambda r: AsyPromise(self.return_to_running_state, port=port
-                                     ).then(lambda r2: resolve()).catch(lambda e: logger.error(f"{e}"))
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: AsyPromise(self.close_ugc_zero_or_span_valve, port=port).then(
+                lambda r2: resolve()
             ).catch(lambda e: reject(e))
-        pass
+        ).catch(lambda e: reject(e))
 
 
 class Range_Carlibration(Gas_Carlibration,MyQThread):
@@ -778,13 +468,21 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
     def __init__(self):
         self.title = GapSystem_Running_Type.RANGE_CALIBRATION
         Gas_Carlibration.__init__(self,title=self.title,type =Gas_Carlibration_Type.SPAN)
-        MyQThread.__init__(self, name='Range_Carlibration_thread')
+
+        mouse_cages = global_setting.get_setting("mouse_cages", [])
+        num_cages = len(mouse_cages) + 1
+        timeout_ms = 300000 + (num_cages * 20000)
+
+        MyQThread.__init__(self, name='Range_Carlibration_thread', deletion_timeout_ms=timeout_ms)
         self.port =None
         pass
     def dosomething(self):
-        AsyPromise(self.start_calibration_common,port=self.port,next_function=self.cyclic_sampling_of_zos_oxygen_sensor).then(
-            lambda r:self.stop()
-        ).catch(lambda e:self.stop())
+        # 新版流程：直接打开 Span 阀门并开始采样 CO2
+        AsyPromise(self.open_ugc_zero_or_span_valve, port=self.port).then(
+            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_co2_for_span, port=self.port).then(
+                lambda r2: self.stop()
+            ).catch(lambda e: self.stop())
+        ).catch(lambda e: self.stop())
         pass
     def calibrate(self,resolve,reject):
         """量程标定"""
@@ -795,189 +493,784 @@ class Range_Carlibration(Gas_Carlibration,MyQThread):
         )
 
         self.is_STOP=False
-        # resolve()
         self.port = global_setting.get_setting("port", None)
         if self.port is None:
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！",title=self.title )
             reject()
+            return
         if self.is_STOP:
             reject()
-        self.start()
-        resolve()
+            return
+
+        # 不使用线程，直接执行标定流程
+        AsyPromise(self.open_ugc_zero_or_span_valve, port=self.port).then(
+            lambda _: AsyPromise(self.cyclic_sampling_of_ugc_co2_for_span, port=self.port).then(
+                lambda _: resolve()
+            ).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
         pass
     def stop_calibrate(self,resolve,reject):
         """
-        取消量程标定
+        取消量程标定（发送量程设置指令 + 关闭阀门，让设备退出标定模式）
         :param resolve:
         :param reject:
         :return:
         """
         self.is_STOP=True
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  停止SPan量程标定 开始{'.' * 100}", title=self.title)
-        # resolve()
+            f"{time_util.get_format_from_time(time.time())} |  停止SPan量程标定", title=self.title)
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！", title=self.title)
+                f"{time_util.get_format_from_time(time.time())} | 停止失败，未选择串口！", title=self.title)
             reject()
-        AsyPromise(self.return_to_running_state, port=port).then(lambda r: resolve()).catch(lambda e: logger.error(f"{e}"))
-        resolve()
+            return
 
-    def cyclic_sampling_of_zos_oxygen_sensor(self,resolve,reject,port):
-        # 6.循环采样zos氧浓度 和 co2浓度
-        global last_oxygen_value,last_carbon_value,last_pressure_value
-        # 现在测量的氧气值
-        now_oxygen_value = None
-        now_carbon_value = None
-        now_pressure_value = None
-        if self.is_STOP:
-            reject()
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 6.循环采样zos氧浓度和co2浓度。",title=self.title )
-        start_time = time.time()
-        end_time = None
-        # 小于阈值稳定 或者 至少循环60秒
-        while (
-                (
-                        (now_oxygen_value is None or now_carbon_value is None) or
-                        (last_carbon_value is None or last_oxygen_value is None) or
-
-                        (
-                                abs(now_oxygen_value - last_oxygen_value) > float(
-                            global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
-                                'span_calibration_oxygen_threshold'])
-                                or
-                                abs(now_carbon_value - last_carbon_value) > float(
-                            global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'][
-                                'span_calibration_carbon_threshold'])
-                        )
-                        # or
-                        # (
-                        #         now_carbon_value != 0 or now_oxygen_value != 0
-                        # )
-
-                ) and
-                (
-                        end_time is None or int(end_time - start_time) <= float(
-                    global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['span_calibration_circular_times'])
-                )
-
-        ):
-            if self.is_STOP:
-                break
-            # 循环读取CO2浓度
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list("5"),
-                'slave_id': '3',
-                'function_code': '4',
-                'timeout': 1
-            }
-            self.send_thread.send_message = self.send_message
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。1）采集二氧化碳浓度，is_STOP={self.is_STOP}",
-                title=self.title)
-            carbon_data, carbon_message = self.send_thread.Send_no_promise()
-            now_carbon_values = [item['value'] for item in carbon_data['data'] if "CO2" in item['desc']]
-            last_carbon_value = copy.deepcopy(now_carbon_value)
-            now_carbon_value = now_carbon_values[0] if now_carbon_values else None
-            # 采集氧气
-            self.send_message = {
-                'port': port,
-                'data': number_util.set_int_to_4_bytes_list(f"00000003"),
-                'slave_id': '4',
-                'function_code': '65',
-                'timeout': 1
-            }
-            self.send_thread.send_message = self.send_message
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定  6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。2）采集氧气浓度",
-                title=self.title)
-            oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-            now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
-            last_oxygen_value = copy.deepcopy(now_oxygen_value)
-            now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
-
-            now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
-            last_pressure_value = copy.deepcopy(now_pressure_value)
-            now_pressure_value = now_pressure_values[0] if now_pressure_values else None
-            end_time = time.time()
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 6.循环采样ugc二氧化碳传感器浓度和zos氧浓度。3）现在氧气浓度、zos气压（{now_oxygen_value}，{now_pressure_value}）之前氧气浓度、zos气压（{last_oxygen_value}，{last_pressure_value}）|现在co2浓度（{now_carbon_value}）之前co2浓度（{last_carbon_value}），已经循环{time_util.format_timedelta(a=datetime.fromtimestamp(end_time), b=datetime.fromtimestamp(start_time), zero_pad=True, signed=True)}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['Calibration']['zero_calibration_circular_times'])}秒",
-                title=self.title)
-            # 发送标定数据消息
-            self.update_status_main_signal_gui_update.send(
-                {'type': 'set_calibration_values',
-                 'value': {
-                     'oxygen_value': now_oxygen_value,
-                     'carbon_value': now_carbon_value,
-                     'oxygen_pressure_value': now_pressure_value,
-                 }
-
-                 }, title=self.title
-            )
-            time.sleep(1)
-            pass
-        last_carbon_value, last_oxygen_value, last_pressure_value = None, None, None
-        if self.is_STOP:
-            reject()
-        # 7. 氧浓传感器span数值记录。
+        # 发送量程设置指令，让设备退出标定模式
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"00000003"),
-            'slave_id': '4',
-            'function_code': '65',
+            'data': number_util.set_int_to_4_bytes_list("00110000"),
+            'slave_id': '3',
+            'function_code': '6',
             'timeout': 1
         }
         self.send_thread.send_message = self.send_message
 
-        oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-        now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
-        now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
-
-        now_pressure_values = [item['value'] for item in oxygen_data['data'] if "气压力(kPa)" in item['desc']]
-        now_pressure_value = now_pressure_values[0] if now_pressure_values else None
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 7.氧浓传感器span数值记录。氧气浓度：{now_oxygen_value}%，zos气压：{now_pressure_value}KPa，CO2：{now_carbon_value}%",title=self.title )
-        # 存储值----------------------------------------------------
+            f"{time_util.get_format_from_time(time.time())} | 停止量程标定：发送量程设置指令", title=self.title)
+
+        # 发送指令 -> 关闭阀门 -> 完成
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: AsyPromise(self.close_ugc_zero_or_span_valve, port=port).then(
+                lambda r2: AsyPromise(self.stop_finish_calibration).then(lambda r3: resolve()).catch(lambda e: reject(e))
+            ).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
+
+    def cyclic_sampling_of_ugc_co2_for_span(self,resolve,reject,port):
+        """
+        UGC span 标定 CO2 采样（逐笼完成）
+        按用户开启的笼子顺序，逐个笼子读取并等待稳定后再进入下一个
+        稳定条件：连续15秒内数据变化 < 15ppm，且值在标准气浓度±25ppm范围内
+        """
+        if self.is_STOP:
+            reject("stopped")
+            return
+
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UGC span标定：开始逐笼采样 CO2浓度",
+            title=self.title
+        )
+
+        config = global_setting.get_setting("UFC_UGC_ZOS_config")
+        threshold = float(config['Calibration']['span_calibration_carbon_threshold'])
+        standard_gas_concentration = float(config['Calibration'].get('standard_gas_concentration', 300))
+        # 标准气浓度单位转换：配置文件是ppm，需要转换为%（除以10000）
+        standard_gas_concentration_percent = standard_gas_concentration / 10000.0  # 300ppm = 0.03%
+        stable_required_count = 15  # 连续15秒稳定
+        max_wait_time = 30  # 每个笼子最大等待30秒
+
+        # 获取用户开启的笼子列表
+        mouse_cages = global_setting.get_setting("mouse_cages", [])
+        # 转换为路号（笼子号-1），并添加参考气路8
+        routes_to_calibrate = [cage - 1 for cage in mouse_cages] + [8]
+
+        # 逐个路完成标定
+        for route_x in routes_to_calibrate:
+            if self.is_STOP:
+                reject("stopped")
+                return
+
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | UGC span标定：开始标定路{route_x}",
+                title=self.title
+            )
+
+            # 该路的状态
+            last_value = None
+            current_value = None
+            stable_count = 0
+            route_start_time = time.time()  # 记录该路开始时间
+
+            # 循环读取该路直到稳定
+            while True:
+                if self.is_STOP:
+                    reject("stopped")
+                    return
+
+                # 检查该路是否超时
+                elapsed_time = time.time() - route_start_time
+                if elapsed_time > max_wait_time:
+                    self.update_status_main_signal_gui_update.send(
+                        f"{time_util.get_format_from_time(time.time())} | UGC span标定：路{route_x}超时（{max_wait_time}秒），跳过进入下一路",
+                        title=self.title
+                    )
+                    break
+
+                # 读取该路的 CO2 浓度
+                self.send_message = {
+                    'port': port,
+                    'data': number_util.set_int_to_4_bytes_list(f"000{route_x:X}0005"),
+                    'slave_id': '3',
+                    'function_code': '4',
+                    'timeout': 1
+                }
+                self.send_thread.send_message = self.send_message
+                carbon_data, carbon_message = self.send_thread.Send_no_promise()
+
+                if not carbon_data or 'data' not in carbon_data:
+                    time.sleep(1)
+                    continue
+
+                now_carbon_values = [
+                    item.get('value')
+                    for item in carbon_data.get('data', [])
+                    if "CO2" in str(item.get('desc', ''))
+                ]
+                last_value = current_value
+                current_value = now_carbon_values[0] if now_carbon_values else None
+
+                # 判断稳定性（变化 < 15ppm，且值在合理范围内）
+                is_stable = False
+                if current_value is not None and last_value is not None:
+                    change = abs(current_value - last_value)
+                    threshold_percent = threshold / 10000.0  # 15ppm -> 0.0015%
+                    # 范围：标准气浓度 ± 200ppm（考虑实际测量偏差）
+                    lower_bound = standard_gas_concentration_percent - (200 / 10000.0)
+                    upper_bound = standard_gas_concentration_percent + (200 / 10000.0)
+                    in_range = lower_bound <= current_value <= upper_bound
+                    is_stable = (change < threshold_percent) and in_range
+
+                if is_stable:
+                    stable_count += 1
+                else:
+                    stable_count = 0
+
+                # 立即发送该路的数据给UI显示
+                self.update_status_main_signal_gui_update.send(
+                    {'type': 'set_calibration_values',
+                     'value': {
+                         'carbon_value': current_value,
+                     }
+                     }, title=self.title
+                )
+
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | UGC span标定：路{route_x} CO2={current_value}%, 稳定计数={stable_count}/{stable_required_count}",
+                    title=self.title
+                )
+
+                # 该路稳定，进入下一路
+                if stable_count >= stable_required_count:
+                    self.update_status_main_signal_gui_update.send(
+                        f"{time_util.get_format_from_time(time.time())} | UGC span标定：路{route_x}已稳定",
+                        title=self.title
+                    )
+                    break
+
+                time.sleep(1)
+
+        if self.is_STOP:
+            reject("stopped")
+            return
+
+        # 发送一次全局 CO2 span 设置指令
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("00110000"),
+            'slave_id': '3',
+            'function_code': '6',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UGC span标定：发送全局 CO2 span 设置指令",title=self.title)
+
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: AsyPromise(self.close_ugc_zero_or_span_valve, port=port).then(
+                lambda r2: resolve()
+            ).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
+
+    pass
+
+
+class ZOS_Zero_Calibration(Gas_Carlibration, MyQThread):
+    """
+    ZOS 零点标定（独立流程，不与 UGC 耦合）
+    """
+    def __init__(self):
+        self.title = GapSystem_Running_Type.ZERO_CALIBRATION
+        self.port = None
+        Gas_Carlibration.__init__(self, title=self.title, type=Gas_Carlibration_Type.ZERO)
+
+        mouse_cages = global_setting.get_setting("mouse_cages", [])
+        num_cages = len(mouse_cages)
+        timeout_ms = 300000 + (num_cages * 20000)
+
+        MyQThread.__init__(self, name='ZOS_Zero_Calibration_thread', deletion_timeout_ms=timeout_ms)
+
+    def dosomething(self):
+        # ZOS 调零独立流程
+        AsyPromise(self.start_zos_zero_calibration, port=self.port).then(
+            lambda r: self.stop()
+        ).catch(lambda e: self.stop())
+
+    def calibrate(self, resolve, reject):
+        """ZOS 零点标定"""
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | ZOS 零点标定开始",
+            title=self.title)
+        self.update_status_main_signal_gui_update.send(
+            {'type': 'set_start_zero_calibration_time',
+             'value': f'{time_util.get_format_from_time(time.time())}'},
+            title=self.title
+        )
+        self.is_STOP = False
+        self.port = global_setting.get_setting("port", None)
+        if self.port is None:
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！",
+                title=self.title)
+            reject()
+            return
+
+        # 直接执行标定流程，不启动线程
+        AsyPromise(self.start_zos_zero_calibration, port=self.port).then(
+            lambda r: resolve()
+        ).catch(lambda e: reject(e))
+
+    def start_zos_zero_calibration(self, resolve, reject, port):
+        """发送 ZOS 调零开始指令：04 05 00 09 FF 00"""
+        if self.is_STOP:
+            reject("stop")
+            return
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("0009FF00"),
+            'slave_id': '4',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | ZOS 零点标定：发送调零开始指令",
+            title=self.title)
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: AsyPromise(self.cyclic_sampling_zos_oxygen, port=port).then(
+                lambda r2: resolve()
+            ).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
+
+    def cyclic_sampling_zos_oxygen(self, resolve, reject, port):
+        """循环读取 ZOS 所有通道氧气浓度，所有通道稳定15秒后结束
+
+        ZOS 协议：逐通道读取，每个通道单独发送 04 04 00 0X 00 0A 指令
+        """
+        if self.is_STOP:
+            reject()
+            return
+
+        # 获取用户开启的笼子列表，转换为通道号
+        mouse_cages = global_setting.get_setting("mouse_cages", [])
+        channels_to_calibrate = mouse_cages  # ZOS 通道号与笼子号一致
+
+        # 如果没有配置通道，直接保存默认值并完成标定
+        if not channels_to_calibrate:
+            logger.warning("ZOS 零点标定：未配置任何通道，使用默认值完成标定")
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | ZOS 零点标定：未配置通道，使用默认值完成",
+                title=self.title)
+            self.save_zero_data(0.0, 0.0)
+
+            # 发送 ZOS 调零结束指令
+            self.send_message = {
+                'port': port,
+                'data': number_util.set_int_to_4_bytes_list("00090000"),
+                'slave_id': '4',
+                'function_code': '5',
+                'timeout': 1
+            }
+            self.send_thread.send_message = self.send_message
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | ZOS 零点标定：发送调零结束指令",
+                title=self.title)
+            AsyPromise(self.send_thread.Send).then(
+                lambda r: AsyPromise(self.finish_calibration).then(lambda r2: resolve()).catch(lambda e: reject(e))
+            ).catch(lambda e: reject(e))
+            return
+
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | ZOS 零点标定：循环采样所有通道氧气浓度",
+            title=self.title)
+
+        start_time = time.time()
+        total_timeout = 300  # 5分钟总超时
+        threshold = float(global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration'].get(
+            'zero_calibration_oxygen_threshold', 0.1))
+
+        # 每个通道独立状态：{last_value, current_value, stable_since}
+        channel_states = {ch: {'last_value': None, 'current_value': None, 'stable_since': None}
+                         for ch in channels_to_calibrate}
+
+        # 压力值（所有通道共享，从第一个通道读取）
+        pressure_value = None
+
+        while True:
+            if self.is_STOP:
+                reject()
+                return
+
+            # 检查总超时
+            elapsed = time.time() - start_time
+            if elapsed > total_timeout:
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | ZOS 零点标定：超时失败，未能在{total_timeout}秒内所有通道达到稳定",
+                    title=self.title)
+                reject(f"timeout after {total_timeout}s without all channels stable")
+                return
+
+            # 逐通道读取氧气浓度
+            for ch in channels_to_calibrate:
+                if self.is_STOP:
+                    reject()
+                    return
+
+                # 为每个通道单独发送读取指令：04 04 00 0X 00 0A
+                # X 是通道号
+                data_hex = f"00{ch:02X}000A"
+
+                self.send_message = {
+                    'port': port,
+                    'data': number_util.set_int_to_4_bytes_list(data_hex),
+                    'slave_id': '4',
+                    'function_code': '4',
+                    'timeout': 1
+                }
+                self.send_thread.send_message = self.send_message
+                oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
+
+                # 检查数据有效性
+                if not oxygen_data or 'data' not in oxygen_data:
+                    logger.warning(f"ZOS零点标定：通道{ch}读取失败，跳过本次采样")
+                    time.sleep(1)
+                    continue
+
+                # 解析该通道的氧气浓度和压力
+                oxygen_items = [item['value'] for item in oxygen_data['data'] if "氧浓度(%)" in item['desc']]
+                pressure_items = [item['value'] for item in oxygen_data['data'] if "气体压力" in item['desc']]
+
+                # 更新该通道状态
+                state = channel_states[ch]
+                state['last_value'] = state['current_value']
+                state['current_value'] = oxygen_items[0] if oxygen_items else None
+
+                # 更新压力值（从第一个通道获取）
+                if ch == channels_to_calibrate[0] and pressure_items:
+                    pressure_value = pressure_items[0]
+
+                # 检查该通道稳定性
+                if (state['current_value'] is not None and
+                    state['last_value'] is not None and
+                    abs(state['current_value'] - state['last_value']) <= threshold):
+
+                    if state['stable_since'] is None:
+                        state['stable_since'] = time.time()
+                else:
+                    state['stable_since'] = None
+
+                # 立即发送该通道的数据给UI显示
+                self.update_status_main_signal_gui_update.send(
+                    {'type': 'set_calibration_values',
+                     'value': {
+                                'oxygen_value': state['current_value'],
+                                'oxygen_pressure_value': pressure_value,
+                                }
+                     }, title=self.title
+                )
+
+            # 检查是否所有通道都稳定
+            all_stable = True
+            min_stable_duration = float('inf')
+
+            for ch in channels_to_calibrate:
+                state = channel_states[ch]
+                if state['stable_since'] is None:
+                    all_stable = False
+                    min_stable_duration = 0
+                    break
+                else:
+                    stable_duration = time.time() - state['stable_since']
+                    min_stable_duration = min(min_stable_duration, stable_duration)
+
+            # 状态更新
+            channel_status = ", ".join([
+                f"通道{ch}={channel_states[ch]['current_value']}%(稳定{int(time.time() - channel_states[ch]['stable_since'])}s)" if channel_states[ch]['stable_since']
+                else f"通道{ch}={channel_states[ch]['current_value']}%(不稳定)"
+                for ch in channels_to_calibrate
+            ])
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | ZOS 零点标定：{channel_status}，压力={pressure_value}kPa，已循环{int(elapsed)}秒",
+                title=self.title)
+
+            # 所有通道都稳定15秒后结束
+            if all_stable and min_stable_duration >= 15:
+                break
+
+            time.sleep(1)
+
+        if self.is_STOP:
+            reject()
+            return
+
+        # 保存零点数据（使用基准通道 - 第一个通道的值）
+        base_channel = channels_to_calibrate[0]
+        base_channel_value = channel_states[base_channel]['current_value']
+        logger.info(f"ZOS 零点标定：使用通道{base_channel}作为基准通道，值={base_channel_value}%")
+        self.save_zero_data(base_channel_value, pressure_value)
+
+        # 发送 ZOS 调零结束指令：04 05 00 09 00 00
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("00090000"),
+            'slave_id': '4',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | ZOS 零点标定：发送调零结束指令",
+            title=self.title)
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: AsyPromise(self.finish_calibration).then(lambda r2: resolve()).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
+
+    def save_zero_data(self, oxygen_value, pressure_value):
+        """保存 ZOS 零点标定数据"""
         return_data_struct = {}
-        return_data_struct['module_name'] = 'SpanCalibration'
+        return_data_struct['module_name'] = 'ZOS_ZeroCalibration'
         return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        return_data_struct['table_name'] = next(iter(Others_Tables.SPan_Carlibration_Data.value.keys()))
+        return_data_struct['table_name'] = next(iter(Others_Tables.Zero_Carlibration_Data.value.keys()))
         return_data_struct['mouse_cage_number'] = -1
-        # 添加K参数到全局变量 方便氧传感器的值校准 Vr默认是20.9%
-        #K=（Vs-Vzero）/（Vr-Vzero）
-        if now_oxygen_value is not None:
-            K =(now_oxygen_value-global_setting.get_setting("Vzero",0))/(global_setting.get_setting("Vr",20.9)-global_setting.get_setting("Vzero",0))
-            logger.warning(f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 7.量程标定的K值为：{K},Vs值为：{now_oxygen_value}，Vr值为：{global_setting.get_setting('Vr',20.9)},Vzero值为：{global_setting.get_setting('Vzero',0)}")
-            self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 7.量程标定的K值为：{K},Vs值为：{now_oxygen_value}，Vr值为：{global_setting.get_setting('Vr',20.9)},Vzero值为：{global_setting.get_setting('Vzero',0)}",title=self.title )
-            global_setting.set_setting("K",K )
-            return_data_struct['data'] = [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value},{'desc': 'ZOS压力span数值', 'value': now_pressure_value},{'desc': '二氧化碳浓传感器span数值', 'value': now_carbon_value}]
+
+        if oxygen_value is not None:
+            global_setting.set_setting("Vzero", oxygen_value)
+            return_data_struct['data'] = [
+                {'desc': 'ZOS氧浓度0点校准值', 'value': oxygen_value},
+                {'desc': 'ZOS压力0点校准值', 'value': pressure_value}
+            ]
         else:
-            now_oxygen_value = [data['value'] for data in oxygen_data['data'] if data['desc'] == "备注"]
-            if len(now_oxygen_value) == 0:
-                now_oxygen_value = None
-            else:
-                now_oxygen_value = now_oxygen_value[0]
-            logger.critical(f"span_calibration:{now_oxygen_value}")
-            return_data_struct['data'] =oxygen_data['data']+ [{'desc': '氧浓传感器span数值', 'value': now_oxygen_value}]
+            return_data_struct['data'] = [{'desc': 'ZOS氧浓度0点校准值', 'value': None}]
+
         return_data_struct['slave_id'] = 0
         return_data_struct['function_code'] = 0
         result = store_data_with_result(return_data_struct, need_result=True, timeout=5)
         if result and result.success:
-            logger.info(f"数据存储成功，ID: {result.item_id}")
+            logger.info(f"ZOS零点数据存储成功，ID: {result.item_id}")
         else:
-            logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
+            logger.error(f"ZOS零点数据存储失败: {result.error if result else '未知错误'}")
+
+    def stop_calibrate(self, resolve, reject):
+        """停止 ZOS 零点标定"""
+        self.is_STOP = True
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | 停止 ZOS 零点标定",
+            title=self.title)
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            reject()
+            return
+        # 发送调零结束指令
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("00090000"),
+            'slave_id': '4',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: AsyPromise(self.stop_finish_calibration).then(lambda r2: resolve()).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
+
+
+class ZOS_Span_Calibration(Gas_Carlibration, MyQThread):
+    """
+    ZOS span 标定（独立流程，不与 UGC 耦合）
+    """
+    def __init__(self):
+        self.title = GapSystem_Running_Type.RANGE_CALIBRATION
+        self.port = None
+        Gas_Carlibration.__init__(self, title=self.title, type=Gas_Carlibration_Type.SPAN)
+
+        mouse_cages = global_setting.get_setting("mouse_cages", [])
+        num_cages = len(mouse_cages)
+        timeout_ms = 300000 + (num_cages * 20000)
+
+        MyQThread.__init__(self, name='ZOS_Span_Calibration_thread', deletion_timeout_ms=timeout_ms)
+
+    def dosomething(self):
+        # 新版流程：ZOS 调 span 独立流程
+        AsyPromise(self.start_zos_span_calibration, port=self.port).then(
+            lambda r: self.stop()
+        ).catch(lambda e: self.stop())
+
+    def calibrate(self, resolve, reject):
+        """ZOS span 标定"""
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | ZOS span 标定开始",
+            title=self.title)
+        self.update_status_main_signal_gui_update.send(
+            {'type': 'set_start_span_calibration_time',
+             'value': f'{time_util.get_format_from_time(time.time())}'},
+            title=self.title
+        )
+        self.is_STOP = False
+        self.port = global_setting.get_setting("port", None)
+        if self.port is None:
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！",
+                title=self.title)
+            reject()
+            return
+
+        # 直接执行标定流程，不启动线程
+        AsyPromise(self.start_zos_span_calibration, port=self.port).then(
+            lambda r: resolve()
+        ).catch(lambda e: reject(e))
+
+    def start_zos_span_calibration(self, resolve, reject, port):
+        """发送 ZOS 调 span 开始指令：04 05 00 0A FF 00"""
+        if self.is_STOP:
+            reject("stop")
+            return
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("000AFF00"),
+            'slave_id': '4',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | ZOS span 标定：发送调 span 开始指令",
+            title=self.title)
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: AsyPromise(self.cyclic_sampling_zos_oxygen_for_span, port=port).then(
+                lambda r2: resolve()
+            ).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
+
+    def cyclic_sampling_zos_oxygen_for_span(self, resolve, reject, port):
+        """ZOS span 标定 氧气采样（逐笼完成）
+        按用户开启的笼子顺序，逐个笼子读取并等待稳定后再进入下一个
+
+        ZOS 协议：逐通道读取，每个通道单独发送 04 04 00 0X 00 0A 指令
+        """
         if self.is_STOP:
             reject()
+            return
+
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | ZOS span 标定：开始逐笼采样氧气浓度",
+            title=self.title
+        )
+
+        config = global_setting.get_setting("UFC_UGC_ZOS_config")
+        threshold = float(config['Calibration'].get('span_calibration_oxygen_threshold', 0.1))
+        stable_required_count = 15  # 连续15秒稳定
+        max_wait_time = 60  # 每个通道最大等待60秒
+
+        # 获取用户开启的笼子列表，转换为通道号
+        mouse_cages = global_setting.get_setting("mouse_cages", [])
+        channels_to_calibrate = mouse_cages  # ZOS 通道号与笼子号一致
+
+        # 压力值（所有通道共享）
+        pressure_value = None
+
+        # 逐个通道完成标定
+        for ch in channels_to_calibrate:
+            if self.is_STOP:
+                reject()
+                return
+
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | ZOS span 标定：开始标定通道{ch}",
+                title=self.title
+            )
+
+            # 该通道的状态
+            last_value = None
+            current_value = None
+            stable_count = 0
+            channel_start_time = time.time()  # 记录该通道开始时间
+
+            # 循环读取该通道直到稳定
+            while True:
+                if self.is_STOP:
+                    reject()
+                    return
+
+                # 检查该通道是否超时
+                elapsed_time = time.time() - channel_start_time
+                if elapsed_time > max_wait_time:
+                    self.update_status_main_signal_gui_update.send(
+                        f"{time_util.get_format_from_time(time.time())} | ZOS span 标定：通道{ch}超时（{max_wait_time}秒），跳过进入下一通道",
+                        title=self.title
+                    )
+                    break
+
+                # 为该通道发送读取指令：04 04 00 0X 00 0A
+                data_hex = f"00{ch:02X}000A"
+
+                self.send_message = {
+                    'port': port,
+                    'data': number_util.set_int_to_4_bytes_list(data_hex),
+                    'slave_id': '4',
+                    'function_code': '4',
+                    'timeout': 1
+                }
+                self.send_thread.send_message = self.send_message
+                oxygen_data, _ = self.send_thread.Send_no_promise()
+
+                if not oxygen_data or 'data' not in oxygen_data:
+                    time.sleep(1)
+                    continue
+
+                # 解析该通道的氧气浓度和压力
+                oxygen_items = [
+                    item.get('value')
+                    for item in oxygen_data.get('data', [])
+                    if "氧气浓度(%)" in str(item.get('desc', '')) or "氧浓度(%)" in str(item.get('desc', ''))
+                ]
+                pressure_items = [
+                    item.get('value')
+                    for item in oxygen_data.get('data', [])
+                    if "气压力" in str(item.get('desc', '')) or "气体压力" in str(item.get('desc', ''))
+                ]
+
+                last_value = current_value
+                current_value = oxygen_items[0] if oxygen_items else None
+
+                # 更新压力值
+                if pressure_items:
+                    pressure_value = pressure_items[0]
+
+                # 判断稳定性
+                is_stable = False
+                if current_value is not None and last_value is not None:
+                    change = abs(current_value - last_value)
+                    is_stable = change <= threshold
+
+                if is_stable:
+                    stable_count += 1
+                else:
+                    stable_count = 0
+
+                # 立即发送该通道的数据给UI显示
+                self.update_status_main_signal_gui_update.send(
+                    {'type': 'set_calibration_values',
+                     'value': {
+                         'oxygen_value': current_value,
+                         'oxygen_pressure_value': pressure_value,
+                     }
+                     }, title=self.title
+                )
+
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | ZOS span 标定：通道{ch} O2={current_value}%, 压力={pressure_value}kPa, 稳定计数={stable_count}/{stable_required_count}",
+                    title=self.title
+                )
+
+                # 该通道稳定，进入下一通道
+                if stable_count >= stable_required_count:
+                    self.update_status_main_signal_gui_update.send(
+                        f"{time_util.get_format_from_time(time.time())} | ZOS span 标定：通道{ch}已稳定",
+                        title=self.title
+                    )
+                    break
+
+                time.sleep(1)
+
+        if self.is_STOP:
+            reject()
+            return
+
+        # 保存 span 数据并计算 K 值（使用最后一个通道的值）
+        base_channel = channels_to_calibrate[-1]
+        base_channel_value = current_value  # 使用最后一个通道的 current_value
+        logger.info(f"ZOS span 标定：使用通道{base_channel}作为基准通道，值={base_channel_value}%")
+        self.save_span_data(base_channel_value, pressure_value)
+
+        # 发送 ZOS 调 span 结束指令：04 05 00 0A 00 00
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("000A0000"),
+            'slave_id': '4',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | ZOS span 标定：发送调 span 结束指令",
+            title=self.title)
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: AsyPromise(self.finish_calibration).then(lambda r2: resolve()).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))
+
+    def save_span_data(self, oxygen_value, pressure_value):
+        """保存 ZOS span 标定数据并计算 K 值"""
+        return_data_struct = {}
+        return_data_struct['module_name'] = 'ZOS_SpanCalibration'
+        return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        return_data_struct['table_name'] = next(iter(Others_Tables.SPan_Carlibration_Data.value.keys()))
+        return_data_struct['mouse_cage_number'] = -1
+
+        if oxygen_value is not None:
+            # 计算 K 值：K = (Vs - Vzero) / (Vr - Vzero)
+            K = (oxygen_value - global_setting.get_setting("Vzero", 0)) / (
+                        global_setting.get_setting("Vr", 20.9) - global_setting.get_setting("Vzero", 0))
+            logger.warning(
+                f"ZOS span 标定 K 值：{K}, Vs={oxygen_value}, Vr={global_setting.get_setting('Vr', 20.9)}, Vzero={global_setting.get_setting('Vzero', 0)}")
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | ZOS span 标定 K 值：{K}",
+                title=self.title)
+            global_setting.set_setting("K", K)
+            return_data_struct['data'] = [
+                {'desc': 'ZOS氧浓传感器span数值', 'value': oxygen_value},
+                {'desc': 'ZOS压力span数值', 'value': pressure_value},
+                {'desc': 'K值', 'value': K}
+            ]
         else:
-            AsyPromise(self.send_thread.Send).then(
-                #8.校SPAN返回系统工作运行状态
-                lambda r: AsyPromise(self.return_to_running_state, port=port
-                                     ).then(lambda r2:resolve()).catch(lambda e: logger.error(f"{e}"))
-            ).catch(lambda e: reject(e))
+            return_data_struct['data'] = [{'desc': 'ZOS氧浓传感器span数值', 'value': None}]
 
-    pass
+        return_data_struct['slave_id'] = 0
+        return_data_struct['function_code'] = 0
+        result = store_data_with_result(return_data_struct, need_result=True, timeout=5)
+        if result and result.success:
+            logger.info(f"ZOS span 数据存储成功，ID: {result.item_id}")
+        else:
+            logger.error(f"ZOS span 数据存储失败: {result.error if result else '未知错误'}")
 
+    def stop_calibrate(self, resolve, reject):
+        """停止 ZOS span 标定"""
+        self.is_STOP = True
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | 停止 ZOS span 标定",
+            title=self.title)
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            reject()
+            return
+        # 发送调 span 结束指令
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("000A0000"),
+            'slave_id': '4',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            lambda r: AsyPromise(self.stop_finish_calibration).then(lambda r2: resolve()).catch(lambda e: reject(e))
+        ).catch(lambda e: reject(e))

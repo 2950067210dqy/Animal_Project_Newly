@@ -1545,7 +1545,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                04 01 00 0X 00 01 -> 04 01 01 YY CRC
                YY: 01=正常, 00=故障
                """
-        pack_struct = "B"
+        pack_struct = "B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
@@ -2077,57 +2077,31 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
     def parser_function_code_4(self):
         function_desc = """
                                读传感器测量值
-                               参数长度：11
+                               返回：03 04 05 00 00  00 00 00 00 11 11 22 22  CRC-16
                                 """
+        # False: data从index2起，05也算data[0]
+        # data[0]=05, [1..6]=00, [7][8]=气压, [9][10]=CO2
         pack_struct = "B " * 11
-        self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
+        self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=False)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['流量计1(ML/min)','气压(KPa)', 'CO2(%)']
-        j = 0
-        for i in range(len(self.response_struct['data'])):
-            match i:
-                case 1:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2)
-                    }
-                    )
-                    j += 1
-                    pass
-                # 气压
-                case 3:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value':round( float(
-                                self.get_signed_int(
-                                    "".join(self.int_to_8bit_binary([self.response_struct['data'][i - 1],self.response_struct['data'][i ]]))
-                                )) /10,4)
-                        })
-                    j += 1
-                    pass
+        data = self.response_struct['data']
 
-                case 5:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': round((int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])),
-                            2) / 1000000)*100,6)
-                    }
-                    )
-                    j += 1
-                    pass
-                case _:
-                    pass
-        return_data_str = ""
-        for return_data in return_datas:
-            return_data_str += f"{return_data['desc']}:{return_data['value']} | "
+        # 气压：data[7][8]，有符号，单位/10 -> KPa
+        pressure_raw = "".join(self.int_to_8bit_binary(num_list=[data[7], data[8]]))
+        pressure = round(float(self.get_signed_int(pressure_raw)) / 10, 4)
+        return_datas.append({"desc": "气压(KPa)", "value": pressure})
+
+        # CO2：data[9][10]，无符号，ppm转%
+        co2_ppm = int("".join(self.int_to_8bit_binary(num_list=[data[9], data[10]])), 2)
+        co2_percent = round (co2_ppm / 10000, 4)
+        return_datas.append({"desc": "CO2(%)", "value": co2_percent})
+
+        return_data_str = "".join(f"{d['desc']}:{d['value']} | " for d in return_datas)
         parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
-        pass
 
     """
                03 05 X
