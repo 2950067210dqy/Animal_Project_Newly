@@ -335,10 +335,11 @@ class UFC_gas_path_system_run_thread(MyQThread):
 
         time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time']))
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-
+        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
+        cage_addr = mouse_cages_inc[mouse_cage_index] - 1 if mouse_cage_index is not None else 8
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("00000006"),
+            'data': number_util.set_int_to_4_bytes_list(f"00{cage_addr}0002"),
             'slave_id': '2',
             'function_code': '4',
             'timeout': 1
@@ -373,11 +374,11 @@ class UFC_gas_path_system_run_thread(MyQThread):
         """
         time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time']))
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-
-        # 目前只有一路
+        mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
+        cage_addr = mouse_cages_inc[mouse_cage_index] - 1 if mouse_cage_index is not None else 8
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("00000006"),
+            'data': number_util.set_int_to_4_bytes_list(f"00{cage_addr}0002"),
             'slave_id': '2',
             'function_code': '4',
             'timeout': 1

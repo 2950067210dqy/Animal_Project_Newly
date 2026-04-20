@@ -2482,12 +2482,12 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
                         读传感器测量值
                         参数长度：13
                          """
-        pack_struct = "B B B B B B B B B B B B B"
+        pack_struct = "B" * 5
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['流量计测量值(sccm)', '备用1高字节', '备用1低字节', '备用2高字节', '备用2低字节']
+        port_types = ['流量计测量值(sccm)']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
@@ -2495,9 +2495,8 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
                     # 流量测量值 四字节IEEE754码
                     # 首先将其展开为二进制数，
                     data_str = "".join(self.int_to_8bit_binary(
-                        num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
-                                  self.response_struct['data'][i - 1], self.response_struct['data'][i]]))
-
+                        num_list=[self.response_struct['data'][i - 3] << 24, self.response_struct['data'][i - 2]<< 16,
+                                  self.response_struct['data'][i - 1]<< 8, self.response_struct['data'][i]]))
                     # # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
                     # sign_bit = int(data_str[0], 2)
                     # exponent_bit = int(data_str[1:9], 2)
@@ -2509,45 +2508,6 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
                     return_datas.append({
                         "desc": port_types[j],
                         'value': value
-                    }
-                    )
-                    j += 1
-                    pass
-
-                case 4:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value':
-                            f"0X{self.response_struct['data'][i]:02x}"
-
-                    }
-                    )
-                    j += 1
-                    pass
-                case 5:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value':
-                            f"0X{self.response_struct['data'][i]:02x}"
-                    }
-                    )
-                    j += 1
-                    pass
-                case 6:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value':
-                            f"0X{self.response_struct['data'][i]:02x}"
-                    }
-                    )
-                    j += 1
-                    pass
-                    pass
-                case 7:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value':
-                            f"0X{self.response_struct['data'][i]:02x}"
                     }
                     )
                     j += 1

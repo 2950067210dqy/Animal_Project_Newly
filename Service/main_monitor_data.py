@@ -786,10 +786,12 @@ class Add_message_thread(MyQThread):
             #拿到气路启动是否启动的状态
             sync_with_gas = barrier is not None and getattr(barrier, "parties", 1) > 1
             #如果气路 启动了就拿全局下标，否则就 拿自己的内部下标
-            current_mouse_cage_index = global_setting.get_setting("cage_number_list_index", None) if sync_with_gas else self.mouse_cage_index
+            # current_mouse_cage_index = global_setting.get_setting("cage_number_list_index", None) if sync_with_gas else self.mouse_cage_index
+            current_mouse_cage_index =copy.deepcopy(self.mouse_cage_index)
             #如果气路还没启动
-            if not sync_with_gas:
-                global_setting.set_setting("cage_number_list_index", current_mouse_cage_index)
+            # if not sync_with_gas:
+            #     global_setting.set_setting("cage_number_list_index", current_mouse_cage_index)
+
 
             send_messages = []
             # # 公共传感器数据的send_messages  现在只发传感器数值查询报文DEBUGGER
@@ -854,19 +856,32 @@ class Add_message_thread(MyQThread):
             # print(f"send_messages:{send_messages}")
             # 将鼠笼下标循环前移动
             # ★ 关键修复：在移动笼子索引之前，先把当前笼子索引同步给 barrier_action ？？？？？
-            if not sync_with_gas:
-                global_setting.set_setting("cage_number_list_index", self.mouse_cage_index)
-                if self.mouse_cage_index is not None:
-                    if self.mouse_cage_index == len(gids) - 1:
-                    # 最后一个鼠笼 则下一个为参考气路
-                        self.mouse_cage_index = None
-                    else:
-                        self.mouse_cage_index = self.mouse_cage_index + 1
-                    pass
+            # if not sync_with_gas:
+            #     global_setting.set_setting("cage_number_list_index", self.mouse_cage_index)
+            #     if self.mouse_cage_index is not None:
+            #         if self.mouse_cage_index == len(gids) - 1:
+            #         # 最后一个鼠笼 则下一个为参考气路
+            #             self.mouse_cage_index = None
+            #         else:
+            #             self.mouse_cage_index = self.mouse_cage_index + 1
+            #         pass
+            #     else:
+            #     # 当前为参考气 则下一个为第一个鼠笼
+            #         self.mouse_cage_index = 0
+            #         pass
+
+            global_setting.set_setting("cage_number_list_index", current_mouse_cage_index)
+            if self.mouse_cage_index is not None:
+                if self.mouse_cage_index == len(gids) - 1:
+                # 最后一个鼠笼 则下一个为参考气路
+                    self.mouse_cage_index = None
                 else:
-                # 当前为参考气 则下一个为第一个鼠笼
-                    self.mouse_cage_index = 0
-                    pass
+                    self.mouse_cage_index = self.mouse_cage_index + 1
+                pass
+            else:
+            # 当前为参考气 则下一个为第一个鼠笼
+                self.mouse_cage_index = 0
+                pass
             batch_complete_event.wait()
 
             # 在这里手动触发 barrier（只有自己一个线程，立刻触发 barrier_action）
