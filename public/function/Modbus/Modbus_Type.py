@@ -307,7 +307,7 @@ class Modbus_Slave_Tables(Enum):
                 ("oxygen_partial_pressure", "氧分压(hPa)", " REAL "),
                 ("zos_temperature_num", "ZOS温度测量值(°C)", " REAL "),
                 ("gas_pressure", "气体压力(hPa)", " REAL "),
-                ("oxygen_num", "氧气传感器测量值(%)", " REAL "),
+                ("oxygen_num", "氧浓度(%)", " REAL "),
                 ("fault_code", "ZOS故障码", " INTEGER "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
