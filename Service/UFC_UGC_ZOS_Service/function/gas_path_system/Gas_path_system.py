@@ -333,7 +333,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
             logger.error("UFC运行失败，未选择串口！")
             return
 
-        time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time']))
+        # time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time']))
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         cage_addr = mouse_cages_inc[mouse_cage_index] - 1 if mouse_cage_index is not None else 8
@@ -372,7 +372,7 @@ class UFC_gas_path_system_run_thread(MyQThread):
         """
         读取流量值
         """
-        time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time']))
+        # time.sleep(int(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time']))
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         cage_addr = mouse_cages_inc[mouse_cage_index] - 1 if mouse_cage_index is not None else 8
