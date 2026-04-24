@@ -1542,8 +1542,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
     def parser_function_code_1(self):
         function_desc = """
                读传感器状态
-               04 01 00 0X 00 01 -> 04 01 01 YY CRC
-               YY: 01=正常, 00=故障
+               参数长度：2
                """
         pack_struct = "B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
@@ -2023,8 +2022,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
     def parser_function_code_2(self):
         function_desc = """
                        读传感器状态
-                       03 02 00 0X 00 02 -> 03 02 00 0x 00 0y
-                       y: 3=预热中, 2=超量程, 1=故障, 0=正常
+                       参数长度：4
                        """
         pack_struct = "B B B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=False)
@@ -2032,9 +2030,19 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
 
-        status = self.response_struct['data'][1] if len(self.response_struct['data']) > 1 else 0
-        return_datas.append({"desc": "CO2阀门状态", 'value': status})
-        return_data_str = f"CO2阀门状态：{'ON' if status == 0 else 'OFF'} | "
+        channel = self.response_struct['data'][1] if len(self.response_struct['data']) > 1 else 0
+        status = self.response_struct['data'][3] if len(self.response_struct['data']) > 3 else 0
+
+        return_datas.append({"desc": "传感器状态", 'value': status})
+
+        status_map = {
+            0: "正常",
+            1: "故障",
+            2: "超量程",
+            3: "预热中"
+        }
+
+        return_data_str = f"路号:{channel} | 传感器状态：{status_map.get(status, f'未知({status})')} | "
         parser_message = f"{time_util.get_format_from_time(time.time())} | {self.response_hex}-响应报文解析-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
@@ -2077,7 +2085,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
     def parser_function_code_4(self):
         function_desc = """
                                读传感器测量值
-                               返回：03 04 05 00 00  00 00 00 00 11 11 22 22  CRC-16
+                               参数长度：11
                                 """
         # False: data从index2起，05也算data[0]
         # data[0]=05, [1..6]=00, [7][8]=气压, [9][10]=CO2
@@ -2088,12 +2096,12 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         return_datas = []
         data = self.response_struct['data']
 
-        # 气压：data[7][8]，有符号，单位/10 -> KPa
+        # 气压：data[7][8]，单位/10 -> KPa
         pressure_raw = "".join(self.int_to_8bit_binary(num_list=[data[7], data[8]]))
         pressure = round(float(self.get_signed_int(pressure_raw)) / 10, 4)
         return_datas.append({"desc": "气压(KPa)", "value": pressure})
 
-        # CO2：data[9][10]，无符号，ppm转%
+        # CO2：data[9][10]，ppm，
         co2_ppm = int("".join(self.int_to_8bit_binary(num_list=[data[9], data[10]])), 2)
         co2_percent = round (co2_ppm / 10000, 4)
         return_datas.append({"desc": "CO2(%)", "value": co2_percent})
@@ -2359,32 +2367,31 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
 
     def parser_function_code_1(self):
         function_desc = """
-        读输出端口状态信息
-        参数长度：3
+        读取输出端口状态信息
+        参数长度：2
         """
         pack_struct = "B B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
-        data_binary_str_list = self.int_to_8bit_binary(num_list=self.response_struct['data'])
-        data_binary_str_list_all = "".join(data_binary_str_list)
+
+        data_binary_str = self.int_to_8bit_binary(num_list=[self.response_struct['data'][0]])[0]
         return_datas = []
-        port_types = ['机器状态', '气泵', '采样阀', '参考气阀门', '鼠笼8的电磁阀', '鼠笼7的电磁阀', '鼠笼6的电磁阀',
-                      '鼠笼5的电磁阀', '鼠笼4的电磁阀', '鼠笼3的电磁阀', '鼠笼2的电磁阀',
-                      '鼠笼1的电磁阀']
+
+        # 只用第1个字节：D3=机器状态，D2=气泵
+        port_types = ['机器状态', '气泵']
         index = 0
-        for str_single in data_binary_str_list_all:
-            if index >= 4:
+        for str_single in data_binary_str:
+            if index >= 4 and index <= 5:
                 return_datas.append({
                     "desc": port_types[index - 4],
                     'value': int(str_single)
-                }
-                )
+                })
             index += 1
 
         return_data_str = ""
         for index, return_data in enumerate(return_datas):
-            if return_data['desc'] == port_types[3]:
+            if return_data['desc'] == '机器状态':
                 return_data_str += f"{return_data['desc']}：{'运行' if return_data['value'] == 1 else '停止'} | "
                 pass
             else:
@@ -2403,24 +2410,38 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
 
     def parser_function_code_2(self):
         function_desc = """
-                读传感器状态信息
+                读取流量控制器状态信息
                 参数长度：2
                 """
-        pack_struct = "B B"
+        pack_struct = "B B B"
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
-        data_binary_str = self.int_to_8bit_binary(num_list=self.response_struct['data'])[0]
+
+        data_binary_str_list = self.int_to_8bit_binary(num_list=self.response_struct['data'])
         return_datas = []
-        sensor_types = ['流量传感器8', '流量传感器7', '流量传感器6', '流量传感器5', '流量传感器4', '流量传感器3',
-                        '流量传感器2', '流量传感器1']
+
+        # 第1个字节：D0=参考气流量传感器
+        data_binary_str_0 = data_binary_str_list[0]
         index = 0
-        for str_single in data_binary_str:
+        for str_single in data_binary_str_0:
+            if index == 7:
+                return_datas.append({
+                    "desc": '参考气流量传感器',
+                    'value': int(str_single)
+                })
+            index += 1
+
+        # 第2个字节：继续从左到右解析
+        data_binary_str_1 = data_binary_str_list[1]
+        sensor_types = ['流量传感器8', '流量传感器7', '流量传感器6', '流量传感器5',
+                        '流量传感器4', '流量传感器3', '流量传感器2', '流量传感器1']
+        index = 0
+        for str_single in data_binary_str_1:
             return_datas.append({
                 "desc": sensor_types[index],
                 'value': int(str_single)
-            }
-            )
+            })
             index += 1
 
         return_data_str = ""

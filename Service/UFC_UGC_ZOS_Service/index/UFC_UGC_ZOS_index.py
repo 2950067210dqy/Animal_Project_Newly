@@ -9,7 +9,7 @@ from blinker.base import _PNamespaceSignal
 from loguru import logger
 from blinker import signal, Signal
 
-from Service.UFC_UGC_ZOS_Service.function.gas_calibration.Gas_Carlibration import Zero_Carlibration, Range_Carlibration, ZOS_Zero_Calibration, ZOS_Span_Calibration
+from Service.UFC_UGC_ZOS_Service.function.gas_calibration.Gas_Carlibration import Zero_Carlibration, Range_Carlibration
 from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
     UGC_gas_path_system, UFC_gas_path_system
 from Service.UFC_UGC_ZOS_Service.function.gas_state_check.Gas_State_Check import UFC_Gas_State_Check
@@ -108,8 +108,6 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.ZOS_gas_path_system_obj: ZOS_gas_path_system = None
         self.Zero_carlibration_obj: Zero_Carlibration = None
         self.Range_carlibration_obj: Range_Carlibration = None
-        self.ZOS_Zero_carlibration_obj: ZOS_Zero_Calibration = None
-        self.ZOS_Span_carlibration_obj: ZOS_Span_Calibration = None
         self.UFC_gas_state_check_obj: UFC_Gas_State_Check = None
 
         self.zos_start_timer: PeriodicTimer = None
@@ -251,13 +249,6 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.Range_carlibration_obj = Range_Carlibration()
         self.Range_carlibration_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         self.Range_carlibration_obj.update()
-        # 新增：初始化 ZOS 标定对象
-        self.ZOS_Zero_carlibration_obj = ZOS_Zero_Calibration()
-        self.ZOS_Zero_carlibration_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
-        self.ZOS_Zero_carlibration_obj.update()
-        self.ZOS_Span_carlibration_obj = ZOS_Span_Calibration()
-        self.ZOS_Span_carlibration_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
-        self.ZOS_Span_carlibration_obj.update()
         self.UFC_gas_state_check_obj = UFC_Gas_State_Check()
         self.UFC_gas_state_check_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         self.UFC_gas_state_check_obj.update()
@@ -311,30 +302,24 @@ class UFC_UGC_ZOS_index(MyQThread):
 
         return p
 
-
-    def calibration_start(self,resolve,reject):
+    def calibration_start(self, resolve, reject):
         AsyPromise(self.zero_carlibration_obj_calibrate_wrapped).then(
-            lambda v: AsyPromise(
-                self.span_carlibration_obj_calibrate_wrapped
-            ).then().catch( lambda e: reject(e))
-        ).catch( lambda e: reject(e))
-    def zero_carlibration_obj_calibrate_wrapped(self,resolve,reject):
-        # UGC 零点标定 -> ZOS 零点标定 -> 恢复线程 -> 结束（链式调用）
-        logger.warning("开始UGC零点标定")
-        AsyPromise(self.Zero_carlibration_obj.calibrate).then(
-            lambda _:  AsyPromise(self.ZOS_Zero_carlibration_obj.calibrate)
-        ).catch(lambda e: logger.error(f"{e}"))
+            lambda _: AsyPromise(self.span_carlibration_obj_calibrate_wrapped)
+        ).then(lambda _: resolve()).catch(lambda e: reject(e))
+
+    def zero_carlibration_obj_calibrate_wrapped(self, resolve, reject):
+        AsyPromise(self.Zero_carlibration_obj.calibrate).catch(lambda e: logger.error(f"{e}"))
         global wait_zero_calibration_finished_event
         wait_zero_calibration_finished_event.wait()
         resolve()
+        pass
+
     def span_carlibration_obj_calibrate_wrapped(self, resolve, reject):
-        # UGC 量程标定 -> ZOS 量程标定 -> 恢复线程 -> 结束（链式调用）
-        AsyPromise(self.Range_carlibration_obj.calibrate).then(
-            lambda _: AsyPromise(self.ZOS_Span_carlibration_obj.calibrate)
-        ).catch(lambda e: logger.error(f"{e}"))
+        AsyPromise(self.Range_carlibration_obj.calibrate).catch(lambda e: logger.error(f"{e}"))
         global wait_span_calibration_finished_event
         wait_span_calibration_finished_event.wait()
         resolve()
+        pass
 
     def start_btn_handle(self):
         global stop_flag
@@ -344,7 +329,6 @@ class UFC_UGC_ZOS_index(MyQThread):
                 self.UFC_gas_path_system_obj.start,
             ).then(
                 lambda _:AsyPromise(self.UGC_gas_path_system_obj.start).then(
-                    lambda _:AsyPromise(self.set_start_timers).then(
                         # 添加UFC运行但是不读取数值 UGC运行但是不读取数值
                         # lambda _: AsyPromise(self.UFC_gas_path_system_obj.run_no_circulation_read).then(
                         #     lambda _: AsyPromise(self.UGC_gas_path_system_obj.run_no_circulation_read).then(
@@ -356,8 +340,6 @@ class UFC_UGC_ZOS_index(MyQThread):
                         #         ).catch(lambda e: logger.error(f"{e}"))
                         #     ).catch(lambda e: logger.error(f"{e}"))
                         # ).catch(lambda e: logger.error(f"{e}"))
-
-                    ).catch( lambda e: logger.error(f"{e}"))
                 ).catch( lambda e: logger.error(f"{e}"))
             ).catch( lambda e: logger.error(f"{e}"))
         ).catch( lambda e: logger.error(f"{e}"))
@@ -439,9 +421,6 @@ class UFC_UGC_ZOS_index(MyQThread):
                 lambda v2: AsyPromise(self.ZOS_gas_path_system_obj.stop).then(
                     lambda v22: AsyPromise(self.Zero_carlibration_obj.stop_calibrate).then(
                         lambda _: AsyPromise(self.Range_carlibration_obj.stop_calibrate).then(
-                            # 新增：停止 ZOS 标定对象
-                            lambda _: AsyPromise(self.ZOS_Zero_carlibration_obj.stop_calibrate).then(
-                                lambda _: AsyPromise(self.ZOS_Span_carlibration_obj.stop_calibrate).then(
                                     lambda _: AsyPromise(self.finished_stop).then()
                                     .catch(lambda e: logger.error(f"{e}"))
                                 ).catch(lambda e: logger.error(f"{e}"))
@@ -450,8 +429,6 @@ class UFC_UGC_ZOS_index(MyQThread):
                     ).catch(lambda e: logger.error(f"{e}"))
                 ).catch( lambda e: logger.error(f"{e}"))
 
-            ).catch( lambda e: logger.error(f"{e}"))
-        ).catch( lambda e: logger.error(f"{e}"))
         return p
     def finished_stop(self,resolve,reject):
         """
@@ -529,15 +506,9 @@ class UFC_UGC_ZOS_index(MyQThread):
         按钮点击的标定事件
         :return:
         """
-
-        p = AsyPromise(self.zero_carlibration_obj_calibrate_wrapped).then(
-            lambda _:AsyPromise(
-                self.span_carlibration_obj_calibrate_wrapped
-            ).then(
-                lambda r:r()
-            ).catch( lambda e: logger.error(f"{e}"))
-        ).catch( lambda e: logger.error(f"{e}"))
-        return  p
+        return AsyPromise(self.zero_carlibration_obj_calibrate_wrapped).then(
+            lambda _: AsyPromise(self.span_carlibration_obj_calibrate_wrapped)
+        ).catch(lambda e: logger.error(f"{e}"))
 
     def stop_range_calibration_handle(self):
         """
@@ -546,13 +517,11 @@ class UFC_UGC_ZOS_index(MyQThread):
         """
 
         self.Range_carlibration_obj.update()
-        self.ZOS_Span_carlibration_obj.update()
         p = AsyPromise(
             self.Range_carlibration_obj.stop_calibrate
-        ).then(
-            lambda _: AsyPromise(self.ZOS_Span_carlibration_obj.stop_calibrate)
-        ).then().catch( lambda e: logger.error(f"{e}"))
+        ).then().catch(lambda e: logger.error(f"{e}"))
         return p
+
     def stop_zero_calibration_handle(self):
         """
         stop_零点标定
@@ -560,13 +529,11 @@ class UFC_UGC_ZOS_index(MyQThread):
         """
 
         self.Zero_carlibration_obj.update()
-        self.ZOS_Zero_carlibration_obj.update()
         p = AsyPromise(
             self.Zero_carlibration_obj.stop_calibrate
-        ).then(
-            lambda _: AsyPromise(self.ZOS_Zero_carlibration_obj.stop_calibrate)
-        ).then().catch( lambda e: logger.error(f"{e}"))
+        ).then().catch(lambda e: logger.error(f"{e}"))
         return p
+
     def stop_calibration_btn_start(self):
         """
         stop_按钮点击的标定事件
@@ -575,20 +542,14 @@ class UFC_UGC_ZOS_index(MyQThread):
 
         self.Range_carlibration_obj.update()
         self.Zero_carlibration_obj.update()
-        self.ZOS_Zero_carlibration_obj.update()
-        self.ZOS_Span_carlibration_obj.update()
         p = AsyPromise(self.Zero_carlibration_obj.stop_calibrate).then(
-            lambda _:AsyPromise(
-                self.ZOS_Zero_carlibration_obj.stop_calibrate
+            lambda _: AsyPromise(
+                self.Range_carlibration_obj.stop_calibrate
             ).then(
-                lambda _: AsyPromise(self.Range_carlibration_obj.stop_calibrate)
-            ).then(
-                lambda _: AsyPromise(self.ZOS_Span_carlibration_obj.stop_calibrate)
-            ).then(
-                lambda r:r()
-            ).catch( lambda e: logger.error(f"{e}"))
-        ).catch( lambda e: logger.error(f"{e}"))
-        return  p
+                lambda r: r()
+            ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: logger.error(f"{e}"))
+        return p
     def gas_state_check_handle(self):
         global stop_flag
         if stop_flag:

@@ -138,7 +138,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         if self.is_stop:
             reject("Stop")
         time.sleep(0.01)
-        # 3气泵和流量控制器开启
+        # 2气泵和流量控制器开启
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 启动-2.气泵和流量控制器开启")
         port = global_setting.get_setting("port", None)
@@ -509,7 +509,7 @@ class UFC_gas_path_system(Gas_path_system):
     def run(self,resolve,reject):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 开始运行{'.'*100}")
-        AsyPromise(self.circular_running).then(lambda r: resolve(r)).catch(lambda e: logger.error(f"{e}"))
+        AsyPromise(self.run_no_circulation_read).then(lambda r: resolve(r)).catch(lambda e: logger.error(f"{e}"))
     def run_no_circulation_read(self,resolve,reject):
         """
         气路运行不读取数据（新流程：无需打开ZOS采样阀，直接完成）
@@ -520,7 +520,9 @@ class UFC_gas_path_system(Gas_path_system):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UFC 开始运行(不读取数据){'.' * 100}")
-        resolve()
+        AsyPromise(self.circular_running).then(
+            lambda _: resolve()
+        ).catch(lambda e: logger.error(f"{e}"))
     def circular_running(self,resolve,reject):
         # 循环运行
         time.sleep(0.01)
@@ -583,12 +585,14 @@ class UGC_gas_path_system_run_thread(MyQThread):
     def dosomething(self):
         wait_UFC_run_finish_event=global_setting.get_setting("wait_UFC_run_finish_event",None )
         if wait_UFC_run_finish_event:
+            # 阻塞 等待ufc运行完在运行
             wait_UFC_run_finish_event.wait()
         port = global_setting.get_setting("port", None)
         if port is None:
-            logger.error("UGC运行失败，未选择串口！")
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
             return
-
+        # 4.循环读取CO2浓度
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
         cage_addr = mouse_cages_inc[mouse_cage_index] - 1 if mouse_cage_index is not None else 8
@@ -614,6 +618,7 @@ class UGC_gas_path_system_run_thread(MyQThread):
         else:
             logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
 
+        # 通知zos 运行
         wait_UGC_run_finish_event=global_setting.get_setting("wait_UGC_run_finish_event",None )
         if wait_UGC_run_finish_event:
             wait_UGC_run_finish_event.set()
@@ -679,23 +684,63 @@ class UGC_gas_path_system(Gas_path_system):
 
     def read_sensor_status(self, resolve, reject, port):
         """2.读取各路传感器状态（x=0~9，0-7鼠笼，8参考气）"""
-        mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
-        cage_addr = mouse_cages_inc[mouse_cage_index] - 1 if mouse_cage_index is not None else 8
-        self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"000{cage_addr}0002"),
-            'slave_id': '3',
-            'function_code': '2',
-            'timeout': 1
-        }
+        status_map = {0: "正常", 1: "故障", 2: "超量程", 3: "预热中"}
+
+        # 构建要检查的笼子列表：所有配置的鼠笼 + 参考气
+        cages_to_check = []
+        if mouse_cages_inc and len(mouse_cages_inc) > 0:
+            cages_to_check = [cage - 1 for cage in mouse_cages_inc]
+        cages_to_check.append(8)
+
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC 正在启动-2.读取各路传感器状态")
-        self.send_thread.send_message = self.send_message
-        result_data, _ = self.send_thread.Send_no_promise()
-        if result_data is not None:
-            logger.info(f"UGC传感器状态: {result_data}")
+
+        # 循环读取每个笼子的状态
+        for cage_addr in cages_to_check:
+            cage_name = f"{cage_addr + 1}号鼠笼" if cage_addr != 8 else "参考气"
+
+            self.send_message = {
+                'port': port,
+                'data': number_util.set_int_to_4_bytes_list(f"000{cage_addr}0002"),
+                'slave_id': '3',
+                'function_code': '2',
+                'timeout': 1
+            }
+            self.send_thread.send_message = self.send_message
+            result_data, _ = self.send_thread.Send_no_promise()
+
+            if result_data is not None:
+                datas = result_data.get("data", [])
+                if datas and len(datas) > 0:
+                    for data in datas:
+                        desc = data.get("desc")
+                        value = data.get("value")
+                        if desc == "传感器状态" and value is not None:
+                            status_text = status_map.get(int(value), f"未知状态({value})")
+                            status_msg = f"{cage_name}传感器状态: {status_text}"
+
+                            logger.info(status_msg)
+                            self.update_status_main_signal_gui_update.send(
+                                f"{time_util.get_format_from_time(time.time())} | {status_msg}")
+
+                            if int(value) == 1:
+                                logger.error(f"{cage_name}传感器故障！")
+                            elif int(value) == 2:
+                                logger.warning(f"{cage_name}传感器超量程！")
+                            elif int(value) == 3:
+                                logger.warning(f"{cage_name}传感器预热中...")
+                else:
+                    logger.warning(f"{cage_name}传感器状态数据为空")
+            else:
+                logger.error(f"读取{cage_name}传感器状态失败")
+
+            time.sleep(0.01)
+
         resolve()
+
+        pass
+        pass
     """start end"""
     """run start"""
     def run(self,resolve,reject):
@@ -723,12 +768,12 @@ class UGC_gas_path_system(Gas_path_system):
 
     def run_no_circulation_read(self, resolve, reject):
         """
-        气路运行不读取数据（新流程：无需开鼠笼阀和开泵，直接完成）
+        气路运行不读取数据
         :return:
         """
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UGC 开始运行(不读取数据){'.' * 100}")
+            f"{time_util.get_format_from_time(time.time())} | UGC 开始运行{'.' * 100}")
         resolve()
 
     """
@@ -966,21 +1011,26 @@ class ZOS_gas_path_system(Gas_path_system):
         self.zos_gas_path_system_run_thread. update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
         self.zos_gas_path_system_run_thread.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
     """start start"""
+    def start_success(self,resolve,reject):
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | ZOS 启动完成。")
+        self.zos_start_status = True
+        if self.is_stop:
+            reject("Stop")
+        resolve()
     def start(self,resolve,reject):
-        """启动气路（ZOS设备上电即启动，无需软件初始化）"""
         time.sleep(0.01)
+        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在启动")
+        # 1.上电启动气路
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | ZOS启动失败，未选择串口！")
-            reject("No port selected")
-            return
+                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+            reject()
+        AsyPromise(self.start_success).then(lambda r: resolve()
+        ).catch(lambda e: logger.error(f"{e}"))
 
-        # ZOS设备上电即自动启动，直接标记为已启动
-        self.zos_start_status = True
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | ZOS 已启动（设备上电自动运行）")
-        resolve()
+        pass
     """start end"""
     """run start"""
     def run(self,resolve,reject):
