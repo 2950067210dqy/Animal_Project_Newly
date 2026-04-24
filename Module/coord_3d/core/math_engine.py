@@ -6,6 +6,23 @@ import numpy as np
 from typing import Optional
 
 
+DEFAULT_SCENE_CONFIG = {
+    "width": 180.0,
+    "depth": 310.0,
+    "height": 150.0,
+}
+
+
+def normalize_scene_config(scene_config: Optional[dict] = None) -> dict:
+    config = dict(DEFAULT_SCENE_CONFIG)
+    if scene_config:
+        config.update(scene_config)
+    config["width"] = max(1.0, float(config.get("width", DEFAULT_SCENE_CONFIG["width"])))
+    config["depth"] = max(1.0, float(config.get("depth", DEFAULT_SCENE_CONFIG["depth"])))
+    config["height"] = max(1.0, float(config.get("height", DEFAULT_SCENE_CONFIG["height"])))
+    return config
+
+
 def solve_linear_system(A: list, b: list) -> Optional[list]:
     """高斯消元法求解线性方程组"""
     A = [row[:] for row in A]
@@ -191,11 +208,12 @@ def is_point_in_polygon(point: dict, vs: list) -> bool:
     return inside
 
 
-def compute_grid_3d_coords(points: list, grid_data: list) -> list:
+def compute_grid_3d_coords(points: list, grid_data: list, scene_config: Optional[dict] = None) -> list:
     """
     计算所有点的3D坐标（与React版本 p3d useMemo 逻辑一致）
     label '1'=地面, '2'=近端垂直面, '3'=中间垂直面, '4'=远端垂直面
     """
+    scene = normalize_scene_config(scene_config)
     completed_labels = set(p['label'] for p in grid_data)
     all_pts = [p for p in points if p.get('label', '1') not in completed_labels] + grid_data
 
@@ -218,13 +236,13 @@ def compute_grid_3d_coords(points: list, grid_data: list) -> list:
             continue
         x3, y3, z3 = 0.0, 0.0, 0.0
         if lbl == '1':
-            x3 = (p['c'] - m['maxC'] / 2) * 10
-            y3 = (m['maxR'] - p['r']) * 10
+            x3 = ((p['c'] / m['maxC']) - 0.5) * scene['width']
+            y3 = (1.0 - (p['r'] / m['maxR'])) * scene['depth']
             z3 = 0.0
         elif lbl in ('2', '3', '4'):
-            x3 = (p['c'] - m['maxC'] / 2) * 10
-            y3 = 0.0 if lbl == '2' else ((m['maxR'] / 2) * 10 if lbl == '3' else m['maxR'] * 10)
-            z3 = (m['maxR'] - p['r']) * 10
+            x3 = ((p['c'] / m['maxC']) - 0.5) * scene['width']
+            y3 = 0.0 if lbl == '2' else (scene['depth'] / 2.0 if lbl == '3' else scene['depth'])
+            z3 = (1.0 - (p['r'] / m['maxR'])) * scene['height']
         result.append({**p, 'x3': x3, 'y3': y3, 'z3': z3})
     return result
 

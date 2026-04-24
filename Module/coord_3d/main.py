@@ -3,13 +3,18 @@ from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
 from public.entity.BaseWindow import BaseWindow
-from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
+from public.entity.enum.Public_Enum import AppState, BaseInterfaceType
 
 
 class Main_Coord3D_service(BaseService):
-    def __init__(self): pass
-    def start(self, resolve, reject): resolve()
-    def stop(self): pass
+    def __init__(self):
+        pass
+
+    def start(self, resolve, reject):
+        resolve()
+
+    def stop(self):
+        pass
 
 
 class Main_Coord3D_widget(BaseInterfaceWidget):
@@ -21,11 +26,20 @@ class Main_Coord3D_widget(BaseInterfaceWidget):
         self.right_frame_obj = self.create_right_window()
         self.bottom_frame_obj = self.create_bottom_window()
 
-    def get_type(self): return BaseInterfaceType.WIDGET
-    def create_middle_window(self) -> BaseWindow: return Coord3DIndex()
-    def create_left_window(self) -> BaseWindow: return None
-    def create_right_window(self) -> BaseWindow: return None
-    def create_bottom_window(self) -> BaseWindow: return None
+    def get_type(self):
+        return BaseInterfaceType.WIDGET
+
+    def create_middle_window(self) -> BaseWindow:
+        return Coord3DIndex()
+
+    def create_left_window(self) -> BaseWindow:
+        return None
+
+    def create_right_window(self) -> BaseWindow:
+        return None
+
+    def create_bottom_window(self) -> BaseWindow:
+        return None
 
 
 class Main_Coord3D_Module(BaseModule):
@@ -38,11 +52,20 @@ class Main_Coord3D_Module(BaseModule):
         self.service = self.create_service()
         self.app_state = self.get_app_state()
 
-    def get_app_state(self) -> AppState: return AppState.MONITORING
-    def get_name(self): return "Main_Coord3D"
-    def get_title(self): return "坐标标定"
-    def get_menu_name(self): return {"id": 2, "text": "实验检测"}
-    def create_service(self) -> BaseService: return Main_Coord3D_service()
+    def get_app_state(self) -> AppState:
+        return AppState.MONITORING
+
+    def get_name(self):
+        return "Main_Coord3D"
+
+    def get_title(self):
+        return "坐标标定"
+
+    def get_menu_name(self):
+        return {"id": 2, "text": "实验检测"}
+
+    def create_service(self) -> BaseService:
+        return Main_Coord3D_service()
 
     def get_interface_widget(self) -> BaseInterfaceWidget:
         widget_builder = Main_Coord3D_widget()
