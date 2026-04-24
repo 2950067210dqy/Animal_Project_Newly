@@ -10,10 +10,11 @@ from public.component.dock_widget.DraggableDockWidget import TabNavigator, Dragg
 class DemoDraggableDockWidget(QScrollArea):
     """演示如何使用拖拽框架的主窗口 - 朴素风格"""
 
-    def __init__(self, parent=None,is_showt_tab = True):
+    def __init__(self, parent=None, is_showt_tab=True, enable_detach=True):
         super().__init__(parent)
         self.setWindowTitle("Tab导航 + 拖拽框架")
         self.is_showt_tab = is_showt_tab
+        self.enable_detach = enable_detach
         self.frames = []  # 存储所有Frame的引用
 
         # 设置QScrollArea的属性
@@ -81,7 +82,13 @@ class DemoDraggableDockWidget(QScrollArea):
 
         for i, widget in enumerate(widgets):
             # 不修改widget的大小，保持原有设置
-            frame = DraggableFrame(widget.windowTitle(), widget, self.container)
+            frame = DraggableFrame(
+                widget.windowTitle(),
+                widget,
+                self.container,
+                enable_detach=self.enable_detach
+            )
+
             frame.frameDetached.connect(self.onFrameDetached)
             frame.frameAttached.connect(self.onFrameAttached)
 

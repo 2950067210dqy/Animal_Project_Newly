@@ -667,10 +667,11 @@ class DraggableFrame(ThemedFrame):
     frameDetached = pyqtSignal(object)
     frameAttached = pyqtSignal(object)
 
-    def __init__(self, title="", content_widget=None, parent=None):
+    def __init__(self, title="", content_widget=None, parent=None, enable_detach=True):
         super().__init__(parent)
         self.title = title
         self.content_widget = content_widget  # 自定义内容组件
+        self.enable_detach = enable_detach
         self.is_detached = False
         self.detached_window = None
         self.original_parent = parent
@@ -774,6 +775,9 @@ class DraggableFrame(ThemedFrame):
         self.drag_icon.setCursor(Qt.CursorShape.OpenHandCursor)
         self.drag_icon.setToolTip("拖拽此图标进行拖拽检测")
         title_layout.addWidget(self.drag_icon)
+        if not self.enable_detach:
+            self.drag_icon.hide()
+            self.title_bar.setCursor(Qt.CursorShape.ArrowCursor)
         self.title_label = QLabel(self.title)
         self.title_label.setStyleSheet("color: #495057; font-weight: bold; font-size: 12px;")
         title_layout.addWidget(self.title_label)
@@ -863,6 +867,8 @@ class DraggableFrame(ThemedFrame):
             logger.info(f"内容组件已恢复到Frame: {self.title}")
 
     def mousePressEvent(self, event):
+        if not self.enable_detach:
+            return super().mousePressEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             # 检查是否点击在标题栏
             title_rect = QRect(0, 0, self.width(), 30)
@@ -875,6 +881,8 @@ class DraggableFrame(ThemedFrame):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        if not self.enable_detach:
+            return super().mouseMoveEvent(event)
         if (self.is_dragging and
                 event.buttons() == Qt.MouseButton.LeftButton and
                 not self.drag_start_position.isNull()):

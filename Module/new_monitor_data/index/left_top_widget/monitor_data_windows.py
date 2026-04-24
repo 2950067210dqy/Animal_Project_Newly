@@ -215,7 +215,7 @@ class MonitorDataWindows(ThemedWidget):
         opera_layout.addStretch(7)
 
 
-        self.opera_layout_widget = DemoDraggableDockWidget(is_showt_tab=False)
+        self.opera_layout_widget = DemoDraggableDockWidget(is_showt_tab=False, enable_detach=False)
         self._docks_widget_calibration.append( opera_layout_widget)
         self.opera_layout_widget.addFrames(self._docks_widget_calibration)
 
@@ -249,7 +249,7 @@ class MonitorDataWindows(ThemedWidget):
         # 表格区域
         self.content_layout_widget = QWidget()
         self.content_layout = QVBoxLayout( self.content_layout_widget)
-        self.content_widget=DemoDraggableDockWidget(is_showt_tab=False)
+        self.content_widget = DemoDraggableDockWidget(is_showt_tab=False, enable_detach=False)
         self.content_layout.addWidget(self.content_widget)
 
         self.main_splitter.addWidget(self.content_layout_widget)
@@ -259,7 +259,7 @@ class MonitorDataWindows(ThemedWidget):
         # 图表区域
         self.charts_layout_widget=QWidget()
         self.charts_layout = QVBoxLayout(self.charts_layout_widget)
-        self.charts_widget = DemoDraggableDockWidget(is_showt_tab=False)
+        self.charts_widget = DemoDraggableDockWidget(is_showt_tab=False, enable_detach=False)
         self.charts_layout.addWidget(self.charts_widget)
 
         self.main_splitter.addWidget(self.charts_layout_widget)
