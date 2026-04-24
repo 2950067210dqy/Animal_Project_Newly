@@ -205,7 +205,7 @@ class UserMonitorDataChartsWindows(ThemedWidget):
         self.button_group.buttonClicked.connect(self.on_show_selection_changed)
 
         self.content_layout = QVBoxLayout()
-        self.content_widget = DemoDraggableDockWidget()
+        self.content_widget = DemoDraggableDockWidget(enable_detach=False)
         self.content_layout.addWidget(self.content_widget)
 
         self.main_layout.addLayout(self.content_layout, stretch=9)
