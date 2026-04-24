@@ -1033,11 +1033,20 @@ def barrier_action():
     store_Datas.append({'desc': '气压(KPa)',
                         'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__air_pressure') if results.get(
                             f'UGC_monitor_data_cage_{mouse_cage_number}__air_pressure') is not None else None})
+    co2_origin_num = results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
+        f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None
+    gas_pressure = results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') if results.get(
+        f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') is not None else None
+    standard_atmospheric_pressure = float(
+        global_setting.get_setting('UFC_UGC_ZOS_config')['PARAM']['standard_atmospheric_pressure'])
+
+    co2_num = co2_origin_num
+    if co2_origin_num is not None and gas_pressure is not None and gas_pressure != 0:
+        co2_num = round(co2_origin_num * standard_atmospheric_pressure / gas_pressure, 4)
+
     store_Datas.append(
-        {'desc': '补偿前CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_origin_num') if results.get(
-            f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_origin_num') is not None else None})
-    store_Datas.append({'desc': 'CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
-                            f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None })
+        {'desc': '补偿前CO2(%)', 'value': co2_origin_num})
+    store_Datas.append({'desc': 'CO2(%)', 'value': co2_num})
     store_Datas.append({'desc': '氧分压(hPa)',
                         'value': results.get(
                             f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_partial_pressure') if results.get(
