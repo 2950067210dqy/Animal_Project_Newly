@@ -892,9 +892,11 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
         pass
 
     def dosomething(self):
-        AsyPromise(self.start_calibration_common, port=self.port,next_function=self.cyclic_sampling_of_ugc_carbon_sensor).then(
-            lambda _: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor,port=self.port).then(
-                lambda __: self.stop()
+        AsyPromise(self.start_calibration_common, port=self.port,next_function=self.set_ugc_standard_gas_co2).then(
+            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor,port=self.port).then(
+                lambda _:AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor,port=self.port).then(
+                    lambda __: self.stop()
+                )
         ).catch(lambda e: self.stop()))
         pass
 
