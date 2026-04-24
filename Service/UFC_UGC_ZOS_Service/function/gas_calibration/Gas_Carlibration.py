@@ -131,7 +131,7 @@ class Gas_Carlibration:
             case Gas_Carlibration_Type.ZERO:
                 self.send_message = {
                     'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"00010000"),
+                    'data': number_util.set_int_to_4_bytes_list(f"0001FF00"),
                     'slave_id': '3',
                     'function_code': '5',
                     'timeout': 1
@@ -145,7 +145,7 @@ class Gas_Carlibration:
             case Gas_Carlibration_Type.SPAN:
                 self.send_message = {
                     'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"00020000"),
+                    'data': number_util.set_int_to_4_bytes_list(f"0002FF00"),
                     'slave_id': '3',
                     'function_code': '5',
                     'timeout': 1
@@ -207,7 +207,7 @@ class Gas_Carlibration:
             case Gas_Carlibration_Type.ZERO:
                 self.send_message = {
                     'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"0001FF00"),
+                    'data': number_util.set_int_to_4_bytes_list(f"00010000"),
                     'slave_id': '3',
                     'function_code': '5',
                     'timeout': 1
@@ -217,7 +217,7 @@ class Gas_Carlibration:
             case Gas_Carlibration_Type.SPAN:
                 self.send_message = {
                     'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"0002FF00"),
+                    'data': number_util.set_int_to_4_bytes_list(f"00020000"),
                     'slave_id': '3',
                     'function_code': '5',
                     'timeout': 1
