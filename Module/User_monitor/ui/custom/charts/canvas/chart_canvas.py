@@ -50,24 +50,23 @@ class ChartCanvas(FigureCanvas):
             logger.error(f"格式化日期时间标签出错: {e}")
             return str(timestamp)
     def on_mouse_move(self, event):
-        """鼠标移动事件 - 显示数据点提示"""
-        # 检查事件是否有效
-        if event is None or event.inaxes is None:
+        """鼠标移动事件 - 显示离鼠标最近的数据点提示"""
+        if event is None or event.inaxes is None or event.inaxes != self.ax:
             self.clear_tooltip()
             return
 
-        # 检查是否在坐标轴内
-        if event.inaxes != self.ax:
-            self.clear_tooltip()
-            return
-
-        # 检查坐标是否有效
         if event.xdata is None or event.ydata is None:
             self.clear_tooltip()
             return
 
         try:
-            # 获取所有line对象
+            nearest_line = None
+            nearest_index = -1
+            min_pixel_dist = float('inf')
+
+            # 用像素距离判断是否命中，阈值可以自己调
+            hit_threshold = 10
+
             for line in self.ax.get_lines():
                 xdata = line.get_xdata()
                 ydata = line.get_ydata()
@@ -75,59 +74,58 @@ class ChartCanvas(FigureCanvas):
                 if len(xdata) == 0 or len(ydata) == 0:
                     continue
 
-                # 查找最近的数据点
-                min_dist = float('inf')
-                closest_idx = -1
-
                 for i in range(len(xdata)):
                     if xdata[i] is None or ydata[i] is None:
                         continue
 
                     try:
-                        # 计算距离时需要处理不同类型的数据
-                        x_val = float(xdata[i]) if not isinstance(xdata[i], str) else i
-                        y_val = float(ydata[i]) if not isinstance(ydata[i], str) else 0
-
-                        dist = ((event.xdata - x_val) ** 2 +
-                                (event.ydata - y_val) ** 2) ** 0.5
-
-                        if dist < min_dist:
-                            min_dist = dist
-                            closest_idx = i
+                        x_val = float(xdata[i])
+                        y_val = float(ydata[i])
                     except (TypeError, ValueError):
                         continue
 
-                # 如果找到点且距离较近
-                if closest_idx >= 0 and min_dist < 2:
-                    label = line.get_label()
-                    x_val = xdata[closest_idx]
-                    y_val = ydata[closest_idx]
+                    # 把数据坐标转换成屏幕坐标，再算鼠标距离
+                    px, py = self.ax.transData.transform((x_val, y_val))
+                    dist = ((event.x - px) ** 2 + (event.y - py) ** 2) ** 0.5
 
-                    # # 格式化X值
-                    # if isinstance(x_val, (int, float)):
-                    #     x_str = f"{x_val:.2f}"
-                    # else:
-                    #     x_str = str(x_val)
+                    if dist < min_pixel_dist:
+                        min_pixel_dist = dist
+                        nearest_line = line
+                        nearest_index = i
 
-                    # 格式化Y值
-                    try:
-                        y_str = f"{float(y_val):.2f}"
-                    except (TypeError, ValueError):
-                        y_str = str(y_val)
+            if nearest_line is not None and nearest_index >= 0 and min_pixel_dist <= hit_threshold:
+                label = nearest_line.get_label()
+                x_val = nearest_line.get_xdata()[nearest_index]
+                y_val = nearest_line.get_ydata()[nearest_index]
 
-                    tooltip_text = f"{label}\nX: {self._format_time_label(x_val)}\nY: {y_str}"
+                try:
+                    y_str = f"{float(y_val):.2f}"
+                except (TypeError, ValueError):
+                    y_str = str(y_val)
 
-                    # 清除旧的文本
-                    self.clear_tooltip()
+                tooltip_text = f"{label}\nX: {self._format_time_label(x_val)}\nY: {y_str}"
 
-                    # 添加新的提示框
-                    self.ax.text(event.xdata, event.ydata, tooltip_text,
-                                 fontsize=9, ha='left', va='bottom',
-                                 bbox=dict(boxstyle='round',
-                                           facecolor='wheat', alpha=0.8,
-                                           edgecolor='gray', linewidth=0.5))
-                    self.draw_idle()  # 使用draw_idle而不是draw
-                    return
+                # 清除旧的文本
+                self.clear_tooltip()
+
+                self.ax.text(
+                    event.xdata,
+                    event.ydata,
+                    tooltip_text,
+                    fontsize=9,
+                    ha='left',
+                    va='bottom',
+                    bbox=dict(
+                        boxstyle='round',
+                        facecolor='wheat',
+                        alpha=0.8,
+                        edgecolor='gray',
+                        linewidth=0.5
+                    )
+                )
+                self.draw_idle()
+            else:
+                self.clear_tooltip()
 
             # self.clear_tooltip()
         except Exception as e:
