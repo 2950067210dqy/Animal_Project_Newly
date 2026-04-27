@@ -336,6 +336,7 @@ class User_monitor_data_new_index(ThemedWindow):
         # 设置初始大小比例
         # 主分割器：左边95%，右边5%
         self.main_splitter.setSizes([950, 50])
+        self.main_splitter.handle(1).setEnabled(False)
 
         # 左侧分割器：上边100%（因为下边隐藏了）
         self.left_splitter.setSizes([1000, 0])
