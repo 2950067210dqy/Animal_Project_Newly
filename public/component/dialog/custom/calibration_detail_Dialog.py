@@ -196,7 +196,7 @@ class CalibrationChartWidget(QWidget):
             color = '#2196f3'
         elif self.current_chart_type == "CO2当前数据":
             raw_data = list(self.data_co2_current)
-            ylabel = "CO2 (%)"
+            ylabel = "CO2 (ppm)"
             title = "CO2当前数据变化趋势"
             color = '#ff9800'
         else:  # O2压力当前数据
@@ -592,7 +592,7 @@ class CalibrationDialog(QDialog):
         table_data = [
             ["", "当前数据", "Span标准气体数值", ""],
             ["O2（%）", "0.0000", "0.0000", ""],
-            ["CO2（%）", "0.0000", "0.0000", ""],
+            ["CO2（ppm）", "0.0000", "0.0000", ""],
             ["O2压力（KPa）", "0.000", "0.000", ""],
             ["零点标定开始时间", "Nan", "", ""],
             ["零点标定结束时间", "Nan", "", ""],
@@ -819,7 +819,7 @@ class CalibrationDialog(QDialog):
         formatted = self.format_value(value, 4)
         self.cells[self.data_cells['co2_current']].setText(formatted)
         if value is not None:
-            self.addLog(f"CO2当前数据更新: {formatted}%")
+            self.addLog(f"CO2当前数据更新: {formatted}ppm")
         # 添加数据到图表（包括None值）
         if hasattr(self, 'chart_widget'):
             self.chart_widget.addDataPoint("co2_current", value)
@@ -829,7 +829,7 @@ class CalibrationDialog(QDialog):
         formatted = self.format_value(value, 4)
         self.cells[self.data_cells['co2_span']].setText(formatted)
         if value is not None:
-            self.addLog(f"CO2 Span数值更新: {formatted}%")
+            self.addLog(f"CO2 Span数值更新: {formatted}ppm")
 
     def updatePressureCurrent(self, value):
         """更新O2压力当前数据"""

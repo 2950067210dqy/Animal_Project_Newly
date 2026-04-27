@@ -96,10 +96,30 @@ class Gas_Carlibration:
         # span 标定时，本次下发给设备的目标值
         self.ugc_span_target_co2_ppm = None
         self.zos_span_target_o2_percent = None
-
+        # 标定详情窗口当前显示值缓存
+        self.current_calibration_values = {
+            'oxygen_value': None,
+            'carbon_value': None,
+            'oxygen_pressure_value': None,
+        }
     def update(self):
         self.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
         self.is_STOP = self.is_STOP
+    def push_calibration_values_to_ui(self, oxygen_value=None, carbon_value=None, oxygen_pressure_value=None):
+        if oxygen_value is not None:
+            self.current_calibration_values['oxygen_value'] = oxygen_value
+        if carbon_value is not None:
+            self.current_calibration_values['carbon_value'] = carbon_value
+        if oxygen_pressure_value is not None:
+            self.current_calibration_values['oxygen_pressure_value'] = oxygen_pressure_value
+
+        self.update_status_main_signal_gui_update.send(
+            {
+                'type': 'set_calibration_values',
+                'value': copy.deepcopy(self.current_calibration_values)
+            },
+            title=self.title
+        )
     @abc.abstractmethod
     def calibrate(self,resolve,reject):
         """
@@ -177,8 +197,6 @@ class Gas_Carlibration:
             fallback = config.get('standard_co2_concentration', config.get('standard_gas_concentration', 5300))
             standard_co2 = int(round(float(fallback)))
 
-        # 记住这次下发的目标值，后面 while 判断范围直接用它
-        self.ugc_span_target_co2_ppm = standard_co2
 
         high_byte = (standard_co2 >> 8) & 0xFF
         low_byte = standard_co2 & 0xFF
@@ -195,8 +213,23 @@ class Gas_Carlibration:
         )
 
         self.send_thread.send_message = self.send_message
+        def send_success(r):
+            target_co2 = standard_co2
+            try:
+                if r and r.get("data") and r["data"].get("data"):
+                    for item in r["data"]["data"]:
+                        if item.get("desc") == "标准气体浓度":
+                            target_co2 = int(item.get("value"))
+                            break
+            except Exception as e:
+                logger.warning(f"UGC标准气体浓度取回包失败，使用用户设置值兜底: {e}")
+
+            self.ugc_span_target_co2_ppm = target_co2
+            resolve()
+
+        self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            lambda r: resolve()
+            send_success
         ).catch(lambda e: reject(e))
 
     def close_ugc_zero_or_span_valve(self, resolve, reject, port):
@@ -293,12 +326,12 @@ class Gas_Carlibration:
         if oxygen_percent is not None:
             standard_oxygen = int(round(float(oxygen_percent) * 100))  # 20.93 -> 2093
         else:
-            fallback = config.get('standard_oxygen_concentration', 2093)
+            fallback = config.get('standard_oxygen_concentration', 2090)
             standard_oxygen = int(round(float(fallback)))
 
-        # 记住这次下发的目标值，后面 while 判断范围直接用它
-        self.zos_span_target_o2_percent = standard_oxygen / 100
-        global_setting.set_setting("Vr", self.zos_span_target_o2_percent)
+        # 先留一个备用值
+        send_o2_percent = standard_oxygen / 100
+
 
         high_byte = (standard_oxygen >> 8) & 0xFF
         low_byte = standard_oxygen & 0xFF
@@ -310,13 +343,29 @@ class Gas_Carlibration:
             'function_code': '6',
             'timeout': 1
         }
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | {self.name}标定：6. 设置ZOS标准气体浓度={self.zos_span_target_o2_percent}%"
-        )
+
+        self.send_thread.send_message = self.send_message
+        def send_success(r):
+            target_o2_percent = send_o2_percent
+            try:
+                if r and r.get("data") and r["data"].get("data"):
+                    for item in r["data"]["data"]:
+                        if item.get("desc") == "标准气体浓度":
+                            target_o2_percent = float(item.get("value"))
+                            break
+            except Exception as e:
+                logger.warning(f"ZOS标准气体浓度取回包失败，使用用户设置值兜底: {e}")
+
+            self.zos_span_target_o2_percent = target_o2_percent
+            global_setting.set_setting("Vr", target_o2_percent)
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | {self.name}标定：6. 设置ZOS标准气体浓度={target_o2_percent}%"
+            )
+            resolve()
 
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            lambda r: resolve()
+            send_success
         ).catch(lambda e: reject(e))
 
     def close_zos_zero_or_span_valve(self, resolve, reject, port):
@@ -462,6 +511,12 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
             title=self.title
         )
         self.is_STOP = False
+        self.current_calibration_values = {
+            'oxygen_value': None,
+            'carbon_value': None,
+            'oxygen_pressure_value': None,
+        }
+        self.push_calibration_values_to_ui()
         # resolve()
         self.port = global_setting.get_setting("port", None)
         if self.port is None:
@@ -584,6 +639,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
                     now_carbon_value = float(now_carbon_value)
                     if now_carbon_value < 100:
                         now_carbon_value = now_carbon_value * 10000
+                    self.push_calibration_values_to_ui(carbon_value=now_carbon_value)
                 except Exception:
                     channels_stable_start[channel] = None
                     channels_data[channel] = []
@@ -735,9 +791,17 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
                 self.send_thread.send_message = self.send_message
 
                 oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
-                now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧浓度(%)" in item['desc']]
+                now_oxygen_values = [
+                    item['value'] for item in oxygen_data['data']
+                    if "氧浓度" in item.get('desc', '')
+                ]
                 now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
 
+                now_pressure_values = [
+                    item['value'] for item in oxygen_data['data']
+                    if "气体压力" in item.get('desc', '') or "气压" in item.get('desc', '')
+                ]
+                now_pressure_value = now_pressure_values[0] if now_pressure_values else None
                 if now_oxygen_value is None:
                     channels_stable_start[channel] = None
                     channels_data[channel] = []
@@ -747,6 +811,10 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
                     now_oxygen_value = float(now_oxygen_value)
                     if now_oxygen_value > 100:
                         now_oxygen_value = now_oxygen_value / 100
+                    self.push_calibration_values_to_ui(
+                        oxygen_value=now_oxygen_value,
+                        oxygen_pressure_value=now_pressure_value
+                    )
                 except Exception:
                     channels_stable_start[channel] = None
                     channels_data[channel] = []
@@ -892,11 +960,9 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
         pass
 
     def dosomething(self):
-        AsyPromise(self.start_calibration_common, port=self.port,next_function=self.set_ugc_standard_gas_co2).then(
-            lambda r: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor,port=self.port).then(
+        AsyPromise(self.start_calibration_common, port=self.port,next_function=self.cyclic_sampling_of_ugc_carbon_sensor).then(
                 lambda _:AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor,port=self.port).then(
                     lambda __: self.stop()
-                )
         ).catch(lambda e: self.stop()))
         pass
 
@@ -911,6 +977,12 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
         )
 
         self.is_STOP = False
+        self.current_calibration_values = {
+            'oxygen_value': None,
+            'carbon_value': None,
+            'oxygen_pressure_value': None,
+        }
+        self.push_calibration_values_to_ui()
         # resolve()
         self.port = global_setting.get_setting("port", None)
         if self.port is None:
@@ -1047,6 +1119,7 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
                     now_carbon_value = float(now_carbon_value)
                     if now_carbon_value < 100:
                         now_carbon_value = now_carbon_value * 10000
+                    self.push_calibration_values_to_ui(carbon_value=now_carbon_value)
                 except Exception:
                     channels_stable_start[channel] = None
                     channels_data[channel] = []
@@ -1206,6 +1279,11 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
                 ]
                 now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
 
+                now_pressure_values = [
+                    item['value'] for item in oxygen_data['data']
+                    if "气体压力" in item.get('desc', '') or "气压" in item.get('desc', '')
+                ]
+                now_pressure_value = now_pressure_values[0] if now_pressure_values else None
                 if now_oxygen_value is None:
                     channels_stable_start[channel] = None
                     channels_data[channel] = []
@@ -1215,6 +1293,10 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
                     now_oxygen_value = float(now_oxygen_value)
                     if now_oxygen_value > 100:
                         now_oxygen_value = now_oxygen_value / 100
+                    self.push_calibration_values_to_ui(
+                        oxygen_value=now_oxygen_value,
+                        oxygen_pressure_value=now_pressure_value
+                    )
                 except Exception:
                     channels_stable_start[channel] = None
                     channels_data[channel] = []

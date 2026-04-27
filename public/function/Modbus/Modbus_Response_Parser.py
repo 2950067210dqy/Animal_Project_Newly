@@ -1766,7 +1766,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types_0 = ['模块地址地址', '新分配的模块地址值']
+        port_types_0 = ['寄存器地址', '标准气体浓度']
         port_types_1 = ['寄存器地址', '氧传感器设置（预留）']
         j = 0
         for i in range(len(self.response_struct['data'])):
@@ -1795,11 +1795,11 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                 case 3:
                     match self.response_struct['data'][1]:
                         case 0:
+                            raw_value = (self.response_struct['data'][i - 1] << 8) | self.response_struct['data'][i]
                             return_datas.append({
                                 "desc": port_types_0[j],
-                                'value': f"0X{self.response_struct['data'][i - 1]:02X}{self.response_struct['data'][i]:02X}"
-                            }
-                            )
+                                'value': round(raw_value / 100, 2)
+                            })
                             pass
                         case 1:
                             return_datas.append({
@@ -2179,6 +2179,7 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
         port_types_3 = ['寄存器地址', '调节阀3开度']
         port_types_4 = ['寄存器地址', '调节阀4开度']
         port_types_16 = ['设置', '设置状态']
+        port_types_18 = ['寄存器地址', '标准气体浓度']
         port_types_19 = ['设置', '设置状态']
 
         co2_desc = ['CO2零点设置', 'CO2零点恢复']
@@ -2197,6 +2198,12 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                             return_datas.append({
                                 "desc": port_types_16[j],
                                 'value': co2_desc[0]
+                            })
+                            pass
+                        case 18:
+                            return_datas.append({
+                                "desc": port_types_18[j],
+                                'value': f"0X{self.response_struct['data'][i - 1]:02X}{self.response_struct['data'][i]:02X}"
                             })
                             pass
                         case 19:
@@ -2243,6 +2250,13 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
                             return_datas.append({
                                 "desc": port_types_16[j],
                                 'value': f"{'设置成功' if int(''.join(self.int_to_8bit_binary(num_list=[self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2) == 0 else '设置失败'}"
+                            })
+                            pass
+                        case 18:
+                            raw_value = (self.response_struct['data'][i - 1] << 8) | self.response_struct['data'][i]
+                            return_datas.append({
+                                "desc": port_types_18[j],
+                                'value': raw_value
                             })
                             pass
                         case 19:
