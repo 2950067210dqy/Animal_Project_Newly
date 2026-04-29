@@ -474,6 +474,25 @@ class Gas_Carlibration:
                 pass
 
         resolve()
+    def close_reference_valve(self, resolve, reject, port):
+        if self.is_STOP:
+            reject("stop")
+            return
+
+        self.send_message = {
+            'port': port,
+            'data': number_util.set_int_to_4_bytes_list("00000000"),
+            'slave_id': '3',
+            'function_code': '5',
+            'timeout': 1
+        }
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | 零点标定前关闭reference气电磁阀（空气伐）"
+        )
+        self.send_thread.send_message = self.send_message
+        AsyPromise(self.send_thread.Send).then(
+            lambda _: resolve()
+        ).catch(lambda e: reject(e))
 
     """exit  end"""
 
@@ -490,13 +509,15 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
         MyQThread.__init__(self, name='Zero_Carlibration_thread')
 
     def dosomething(self):
-        AsyPromise(
-            self.start_calibration_common,
-            port=self.port,
-            next_function=self.cyclic_sampling_of_ugc_carbon_sensor
-        ).then(
-            lambda _: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=self.port).then(
-                lambda __: self.stop()
+        AsyPromise(self.close_reference_valve, port=self.port).then(
+            lambda _: AsyPromise(
+                self.start_calibration_common,
+                port=self.port,
+                next_function=self.cyclic_sampling_of_ugc_carbon_sensor
+            ).then(
+                lambda __: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=self.port).then(
+                    lambda ___: self.stop()
+                ).catch(lambda e: self.stop())
             ).catch(lambda e: self.stop())
         ).catch(lambda e: self.stop())
         pass
