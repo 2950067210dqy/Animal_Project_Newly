@@ -487,7 +487,8 @@ class Gas_Carlibration:
             'timeout': 1
         }
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | 零点标定前关闭reference气电磁阀（空气伐）"
+            f"{time_util.get_format_from_time(time.time())} | 零点标定前关闭reference气电磁阀（空气阀）",
+            title=self.title
         )
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
