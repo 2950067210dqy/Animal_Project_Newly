@@ -150,16 +150,14 @@ class BaseModule(ABC):
                 try:
                     # 断开该 widget 的所有信号连接
                     child.blockSignals(True)
-                    child.disconnect()
-                    child.blockSignals(False)
+                    # Qt will disconnect signals when the widget is deleted.
                 except:
                     pass
 
             # 断开父 widget 的所有信号连接
             try:
                 widget.blockSignals(True)
-                widget.disconnect()
-                widget.blockSignals(False)
+                # Qt will disconnect signals when the widget is deleted.
             except:
                 pass
 

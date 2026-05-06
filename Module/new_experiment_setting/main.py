@@ -1,13 +1,18 @@
 # Module/new_experiment_setting/index/main.py
-from PyQt6.QtWidgets import QMainWindow
+import time
+
+from PyQt6.QtWidgets import QMainWindow, QMessageBox
 
 from Module.new_experiment_setting.index.Tab_1 import Tab_1
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
+from public.config_class.global_setting import global_setting
 from public.entity.BaseWidget import BaseWidget
 from public.entity.BaseWindow import BaseWindow
+from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
+from public.util.time_util import time_util
 
 
 class Main_experiment_setting_service(BaseService):
@@ -64,6 +69,7 @@ class Main_experiment_setting(BaseModule):
         self.interface_widget = self.get_interface_widget()
         self.name = self.get_name()
         self.title = self.get_title()
+        self.toolbar_order = 10
         self.menu_name = self.get_menu_name()
         self.service = self.create_service()
         self.app_state = self.get_app_state()
@@ -87,3 +93,122 @@ class Main_experiment_setting(BaseModule):
         widget_builder = Main_experiment_setting_widget()
         widget_builder.module = self
         return widget_builder
+
+
+class Calibration_selection_service(BaseService):
+    def __init__(self):
+        pass
+
+    def start(self, resolve, reject):
+        resolve()
+
+    def stop(self):
+        pass
+
+
+class Calibration_selection_widget(BaseInterfaceWidget):
+    def __init__(self):
+        super().__init__()
+        self.type = self.get_type()
+
+    def get_type(self):
+        return BaseInterfaceType.WIDGET
+
+    def create_middle_window(self) -> BaseWindow:
+        return None
+
+    def create_left_window(self) -> BaseWindow:
+        return None
+
+    def create_right_window(self) -> BaseWindow:
+        return None
+
+    def create_bottom_window(self) -> BaseWindow:
+        return None
+
+
+class Main_experiment_calibration(BaseModule):
+    def __init__(self):
+        super().__init__()
+        self.interface_widget = self.get_interface_widget()
+        self.name = self.get_name()
+        self.title = self.get_title()
+        self.toolbar_order = 11
+        self.menu_name = self.get_menu_name()
+        self.service = self.create_service()
+        self.app_state = self.get_app_state()
+
+    def get_app_state(self) -> AppState:
+        return AppState.APPLYING
+
+    def get_name(self):
+        return "New_main_experiment_calibration"
+
+    def get_title(self):
+        return "校准"
+
+    def get_menu_name(self):
+        return {"id": 1, "text": "设备信息"}
+
+    def create_service(self) -> BaseService:
+        return Calibration_selection_service()
+
+    def get_interface_widget(self) -> BaseInterfaceWidget:
+        widget_builder = Calibration_selection_widget()
+        widget_builder.module = self
+        return widget_builder
+
+    def refresh_display_text(self):
+        self.title = "校准"
+
+        if self.main_gui is None:
+            return
+
+        action_name = f"dynamic_{self.name}"
+        for action_dict in getattr(self.main_gui, "dynamic_tool_bar_actions", []):
+            if action_dict.get("obj_name") == action_name:
+                action_dict["action"].setText(self.title)
+                break
+
+    def click_method(self):
+        current_value = global_setting.get_setting("is_auto_calibration", True)
+
+        msg_box = QMessageBox(self.main_gui)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        msg_box.setWindowTitle("校准设置")
+        msg_box.setText("确认设备配置时是否走校准逻辑？")
+
+        yes_button = msg_box.addButton("是", QMessageBox.ButtonRole.YesRole)
+        no_button = msg_box.addButton("否", QMessageBox.ButtonRole.NoRole)
+        msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setDefaultButton(yes_button if current_value else no_button)
+        msg_box.exec()
+
+        clicked_button = msg_box.clickedButton()
+        if clicked_button == yes_button:
+            is_auto_calibration = True
+        elif clicked_button == no_button:
+            is_auto_calibration = False
+        else:
+            self.refresh_display_text()
+            return
+
+        global_setting.set_setting("is_auto_calibration", is_auto_calibration)
+        global_setting.set_setting("device_config_calibration_selected", True)
+
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        if send_message_queue is not None:
+            send_message_queue.put(
+                ObjectQueueItem(
+                    origin='Main_experiment_calibration',
+                    to='main_monitor_data',
+                    title='set_experiment_basic_config',
+                    data={"is_auto_calibration": is_auto_calibration},
+                    time=time_util.get_format_from_time(time.time())
+                )
+            )
+
+        if self.main_gui is not None and hasattr(self.main_gui, "calibration_selection_changed_signal"):
+            self.main_gui.calibration_selection_changed_signal.emit(True, is_auto_calibration)
+
+        self.refresh_display_text()

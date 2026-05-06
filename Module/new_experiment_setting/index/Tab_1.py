@@ -364,6 +364,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.ports = []
         self.config = None
         self.cage_enabled_status = {}
+        self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
+        self.device_config_ready = False
+        self._calibration_signal_connected = False
 
     def _init_ui(self, parent=None, geometry: QRect = None, title=""):
         """初始化UI"""
@@ -610,6 +613,18 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             if not read_queue_data_thread.isRunning():
                 read_queue_data_thread.start()
 
+    def set_main_gui(self, main_gui):
+        super().set_main_gui(main_gui)
+        if (self.main_gui is not None and
+                hasattr(self.main_gui, "calibration_selection_changed_signal") and
+                not self._calibration_signal_connected):
+            self.main_gui.calibration_selection_changed_signal.connect(self.on_calibration_selection_changed)
+            self._calibration_signal_connected = True
+
+        self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
+        self.update_calibration_button_text()
+        self.update_device_config_button_state()
+
     def setup_tutorial(self):
         """设置教程"""
         if self.tutorial:
@@ -760,19 +775,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.group_box.setContentsMargins(10, 10, 10, 10)
         scroll_area_layout.addWidget(self.group_box)
         main_layout = QVBoxLayout()
-        hT_layout = QHBoxLayout()
-
-        self.calibration_checkbox = QCheckBox("启动时校准气路值")
-        self.calibration_checkbox.setStyleSheet("""
-                QCheckBox {
-                    margin-top:17px;
-                    font-weight:bold;
-                }
-                """)
-        self.calibration_checkbox.stateChanged.connect(self.calibration_gas_state_change)
-        self.calibration_checkbox.setChecked(global_setting.get_setting("is_auto_calibration", True))
-        hT_layout.addWidget(self.calibration_checkbox)
-        main_layout.addLayout(hT_layout)
+        main_layout.setContentsMargins(10, 18, 10, 10)
+        main_layout.setSpacing(12)
+        self.calibration_checkbox = None
 
         h0_layout = QHBoxLayout()
         span_oxygen_desc_label = QLabel("span校准的标准气体的氧浓度数值（单位:%,例如20.9%，请输入20.9）：")
@@ -820,18 +825,60 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
     def calibration_gas_state_change(self, state):
         """校准气体状态变化处理"""
-        is_checked = bool(state)
-        if self.main_gui is not None:
+        self.set_calibration_mode(bool(state), sync_checkbox=False)
+
+    def set_calibration_mode(self, is_checked, sync_checkbox=True, sync_toolbar=True, notify_monitor=True):
+        """统一处理是否启用校准配置"""
+        if sync_checkbox and self.calibration_checkbox is not None:
+            self.calibration_checkbox.blockSignals(True)
+            self.calibration_checkbox.setChecked(is_checked)
+            self.calibration_checkbox.blockSignals(False)
+
+        if sync_toolbar and self.main_gui is not None:
             for tool_bar_action in self.main_gui.tool_bar_actions:
                 if tool_bar_action['obj_name'] in ["calibration_gas"]:
+                    tool_bar_action["action"].blockSignals(True)
                     tool_bar_action["action"].setChecked(is_checked)
+                    tool_bar_action["action"].blockSignals(False)
                     break
+
         global_setting.set_setting("is_auto_calibration", is_checked)
-        send_message_queue = global_setting.get_setting("send_message_queue")
-        send_message_queue.put(
-            ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_experiment_basic_config',
-                            data={"is_auto_calibration": is_checked},
-                            time=time_util.get_format_from_time(time.time())))
+        self.update_calibration_button_text()
+
+        if notify_monitor:
+            send_message_queue = global_setting.get_setting("send_message_queue")
+            if send_message_queue is not None:
+                send_message_queue.put(
+                    ObjectQueueItem(origin='tab_7', to='main_monitor_data', title='set_experiment_basic_config',
+                                    data={"is_auto_calibration": is_checked},
+                                    time=time_util.get_format_from_time(time.time())))
+
+    def update_calibration_button_text(self):
+        """同步红框区域里的校准按钮文案"""
+        if self.main_gui is None:
+            return
+
+        for module in getattr(self.main_gui, "modules", []):
+            if getattr(module, "name", "") == "New_main_experiment_calibration" and hasattr(module, "refresh_display_text"):
+                module.refresh_display_text()
+                break
+
+    def update_device_config_button_state(self):
+        """根据检测状态和校准选择状态控制确认设备配置按钮"""
+        can_config = bool(self.device_config_ready and self.calibration_selected)
+
+        if self.start_btn is not None:
+            self.start_btn.setEnabled(can_config)
+
+        if self.config_btn is not None:
+            self.config_btn.setEnabled(can_config)
+
+    def on_calibration_selection_changed(self, selection_made, is_auto_calibration):
+        """接收主窗口红框区域校准按钮的选择结果"""
+        self.calibration_selected = bool(selection_made)
+        global_setting.set_setting("device_config_calibration_selected", self.calibration_selected)
+        self.set_calibration_mode(is_auto_calibration, sync_checkbox=True, sync_toolbar=True, notify_monitor=False)
+        self.update_device_config_button_state()
 
     def init_btn_func(self):
         """初始化按钮功能"""
@@ -850,6 +897,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
         if self.start_btn:
             self.start_btn.clicked.connect(self.start_device_config)
+            self.start_btn.setEnabled(False)
+
+        self.update_device_config_button_state()
 
     # ==========配置UI创建==========
     def init_em_config_ui_default(self, module_key, module_value, scroll_area_layout):
@@ -1231,6 +1281,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             if self.isActiveWindow():
                 if self.calibration_checkbox is not None:
                     self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
+                self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
+                self.update_calibration_button_text()
+                self.update_device_config_button_state()
 
         super().changeEvent(event)
 
@@ -1240,6 +1293,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
         if self.calibration_checkbox is not None:
             self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
+        self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
+        self.update_calibration_button_text()
+        self.update_device_config_button_state()
 
         if not hasattr(self, '_first_show_done'):
             self._init_customize_ui()
@@ -1348,6 +1404,8 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
         self.send_message['port'] = self.ports[self.port_combox.currentIndex()]['device']
         self.port_confirmed = True
+        self.device_config_ready = False
+        self.update_device_config_button_state()
 
 
         # ==================== 【第3步】禁用按钮 ====================
@@ -1362,6 +1420,8 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
         if self.config_btn:
             self.config_btn.setEnabled(False)
+        if self.start_btn:
+            self.start_btn.setEnabled(False)
 
         # ==================== 【第4步】重置所有气路模块标签为"检测中..." ====================
         # logger.critical("重置所有气路模块标签为检测中状态...")
@@ -1619,8 +1679,8 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                 if self.detection_status_label:
                     self.detection_status_label.setText("✓ 检测完成，可选择笼子进行配置")
 
-                if self.config_btn:
-                    self.config_btn.setEnabled(True)
+                self.device_config_ready = True
+                self.update_device_config_button_state()
                 return
 
             # ==================== 2. 获取当前笼子（修复：确保类型一致） ====================
@@ -2225,6 +2285,15 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
     def start_device_config(self):
         """开始设备配置"""
+        if not self.device_config_ready:
+            self.show_warning("提示", "请先完成串口确认和设备检测。")
+            return
+
+        if not self.calibration_selected:
+            self.show_warning("提示", "请先点击红框区域的“校准”按钮选择是否校准。")
+            return
+
+        is_auto_calibration = global_setting.get_setting("is_auto_calibration", True)
         reply = QMessageBox.question(self, '确定设备配置',
                                      "确定该设备配置？",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -2239,6 +2308,8 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                                                    data=self.send_message['port'],
                                                    time=time_util.get_format_from_time(time.time())))
             basic_experiment_config = {}
+            basic_experiment_config["is_auto_calibration"] = is_auto_calibration
+            global_setting.set_setting("is_auto_calibration", is_auto_calibration)
             vr_value = self.vr_desc_text.value()
             if vr_value:
                 basic_experiment_config['vr_desc'] = float(vr_value)

@@ -6,11 +6,10 @@ from loguru import logger
 
 #logger = logger.bind(category="gui_logger")
 class MyQThread(QThread):
-    def __init__(self, name, deletion_timeout_ms=5000):
+    def __init__(self, name):
         super().__init__()
         super().setObjectName(name)
         self.name = name
-        self.deletion_timeout_ms = deletion_timeout_ms
         self.mutex = QMutex()
         self.condition = QWaitCondition()
         self._running = False
@@ -110,8 +109,7 @@ class MyQThread(QThread):
 
             # 5. 等待线程结束
             wait_count = 0
-            max_wait_count = self.deletion_timeout_ms // 100
-            while self.isRunning() and wait_count < max_wait_count:
+            while self.isRunning() and wait_count < 50:  # 最多等待5秒 (50 * 100ms)
                 QThread.msleep(100)
                 wait_count += 1
 

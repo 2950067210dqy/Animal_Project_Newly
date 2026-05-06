@@ -205,6 +205,8 @@ read_queue_data_thread = read_queue_data_Thread(name="MainWindow_index_read_queu
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
     change_enable_component_app_state_signal = QtCore.pyqtSignal()
+    # 设备配置页校准选择变化信号 (是否已选择, 是否校准)
+    calibration_selection_changed_signal = QtCore.pyqtSignal(bool, bool)
     # 显示校准详情dialog的信号
     show_calibration_window_signal = QtCore.pyqtSignal(dict)
     # 释放校准详情dialog的信号
@@ -757,6 +759,13 @@ class MainWindow_Index(ThemedWindow):
         else:
             self.show_common_tools()
 
+        if menu_id == 1:
+            global_setting.set_setting("device_config_calibration_selected", False)
+            self.calibration_selection_changed_signal.emit(
+                False,
+                global_setting.get_setting("is_auto_calibration", True)
+            )
+
         # 找到属于这个菜单的所有模块
         menu_modules = []
         for module in self.modules:
@@ -767,8 +776,8 @@ class MainWindow_Index(ThemedWindow):
                     module_menu_name["id"] == menu_id):
                 menu_modules.append(module)
 
-        # 按模块标题排序
-        menu_modules.sort(key=lambda x: x.title)
+        # 按模块顺序和标题排序
+        menu_modules.sort(key=lambda x: (getattr(x, "toolbar_order", 999), x.title))
 
         # 确定插入位置
         insert_position = self.get_dynamic_content_insert_position(hide_common_tools)
@@ -776,6 +785,8 @@ class MainWindow_Index(ThemedWindow):
         # 为每个模块创建工具栏按钮
         for module in menu_modules:
             module.set_main_gui(main_gui=self)
+            if hasattr(module, "refresh_display_text"):
+                module.refresh_display_text()
             name = module.title
             obj_name = f"dynamic_{module.name}"
 
@@ -784,6 +795,7 @@ class MainWindow_Index(ThemedWindow):
                 "新建实验": "🧪",
                 "打开实验文件": "📂",
                 "设置设备": "🔧",
+                "校准": "🎯",
                 "设备配置": "🖥️",
                 "老鼠轨迹监测": "🐭",
                 "相机监控": "📷",
