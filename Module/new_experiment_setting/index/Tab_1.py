@@ -341,6 +341,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.span_carbon_desc_text = None
         self.calibration_checkbox = None
         self.confirm_port_btn = None
+        self.refresh_detect_btn = None
         self.config_btn = None
         self.config_layout = None
         self.content_layout = None
@@ -405,10 +406,35 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             self.right_title = self.findChild(QLabel, "right_title_label")
             self.detection_status_label = self.findChild(QLabel, "detection_status_label")
             self.config_btn = self.findChild(QPushButton, "config_btn")
+            self._ensure_refresh_detect_button()
+            self.refresh_detect_btn = self.findChild(QPushButton, "tab_1_refresh_detect_btn")
 
 
         except Exception as e:
             logger.error(f"缓存UI组件失败: {e}", exc_info=True)
+
+    def _ensure_refresh_detect_button(self):
+        """动态创建刷新检测按钮，避免重新进入页面才能触发新一轮检测。"""
+        top_layout = getattr(self.ui, "top_layout", None)
+        central_widget = getattr(self.ui, "centralwidget", None)
+
+        if top_layout is None or central_widget is None:
+            return
+
+        existing_button = self.findChild(QPushButton, "tab_1_refresh_detect_btn")
+        if existing_button is not None:
+            self.refresh_detect_btn = existing_button
+            return
+
+        self.refresh_detect_btn = QPushButton(parent=central_widget)
+        self.refresh_detect_btn.setObjectName("tab_1_refresh_detect_btn")
+        self.refresh_detect_btn.setMinimumSize(QtCore.QSize(90, 35))
+        self.refresh_detect_btn.setText("刷新检测")
+
+        insert_index = top_layout.indexOf(self.start_btn) if self.start_btn is not None else top_layout.count()
+        if insert_index < 0:
+            insert_index = top_layout.count()
+        top_layout.insertWidget(insert_index, self.refresh_detect_btn)
 
     def _init_data(self):
         """获得相关数据"""
@@ -889,6 +915,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         if self.confirm_port_btn:
             self.confirm_port_btn.clicked.connect(self.confirm_port)
             self.confirm_port_btn.setEnabled(True)
+
+        if self.refresh_detect_btn:
+            self.refresh_detect_btn.clicked.connect(self.refresh_detection)
 
         self.config_btn: QPushButton = self.findChild(QPushButton, "config_btn")
         if self.config_btn:
@@ -1383,6 +1412,93 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             logger.error(f"处理笼子点击出错: {e}", exc_info=True)
 
     # ========== 气路检测流程（修改版 - 改用信号槽） ==========
+    def _get_current_selected_port(self):
+        """获取当前选中的串口。"""
+        if self.port_combox is not None and 0 <= self.port_combox.currentIndex() < len(self.ports):
+            return self.ports[self.port_combox.currentIndex()]['device']
+        return self.send_message.get('port', '')
+
+    def _refresh_ports_preserving_selection(self, preferred_port=''):
+        """刷新串口列表，并尽量保留当前选中的串口。"""
+        target_port = preferred_port or self._get_current_selected_port()
+        self.ports = []
+        self._init_data()
+        self.init_port_combox()
+
+        if not self.port_combox or not target_port:
+            return
+
+        for index, port_obj in enumerate(self.ports):
+            if port_obj.get('device') == target_port:
+                self.port_combox.setCurrentIndex(index)
+                break
+
+    def _reset_detection_ui_for_refresh(self):
+        """刷新检测前，清理当前页面上的旧检测结果。"""
+        self._cleanup_all_timers()
+        self.detection_in_progress = False
+        self.device_config_ready = False
+        self.current_detecting_index = 0
+        self.cage_list_to_detect = []
+        self._completed_cages.clear()
+        self.update_device_config_button_state()
+
+        if self.port_combox:
+            self.port_combox.setEnabled(True)
+        if self.confirm_port_btn:
+            self.confirm_port_btn.setEnabled(True)
+            self.confirm_port_btn.setText("确认串口")
+
+        refresh_port_btn = self.findChild(QPushButton, "tab_1_refresh_port_btn")
+        if refresh_port_btn:
+            refresh_port_btn.setEnabled(True)
+
+        for module_name in self.air_modules_to_detect:
+            status_label = self.module_status_labels.get(module_name)
+            if status_label is None:
+                continue
+            status_label.setText("待检测")
+            status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 11px;
+                    color: #666;
+                    padding: 2px;
+                    border-radius: 3px;
+                    background-color: #f5f5f5;
+                    border: 1px solid #ddd;
+                }
+            """)
+
+        cage_list_widget = self._get_cage_list_widget()
+        if cage_list_widget:
+            cage_list_widget.clearSelection()
+            for i in range(cage_list_widget.count()):
+                item = cage_list_widget.item(i)
+                if not item:
+                    continue
+                cage_number = item.data(Qt.ItemDataRole.UserRole)
+                group = self.cage_enabled_status.get(cage_number)
+                group_name = f"[{group.name}]" if group else ""
+                item.setText(f"鼠笼 {cage_number} {group_name} - 待检测")
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
+                item.setBackground(QtGui.QColor(245, 245, 245))
+                item.setForeground(QtGui.QColor(102, 102, 102))
+            cage_list_widget.viewport().update()
+            cage_list_widget.repaint()
+
+        if self.detection_status_label:
+            self.detection_status_label.setText("待检测")
+
+    def refresh_detection(self):
+        """刷新串口后重新触发一轮检测。"""
+        selected_port = self._get_current_selected_port()
+        self._reset_detection_ui_for_refresh()
+        self._refresh_ports_preserving_selection(selected_port)
+        if not self.port_combox or self.port_combox.currentIndex() < 0:
+            self.show_warning("错误", "请先选择有效的串口")
+            return
+        self.confirm_port()
+
     def confirm_port(self):
         """
         确认串口并启动气路检测（完全修复版）
