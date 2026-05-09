@@ -820,7 +820,10 @@ class MainWindow_Index(ThemedWindow):
             btn.setToolTip(name)
             btn.clicked.connect(module.click_method)
             if obj_name == "dynamic_New_main_experiment_calibration":
-                btn.setEnabled(bool(global_setting.get_setting("air_modules_all_valid", False)))
+                btn.setEnabled(
+                    bool(global_setting.get_setting("air_modules_all_valid", False))
+                    or bool(global_setting.get_setting("allow_test_calibration_without_air_validation", False))
+                )
 
             # # 文字竖排
             # btn.setText("\n".join(name))
@@ -1604,7 +1607,10 @@ class MainWindow_Index(ThemedWindow):
                 dynamic_action["action"].setEnabled(True)
 
             if dynamic_action["obj_name"] == "dynamic_New_main_experiment_calibration":
-                dynamic_action["action"].setEnabled(global_setting.get_setting("air_modules_all_valid", False))
+                dynamic_action["action"].setEnabled(
+                    bool(global_setting.get_setting("air_modules_all_valid", False))
+                    or bool(global_setting.get_setting("allow_test_calibration_without_air_validation", False))
+                )
 
         pass
 

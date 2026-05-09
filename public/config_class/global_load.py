@@ -10,6 +10,14 @@ from public.entity.enum.Public_Enum import AppState
 from theme.ThemeManager import ThemeManager
 
 
+def _read_test_bool(config: dict, section: str, key: str, default: bool = False) -> bool:
+    section_data = config.get(section, {}) if isinstance(config, dict) else {}
+    value = section_data.get(key, default)
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def load_global_setting():
     config_path = "/config"
     # 加载配置
@@ -51,6 +59,10 @@ def load_global_setting():
     else:
         logger.error("UFC_UGC_ZOS_config配置文件读取失败。")
     global_setting.set_setting("UFC_UGC_ZOS_config", config)
+    global_setting.set_setting(
+        "allow_test_calibration_without_air_validation",
+        _read_test_bool(config, "PARAM", "allow_calibration_without_air_validation", False)
+    )
     # 风格默认是dark  light
     global_setting.set_setting("style", configer['theme']['default'])
     # 图标风格 white black
@@ -105,6 +117,10 @@ def load_global_setting_without_Qt():
     else:
         logger.error("UFC_UGC_ZOS_config配置文件读取失败。")
     global_setting.set_setting("UFC_UGC_ZOS_config", config)
+    global_setting.set_setting(
+        "allow_test_calibration_without_air_validation",
+        _read_test_bool(config, "PARAM", "allow_calibration_without_air_validation", False)
+    )
     # 风格默认是dark  light
     global_setting.set_setting("style", configer['theme']['default'])
     # 图标风格 white black

@@ -172,20 +172,25 @@ class Main_experiment_calibration(BaseModule):
 
         self.sync_action_enabled_state()
 
+    def is_calibration_gate_passed(self) -> bool:
+        if global_setting.get_setting("allow_test_calibration_without_air_validation", False):
+            return True
+        return bool(global_setting.get_setting("air_modules_all_valid", False))
+
     def sync_action_enabled_state(self):
         """校准按钮只在气路检测全部有效时可点击。"""
         if self.main_gui is None:
             return
 
         action_name = f"dynamic_{self.name}"
-        enabled = bool(global_setting.get_setting("air_modules_all_valid", False))
+        enabled = self.is_calibration_gate_passed()
         for action_dict in getattr(self.main_gui, "dynamic_tool_bar_actions", []):
             if action_dict.get("obj_name") == action_name:
                 action_dict["action"].setEnabled(enabled)
                 break
 
     def click_method(self):
-        if not global_setting.get_setting("air_modules_all_valid", False):
+        if not self.is_calibration_gate_passed():
             QMessageBox.warning(self.main_gui, "提示", "请先完成气路检测，且确保 UFC、UGC、ZOS 全部有效后再选择校准。")
             self.sync_action_enabled_state()
             return
