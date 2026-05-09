@@ -177,10 +177,12 @@ class read_queue_data_Thread(MyQThread):
                         stop_modbus()
                     case "detect_air_modules_only":
                         port = global_setting.get_setting("port")
-                        all_modules_check_online_state_Not_Each_Mouse_Cage(port, None)
+                        detection_session_id = message.data.get("detection_session_id")
+                        all_modules_check_online_state_Not_Each_Mouse_Cage(port, None, detection_session_id)
                     case "detect_cage_modules_only":
                         port = global_setting.get_setting("port")
                         gids_from_message = message.data.get("gids", [])
+                        detection_session_id = message.data.get("detection_session_id")
 
                         # 使用传入的笼号进行检测
                         if gids_from_message and len(gids_from_message) > 0:
@@ -188,7 +190,7 @@ class read_queue_data_Thread(MyQThread):
                             for cage_num in gids_from_message:
                                 cage_num_int = int(cage_num)
                                 logger.info(f"开始检测笼子 {cage_num_int}")
-                                all_modules_check_online_state_Each_Mouse_Cage(port, cage_num_int)
+                                all_modules_check_online_state_Each_Mouse_Cage(port, cage_num_int, detection_session_id)
                         else:
                             logger.warning("未收到有效的笼号信息")
                     case "start_all_modules_detection":
@@ -241,7 +243,7 @@ def  all_modules_check_online_state():
     pass
 
 
-def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index):
+def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index, detection_session_id=None):
     """
     检测单个笼子的笼内模块
     关键修复：mouse_cage_index 直接代表笼子号（不是数组索引）
@@ -271,6 +273,7 @@ def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index):
 
             # 添加笼号信息用于响应时识别
             message_temp['mouse_cage_number'] = mouse_cage_index
+            message_temp['detection_session_id'] = detection_session_id
 
             send_messages.append({'message': message_temp})
 
@@ -289,7 +292,7 @@ def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index):
     # )
 
 
-def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
+def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index, detection_session_id=None):
     """
     检测气路模块的在线状态
     """
@@ -317,7 +320,8 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
             'module_type': 'status_read',
             'device_type': 'UFC',
             'cage_index': mouse_cage_index,
-            'mouse_cage_number': None
+            'mouse_cage_number': None,
+            'detection_session_id': detection_session_id
         }
     )
     send_messages.append(status_msg_02)
@@ -337,7 +341,8 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
             'module_type': 'status_read',
             'device_type': 'UGC',
             'cage_index': mouse_cage_index,
-            'mouse_cage_number': None
+            'mouse_cage_number': None,
+            'detection_session_id': detection_session_id
         }
     )
     send_messages.append(status_msg_03)
@@ -357,7 +362,8 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index):
             'module_type': 'status_read',
             'device_type': 'ZOS',
             'cage_index': mouse_cage_index,
-            'mouse_cage_number': None
+            'mouse_cage_number': None,
+            'detection_session_id': detection_session_id
         }
     )
     send_messages.append(status_msg_04)
@@ -591,6 +597,9 @@ class Send_thread(MyQThread):
                                         if desc and desc == "大气压测量值(KPa)":
                                             global_setting.set_setting("air_pressure_1104", float(data.get("value")))
                                             break
+
+                            if 'detection_session_id' in send_message:
+                                final_return_data['detection_session_id'] = send_message.get('detection_session_id')
 
                             # 把返回数据返回给源头
                             message_struct = None
@@ -973,7 +982,7 @@ def get_epoch_mouse_cage_index():
 
 
 def barrier_action():
-    end_time = time.time()
+    end_time = time.time()+0.7
     mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
     mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
     logger.critical(f"barrier action run :mouse_cage_index before:{mouse_cage_index}")

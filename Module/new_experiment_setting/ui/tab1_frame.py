@@ -50,6 +50,13 @@ class Ui_tab1_frame(object):
         self.tab_1_confirm_port_btn.setObjectName("tab_1_confirm_port_btn")
         self.top_layout.addWidget(self.tab_1_confirm_port_btn)
 
+        # 刷新检测按钮
+        self.tab_1_refresh_detection_btn = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.tab_1_refresh_detection_btn.setMinimumSize(QtCore.QSize(90, 35))
+        self.tab_1_refresh_detection_btn.setText("刷新检测")
+        self.tab_1_refresh_detection_btn.setObjectName("tab_1_refresh_detection_btn")
+        self.top_layout.addWidget(self.tab_1_refresh_detection_btn)
+
         # 确定设备配置按钮
         self.start_btn = QtWidgets.QPushButton(parent=self.centralwidget)
         self.start_btn.setMinimumSize(QtCore.QSize(120, 35))

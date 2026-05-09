@@ -299,7 +299,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
         # ==================== 气路检测相关属性 ====================
         self.air_module_detection_lock = threading.RLock()
-        self._air_detection_finished = False
+        self._air_detection_finished = True
         self._air_detection_final_result_cached = None
         self._air_ui_has_been_updated = False
 
@@ -327,6 +327,8 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.current_detecting_index = 0
         self.cage_detection_timers = {}
         self._completed_cages = {}
+        self._cage_detection_finished = True
+        self.current_detection_session_id = 0
         self._module_labels_initialized = False
         self._module_labels_object_ids = {}
 
@@ -341,6 +343,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.span_carbon_desc_text = None
         self.calibration_checkbox = None
         self.confirm_port_btn = None
+        self.refresh_detection_btn = None
         self.config_btn = None
         self.config_layout = None
         self.content_layout = None
@@ -399,7 +402,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             self.port_combox = getattr(self.ui, 'tab_1_port_combox', None) or self.findChild(QComboBox,
                                                                                              "tab_1_port_combox")
             self.confirm_port_btn = getattr(self.ui, 'tab_1_confirm_port_btn', None) or self.findChild(QPushButton,
-                                                                                                       "tab_1_confirm_port_btn")
+                                                                                                        "tab_1_confirm_port_btn")
+            self.refresh_detection_btn = getattr(self.ui, 'tab_1_refresh_detection_btn', None) or self.findChild(
+                QPushButton, "tab_1_refresh_detection_btn")
             self.start_btn = getattr(self.ui, 'start_btn', None) or self.findChild(QPushButton, "start_btn")
 
             self.right_title = self.findChild(QLabel, "right_title_label")
@@ -890,6 +895,10 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             self.confirm_port_btn.clicked.connect(self.confirm_port)
             self.confirm_port_btn.setEnabled(True)
 
+        if self.refresh_detection_btn:
+            self.refresh_detection_btn.clicked.connect(self.refresh_detection)
+            self.refresh_detection_btn.setEnabled(False)
+
         self.config_btn: QPushButton = self.findChild(QPushButton, "config_btn")
         if self.config_btn:
             self.config_btn.clicked.connect(self.start_device_config)
@@ -900,6 +909,145 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             self.start_btn.setEnabled(False)
 
         self.update_device_config_button_state()
+        self._update_refresh_detection_button_state()
+
+    def _update_refresh_detection_button_state(self):
+        """同步刷新检测按钮状态，防止检测轮次重叠。"""
+        if self.refresh_detection_btn is None:
+            return
+
+        is_busy = self.detection_in_progress or not self._air_detection_finished or not self._cage_detection_finished
+        can_refresh = self.port_confirmed and not is_busy
+        self.refresh_detection_btn.setEnabled(can_refresh)
+        self.refresh_detection_btn.setText("检测中..." if self.port_confirmed and is_busy else "刷新检测")
+
+    def _reset_air_module_status_labels(self, status_text="待检测"):
+        """重置气路模块显示，保证每轮检测从干净状态开始。"""
+        for module_name in self.air_modules_to_detect:
+            status_label = self.module_status_labels.get(module_name)
+            if status_label is None:
+                logger.error(f"模块 {module_name} 不在标签字典中！")
+                continue
+
+            status_label.blockSignals(True)
+            status_label.setText(status_text)
+            status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 11px;
+                    color: #666;
+                    padding: 2px;
+                    border-radius: 3px;
+                    background-color: #f5f5f5;
+                    border: 1px solid #ddd;
+                }
+            """)
+            status_label.blockSignals(False)
+            status_label.update()
+            status_label.repaint()
+
+    def _new_detection_session_id(self):
+        """生成新的检测轮次ID，用于过滤旧回包。"""
+        self.current_detection_session_id += 1
+        return self.current_detection_session_id
+
+    def _is_current_detection_session(self, state_data):
+        """只处理当前轮次的检测结果，避免旧回包污染新一轮检测。"""
+        session_id = state_data.get("detection_session_id")
+        if session_id != self.current_detection_session_id:
+            logger.warning(
+                f"忽略过期检测结果: session={session_id}, current={self.current_detection_session_id}, "
+                f"module={state_data.get('module_name')}, cage={state_data.get('mouse_cage_number')}"
+            )
+            return False
+        return True
+
+    def _start_detection_cycle(self):
+        """启动一轮新的模块检测，支持重复点击刷新。"""
+        if self.experiment_setting is None:
+            self.experiment_setting = global_setting.get_setting("experiment_setting", None)
+            if self.experiment_setting is None:
+                self.show_warning("错误", "实验设置未加载，请稍候...")
+                return
+
+        send_message_queue = global_setting.get_setting("send_message_queue", None)
+        if not send_message_queue:
+            logger.error("send_message_queue 未找到，无法发送报文")
+            self.show_warning("错误", "消息队列未找到，请重启应用")
+            return
+
+        self.device_config_ready = False
+        self.update_device_config_button_state()
+        global_setting.set_setting("air_modules_all_valid", False)
+        if self.main_gui is not None:
+            self.main_gui.change_enable_component_app_state_signal.emit()
+
+        self._cleanup_all_timers()
+        self.init_cage_list()
+        self.init_config_ui()
+        self._reset_air_module_status_labels()
+
+        with self.air_module_detection_lock:
+            self.air_detection_complete_event.clear()
+            self._air_detection_finished = False
+            self._air_ui_has_been_updated = False
+            self._air_detection_final_result_cached = None
+            self.air_modules_completed = {module_name: False for module_name in self.air_modules_to_detect}
+            self.air_modules_detected = {module_name: False for module_name in self.air_modules_to_detect}
+            self.air_modules_valid = {module_name: False for module_name in self.air_modules_to_detect}
+
+        self._completed_cages.clear()
+        self.cage_list_to_detect = [int(cage_id) for cage_id in self.cage_enabled_status.keys()]
+        self.current_detecting_index = 0
+        self.cage_detection_timers.clear()
+        self._cage_detection_finished = False
+        for cage_id in self.cage_list_to_detect:
+            self._completed_cages[int(cage_id)] = False
+
+        mouse_cage_detect_dict = {}
+        for cage_id in self.cage_list_to_detect:
+            cage_id_int = int(cage_id)
+            mouse_cage_detect_dict[cage_id_int] = {
+                'cage_modules': {},
+                'air_modules': {},
+                'cage_is_valid': False,
+                'update_time': time_util.get_format_from_time(time.time())
+            }
+        global_setting.set_setting("mouse_cage_detect_state_dict", mouse_cage_detect_dict)
+
+        if self.detection_status_label:
+            self.detection_status_label.setText("检测中...")
+
+        self.detection_in_progress = True
+        detection_session_id = self._new_detection_session_id()
+        self._update_refresh_detection_button_state()
+
+        send_message_queue.put(ObjectQueueItem(
+            origin='New_main_experiment_setting',
+            to='main_monitor_data',
+            title='set_port',
+            data=self.send_message['port'],
+            time=time_util.get_format_from_time(time.time())
+        ))
+
+        send_message_queue.put(ObjectQueueItem(
+            origin="New_main_experiment_setting",
+            to="main_monitor_data",
+            title="detect_air_modules_only",
+            data={
+                'port': self.send_message['port'],
+                'mouse_cage_index': None,
+                'detection_session_id': detection_session_id
+            },
+            time=time_util.get_format_from_time(time.time())
+        ))
+
+        logger.info(
+            f"启动检测轮次 session={detection_session_id} | "
+            f"Port={self.send_message['port']} | Cages={self.cage_list_to_detect}"
+        )
+
+        QtWidgets.QApplication.processEvents()
+        QTimer.singleShot(3000, self._detect_next_cage)
 
     # ==========配置UI创建==========
     def init_em_config_ui_default(self, module_key, module_value, scroll_area_layout):
@@ -1387,31 +1535,12 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         """
         确认串口并启动气路检测（完全修复版）
         """
-        # logger.critical("=" * 80)
-        # logger.critical("确认串口，启动气路模块检测")
-        # logger.critical("=" * 80)
-
-        # ==================== 【第1步】验证串口 ====================
         if not self.port_combox or self.port_combox.currentIndex() < 0:
             self.show_warning("错误", "请先选择有效的串口")
             return
 
-        if self.experiment_setting is None:
-            self.experiment_setting = global_setting.get_setting("experiment_setting", None)
-            if self.experiment_setting is None:
-                self.show_warning("错误", "实验设置未加载，请稍候...")
-                return
-
         self.send_message['port'] = self.ports[self.port_combox.currentIndex()]['device']
         self.port_confirmed = True
-        self.device_config_ready = False
-        global_setting.set_setting("air_modules_all_valid", False)
-        self.update_device_config_button_state()
-        if self.main_gui is not None:
-            self.main_gui.change_enable_component_app_state_signal.emit()
-
-
-        # ==================== 【第3步】禁用按钮 ====================
         self.port_combox.setEnabled(False)
         if self.confirm_port_btn:
             self.confirm_port_btn.setEnabled(False)
@@ -1426,133 +1555,31 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         if self.start_btn:
             self.start_btn.setEnabled(False)
 
-        # ==================== 【第4步】重置所有气路模块标签为"检测中..." ====================
-        # logger.critical("重置所有气路模块标签为检测中状态...")
+        self._start_detection_cycle()
 
-        for module_name in self.air_modules_to_detect:
-            if module_name not in self.module_status_labels:
-                logger.error(f"模块 {module_name} 不在标签字典中！")
-                continue
-
-            status_label = self.module_status_labels[module_name]
-
-            # 【关键】这里直接设置，不通过信号
-            status_label.blockSignals(True)
-            status_label.setText("检测中...")
-            status_label.setStyleSheet("""
-                QLabel {
-                    font-size: 12px;
-                    color: #FF8C00;
-                    padding: 5px;
-                    border-radius: 3px;
-                    background-color: #FFFACD;
-                    border: 1px solid #FFD700;
-                }
-            """)
-            status_label.blockSignals(False)
-
-            # 【关键】强制刷新
-            status_label.update()
-            status_label.repaint()
-
-            # logger.critical(f"✓ {module_name} 标签已重置为: '{status_label.text()}'")
-
-        # 强制处理所有待处理的事件
-        QtWidgets.QApplication.processEvents()
-
-        # logger.critical("所有标签重置完成，界面已更新")
-
-        # ==================== 【第5步】重置气路检测状态（一次性，在循环外） ====================
-        with self.air_module_detection_lock:
-            self.air_detection_complete_event.clear()
-            self._air_detection_finished = False
-            self._air_ui_has_been_updated = False
-            self._air_detection_final_result_cached = None
-
-            self.air_modules_completed.clear()
-            self.air_modules_detected.clear()
-            self.air_modules_valid.clear()
-
-            for module_name in ['UFC', 'UGC', 'ZOS']:
-                self.air_modules_completed[module_name] = False
-                self.air_modules_detected[module_name] = False
-                self.air_modules_valid[module_name] = False
-
-            global_setting.set_setting("air_modules_all_valid", False)
-            if self.main_gui is not None:
-                self.main_gui.change_enable_component_app_state_signal.emit()
-
-            # logger.debug("[重置] 气路检测状态已完全重置")
-
-        # ==================== 【第6步】初始化笼内检测 ====================
-        self._completed_cages.clear()
-        self.cage_list_to_detect = [int(cage_id) for cage_id in self.cage_enabled_status.keys()]
-        self.current_detecting_index = 0
-        self.cage_detection_timers.clear()
-
-        # logger.debug(f"笼子列表已初始化: {self.cage_list_to_detect}")
-
-        for cage_id in self.cage_list_to_detect:
-            cage_id_int = int(cage_id)
-            self._completed_cages[cage_id_int] = False
-            # logger.debug(f"  初始化笼子状态: {cage_id_int} -> False")
-
-        # ==================== 【第7步】初始化全局检测字典 ====================
-        mouse_cage_detect_dict = {}
-        for cage_id in self.cage_list_to_detect:
-            cage_id_int = int(cage_id)
-            mouse_cage_detect_dict[cage_id_int] = {
-                'cage_modules': {},
-                'air_modules': {},
-                'cage_is_valid': False,
-                'update_time': time_util.get_format_from_time(time.time())
-            }
-        global_setting.set_setting("mouse_cage_detect_state_dict", mouse_cage_detect_dict)
-        # logger.debug(f"全局检测字典已初始化，共 {len(mouse_cage_detect_dict)} 个笼子")
-
-        if self.detection_status_label:
-            self.detection_status_label.setText("检测中...")
-
-        self.detection_in_progress = True
-
-        # ==================== 【第8步】发送气路检测请求 ====================
-        send_message_queue = global_setting.get_setting("send_message_queue", None)
-        if not send_message_queue:
-            logger.error("send_message_queue 未找到，无法发送报文")
-            self.show_warning("错误", "消息队列未找到，请重启应用")
+    def refresh_detection(self):
+        """在已确认串口的前提下，重新执行一轮完整检测。"""
+        if not self.port_confirmed:
+            self.show_warning("提示", "请先确认串口，再执行刷新检测。")
             return
 
-        # logger.info("=" * 80)
-        # logger.info(f"发送气路模块检测报文（UFC、UGC、ZOS）")
-        # logger.info("=" * 80)
+        if self.detection_in_progress or not self._air_detection_finished or not self._cage_detection_finished:
+            self.show_warning("提示", "当前检测尚未结束，请等待本轮检测完成后再刷新。")
+            return
 
-        send_message_queue.put(ObjectQueueItem(
-            origin="New_main_experiment_setting",
-            to="main_monitor_data",
-            title="detect_air_modules_only",
-            data={
-                'port': self.send_message['port'],
-                'mouse_cage_index': None
-            },
-            time=time_util.get_format_from_time(time.time())
-        ))
+        if not self.port_combox or self.port_combox.currentIndex() < 0:
+            self.show_warning("错误", "当前串口无效，请重新选择串口。")
+            return
 
-        logger.info(
-            f"气路模块检测报文已发送 | "
-            f"Port: {self.send_message['port']} | "
-            f"Modules: {self.air_modules_to_detect}"
-        )
-
-        # ==================== 【第9步】启动鼠笼内模块检测 ====================
-        QTimer.singleShot(3000, self._detect_next_cage)
-
-        # logger.critical("=" * 80)
-        # logger.critical("确认串口完成，等待检测结果...")
-        # logger.critical("=" * 80)
+        self.send_message['port'] = self.ports[self.port_combox.currentIndex()]['device']
+        self._start_detection_cycle()
 
     def not_each_Mouse_Cage_detect_update_state(self, state_data):
         """修复版 - 确保立即发射信号"""
         try:
+            if not self._is_current_detection_session(state_data):
+                return
+
             module_name = state_data.get('module_name', '')
 
             # ==================== 判定有效性 ====================
@@ -1666,14 +1693,15 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             )
 
             # ==================== 【最后】更新总体检测状态 ====================
-            # 这才是通知UI"检测完成"的信号！
-            self.signal_detection_status_update.emit("✓ 气路检测完成")
-            # logger.critical("已发射【检测完成】信号")
+            status_text = "✓ 检测完成，可选择笼子进行配置" if self._cage_detection_finished else "✓ 气路检测完成，继续检测鼠笼模块..."
+            self.signal_detection_status_update.emit(status_text)
+            self._update_refresh_detection_button_state()
 
         except Exception as e:
             logger.error(f"[结算异常] {e}", exc_info=True)
             with self.air_module_detection_lock:
                 self._air_detection_finished = True
+            self._update_refresh_detection_button_state()
 
     # ========== 笼内检测流程 ==========
     def _detect_next_cage(self):
@@ -1691,12 +1719,15 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                 # )
                 self._cleanup_all_timers()
                 self.detection_in_progress = False
+                self._cage_detection_finished = True
 
                 if self.detection_status_label:
-                    self.detection_status_label.setText("✓ 检测完成，可选择笼子进行配置")
+                    status_text = "✓ 检测完成，可选择笼子进行配置" if self._air_detection_finished else "✓ 鼠笼检测完成，等待气路结果..."
+                    self.detection_status_label.setText(status_text)
 
                 self.device_config_ready = True
                 self.update_device_config_button_state()
+                self._update_refresh_detection_button_state()
                 return
 
             # ==================== 2. 获取当前笼子（修复：确保类型一致） ====================
@@ -1734,7 +1765,8 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                     title="detect_cage_modules_only",
                     data={
                         'gids': [cage_number],  # 单个笼子的笼号
-                        'cage_index': cage_number  # 笼子索引（与gids一致）
+                        'cage_index': cage_number,  # 笼子索引（与gids一致）
+                        'detection_session_id': self.current_detection_session_id
                     },
                     time=time_util.get_format_from_time(time.time())
                 )
@@ -1861,9 +1893,20 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         只负责收集数据，不负责推进索引
         """
         try:
+            if not self._is_current_detection_session(state_data):
+                return
+
             mouse_cage_number = state_data.get('mouse_cage_number')
             module_name = state_data.get('module_name', 'UNKNOWN')
             module_is_valid = state_data.get('response_state', False)
+
+            if mouse_cage_number is None:
+                logger.warning(f"收到缺少鼠笼号的检测结果: {state_data}")
+                return
+
+            if self._completed_cages.get(int(mouse_cage_number), False):
+                logger.warning(f"忽略笼 {mouse_cage_number} 的迟到检测结果: {module_name}")
+                return
 
             # logger.critical(
             #     f"[笼内模块] 笼 {mouse_cage_number} - {module_name}: "
