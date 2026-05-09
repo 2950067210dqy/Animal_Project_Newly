@@ -819,6 +819,8 @@ class MainWindow_Index(ThemedWindow):
             btn.setObjectName(obj_name)
             btn.setToolTip(name)
             btn.clicked.connect(module.click_method)
+            if obj_name == "dynamic_New_main_experiment_calibration":
+                btn.setEnabled(bool(global_setting.get_setting("air_modules_all_valid", False)))
 
             # # 文字竖排
             # btn.setText("\n".join(name))

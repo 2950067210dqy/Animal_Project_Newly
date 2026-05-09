@@ -864,9 +864,26 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             return
 
         for module in getattr(self.main_gui, "modules", []):
-            if getattr(module, "name", "") == "New_main_experiment_calibration" and hasattr(module, "refresh_display_text"):
-                module.refresh_display_text()
+            if getattr(module, "name", "") == "New_main_experiment_calibration":
+                if hasattr(module, "refresh_display_text"):
+                    module.refresh_display_text()
+                if hasattr(module, "sync_action_enabled_state"):
+                    module.sync_action_enabled_state()
                 break
+
+    def reset_calibration_selection_state(self, emit_signal=True):
+        """开始新实验或重新检测时，重置校准选择状态。"""
+        self.calibration_selected = False
+        global_setting.set_setting("device_config_calibration_selected", False)
+
+        if emit_signal and self.main_gui is not None and hasattr(self.main_gui, "calibration_selection_changed_signal"):
+            self.main_gui.calibration_selection_changed_signal.emit(
+                False,
+                global_setting.get_setting("is_auto_calibration", True)
+            )
+
+        self.update_calibration_button_text()
+        self.update_device_config_button_state()
 
     def update_device_config_button_state(self):
         """根据检测状态和校准选择状态控制确认设备配置按钮"""
@@ -975,6 +992,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             self.show_warning("错误", "消息队列未找到，请重启应用")
             return
 
+        self.reset_calibration_selection_state()
         self.device_config_ready = False
         self.update_device_config_button_state()
         global_setting.set_setting("air_modules_all_valid", False)
