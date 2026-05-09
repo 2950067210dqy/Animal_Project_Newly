@@ -761,6 +761,7 @@ class MainWindow_Index(ThemedWindow):
 
         if menu_id == 1:
             global_setting.set_setting("device_config_calibration_selected", False)
+            global_setting.set_setting("air_modules_all_valid", False)
             self.calibration_selection_changed_signal.emit(
                 False,
                 global_setting.get_setting("is_auto_calibration", True)
@@ -882,6 +883,7 @@ class MainWindow_Index(ThemedWindow):
 
         # 更新菜单栏按钮的激活状态
         self.update_menu_bar_active_state(menu_id)
+        self.change_enable_component_app_state()
 
     def clear_dynamic_toolbar_content(self):
         """清除工具栏中的动态内容"""
@@ -1587,7 +1589,16 @@ class MainWindow_Index(ThemedWindow):
             # 特殊按钮需要特殊配置
             if tool_bar_action['obj_name'] in ["stop_experiment", "pause_experiment", "toggle_mode", "window_exchange"]:
                 tool_bar_action["action"].setEnabled(False)
-        pass
+
+        # 设置是否可以点击 dynamic tool_bar
+        for dynamic_action in self.dynamic_tool_bar_actions:
+            if dynamic_action["app_state"] > global_setting.get_setting("app_state", AppState.INITIALIZED):
+                dynamic_action["action"].setEnabled(False)
+            else:
+                dynamic_action["action"].setEnabled(True)
+
+            if dynamic_action["obj_name"] == "dynamic_New_main_experiment_calibration":
+                dynamic_action["action"].setEnabled(global_setting.get_setting("air_modules_all_valid", False))
 
         pass
 
