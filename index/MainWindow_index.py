@@ -1078,7 +1078,7 @@ class MainWindow_Index(ThemedWindow):
                 action_dict["action"].setDisabled(False)
             if action_dict["obj_name"] == "pause_experiment":
                 action_dict["action"]: QAction
-                # action_dict["action"].setDisabled(False)
+                action_dict["action"].setDisabled(False)
         self.setEnabled(True)
         resolve()
 
@@ -1571,30 +1571,34 @@ class MainWindow_Index(ThemedWindow):
     def change_enable_component_app_state(self):
         # 更新程序状态值
         self.status_bar.update_app_state()
+        current_app_state = global_setting.get_setting("app_state", AppState.INITIALIZED)
         # 根据程序状态来改变是否可以点击的组件'
         # 设置是否可以点击 menu_bar
         for menu_bar_action in self.menu_bar_actions:
-            if menu_bar_action["app_state"] > global_setting.get_setting("app_state", AppState.INITIALIZED):
+            if menu_bar_action["app_state"] > current_app_state:
                 menu_bar_action["action"].setEnabled(False)
             else:
                 menu_bar_action["action"].setEnabled(True)
                 # 特殊情况
-                if global_setting.get_setting("app_state", AppState.INITIALIZED) == AppState.MONITORING \
+                if current_app_state == AppState.MONITORING \
                         and menu_bar_action['obj_name'] in ["Main_New_experiment", "Main_New_experiment_open"]:
                     menu_bar_action["action"].setEnabled(False)
         # 设置是否可以点击 tool_bar
         for tool_bar_action in self.tool_bar_actions:
-            if tool_bar_action["app_state"] > global_setting.get_setting("app_state", AppState.INITIALIZED):
+            if tool_bar_action["app_state"] > current_app_state:
                 tool_bar_action["action"].setEnabled(False)
             else:
                 tool_bar_action["action"].setEnabled(True)
             # 特殊按钮需要特殊配置
-            if tool_bar_action['obj_name'] in ["stop_experiment", "pause_experiment", "toggle_mode", "window_exchange"]:
+            obj_name = tool_bar_action["obj_name"]
+            if obj_name in ["stop_experiment", "pause_experiment"]:
+                tool_bar_action["action"].setEnabled(current_app_state == AppState.MONITORING)
+            elif obj_name in ["toggle_mode", "window_exchange"]:
                 tool_bar_action["action"].setEnabled(False)
 
         # 设置是否可以点击 dynamic tool_bar
         for dynamic_action in self.dynamic_tool_bar_actions:
-            if dynamic_action["app_state"] > global_setting.get_setting("app_state", AppState.INITIALIZED):
+            if dynamic_action["app_state"] > current_app_state:
                 dynamic_action["action"].setEnabled(False)
             else:
                 dynamic_action["action"].setEnabled(True)
