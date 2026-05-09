@@ -982,7 +982,7 @@ def get_epoch_mouse_cage_index():
 
 
 def barrier_action():
-    end_time = time.time()+0.7
+    query_end_limit = time.time()
     mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
     mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
     logger.critical(f"barrier action run :mouse_cage_index before:{mouse_cage_index}")
@@ -1000,7 +1000,10 @@ def barrier_action():
     mouse_cage_number = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
 
 
+    handle = Monitor_Datas_Handle()  # # 创建数据库操作器
     start_time = global_setting.get_setting("start_time_messages_sent_epoch_for_running", time.time())
+    actual_end_time = handle.query_epoch_actual_end_time(start_time, query_end_limit)
+    end_time = actual_end_time if actual_end_time is not None else start_time
 
     logo_text =f"{time_util.get_format_from_time(time.time())} | 一轮结束|结束时间：{time_util.get_format_from_time(end_time)}|开始时间：{time_util.get_format_from_time(start_time)}|用时：{time_util.format_timedelta(a= datetime.fromtimestamp(end_time),b= datetime.fromtimestamp(start_time),signed=True,zero_pad=True)}|一轮传感器发送报文结束|期间一共发送{ global_setting.get_setting('messages_sent_epoch_for_running', 0)}条报文。"
     logger.warning(logo_text)
@@ -1011,9 +1014,8 @@ def barrier_action():
                             title="epoch_running_state",
                             data=logo_text,
                             time=time_util.get_format_from_time(time.time())))
-    handle = Monitor_Datas_Handle()  # # 创建数据库操作器
     # 去数据库里查询 所有的在这个时间段的数据
-    results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time)
+    results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time, start_exclusive=True)
     # logger.critical(f"{results}")
     store_Datas =[]
     # store_Datas.append({'desc':'序号','value':None})
@@ -1192,7 +1194,7 @@ def barrier_action():
         logger.info(f"epoch_result_all数据存储成功，ID: {result_all.item_id}")
     else:
         logger.error(f"epoch_result_all数据存储成功: {result_all.error if result_all else '未知错误'}")
-    global_setting.set_setting("start_time_messages_sent_epoch_for_running", end_time+0.1)
+    global_setting.set_setting("start_time_messages_sent_epoch_for_running", end_time)
     global_setting.set_setting("messages_sent_epoch_for_running",
                                0)
 

@@ -637,13 +637,19 @@ class Monitor_Datas_Handle():
         pass
 
 
-    def query_data_in_line_with_epoch_data(self,start_time,end_time):
+    def query_epoch_actual_end_time(self, start_time, end_time=None):
+        if end_time is None:
+            end_time = time.time()
+        tables = self.sqlite_manager.get_tables_with_time(exclude_substr=["meta","Epoch_data"], columns=['time'])
+        return self.sqlite_manager.get_latest_time_across_tables(tables, start_time=start_time, end_time=end_time)
+
+    def query_data_in_line_with_epoch_data(self,start_time,end_time, start_exclusive=False):
         # 找出当前时间段的所有数据表的数据除了meta表
         tables = self.sqlite_manager.get_tables_with_time(exclude_substr=["meta","Epoch_data"],columns=['time'])
         # logger.critical(tables)
         # 执行查询
         results, columns = self.sqlite_manager.get_multi_table_data(tables,
-            start_time, end_time, join_type="separate"
+            start_time, end_time, join_type="separate", start_exclusive=start_exclusive
         )
         # logger.critical(results)
         # logger.critical(columns)

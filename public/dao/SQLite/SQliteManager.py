@@ -150,6 +150,59 @@ class SQLiteManager:
 
             return good
 
+    def get_latest_time_across_tables(self, table_names: List[str], start_time: Optional[float] = None,
+                                      end_time: Optional[float] = None) -> Optional[float]:
+        if not table_names:
+            return None
+
+        start_time_f = datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if start_time is not None else None
+        end_time_f = datetime.datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if end_time is not None else None
+        latest_time_text = None
+
+        with self.execute_transaction(auto_commit=True) as cursor:
+            for table_name in table_names:
+                try:
+                    q = self.quote_ident(table_name)
+                    cursor.execute(f"PRAGMA table_info({q})")
+                    table_info = cursor.fetchall()
+                    cols = [r[1] for r in table_info]
+                    if self.TIME_COLUMN_NAME not in cols:
+                        continue
+
+                    where_clauses = []
+                    params = []
+                    if start_time_f is not None:
+                        where_clauses.append(f"{self.quote_ident(self.TIME_COLUMN_NAME)} >= ?")
+                        params.append(start_time_f)
+                    if end_time_f is not None:
+                        where_clauses.append(f"{self.quote_ident(self.TIME_COLUMN_NAME)} <= ?")
+                        params.append(end_time_f)
+
+                    query = f"SELECT MAX({self.quote_ident(self.TIME_COLUMN_NAME)}) FROM {q}"
+                    if where_clauses:
+                        query += " WHERE " + " AND ".join(where_clauses)
+
+                    cursor.execute(query, params)
+                    row = cursor.fetchone()
+                    table_latest_time = row[0] if row and row[0] else None
+                    if table_latest_time and (latest_time_text is None or table_latest_time > latest_time_text):
+                        latest_time_text = table_latest_time
+                except sqlite3.OperationalError as e:
+                    logger.error(f"鑾峰彇琛?{table_name} 鏈€鍚庢椂闂村嚭閿? {e}")
+                    continue
+
+        if latest_time_text is None:
+            return None
+
+        try:
+            return datetime.datetime.fromisoformat(latest_time_text).timestamp()
+        except ValueError:
+            try:
+                return datetime.datetime.strptime(latest_time_text, '%Y-%m-%d %H:%M:%S').timestamp()
+            except ValueError:
+                logger.error(f"鏃犳硶瑙ｆ瀽鏈€鍚庤惤搴撴椂闂? {latest_time_text}")
+                return None
+
     def build_all_times_sql(self, tables: List[str]) -> str:
         """构造用于 all_times 的子查询 SQL（UNION 去重）。"""
         selects = [f"SELECT time FROM {self.quote_ident(t)}" for t in tables]
@@ -310,7 +363,7 @@ class SQLiteManager:
         return ",\n".join(foreign_keys)
 
     def get_multi_table_data(self, table_names: List[str], start_time: float, end_time: float,
-                             join_type: str = "union"):
+                             join_type: str = "union", start_exclusive: bool = False):
         """从多个SQLite表中获取指定时间范围的数据"""
         try:
             valid_tables = []
@@ -346,23 +399,24 @@ class SQLiteManager:
                 return [], []
 
             if join_type.lower() == "union":
-                return self._union_query(valid_tables, table_columns, start_time, end_time)
+                return self._union_query(valid_tables, table_columns, start_time, end_time, start_exclusive=start_exclusive)
             elif join_type.lower() == "separate":
-                return self._separate_queries(valid_tables, table_columns, start_time, end_time)
+                return self._separate_queries(valid_tables, table_columns, start_time, end_time, start_exclusive=start_exclusive)
             else:
-                return self._join_query(valid_tables, table_columns, start_time, end_time)
+                return self._join_query(valid_tables, table_columns, start_time, end_time, start_exclusive=start_exclusive)
 
         except Exception as e:
             logger.error(f"查询过程中出现错误: {e}")
             return [], []
 
     def _separate_queries(self, tables: List[str], table_columns: Dict[str, List[str]], start_time: float,
-                          end_time: float):
+                          end_time: float, start_exclusive: bool = False):
         """分别查询每个表，返回字典格式的结果"""
         results_dict = {}
         all_columns = ['time']
         start_time_f = datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        end_time_f = datetime.datetime.fromtimestamp(end_time +10).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        end_time_f = datetime.datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        time_condition = "time > ? AND time <= ?" if start_exclusive else "time BETWEEN ? AND ?"
 
         with self.execute_transaction(auto_commit=True) as cursor:
             for table in tables:
@@ -371,7 +425,7 @@ class SQLiteManager:
                 query = f"""
                 SELECT {', '.join(column_selects)}
                 FROM {table}
-                WHERE time BETWEEN ? AND ?
+                WHERE {time_condition}
                 ORDER BY time
                 """
 
@@ -393,11 +447,13 @@ class SQLiteManager:
         all_columns.pop(0)
         return merged_results, all_columns
 
-    def _union_query(self, tables: List[str], table_columns: Dict[str, List[str]], start_time: float, end_time: float):
+    def _union_query(self, tables: List[str], table_columns: Dict[str, List[str]], start_time: float, end_time: float,
+                     start_exclusive: bool = False):
         """使用UNION ALL合并多个表的数据"""
         select_parts = []
         start_time_f = datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         end_time_f = datetime.datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        time_condition = "time > ? AND time <= ?" if start_exclusive else "time BETWEEN ? AND ?"
 
         for table in tables:
             columns = table_columns[table]
@@ -409,7 +465,7 @@ class SQLiteManager:
                 time,
                 {', '.join(column_selects)}
             FROM {table}
-            WHERE time BETWEEN ? AND ?
+            WHERE {time_condition}
             """
             select_parts.append(select_part)
 
@@ -425,7 +481,8 @@ class SQLiteManager:
 
         return results, column_names
 
-    def _join_query(self, tables: List[str], table_columns: Dict[str, List[str]], start_time: float, end_time: float):
+    def _join_query(self, tables: List[str], table_columns: Dict[str, List[str]], start_time: float, end_time: float,
+                    start_exclusive: bool = False):
         """使用JOIN合并多个表的数据（基于time字段）"""
         start_time_f = datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         end_time_f = datetime.datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
@@ -434,13 +491,14 @@ class SQLiteManager:
             table = tables[0]
             columns = table_columns[table]
             column_selects = [f"{table}.{col} AS {table}__{col}" for col in columns]
+            time_condition = f"{table}.time > ? AND {table}.time <= ?" if start_exclusive else f"{table}.time BETWEEN ? AND ?"
 
             query = f"""
             SELECT 
                 {table}.time,
                 {', '.join(column_selects)}
             FROM {table}
-            WHERE {table}.time BETWEEN ? AND ?
+            WHERE {time_condition}
             ORDER BY {table}.time
             """
 
