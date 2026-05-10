@@ -875,11 +875,12 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         """开始新实验或重新检测时，重置校准选择状态。"""
         self.calibration_selected = False
         global_setting.set_setting("device_config_calibration_selected", False)
+        self.set_calibration_mode(False, sync_checkbox=True, sync_toolbar=True, notify_monitor=False)
 
         if emit_signal and self.main_gui is not None and hasattr(self.main_gui, "calibration_selection_changed_signal"):
             self.main_gui.calibration_selection_changed_signal.emit(
                 False,
-                global_setting.get_setting("is_auto_calibration", True)
+                global_setting.get_setting("is_auto_calibration", False)
             )
 
         self.update_calibration_button_text()
@@ -887,7 +888,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
     def update_device_config_button_state(self):
         """根据检测状态和校准选择状态控制确认设备配置按钮"""
-        can_config = bool(self.device_config_ready and self.calibration_selected)
+        can_config = True
 
         if self.start_btn is not None:
             self.start_btn.setEnabled(can_config)
@@ -919,11 +920,11 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.config_btn: QPushButton = self.findChild(QPushButton, "config_btn")
         if self.config_btn:
             self.config_btn.clicked.connect(self.start_device_config)
-            self.config_btn.setEnabled(False)
+            self.config_btn.setEnabled(True)
 
         if self.start_btn:
             self.start_btn.clicked.connect(self.start_device_config)
-            self.start_btn.setEnabled(False)
+            self.start_btn.setEnabled(True)
 
         self.update_device_config_button_state()
         self._update_refresh_detection_button_state()
@@ -1446,7 +1447,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         if event.type() == QEvent.Type.ActivationChange:
             if self.isActiveWindow():
                 if self.calibration_checkbox is not None:
-                    self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
+                    self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', False))
                 self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
                 self.update_calibration_button_text()
                 self.update_device_config_button_state()
@@ -1458,7 +1459,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         logger.warning("tab1——show")
 
         if self.calibration_checkbox is not None:
-            self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', True))
+            self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', False))
         self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
         self.update_calibration_button_text()
         self.update_device_config_button_state()
@@ -1569,9 +1570,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             refresh_port_btn.setEnabled(False)
 
         if self.config_btn:
-            self.config_btn.setEnabled(False)
+            self.config_btn.setEnabled(True)
         if self.start_btn:
-            self.start_btn.setEnabled(False)
+            self.start_btn.setEnabled(True)
 
         self._start_detection_cycle()
 
@@ -2366,11 +2367,11 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             self.show_warning("提示", "请先完成串口确认和设备检测。")
             return
 
-        if not self.calibration_selected:
+        if not self.calibration_selected and global_setting.get_setting("require_device_config_calibration_selection", False):
             self.show_warning("提示", "请先点击红框区域的“校准”按钮选择是否校准。")
             return
 
-        is_auto_calibration = global_setting.get_setting("is_auto_calibration", True)
+        is_auto_calibration = global_setting.get_setting("is_auto_calibration", False)
         reply = QMessageBox.question(self, '确定设备配置',
                                      "确定该设备配置？",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

@@ -761,10 +761,11 @@ class MainWindow_Index(ThemedWindow):
 
         if menu_id == 1:
             global_setting.set_setting("device_config_calibration_selected", False)
+            global_setting.set_setting("is_auto_calibration", False)
             global_setting.set_setting("air_modules_all_valid", False)
             self.calibration_selection_changed_signal.emit(
                 False,
-                global_setting.get_setting("is_auto_calibration", True)
+                global_setting.get_setting("is_auto_calibration", False)
             )
 
         # 找到属于这个菜单的所有模块
@@ -1184,7 +1185,7 @@ class MainWindow_Index(ThemedWindow):
                 countdown_seconds=start_wait_times,
                 title="开始实验", message="正在启动气路...")
 
-        is_auto_calibration = global_setting.get_setting('is_auto_calibration', True)
+        is_auto_calibration = global_setting.get_setting('is_auto_calibration', False)
         if is_auto_calibration:
             self.init__calibration_windows()
             self.start_dialog.insert_calibration_dialog(self.calibration_details_windows)

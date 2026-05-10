@@ -195,7 +195,7 @@ class Main_experiment_calibration(BaseModule):
             self.sync_action_enabled_state()
             return
 
-        current_value = global_setting.get_setting("is_auto_calibration", True)
+        current_value = global_setting.get_setting("is_auto_calibration", False)
 
         msg_box = QMessageBox(self.main_gui)
         msg_box.setIcon(QMessageBox.Icon.Question)
