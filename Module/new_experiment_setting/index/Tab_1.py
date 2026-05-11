@@ -2363,9 +2363,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
     def start_device_config(self):
         """开始设备配置"""
-        if not self.device_config_ready:
-            self.show_warning("提示", "请先完成串口确认和设备检测。")
-            return
+        # if not self.device_config_ready:
+        #     self.show_warning("提示", "请先完成串口确认和设备检测。")
+        #     return
 
         if not self.calibration_selected and global_setting.get_setting("require_device_config_calibration_selection", False):
             self.show_warning("提示", "请先点击红框区域的“校准”按钮选择是否校准。")
