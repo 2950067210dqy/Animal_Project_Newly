@@ -4,6 +4,7 @@ import multiprocessing
 import sys
 import threading
 import traceback
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -61,6 +62,14 @@ TIP_SEGM_PARAM = {
     # extention of the bounding box of the target contour
     # for estimating background temperature
     'bbox_extension': 10,
+}
+
+THERMAL_DISPLAY_FILTER_PARAM = {
+    'temporal_window': 3,
+    'blur_ks': 3,
+    'd': 7,
+    'sigmaColor': 20,
+    'sigmaSpace': 20,
 }
 
 # 总图像帧数量
@@ -361,21 +370,28 @@ class TIP:
         cv.putText(origin_image, text, position, font, font_scale, color, thickness, cv.LINE_AA)
         return origin_image
 
-    def execute(self, frame):
+    def execute(self, frame, display_frame=None):
         """Thermal data processing pipeline; produces image and stats/metrics"""
+        render_frame = frame if display_frame is None else display_frame
         # 把热图数据转成 8-bit 显示图像（通常是灰度或伪彩色图像）
-        frame_uint8 = remap(frame)
-        self.img_raw = cv_render(frame_uint8, resize=self.image_size,
-                                 colormap=self.colormap,
-                                 interpolation=cv.INTER_NEAREST, display=False)
+        frame_uint8 = remap(render_frame)
 
         # 图像滤波并进行热点分割 对图像做滤波（如中值/双边滤波），然后用分割器提取热图中最热的区域（hotspot）。
-        filtered_ui8 = cv_filter(frame_uint8, parameters={'blur_ks': 5},
-                                 use_median=True, use_bilat=True)
+        filtered_ui8 = cv_filter(
+            frame_uint8,
+            parameters={
+                'blur_ks': THERMAL_DISPLAY_FILTER_PARAM['blur_ks'],
+                'd': THERMAL_DISPLAY_FILTER_PARAM['d'],
+                'sigmaColor': THERMAL_DISPLAY_FILTER_PARAM['sigmaColor'],
+                'sigmaSpace': THERMAL_DISPLAY_FILTER_PARAM['sigmaSpace'],
+            },
+            use_median=True,
+            use_bilat=True,
+            use_nlm=False)
         # 生成滤波图像
-        # self.img_filtered = cv_render(filtered_ui8, resize=self.image_size,
-        #                               colormap=self.colormap,
-        #                               interpolation=cv.INTER_NEAREST, display=False)
+        self.img_filtered = cv_render(filtered_ui8, resize=self.image_size,
+                                      colormap=self.colormap,
+                                      interpolation=cv.INTER_CUBIC, display=False)
         self.segment(frame=frame, frui8=filtered_ui8)
 
         # 渲染热点掩膜图像
@@ -394,18 +410,17 @@ class TIP:
             'hs_max': hs_osd.get('max', None),
             'hs_mean': hs_osd.get('mean', None),
         }
-        self.img_raw = self.set_mean_temp_to_img(self.img_raw, output_struct['hs_mean'])
+        self.img_filtered = self.set_mean_temp_to_img(self.img_filtered, output_struct['hs_mean'])
         # 返回处理后图像和温度统计数据。
         images = {
-            'raw': self.img_raw,
-            # 'filtered': self.img_filtered,
+            'display': self.img_filtered,
             # 'hotspot_mask': self.img_hs_mask,
         }
 
         return images, output_struct
 
-    def __call__(self, thermal_data):
-        return self.execute(thermal_data)
+    def __call__(self, thermal_data, display_frame=None):
+        return self.execute(thermal_data, display_frame=display_frame)
 
 
 class Thermal_process(MyQThread):
@@ -431,6 +446,7 @@ class Thermal_process(MyQThread):
         self.vs = None
         self.test_frame = None
         self.init_state = None
+        self.frame_buffer = deque(maxlen=THERMAL_DISPLAY_FILTER_PARAM['temporal_window'])
         # 显示初始化失败的日志的控制变量
         self.init_error_log_show = False
         self.init_state = self.senxor_init()
@@ -500,6 +516,7 @@ class Thermal_process(MyQThread):
             self.mi48.set_emissivity(args.emissivity)
             self.mi48.set_offset_corr(3)
             self.mi48.start(stream=True, with_header=True)
+            self.frame_buffer.clear()
 
             self.RA_Tmin = RollingAverageFilter(N=10)
             self.RA_Tmax = RollingAverageFilter(N=10)
@@ -551,6 +568,12 @@ class Thermal_process(MyQThread):
             self.vs.stop()
         super().stop()
 
+    def smooth_frame_temporally(self, frame):
+        self.frame_buffer.append(frame.copy())
+        if len(self.frame_buffer) == 1:
+            return frame
+        return np.mean(self.frame_buffer, axis=0, dtype=np.float32)
+
     def run(self) -> None:
         logger.warning(f"{self.name} thread has been started！")
         self._running=True
@@ -599,10 +622,11 @@ class Thermal_process(MyQThread):
                 #
                 Tmin, Tmax = self.RA_Tmin(frame.min()), self.RA_Tmax(frame.max())
                 frame = np.clip(frame, Tmin, Tmax)
-                _imgs, _struct = self.tip(frame)
+                display_frame = self.smooth_frame_temporally(frame)
+                _imgs, _struct = self.tip(frame, display_frame=display_frame)
                 self.images['thermal'].update(_imgs)
                 self.struct['thermal'].update(_struct)
-                self.display.img = self.display.composer([self.images['thermal']['raw']])
+                self.display.img = self.display.composer([self.images['thermal']['display']])
 
                 # self.display(self.display.img)  # 显示，可删除
                 self.display.dir = Path(pic_save_path)
