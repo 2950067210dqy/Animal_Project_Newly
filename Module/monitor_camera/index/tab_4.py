@@ -145,14 +145,14 @@ class Tab_4(ThemedWindow):
         super().hideEvent(a0)
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
         logger.warning("tab4--close")
-        if self.loader_thread is not None and self.loader_thread.isRunning():
-            self.loader_thread.stop()
+        self.stop_loader_thread()
         super().closeEvent(a0)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
 
         # 图像列表
         self.charts_list = []
+        self.loader_thread: ImageLoaderThread | None = None
         # 对话框
         self.deep_camera_config_dialog_frame=None
         self.infrared_camera_config_dialog_frame=None
@@ -161,8 +161,6 @@ class Tab_4(ThemedWindow):
         self._init_ui(parent, geometry, title)
         # 实例化自定义ui
         self._init_customize_ui()
-        # 获取数据
-        self.get_data()
         # 实例化功能
         self._init_function()
         # 加载qss样式表
@@ -172,14 +170,34 @@ class Tab_4(ThemedWindow):
 
         # 实例化ui
 
-    def get_data(self):
+    def start_loader_thread(self):
         """
-        获取数据
+        启动监控页的图片刷新线程
         :return:
         """
+        if self.loader_thread is not None and self.loader_thread.isRunning():
+            if self.loader_thread.isPaused():
+                self.loader_thread.resume()
+            return
+
         self.loader_thread = ImageLoaderThread()
         self.loader_thread.image_loaded.connect(self.update_image)
         self.loader_thread.start()
+
+    def stop_loader_thread(self):
+        """
+        停止监控页的图片刷新线程
+        :return:
+        """
+        if self.loader_thread is None:
+            return
+
+        if self.loader_thread.isRunning():
+            self.loader_thread.stop()
+            self.loader_thread.requestInterruption()
+            self.loader_thread.wait(2000)
+
+        self.loader_thread = None
 
     def _init_ui(self, parent=None, geometry: QRect = None, title=""):
         # 将ui文件转成py文件后 直接实例化该py文件里的类对象  uic工具转换之后就是这一段代码
@@ -340,7 +358,7 @@ class Tab_4(ThemedWindow):
         开始按钮的函数
         :return:
         """
-
+        self.start_loader_thread()
         state_label.setText("已连接")
         stop_btn.setDisabled(False)
         start_btn.setDisabled(True)
@@ -352,6 +370,7 @@ class Tab_4(ThemedWindow):
         停止按钮的函数
         :return:
         """
+        self.stop_loader_thread()
         state_label.setText("未连接")
         stop_btn.setDisabled(True)
         start_btn.setDisabled(False)
