@@ -36,6 +36,9 @@ class ImageLoaderThread(MyQThread):
 
     def __init__(self):
         super().__init__(name="tab4_image_loader")
+        self.refresh_camera_paths()
+
+    def refresh_camera_paths(self):
         # 相机数量
         self.infrared_camera_nums = int(global_setting.get_setting("camera_config")['INFRARED_CAMERA']['nums'])
         self.deep_camera_nums = int(global_setting.get_setting("camera_config")['DEEP_CAMERA']['nums'])
@@ -90,15 +93,17 @@ class ImageLoaderThread(MyQThread):
         for fn in os.listdir(folder):
             dt = self.parse_filename_datetime(fn)
             if dt and dt < threshold:
-                result_files.append(fn)
+                result_files.append((dt, fn))
         if len(result_files) == 0:
             return None
         else:
-            return result_files[len(result_files) - 1]
+            result_files.sort(key=lambda item: item[0])
+            return result_files[-1][1]
 
     def dosomething(self):
 
         try:
+            self.refresh_camera_paths()
             deep_camera_list = []
             infrared_camera_list = []
             for path in self.deep_path:
@@ -145,7 +150,7 @@ class Tab_4(ThemedWindow):
         super().hideEvent(a0)
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
         logger.warning("tab4--close")
-        self.stop_loader_thread()
+        self.pause_loader_thread()
         super().closeEvent(a0)
     def __init__(self, parent=None, geometry: QRect = None, title=""):
         super().__init__()
@@ -198,6 +203,17 @@ class Tab_4(ThemedWindow):
             self.loader_thread.wait(2000)
 
         self.loader_thread = None
+
+    def pause_loader_thread(self):
+        """
+        鏆傚仠鐩戞帶椤电殑鍥剧墖鍒锋柊绾跨▼
+        :return:
+        """
+        if self.loader_thread is None:
+            return
+
+        if self.loader_thread.isRunning() and not self.loader_thread.isPaused():
+            self.loader_thread.pause()
 
     def _init_ui(self, parent=None, geometry: QRect = None, title=""):
         # 将ui文件转成py文件后 直接实例化该py文件里的类对象  uic工具转换之后就是这一段代码
@@ -370,7 +386,7 @@ class Tab_4(ThemedWindow):
         停止按钮的函数
         :return:
         """
-        self.stop_loader_thread()
+        self.pause_loader_thread()
         state_label.setText("未连接")
         stop_btn.setDisabled(True)
         start_btn.setDisabled(False)
