@@ -801,6 +801,9 @@ class MainWindow_Index(ThemedWindow):
                 "设备配置": "🖥️",
                 "老鼠轨迹监测": "🐭",
                 "相机监控": "📷",
+                "红外温度和视频图像": "📷",
+                "深度相机对应鼠笼配置": "🧭",
+                "红外相机对应鼠笼配置": "🌡",
                 "用户界面": "👤",
                 "数据监控": "📊",
                 "串口调试":"🔌",
@@ -849,7 +852,7 @@ class MainWindow_Index(ThemedWindow):
             btn.setFont(font)
 
             # 固定宽度
-            btn.setFixedWidth(150)
+            btn.setFixedWidth(190 if len(name) >= 8 else 150)
 
             # 样式
             btn.setStyleSheet("""
@@ -993,7 +996,11 @@ class MainWindow_Index(ThemedWindow):
                             if name == "BaseModule":
                                 # 抽象类跳过
                                 continue
-                            if isinstance(obj, type) and issubclass(obj, BaseModule):
+                            if (
+                                isinstance(obj, type)
+                                and issubclass(obj, BaseModule)
+                                and not obj.__dict__.get("__module_loader_skip__", False)
+                            ):
                                 modules.append(obj())
         return modules
         pass

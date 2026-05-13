@@ -7,6 +7,8 @@ from Module.new_experiment_setting.index.Tab_1 import Tab_1
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
+from public.component.dialog.index.deep_camera_config_dialog_index import deep_camera_config_dialog
+from public.component.dialog.index.infrared_camera_config_dialog_index import infrared_camera_config_dialog
 from public.config_class.global_setting import global_setting
 from public.entity.BaseWidget import BaseWidget
 from public.entity.BaseWindow import BaseWindow
@@ -107,6 +109,27 @@ class Calibration_selection_service(BaseService):
 
 
 class Calibration_selection_widget(BaseInterfaceWidget):
+    def __init__(self):
+        super().__init__()
+        self.type = self.get_type()
+
+    def get_type(self):
+        return BaseInterfaceType.WIDGET
+
+    def create_middle_window(self) -> BaseWindow:
+        return None
+
+    def create_left_window(self) -> BaseWindow:
+        return None
+
+    def create_right_window(self) -> BaseWindow:
+        return None
+
+    def create_bottom_window(self) -> BaseWindow:
+        return None
+
+
+class Camera_config_action_widget(BaseInterfaceWidget):
     def __init__(self):
         super().__init__()
         self.type = self.get_type()
@@ -236,3 +259,76 @@ class Main_experiment_calibration(BaseModule):
             self.main_gui.calibration_selection_changed_signal.emit(True, is_auto_calibration)
 
         self.refresh_display_text()
+
+
+class Camera_config_action_base(BaseModule):
+    __module_loader_skip__ = True
+    action_title = ""
+    action_name = ""
+    dialog_title = ""
+    toolbar_order = 0
+
+    def __init__(self):
+        super().__init__()
+        self.interface_widget = self.get_interface_widget()
+        self.name = self.get_name()
+        self.title = self.get_title()
+        self.toolbar_order = self.__class__.toolbar_order
+        self.menu_name = self.get_menu_name()
+        self.service = self.create_service()
+        self.app_state = self.get_app_state()
+        self.dialog_frame = None
+
+    def get_app_state(self) -> AppState:
+        return AppState.APPLYING
+
+    def get_name(self):
+        return self.__class__.action_name
+
+    def get_title(self):
+        return self.__class__.action_title
+
+    def get_menu_name(self):
+        return {"id": 1, "text": "设备信息"}
+
+    def create_service(self) -> BaseService:
+        return Calibration_selection_service()
+
+    def get_interface_widget(self) -> BaseInterfaceWidget:
+        widget_builder = Camera_config_action_widget()
+        widget_builder.module = self
+        return widget_builder
+
+    def click_method(self):
+        self.open_dialog()
+
+    def open_dialog(self):
+        raise NotImplementedError
+
+
+class Main_deep_camera_mapping_config(Camera_config_action_base):
+    action_name = "Main_deep_camera_mapping_config"
+    action_title = "深度相机对应鼠笼配置"
+    dialog_title = "深度相机配置"
+    toolbar_order = 12
+
+    def open_dialog(self):
+        self.dialog_frame = deep_camera_config_dialog(
+            title=self.dialog_title,
+            tip="\n设置好后要重新启动程序！！！！！！"
+        )
+        self.dialog_frame.show_frame()
+
+
+class Main_infrared_camera_mapping_config(Camera_config_action_base):
+    action_name = "Main_infrared_camera_mapping_config"
+    action_title = "红外相机对应鼠笼配置"
+    dialog_title = "红外相机配置"
+    toolbar_order = 13
+
+    def open_dialog(self):
+        self.dialog_frame = infrared_camera_config_dialog(
+            title=self.dialog_title,
+            tip="\n设置好后要重新启动程序！！！！！！"
+        )
+        self.dialog_frame.show_frame()

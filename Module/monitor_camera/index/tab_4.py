@@ -10,10 +10,7 @@ from loguru import logger
 
 
 from Module.monitor_camera.ui.tab4_window import Ui_tab4_window
-from Service import main_deep_camera, main_infrared_camera
 
-from public.component.dialog.index.deep_camera_config_dialog_index import deep_camera_config_dialog
-from public.component.dialog.index.infrared_camera_config_dialog_index import infrared_camera_config_dialog
 from public.component.dialog.index.infrared_camera_read_SN_dialog_index import infrared_camera_read_SN_dialog
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
@@ -159,8 +156,6 @@ class Tab_4(ThemedWindow):
         self.charts_list = []
         self.loader_thread: ImageLoaderThread | None = None
         # 对话框
-        self.deep_camera_config_dialog_frame=None
-        self.infrared_camera_config_dialog_frame=None
         self.infrared_camera_read_SN_dialog_frame=None
         # 实例化ui
         self._init_ui(parent, geometry, title)
@@ -358,14 +353,10 @@ class Tab_4(ThemedWindow):
         stop_btn = self.findChild(QPushButton, "stop_btn")
         state_label: QLabel = self.findChild(QLabel, "state_label")
 
-        deep_camera_config_btn = self.findChild(QPushButton, "deep_camera_config")
-        infrared_camera_config_btn = self.findChild(QPushButton, "infrared_camera_config")
         infrared_camera_setting_btn = self.findChild(QPushButton, "infrared_camera_setting")
         # 绑定功能
         start_btn.clicked.connect(lambda: self.start_btn_func(start_btn, stop_btn, state_label))
         stop_btn.clicked.connect(lambda: self.stop_btn_func(start_btn, stop_btn, state_label))
-        deep_camera_config_btn.clicked.connect(lambda: self.deep_camera_config_btn_func(deep_camera_config_btn))
-        infrared_camera_config_btn.clicked.connect(lambda: self.infrared_camera_config_btn_func(infrared_camera_config_btn))
         infrared_camera_setting_btn.clicked.connect(lambda: self.infrared_camera_setting_btn_func(infrared_camera_setting_btn))
         pass
 
@@ -392,28 +383,6 @@ class Tab_4(ThemedWindow):
         start_btn.setDisabled(False)
         pass
 
-    def deep_camera_config_btn_func(self, config_btn):
-        """
-        config按钮函数 打开dialog
-        :param config_btn:
-        :return:
-        """
-        self.deep_camera_config_dialog_frame = deep_camera_config_dialog(title="深度相机配置",tip="\n设置好后要重新启动程序！！！！！！")
-        # self.deep_camera_config_dialog_frame.camera_config_finished_signal.connect(main_deep_camera.init_camera_and_image_handle_thread)
-        self.deep_camera_config_dialog_frame.show_frame()
-
-        pass
-    def infrared_camera_config_btn_func(self, config_btn):
-        """
-        config按钮函数 打开dialog
-        :param config_btn:
-        :return:
-        """
-        self.infrared_camera_config_dialog_frame = infrared_camera_config_dialog(title="红外相机配置",tip="\n设置好后要重新启动程序！！！！！！")
-        # self.infrared_camera_config_dialog_frame.camera_config_finished_signal.connect(main_infrared_camera.init_camera_and_image_handle_thread)
-        self.infrared_camera_config_dialog_frame.show_frame()
-
-        pass
     def infrared_camera_setting_btn_func(self, config_btn):
         """
         config按钮函数 打开dialog
