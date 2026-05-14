@@ -79,6 +79,22 @@ class BaseModule(ABC):
         # 获取主界面变量
         self.main_gui=main_gui
         pass
+    def sync_menu_with_module(self):
+        """同步顶部菜单和工具栏到当前模块。"""
+        if self.main_gui is None or self.menu_name is None:
+            return
+
+        menu_id = self.menu_name.get("id")
+        if menu_id is None:
+            return
+
+        current_menu_id = getattr(self.main_gui, "current_active_menu_id", None)
+        if current_menu_id == menu_id:
+            return
+
+        switch_toolbar_content = getattr(self.main_gui, "switch_toolbar_content", None)
+        if callable(switch_toolbar_content):
+            switch_toolbar_content(menu_id)
     def set_main_gui_to_children(self):
         # 设置父界面给所有子界面
         if self.interface_widget.frame_obj is not None:
@@ -97,6 +113,7 @@ class BaseModule(ABC):
     # 点击的方法
     def click_method(self):
         """导航到新模块"""
+        self.sync_menu_with_module()
         # 第一步：安全地清空所有旧内容
         if self.main_gui and hasattr(self.main_gui, 'tab_widget'):
             # 获取所有当前的 widgets
