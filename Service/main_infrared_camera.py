@@ -559,7 +559,11 @@ class Thermal_process(MyQThread):
         return True
 
     def stop(self):
-        self.mi48.stop()
+        if self.mi48 is not None:
+            try:
+                self.mi48.stop()
+            except Exception as e:
+                logger.error(f"红外相机{self.id}停止mi48失败：原因{e}")
         cv.destroyAllWindows()
 
         if self.datasave is not None :

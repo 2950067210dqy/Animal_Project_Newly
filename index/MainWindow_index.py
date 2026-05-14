@@ -1097,6 +1097,8 @@ class MainWindow_Index(ThemedWindow):
 
         # ★ 重置上一次实验残留的临时提示状态，确保从绿色开始
         self.status_bar._temp_tip_active = False
+        self.old_Stop_experiment_status_text_reTurn = None
+        self.old_stop_status_counts = 0
         self._gas_path_success = False
         if self._gas_path_timeout_timer is not None:
             self._gas_path_timeout_timer.stop()
@@ -1417,6 +1419,8 @@ class MainWindow_Index(ThemedWindow):
 
             # ★ 停止实验时清掉所有临时提示，状态栏恢复正常
         self.status_bar._temp_tip_active = False
+        self.old_Stop_experiment_status_text_reTurn = None
+        self.old_stop_status_counts = 0
         if self._gas_path_timeout_timer is not None:
             self._gas_path_timeout_timer.stop()
             self._gas_path_timeout_timer = None
@@ -1448,22 +1452,16 @@ class MainWindow_Index(ThemedWindow):
             queue = global_setting.get_setting("queue")
             queue.put(message_struct)
 
+        QTimer.singleShot(0, self.start_stop_cleanup_async)
+        self.show_stop_dialog_sync()
+        self.stop_update_gui_sync()
+
+    def start_stop_cleanup_async(self):
         AsyPromise(self.close_monitor_data_window).then(
-            lambda _: AsyPromise(self.stop_store_info_Qtimer).then(
-                lambda _: AsyPromise(self.show_stop_dialog).then(
-
-                    lambda _: AsyPromise(self.stop_update_gui).then(
-
-                    ).catch(lambda e: logger.error(f"{e}"))
-
-                ).catch(lambda e: logger.error(f"{e}"))
-            ).catch(lambda e: logger.error(f"{e}"))
+            lambda _: AsyPromise(self.stop_store_info_Qtimer)
         ).catch(lambda e: logger.error(f"{e}"))
 
-        # self.stop_store_info()
-        pass
-
-    def stop_update_gui(self, resolve, reject):
+    def stop_update_gui_sync(self):
         logger.error("stop_update_gui")
         global_setting.set_setting("app_state", AppState.CONFIGURING)
 
@@ -1480,10 +1478,13 @@ class MainWindow_Index(ThemedWindow):
                 action_dict["action"].setDisabled(True)
 
         self.setEnabled(True)
+
+    def stop_update_gui(self, resolve, reject):
+        self.stop_update_gui_sync()
         resolve()
         pass
 
-    def show_stop_dialog(self, resolve, reject):
+    def show_stop_dialog_sync(self):
         stop_wait_times = float(global_setting.get_setting('configer')['dialog_timeout']['timeout']) + float(
             global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + 30
         if self.stop_dialog is None:
@@ -1498,11 +1499,11 @@ class MainWindow_Index(ThemedWindow):
                 title="停止实验", message="正在停止实验...")
 
         # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
-        result = self.stop_dialog.exec()
-        if result == QDialog.DialogCode.Accepted:
-            resolve()
-        else:
-            resolve()
+        self.stop_dialog.exec()
+
+    def show_stop_dialog(self, resolve, reject):
+        self.show_stop_dialog_sync()
+        resolve()
 
     def stop_store_info_Qtimer(self, resolve, reject):
         QTimer.singleShot(100, self.stop_store_info)
@@ -1531,7 +1532,7 @@ class MainWindow_Index(ThemedWindow):
                 self.stop_dialog.insert_data_signal.emit(f"正在导出数据.... ")
             custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
 
-    def close_monitor_data_window(self, resolve, reject):
+    def close_monitor_data_window_sync(self):
         """
         关闭監控數據界面
         :return:
@@ -1540,9 +1541,15 @@ class MainWindow_Index(ThemedWindow):
         for module in self.modules:
             module: BaseModule
             if module.name == "Main_New_Monitor_data":
-                module.close()
-                resolve()
+                try:
+                    module.close()
+                except RuntimeError as e:
+                    logger.warning(f"关闭监控数据窗口时窗口对象已销毁，跳过关闭：{e}")
                 return
+        return
+
+    def close_monitor_data_window(self, resolve, reject):
+        self.close_monitor_data_window_sync()
         resolve()
 
     def export_experiment_datas(self):
@@ -1578,6 +1585,38 @@ class MainWindow_Index(ThemedWindow):
         """关闭标签页"""
         self.tab_widget.widget(index).hide()
         self.tab_widget.removeTab(index)
+
+    def _set_module_interface_enabled(self, module: BaseModule, enabled: bool):
+        if module is None or module.interface_widget is None:
+            return
+
+        widgets = [
+            module.interface_widget.frame_obj,
+            module.interface_widget.left_frame_obj,
+            module.interface_widget.right_frame_obj,
+            module.interface_widget.bottom_frame_obj,
+        ]
+        for widget in widgets:
+            if widget is None:
+                continue
+            try:
+                widget.setEnabled(enabled)
+            except RuntimeError as e:
+                logger.warning(f"同步页面控件可用状态时跳过已销毁窗口：{e}")
+
+    def sync_module_interface_enabled_state(self):
+        current_app_state = global_setting.get_setting("app_state", AppState.INITIALIZED)
+        handled_modules = set()
+
+        for module in list(self.active_module_widgets) + list(self.open_windows):
+            if module is None:
+                continue
+            module_key = id(module)
+            if module_key in handled_modules:
+                continue
+            handled_modules.add(module_key)
+            module_enabled = True if module.app_state is None else module.app_state <= current_app_state
+            self._set_module_interface_enabled(module, module_enabled)
 
     def change_enable_component_app_state(self):
         # 更新程序状态值
@@ -1619,6 +1658,8 @@ class MainWindow_Index(ThemedWindow):
                     bool(global_setting.get_setting("air_modules_all_valid", False))
                     or bool(global_setting.get_setting("allow_test_calibration_without_air_validation", False))
                 )
+
+        self.sync_module_interface_enabled_state()
 
         pass
 
