@@ -152,6 +152,7 @@ class SQLiteManager:
 
     def get_latest_time_across_tables(self, table_names: List[str], start_time: Optional[float] = None,
                                       end_time: Optional[float] = None) -> Optional[float]:
+        """获取多个表在指定时间范围内的最新时间戳。"""
         if not table_names:
             return None
 
@@ -188,7 +189,7 @@ class SQLiteManager:
                     if table_latest_time and (latest_time_text is None or table_latest_time > latest_time_text):
                         latest_time_text = table_latest_time
                 except sqlite3.OperationalError as e:
-                    logger.error(f"鑾峰彇琛?{table_name} 鏈€鍚庢椂闂村嚭閿? {e}")
+                    logger.error(f"查询表 {table_name} 的最新时间失败: {e}")
                     continue
 
         if latest_time_text is None:
@@ -200,7 +201,7 @@ class SQLiteManager:
             try:
                 return datetime.datetime.strptime(latest_time_text, '%Y-%m-%d %H:%M:%S').timestamp()
             except ValueError:
-                logger.error(f"鏃犳硶瑙ｆ瀽鏈€鍚庤惤搴撴椂闂? {latest_time_text}")
+                logger.error(f"无法解析最新时间文本: {latest_time_text}")
                 return None
 
     def build_all_times_sql(self, tables: List[str]) -> str:
