@@ -419,10 +419,9 @@ class Tab_4(ThemedWindow):
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         logger.warning("tab4-show")
+        self.start_loader_thread()
         self.refresh_cage_selector()
         self.render_selected_content()
-        if self.loader_thread is not None and self.loader_thread.isRunning():
-            self.loader_thread.resume()
         super().showEvent(a0)
 
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
@@ -447,17 +446,17 @@ class Tab_4(ThemedWindow):
         self.ui.setupUi(self)
 
     def _init_customize_ui(self):
-        self.init_btn_label()
+        self.init_auto_connect_ui()
         self.init_header_selectors()
         self.init_display_area()
 
-    def init_btn_label(self):
+    def init_auto_connect_ui(self):
         start_btn: QPushButton = self.findChild(QPushButton, "start_btn")
         stop_btn: QPushButton = self.findChild(QPushButton, "stop_btn")
         state_label: QLabel = self.findChild(QLabel, "state_label")
-        start_btn.setDisabled(False)
-        stop_btn.setDisabled(True)
-        state_label.setText("未连接")
+        for widget in (state_label, start_btn, stop_btn):
+            if widget is not None:
+                widget.hide()
 
     def init_header_selectors(self):
         self.mode_selector_label = QLabel("显示部分:", self.ui.verticalLayoutWidget)
