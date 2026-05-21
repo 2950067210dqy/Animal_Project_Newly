@@ -911,13 +911,13 @@ class Tab_4(ThemedWindow):
     MODE_INFRARED = "infrared"
     MODE_VIDEO = "video"
 
-    def __init__(self, parent=None, geometry: QRect = None, title=""):
+    def __init__(self, parent=None, geometry: QRect = None, title="", display_mode: str = MODE_INFRARED):
         super().__init__()
         self.charts_list = []
         self.loader_thread: ImageLoaderThread | None = None
         self.infrared_camera_read_SN_dialog_frame = None
         self.current_cage_number: int | None = None
-        self.current_mode = self.MODE_INFRARED
+        self.current_mode = display_mode if display_mode in {self.MODE_INFRARED, self.MODE_VIDEO} else self.MODE_INFRARED
         self.latest_image_paths = {"deep_camera": {}, "infrared_camera": {}}
         self.temperature_widget: TemperatureTrendWidget | None = None
 
@@ -966,16 +966,16 @@ class Tab_4(ThemedWindow):
         for widget in (state_label, start_btn, stop_btn):
             if widget is not None:
                 widget.hide()
+        self.update_mode_specific_controls()
+
+    def update_mode_specific_controls(self):
+        infrared_camera_setting_btn: QPushButton = self.findChild(QPushButton, "infrared_camera_setting")
+        if infrared_camera_setting_btn is None:
+            return
+
+        infrared_camera_setting_btn.setVisible(self.current_mode == self.MODE_INFRARED)
 
     def init_header_selectors(self):
-        self.mode_selector_label = QLabel("显示部分:", self.ui.verticalLayoutWidget)
-        self.mode_selector = QComboBox(self.ui.verticalLayoutWidget)
-        self.mode_selector.setObjectName("display_mode_selector")
-        self.mode_selector.addItem("红外部分", self.MODE_INFRARED)
-        self.mode_selector.addItem("视频部分", self.MODE_VIDEO)
-        self.mode_selector.setMinimumWidth(120)
-        self.mode_selector.currentIndexChanged.connect(self.on_mode_changed)
-
         self.cage_selector_label = QLabel("已开启笼子:", self.ui.verticalLayoutWidget)
         self.cage_selector = QComboBox(self.ui.verticalLayoutWidget)
         self.cage_selector.setObjectName("enabled_cage_selector")
@@ -985,11 +985,9 @@ class Tab_4(ThemedWindow):
         self.current_cage_label = QLabel("当前显示: 未选择", self.ui.verticalLayoutWidget)
 
         insert_index = max(self.ui.horizontalLayout.count() - 1, 0)
-        self.ui.horizontalLayout.insertWidget(insert_index, self.mode_selector_label)
-        self.ui.horizontalLayout.insertWidget(insert_index + 1, self.mode_selector)
-        self.ui.horizontalLayout.insertWidget(insert_index + 2, self.cage_selector_label)
-        self.ui.horizontalLayout.insertWidget(insert_index + 3, self.cage_selector)
-        self.ui.horizontalLayout.insertWidget(insert_index + 4, self.current_cage_label)
+        self.ui.horizontalLayout.insertWidget(insert_index, self.cage_selector_label)
+        self.ui.horizontalLayout.insertWidget(insert_index + 1, self.cage_selector)
+        self.ui.horizontalLayout.insertWidget(insert_index + 2, self.current_cage_label)
 
     def init_display_area(self):
         if hasattr(self.ui, "scrollArea"):
@@ -1115,11 +1113,12 @@ class Tab_4(ThemedWindow):
         self.current_cage_number = self.cage_selector.itemData(index)
         self.render_selected_content()
 
-    def on_mode_changed(self, index):
-        if index < 0:
+    def set_display_mode(self, mode: str):
+        if mode not in {self.MODE_INFRARED, self.MODE_VIDEO}:
             return
 
-        self.current_mode = self.mode_selector.itemData(index)
+        self.current_mode = mode
+        self.update_mode_specific_controls()
         self.render_selected_content()
 
     def update_image(self, pixmap_path_dict):
@@ -1153,13 +1152,13 @@ class Tab_4(ThemedWindow):
         self.current_cage_label.setText(f"当前显示: 鼠笼{cage_number}")
 
         if self.current_mode == self.MODE_VIDEO:
-            self.left_panel.set_title(f"三维 - 鼠笼{cage_number}")
+            self.left_panel.set_title(f"视频图像 - 鼠笼{cage_number}")
             self.left_panel.show_image(self.latest_image_paths["deep_camera"].get(cage_number, ""))
             self.right_panel.set_title(f"轨迹 - 鼠笼{cage_number}")
             self.right_panel.show_placeholder("轨迹功能待接入")
             return
 
-        self.left_panel.set_title(f"红外 - 鼠笼{cage_number}")
+        self.left_panel.set_title(f"红外相机 - 鼠笼{cage_number}")
         self.left_panel.show_image(self.latest_image_paths["infrared_camera"].get(cage_number, ""))
         self.right_panel.set_title(f"温度 - 鼠笼{cage_number}")
         if self.temperature_widget is not None:
