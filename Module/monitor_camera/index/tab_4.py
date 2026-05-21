@@ -6,7 +6,7 @@ import typing
 from datetime import datetime, timedelta
 
 from PyQt6 import QtGui
-from PyQt6.QtCharts import QChart, QChartView, QDateTimeAxis, QSplineSeries, QValueAxis
+from PyQt6.QtCharts import QChart, QChartView, QDateTimeAxis, QScatterSeries, QValueAxis
 from PyQt6.QtCore import QDateTime, QPointF, QRect, QRectF, Qt, pyqtSignal, QMargins
 from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSlider,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -260,22 +261,30 @@ class TemperatureTrendWidget(QWidget):
         super().__init__(parent)
         self.max_points = max_points
         self.handle: Monitor_Datas_Handle | None = None
+        self.all_points: list[QPointF] = []
+        self.view_start_index = 0
+        self.current_cage_number: int | None = None
+        self.auto_save_enabled = True
+        self.last_auto_save_bucket_by_cage: dict[int, str] = {}
         self._init_ui()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(8)
 
         self.chart = QChart()
         self.chart.legend().hide()
         self.chart.setBackgroundRoundness(0)
-        # 给底部横轴刻度和标题预留更明确的显示空间
         self.chart.setMargins(QMargins(8, 4, 8, 50))
 
-        self.series = QSplineSeries()
+        self.series = QScatterSeries()
         self.series.setName("红外均值温度")
-        self.series.setPen(QPen(QColor("#ff6b35"), 2))
+        self.series.setMarkerShape(QScatterSeries.MarkerShape.MarkerShapeCircle)
+        self.series.setMarkerSize(8.0)
+        self.series.setColor(QColor("#ff6b35"))
+        self.series.setBorderColor(QColor("#ff6b35"))
+        self.series.setPen(QPen(QColor("#ff6b35"), 1))
         self.chart.addSeries(self.series)
 
         self.x_axis = QDateTimeAxis()
@@ -297,13 +306,63 @@ class TemperatureTrendWidget(QWidget):
         self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.chart_view.setContentsMargins(0, 0, 0, 0)
-        self.chart_view.setViewportMargins(0, 0, 0, 24)
+        self.chart_view.setViewportMargins(0, 0, 0, 12)
+        self.chart_view.setMinimumHeight(260)
+
+        self.slider_row = QWidget(self)
+        slider_row_layout = QHBoxLayout(self.slider_row)
+        slider_row_layout.setContentsMargins(0, 0, 0, 0)
+        slider_row_layout.setSpacing(8)
+
+        self.slider_label = QLabel("时间范围", self.slider_row)
+        self.slider_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+
+        self.time_slider = QSlider(Qt.Orientation.Horizontal, self.slider_row)
+        self.time_slider.setObjectName("temperature_time_slider")
+        self.time_slider.setRange(0, 0)
+        self.time_slider.setSingleStep(1)
+        self.time_slider.setPageStep(max(1, self.max_points // 2))
+        self.time_slider.setMinimumHeight(22)
+        self.time_slider.setStyleSheet(
+            """
+            QSlider#temperature_time_slider::groove:horizontal {
+                border: 1px solid #c7c7c7;
+                height: 8px;
+                background: #ececec;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::sub-page:horizontal {
+                background: #ffb08f;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::handle:horizontal {
+                background: #ff6b35;
+                border: 1px solid #d95b2c;
+                width: 18px;
+                margin: -6px 0;
+                border-radius: 9px;
+            }
+            QSlider#temperature_time_slider::handle:horizontal:hover {
+                background: #ff814f;
+            }
+            """
+        )
+        self.time_slider.valueChanged.connect(self._on_slider_changed)
+
+        self.slider_status_label = QLabel("", self.slider_row)
+        self.slider_status_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+
+        slider_row_layout.addWidget(self.slider_label)
+        slider_row_layout.addWidget(self.time_slider, 1)
+        slider_row_layout.addWidget(self.slider_status_label)
+        self.slider_row.hide()
 
         self.placeholder_label = QLabel("暂无温度数据", self)
         self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.placeholder_label.hide()
 
         layout.addWidget(self.chart_view, 1)
+        layout.addWidget(self.slider_row)
         layout.addWidget(self.placeholder_label, 1)
         self.setLayout(layout)
         self.clear_chart()
@@ -330,33 +389,21 @@ class TemperatureTrendWidget(QWidget):
 
     def clear_chart(self, text: str = "暂无温度数据"):
         self.series.clear()
+        self.all_points = []
+        self.view_start_index = 0
+        self.current_cage_number = None
         self.chart.setTitle("")
         self.chart_view.hide()
+        self.time_slider.setEnabled(False)
+        self.slider_status_label.clear()
+        self.slider_row.hide()
         self.placeholder_label.setText(text)
         self.placeholder_label.show()
 
-    def refresh_data(self, cage_number: int | None):
-        if cage_number is None:
-            self.clear_chart("请选择已开启笼子")
-            return
-
-        table_name = f"MouseInfrared_data_cage_{cage_number}"
-        try:
-            self._ensure_handle()
-            meta_data = self.handle.query_meta_table_data_all(table_name)
-            rows = self.handle.query_data_paging(table_name, self.max_points, 0)
-        except Exception as e:
-            logger.debug(f"读取鼠笼{cage_number}红外温度趋势失败: {e}")
-            self.clear_chart("暂无温度数据")
-            return
-
-        if not meta_data or not rows:
-            self.clear_chart("暂无温度数据")
-            return
-
+    def _build_points(self, meta_data, rows):
         column_names = [item["name"] for item in meta_data]
         points = []
-        for row in reversed(rows):
+        for row in rows:
             row_data = dict(zip(column_names, row))
             time_value = self._parse_time(row_data.get("time"))
             temp_value = row_data.get("tmp_hs_mean")
@@ -367,14 +414,33 @@ class TemperatureTrendWidget(QWidget):
             except (TypeError, ValueError):
                 continue
 
-        if not points:
-            self.clear_chart("暂无温度数据")
-            return
+        points.sort(key=lambda point: point.x())
+        return points
 
-        self.series.clear()
-        for point in points:
-            self.series.append(point)
+    def _configure_slider(self, keep_latest: bool):
+        total_points = len(self.all_points)
+        max_start = max(total_points - self.max_points, 0)
+        start_index = max_start if keep_latest else min(self.view_start_index, max_start)
 
+        self.time_slider.blockSignals(True)
+        self.time_slider.setRange(0, max_start)
+        self.time_slider.setPageStep(max(1, min(self.max_points, max_start if max_start > 0 else 1)))
+        self.time_slider.setValue(start_index)
+        self.time_slider.setEnabled(total_points > 0)
+        self.time_slider.blockSignals(False)
+
+        self.view_start_index = start_index
+        self.slider_status_label.setText(
+            f"{min(total_points, start_index + 1)}-{min(total_points, start_index + self.max_points)} / {total_points}"
+        )
+        if max_start > 0:
+            self.time_slider.setToolTip("拖动这里查看完整温度趋势")
+        else:
+            self.time_slider.setToolTip("当前数据量还没有超过单屏展示范围")
+        self.slider_status_label.setToolTip("当前显示区间 / 总数据点数")
+        self.slider_row.setVisible(total_points > 0)
+
+    def _update_axes(self, points):
         x_min = int(points[0].x())
         x_max = int(points[-1].x())
         if x_min == x_max:
@@ -393,9 +459,452 @@ class TemperatureTrendWidget(QWidget):
             padding = max(padding, 1.0)
         self.y_axis.setRange(y_min - padding, y_max + padding)
 
-        self.chart.setTitle(f"鼠笼{cage_number}红外均值温度趋势")
+    def _render_current_window(self):
+        if not self.all_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        end_index = self.view_start_index + self.max_points
+        visible_points = self.all_points[self.view_start_index:end_index]
+        if not visible_points:
+            visible_points = self.all_points[-self.max_points:]
+            self.view_start_index = max(len(self.all_points) - len(visible_points), 0)
+
+        self.series.clear()
+        for point in visible_points:
+            self.series.append(point)
+
+        self._update_axes(visible_points)
+        if self.current_cage_number is not None:
+            self.chart.setTitle(f"鼠笼{self.current_cage_number}红外均值温度趋势")
         self.placeholder_label.hide()
         self.chart_view.show()
+        self.slider_row.show()
+
+    def _get_auto_save_dir(self, cage_number: int) -> str:
+        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+        experiment_name = "experiment"
+        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+            experiment_name = os.path.splitext(os.path.basename(experiment_setting_file))[0]
+
+        storage_setting = global_setting.get_setting("monitor_data")["STORAGE"]
+        experiment_start_time = global_setting.get_setting("start_experiment_time", time.time())
+        experiment_folder = (
+            f"{experiment_name}_{datetime.fromtimestamp(experiment_start_time).strftime('%Y_%m_%d_%H_%M_%S_%f')}"
+        )
+        save_dir = os.path.join(
+            os.getcwd() + storage_setting["fold_path"],
+            storage_setting["sub_fold_path"],
+            experiment_folder,
+            "temperature_charts",
+            f"cage_{cage_number}",
+        )
+        os.makedirs(save_dir, exist_ok=True)
+        return save_dir
+
+    def _auto_save_chart(self):
+        if not self.auto_save_enabled or self.current_cage_number is None or not self.all_points:
+            return
+
+        try:
+            save_bucket = datetime.now().strftime("%Y_%m_%d_%H_%M")
+            if self.last_auto_save_bucket_by_cage.get(self.current_cage_number) == save_bucket:
+                return
+
+            save_dir = self._get_auto_save_dir(self.current_cage_number)
+            file_name = (
+                f"temperature_trend_cage_{self.current_cage_number}_"
+                f"{datetime.now().strftime('%Y_%m_%d_%H_%M_%S_%f')}.png"
+            )
+            file_path = os.path.join(save_dir, file_name)
+            if self.chart_view.grab().save(file_path, "PNG"):
+                self.last_auto_save_bucket_by_cage[self.current_cage_number] = save_bucket
+        except Exception as e:
+            logger.debug(f"auto save temperature chart failed for cage {self.current_cage_number}: {e}")
+
+    def _on_slider_changed(self, value: int):
+        self.view_start_index = value
+        self._render_current_window()
+
+    def refresh_data(self, cage_number: int | None):
+        if cage_number is None:
+            self.clear_chart("请选择已开启笼子")
+            return
+
+        keep_latest = (
+            cage_number != self.current_cage_number
+            or not self.all_points
+            or self.time_slider.value() >= self.time_slider.maximum()
+        )
+        self.current_cage_number = cage_number
+
+        table_name = f"MouseInfrared_data_cage_{cage_number}"
+        try:
+            self._ensure_handle()
+            meta_data = self.handle.query_meta_table_data_all(table_name)
+            rows = self.handle.query_data_all(table_name)
+        except Exception as e:
+            logger.debug(f"读取鼠笼{cage_number}红外温度趋势失败: {e}")
+            self.clear_chart("暂无温度数据")
+            return
+
+        if not meta_data or not rows:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self.all_points = self._build_points(meta_data, rows)
+        if not self.all_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self._configure_slider(keep_latest)
+        self._render_current_window()
+        self._auto_save_chart()
+
+
+class TemperatureTrendWidgetV2(QWidget):
+    def __init__(self, parent=None, max_points: int = 120):
+        super().__init__(parent)
+        self.max_points = max_points
+        self.handle: Monitor_Datas_Handle | None = None
+        self.all_points: list[QPointF] = []
+        self.view_start_index = 0
+        self.current_cage_number: int | None = None
+        self.is_following_latest = True
+        self.auto_save_enabled = True
+        self.last_auto_save_bucket_by_cage: dict[int, str] = {}
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self.chart = QChart()
+        self.chart.legend().hide()
+        self.chart.setBackgroundRoundness(0)
+        self.chart.setMargins(QMargins(8, 4, 8, 50))
+
+        self.series = QScatterSeries()
+        self.series.setName("红外均值温度")
+        self.series.setMarkerShape(QScatterSeries.MarkerShape.MarkerShapeCircle)
+        self.series.setMarkerSize(8.0)
+        self.series.setColor(QColor("#ff6b35"))
+        self.series.setBorderColor(QColor("#ff6b35"))
+        self.series.setPen(QPen(QColor("#ff6b35"), 1))
+        self.chart.addSeries(self.series)
+
+        self.x_axis = QDateTimeAxis()
+        self.x_axis.setFormat("HH:mm:ss")
+        self.x_axis.setTitleText("时间")
+        self.x_axis.setTickCount(6)
+
+        self.y_axis = QValueAxis()
+        self.y_axis.setLabelFormat("%.2f")
+        self.y_axis.setTitleText("温度 (°C)")
+        self.y_axis.setTickCount(6)
+
+        self.chart.addAxis(self.x_axis, Qt.AlignmentFlag.AlignBottom)
+        self.chart.addAxis(self.y_axis, Qt.AlignmentFlag.AlignLeft)
+        self.series.attachAxis(self.x_axis)
+        self.series.attachAxis(self.y_axis)
+
+        self.chart_view = QChartView(self.chart, self)
+        self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.chart_view.setContentsMargins(0, 0, 0, 0)
+        self.chart_view.setViewportMargins(0, 0, 0, 24)
+        self.chart_view.setMinimumHeight(260)
+
+        self.slider_row = QWidget(self)
+        self.slider_row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.slider_row.setMinimumHeight(34)
+        slider_row_layout = QHBoxLayout(self.slider_row)
+        slider_row_layout.setContentsMargins(0, 0, 0, 0)
+        slider_row_layout.setSpacing(8)
+
+        self.slider_label = QLabel("历史窗口", self.slider_row)
+        self.slider_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+
+        self.time_slider = QSlider(Qt.Orientation.Horizontal, self.slider_row)
+        self.time_slider.setObjectName("temperature_time_slider")
+        self.time_slider.setRange(0, 0)
+        self.time_slider.setSingleStep(1)
+        self.time_slider.setPageStep(max(1, self.max_points // 2))
+        self.time_slider.setMinimumHeight(22)
+        self.time_slider.setStyleSheet(
+            """
+            QSlider#temperature_time_slider::groove:horizontal {
+                border: 1px solid #c7c7c7;
+                height: 8px;
+                background: #ececec;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::sub-page:horizontal {
+                background: #ffb08f;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::add-page:horizontal {
+                background: #ececec;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::handle:horizontal {
+                background: #ff6b35;
+                border: 1px solid #d95b2c;
+                width: 18px;
+                margin: -6px 0;
+                border-radius: 9px;
+            }
+            QSlider#temperature_time_slider::handle:horizontal:hover {
+                background: #ff814f;
+            }
+            """
+        )
+        self.time_slider.valueChanged.connect(self._on_slider_changed)
+
+        self.slider_status_label = QLabel("", self.slider_row)
+        self.slider_status_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+
+        slider_row_layout.addWidget(self.slider_label)
+        slider_row_layout.addWidget(self.time_slider, 1)
+        slider_row_layout.addWidget(self.slider_status_label)
+        self.slider_row.hide()
+
+        self.placeholder_label = QLabel("暂无温度数据", self)
+        self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder_label.hide()
+
+        layout.addWidget(self.chart_view, 1)
+        layout.addWidget(self.slider_row)
+        layout.addWidget(self.placeholder_label, 1)
+        self.setLayout(layout)
+        self.clear_chart()
+
+    def stop(self):
+        if self.handle is not None:
+            self.handle.stop()
+            self.handle = None
+
+    def _ensure_handle(self):
+        if self.handle is None:
+            self.handle = Monitor_Datas_Handle()
+
+    @staticmethod
+    def _parse_time(value):
+        if not value:
+            return None
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(str(value), fmt)
+            except ValueError:
+                continue
+        return None
+
+    def clear_chart(self, text: str = "暂无温度数据"):
+        self.series.clear()
+        self.all_points = []
+        self.view_start_index = 0
+        self.current_cage_number = None
+        self.is_following_latest = True
+        self.chart.setTitle("")
+        self.chart_view.hide()
+        self.time_slider.blockSignals(True)
+        self.time_slider.setRange(0, 0)
+        self.time_slider.setValue(0)
+        self.time_slider.blockSignals(False)
+        self.time_slider.setEnabled(False)
+        self.slider_status_label.clear()
+        self.slider_row.hide()
+        self.placeholder_label.setText(text)
+        self.placeholder_label.show()
+
+    def _build_points(self, meta_data, rows):
+        column_names = [item["name"] for item in meta_data]
+        points = []
+        for row in rows:
+            row_data = dict(zip(column_names, row))
+            time_value = self._parse_time(row_data.get("time"))
+            temp_value = row_data.get("tmp_hs_mean")
+            if time_value is None or temp_value is None:
+                continue
+            try:
+                points.append(QPointF(time_value.timestamp() * 1000, float(temp_value)))
+            except (TypeError, ValueError):
+                continue
+
+        points.sort(key=lambda point: point.x())
+        return points
+
+    def _current_window_bounds(self):
+        total_points = len(self.all_points)
+        if total_points == 0:
+            return 0, 0
+
+        if total_points <= self.max_points:
+            return 0, total_points
+
+        start_index = min(max(self.view_start_index, 0), total_points - self.max_points)
+        end_index = start_index + self.max_points
+        return start_index, end_index
+
+    def _update_slider_status(self):
+        total_points = len(self.all_points)
+        if total_points == 0:
+            self.slider_status_label.clear()
+            return
+
+        start_index, end_index = self._current_window_bounds()
+        self.slider_status_label.setText(f"{start_index + 1}-{end_index} / {total_points}")
+
+    def _configure_slider(self, keep_latest: bool):
+        total_points = len(self.all_points)
+        has_history = total_points > self.max_points
+        max_start = max(total_points - self.max_points, 0)
+
+        if not has_history:
+            self.view_start_index = 0
+            self.is_following_latest = True
+        elif keep_latest:
+            self.view_start_index = max_start
+            self.is_following_latest = True
+        else:
+            self.view_start_index = min(self.view_start_index, max_start)
+            self.is_following_latest = self.view_start_index >= max_start
+
+        self.time_slider.blockSignals(True)
+        self.time_slider.setRange(0, max_start)
+        self.time_slider.setPageStep(max(1, self.max_points // 2))
+        self.time_slider.setValue(self.view_start_index)
+        self.time_slider.blockSignals(False)
+
+        self.time_slider.setEnabled(has_history)
+        self.time_slider.setToolTip("拖动这里查看更早的温度数据" if has_history else "当前数据量未超过 120 个点")
+        self.slider_status_label.setToolTip("当前显示区间 / 总数据点数")
+        self._update_slider_status()
+        self.slider_row.setVisible(has_history)
+
+    def _update_axes(self, points):
+        x_min = int(points[0].x())
+        x_max = int(points[-1].x())
+        if x_min == x_max:
+            x_min -= 1000
+            x_max += 1000
+        self.x_axis.setRange(
+            QDateTime.fromMSecsSinceEpoch(x_min),
+            QDateTime.fromMSecsSinceEpoch(x_max),
+        )
+
+        y_values = [point.y() for point in points]
+        y_min = min(y_values)
+        y_max = max(y_values)
+        padding = max((y_max - y_min) * 0.15, 0.5)
+        if y_min == y_max:
+            padding = max(padding, 1.0)
+        self.y_axis.setRange(y_min - padding, y_max + padding)
+
+    def _render_current_window(self):
+        if not self.all_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        start_index, end_index = self._current_window_bounds()
+        visible_points = self.all_points[start_index:end_index]
+        if not visible_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self.view_start_index = start_index
+        self.series.clear()
+        for point in visible_points:
+            self.series.append(point)
+
+        self._update_axes(visible_points)
+        self._update_slider_status()
+        if self.current_cage_number is not None:
+            self.chart.setTitle(f"鼠笼{self.current_cage_number}红外均值温度趋势")
+        self.placeholder_label.hide()
+        self.chart_view.show()
+        self.slider_row.setVisible(len(self.all_points) > self.max_points)
+
+    def _get_auto_save_dir(self, cage_number: int) -> str:
+        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+        experiment_name = "experiment"
+        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+            experiment_name = os.path.splitext(os.path.basename(experiment_setting_file))[0]
+
+        storage_setting = global_setting.get_setting("monitor_data")["STORAGE"]
+        experiment_start_time = global_setting.get_setting("start_experiment_time", time.time())
+        experiment_folder = (
+            f"{experiment_name}_{datetime.fromtimestamp(experiment_start_time).strftime('%Y_%m_%d_%H_%M_%S_%f')}"
+        )
+        save_dir = os.path.join(
+            os.getcwd() + storage_setting["fold_path"],
+            storage_setting["sub_fold_path"],
+            experiment_folder,
+            "temperature_charts",
+            f"cage_{cage_number}",
+        )
+        os.makedirs(save_dir, exist_ok=True)
+        return save_dir
+
+    def _auto_save_chart(self):
+        if not self.auto_save_enabled or self.current_cage_number is None or not self.all_points:
+            return
+
+        try:
+            save_bucket = datetime.now().strftime("%Y_%m_%d_%H_%M")
+            if self.last_auto_save_bucket_by_cage.get(self.current_cage_number) == save_bucket:
+                return
+
+            save_dir = self._get_auto_save_dir(self.current_cage_number)
+            file_name = (
+                f"temperature_trend_cage_{self.current_cage_number}_"
+                f"{datetime.now().strftime('%Y_%m_%d_%H_%M_%S_%f')}.png"
+            )
+            file_path = os.path.join(save_dir, file_name)
+            if self.chart_view.grab().save(file_path, "PNG"):
+                self.last_auto_save_bucket_by_cage[self.current_cage_number] = save_bucket
+        except Exception as e:
+            logger.debug(f"auto save temperature chart failed for cage {self.current_cage_number}: {e}")
+
+    def _on_slider_changed(self, value: int):
+        self.view_start_index = value
+        self.is_following_latest = value >= self.time_slider.maximum()
+        self._render_current_window()
+
+    def refresh_data(self, cage_number: int | None):
+        if cage_number is None:
+            self.clear_chart("请选择已开启笼子")
+            return
+
+        keep_latest = cage_number != self.current_cage_number or self.is_following_latest or not self.all_points
+        self.current_cage_number = cage_number
+
+        table_name = f"MouseInfrared_data_cage_{cage_number}"
+        try:
+            self._ensure_handle()
+            meta_data = self.handle.query_meta_table_data_all(table_name)
+            rows = self.handle.query_data_all(table_name)
+        except Exception as e:
+            logger.debug(f"读取鼠笼{cage_number}红外温度趋势失败: {e}")
+            self.clear_chart("暂无温度数据")
+            return
+
+        if not meta_data or not rows:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self.all_points = self._build_points(meta_data, rows)
+        if not self.all_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self._configure_slider(keep_latest)
+        self._render_current_window()
+        self._auto_save_chart()
+
+
+TemperatureTrendWidget = TemperatureTrendWidgetV2
 
 
 class Tab_4(ThemedWindow):
