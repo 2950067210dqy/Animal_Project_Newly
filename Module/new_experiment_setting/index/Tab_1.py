@@ -1,3 +1,4 @@
+import copy
 import json
 import math
 import time
@@ -11,7 +12,6 @@ from loguru import logger
 
 from Module.new_experiment_setting.config.new_experiment_default_config import get_default_config
 from Module.new_experiment_setting.ui.tab1_frame import Ui_tab1_frame
-from Service.main_monitor_data import Send_thread
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
 from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.config_class.App_Setting import AppSettings
@@ -22,7 +22,6 @@ from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus import Modbus_Type
 from public.function.Modbus.COM_Scan import scan_serial_ports_with_id
-from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from theme.ThemeQt6 import ThemedWindow
 from PyQt6 import QtGui, QtCore, QtWidgets
 from PyQt6.QtCore import QRect, Qt, pyqtSignal, QTimer, QEvent, pyqtSlot
@@ -295,7 +294,6 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
         # ==================== 线程安全相关 ====================
         self.response_lock = threading.Lock()
-        self.send_thread = None
 
         # ==================== 气路检测相关属性 ====================
         self.air_module_detection_lock = threading.RLock()
@@ -674,27 +672,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         if len(self.ports) != 0:
             self.send_message['port'] = self.ports[0]['device']
             global_setting.set_setting("port", self.send_message['port'])
-            send_message_queue = global_setting.get_setting("send_message_queue")
-            send_message_queue.put(ObjectQueueItem(
-                origin='New_main_experiment_setting', to='main_monitor_data', title='set_port',
-                data=self.send_message['port'],
-                time=time_util.get_format_from_time(time.time())
-            ))
-
-            modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
-            if modbus is None:
-                modbus = ModbusRTUMasterNew(
-                    self.send_message['port'], baudrate=115200,
-                    timeout=float(global_setting.get_setting('monitor_data')['Serial']['timeout'])
-                )
-                global_setting.set_setting("modbus", modbus)
-            else:
-                modbus.close()
-                modbus = ModbusRTUMasterNew(
-                    self.send_message['port'], baudrate=115200,
-                    timeout=float(global_setting.get_setting('monitor_data')['Serial']['timeout'])
-                )
-                global_setting.set_setting("modbus", modbus)
+            self._notify_main_monitor_data_set_port(show_error=False)
 
             logger.info(
                 f"{time_util.get_format_from_time(time.time())}- 设备: {self.ports[0]['device']} "
@@ -1484,27 +1462,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
             self.send_message['port'] = self.ports[index]['device']
             global_setting.set_setting("port", self.send_message['port'])
-            send_message_queue = global_setting.get_setting("send_message_queue")
-            send_message_queue.put(ObjectQueueItem(
-                origin='New_main_experiment_setting', to='main_monitor_data', title='set_port',
-                data=self.send_message['port'],
-                time=time_util.get_format_from_time(time.time())
-            ))
-
-            modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
-            if modbus is None:
-                modbus = ModbusRTUMasterNew(
-                    self.send_message['port'], baudrate=115200,
-                    timeout=float(global_setting.get_setting('monitor_data')['Serial']['timeout'])
-                )
-                global_setting.set_setting("modbus", modbus)
-            else:
-                modbus.close()
-                modbus = ModbusRTUMasterNew(
-                    self.send_message['port'], baudrate=115200,
-                    timeout=float(global_setting.get_setting('monitor_data')['Serial']['timeout'])
-                )
-                global_setting.set_setting("modbus", modbus)
+            self._notify_main_monitor_data_set_port(show_error=True)
 
             logger.info(
                 f"{time_util.get_format_from_time(time.time())}- 设备: {self.ports[index]['device']} "
@@ -1512,6 +1470,22 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             )
         except Exception as e:
             logger.error(e)
+
+    def _notify_main_monitor_data_set_port(self, show_error=False):
+        """通知 main_monitor_data 更新当前串口"""
+        send_message_queue = global_setting.get_setting("send_message_queue", None)
+        if send_message_queue is None:
+            logger.error("send_message_queue 未找到，无法同步串口到 main_monitor_data")
+            if show_error:
+                self.show_warning("错误", "主监测进程未就绪，无法同步串口，请重启应用后重试。")
+            return False
+
+        send_message_queue.put(ObjectQueueItem(
+            origin='New_main_experiment_setting', to='main_monitor_data', title='set_port',
+            data=self.send_message['port'],
+            time=time_util.get_format_from_time(time.time())
+        ))
+        return True
 
     def _on_cage_clicked(self, item):
         """
@@ -2331,28 +2305,30 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
     # ==========数据通信==========
     def send_data(self):
         """发送数据"""
-        state = global_setting.get_setting("app_state", AppState.INITIALIZED)
-        if state is None or state != AppState.MONITORING:
-            try:
-                if self.send_thread is None:
-                    # logger.info("初始化串口")
-                    self.send_thread = Send_thread(name="tab_3_COM_Send_Thread",
-                                                   modbus=None, send_message=self.send_message)
-                    self.send_thread.is_start = True
-                    self.send_thread.start()
-                    return
-                # logger.info("未初始化串口对象,使用之前串口实例化对象")
-                self.send_thread.set_send_message(self.send_message)
-                self.send_thread.is_start = True
-            except Exception as e:
-                logger.error(f"{e}")
-        else:
-            message_struct = ObjectQueueItem(to="main_monitor_data",
-                                             data=self.send_message,
-                                             origin='Tab_1')
+        if not self.port_confirmed:
+            self.show_warning("提示", "请先确认串口，再进行笼子配置。")
+            return
 
-            global_setting.get_setting("send_message_queue").put(message_struct)
-            # logger.debug(f"Tab_1开始发送消息:{message_struct}")
+        if not self.send_message.get('port'):
+            self.show_warning("错误", "当前未选择有效串口，请重新选择后再试。")
+            return
+
+        send_message_queue = global_setting.get_setting("send_message_queue", None)
+        if send_message_queue is None:
+            logger.error("send_message_queue 未找到，无法发送配置命令")
+            self.show_warning("错误", "主监测进程未启动，无法发送配置命令，请重启应用后重试。")
+            return
+
+        send_message = copy.deepcopy(self.send_message)
+        send_message["no_response"] = True
+        queue_message = {"message": send_message}
+        message_struct = ObjectQueueItem(
+            to="main_monitor_data",
+            data=queue_message,
+            origin='Tab_1'
+        )
+        send_message_queue.put(message_struct)
+        # logger.debug(f"Tab_1开始发送消息:{message_struct}")
 
     # ==========操作按钮==========
     def refresh_port(self):
