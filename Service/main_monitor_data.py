@@ -1118,19 +1118,21 @@ def barrier_action():
                      'value':reference_data.get(f'ZOS_oxygen_num')-results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')})
 
 
-            #求红外温度的平均值
-            temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean',None)
+            # 求红外温度的最大值，兼容旧库中的 tmp_hs_mean 字段
+            temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_max', None)
+            if temp_values is None:
+                temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean', None)
             if temp_values is not None:
-                infrared_temp_average = None
+                infrared_temp_max = None
                 # 过滤掉None值
                 if type(temp_values) is list:
                     filter_temp_values = [x for x in temp_values if x is not None]
                     if len(filter_temp_values) != 0:
-                        infrared_temp_average = round(sum(filter_temp_values) / len(filter_temp_values), 4)
+                        infrared_temp_max = round(max(filter_temp_values), 4)
                 else:
-                    infrared_temp_average = temp_values
+                    infrared_temp_max = temp_values
                 store_Datas.append({'desc': '鼠笼红外温度(°C)',
-                                    'value': infrared_temp_average})
+                                    'value': infrared_temp_max})
             pass
 
         store_Datas.append(

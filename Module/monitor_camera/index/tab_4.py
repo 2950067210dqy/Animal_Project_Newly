@@ -279,7 +279,7 @@ class TemperatureTrendWidget(QWidget):
         self.chart.setMargins(QMargins(8, 4, 8, 50))
 
         self.series = QScatterSeries()
-        self.series.setName("红外均值温度")
+        self.series.setName("红外最大温度")
         self.series.setMarkerShape(QScatterSeries.MarkerShape.MarkerShapeCircle)
         self.series.setMarkerSize(8.0)
         self.series.setColor(QColor("#ff6b35"))
@@ -406,7 +406,9 @@ class TemperatureTrendWidget(QWidget):
         for row in rows:
             row_data = dict(zip(column_names, row))
             time_value = self._parse_time(row_data.get("time"))
-            temp_value = row_data.get("tmp_hs_mean")
+            temp_value = row_data.get("tmp_hs_max")
+            if temp_value is None:
+                temp_value = row_data.get("tmp_hs_mean")
             if time_value is None or temp_value is None:
                 continue
             try:
@@ -476,7 +478,7 @@ class TemperatureTrendWidget(QWidget):
 
         self._update_axes(visible_points)
         if self.current_cage_number is not None:
-            self.chart.setTitle(f"鼠笼{self.current_cage_number}红外均值温度趋势")
+            self.chart.setTitle(f"鼠笼{self.current_cage_number}红外最大温度趋势")
         self.placeholder_label.hide()
         self.chart_view.show()
         self.slider_row.show()
@@ -586,7 +588,7 @@ class TemperatureTrendWidgetV2(QWidget):
         self.chart.setMargins(QMargins(8, 4, 8, 50))
 
         self.series = QScatterSeries()
-        self.series.setName("红外均值温度")
+        self.series.setName("红外最大温度")
         self.series.setMarkerShape(QScatterSeries.MarkerShape.MarkerShapeCircle)
         self.series.setMarkerSize(8.0)
         self.series.setColor(QColor("#ff6b35"))
@@ -724,7 +726,9 @@ class TemperatureTrendWidgetV2(QWidget):
         for row in rows:
             row_data = dict(zip(column_names, row))
             time_value = self._parse_time(row_data.get("time"))
-            temp_value = row_data.get("tmp_hs_mean")
+            temp_value = row_data.get("tmp_hs_max")
+            if temp_value is None:
+                temp_value = row_data.get("tmp_hs_mean")
             if time_value is None or temp_value is None:
                 continue
             try:
@@ -821,7 +825,7 @@ class TemperatureTrendWidgetV2(QWidget):
         self._update_axes(visible_points)
         self._update_slider_status()
         if self.current_cage_number is not None:
-            self.chart.setTitle(f"鼠笼{self.current_cage_number}红外均值温度趋势")
+            self.chart.setTitle(f"鼠笼{self.current_cage_number}红外最大温度趋势")
         self.placeholder_label.hide()
         self.chart_view.show()
         self.slider_row.setVisible(len(self.all_points) > self.max_points)

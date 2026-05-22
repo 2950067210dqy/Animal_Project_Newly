@@ -46,7 +46,7 @@ class Others_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("recognize_time", "识别时间", " TIMESTAMP "),
-                ("tmp_hs_mean", "均值温度(摄氏度)", "  REAL "),
+                ("tmp_hs_max", "最大值温度(摄氏度)", "  REAL "),
                 ("time", "获取时间", " TIMESTAMP ")
             ],
         }

@@ -52,8 +52,8 @@ TIP_SEGM_PARAM = {
     # supported: simple, otsu, adaptive
     'threshold_type': 'simple',
     # threshold value for simple thresholding
-    'threshold': 190,
-    'contour_minArea': -5,
+    'threshold': 170,
+    'contour_minArea': -3,
 
     # contour analysis
     # ----------------
@@ -340,16 +340,16 @@ class TIP:
         # 图像分割器初始化
         self.segment = CVSegment(param)
 
-    def set_mean_temp_to_img(self, origin_image, mean_temp):
+    def set_max_temp_to_img(self, origin_image, max_temp):
         """
-        将平均温度放到图片上
+        将最大温度放到图片上
         :return: image 更改之后的图片
         """
         # 定义文字内容
-        if mean_temp is None:
-            text = f"hs_mean: None degree C"
+        if max_temp is None:
+            text = f"hs_max: None degree C"
         else:
-            text = f"hs_mean: {float(mean_temp)} degree C"
+            text = f"hs_max: {float(max_temp)} degree C"
 
         # 定义文字位置（左上角坐标）
         position = (30, 30)
@@ -408,9 +408,8 @@ class TIP:
         #                              interpolation=cv.INTER_NEAREST, display=False)
         output_struct = {
             'hs_max': hs_osd.get('max', None),
-            'hs_mean': hs_osd.get('mean', None),
         }
-        self.img_filtered = self.set_mean_temp_to_img(self.img_filtered, output_struct['hs_mean'])
+        self.img_filtered = self.set_max_temp_to_img(self.img_filtered, output_struct['hs_max'])
         # 返回处理后图像和温度统计数据。
         images = {
             'display': self.img_filtered,
@@ -650,12 +649,12 @@ class Thermal_process(MyQThread):
                 return_data_struct['mouse_cage_number'] = self.id
                 return_data_struct['data'] = [
                     {'desc': '识别时间', 'value': file_base_name},
-                    {'desc': '均值温度(摄氏度)', 'value':  round(float(self.struct['thermal']['hs_mean']),4) if self.struct['thermal']['hs_mean'] is not None else None},
+                    {'desc': '最大值温度(摄氏度)', 'value':  round(float(self.struct['thermal']['hs_max']),4) if self.struct['thermal']['hs_max'] is not None else None},
                 ]
 
                 return_data_struct['slave_id'] = 0
                 return_data_struct['function_code'] = 0
-                # logger.error(f"红外温度{self.struct['thermal']['hs_mean']}，{return_data_struct}")
+                # logger.error(f"红外温度{self.struct['thermal']['hs_max']}，{return_data_struct}")
                 status, msg = self.datasave.insert_data(return_data_struct)
                 if not status:
                     logger.error(f"红外相机{self.id}存储数据错误：{msg}")

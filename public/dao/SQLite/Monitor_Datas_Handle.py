@@ -120,6 +120,7 @@ class Monitor_Datas_Handle():
                                 self.sqlite_manager.insert_or_ignore(table_meta_name, item_name=item[0],
                                                                      item_struct=item[2],
                                                                      description=item[1])
+            self._migrate_mouse_infrared_tables(gids)
             # 实例化每轮次数据表
             for data_type in Modbus_Slave_Type.Epochs.value:
                 # 添加cage_0 给参考气存储数据 这里的-1代表总轮次表，表名为Epoch_data_all 不带后面的cage_-1
@@ -221,6 +222,50 @@ class Monitor_Datas_Handle():
                                 self.sqlite_manager.insert(table_meta_name, item_name=item[0], item_struct=item[2],
                                                            description=item[1])
         pass
+
+    def _migrate_mouse_infrared_tables(self, gids):
+        for cage_number in gids:
+            self._migrate_mouse_infrared_table(f"MouseInfrared_data_cage_{cage_number}")
+
+    def _migrate_mouse_infrared_table(self, table_name):
+        old_column_name = "tmp_hs_mean"
+        new_column_name = "tmp_hs_max"
+        new_description = "最大值温度(摄氏度)"
+        meta_table_name = f"{table_name}_meta"
+
+        if not self.sqlite_manager.is_exist_table(table_name):
+            return
+
+        with self.sqlite_manager.execute_transaction() as cursor:
+            quoted_table_name = self.sqlite_manager.quote_ident(table_name)
+            cursor.execute(f"PRAGMA table_info({quoted_table_name})")
+            table_columns = [row[1] for row in cursor.fetchall()]
+
+            if old_column_name in table_columns and new_column_name not in table_columns:
+                cursor.execute(
+                    f'ALTER TABLE {quoted_table_name} RENAME COLUMN "{old_column_name}" TO "{new_column_name}"'
+                )
+
+            if not self.sqlite_manager.is_exist_table(meta_table_name):
+                return
+
+            quoted_meta_table_name = self.sqlite_manager.quote_ident(meta_table_name)
+            cursor.execute(
+                f"SELECT item_name FROM {quoted_meta_table_name} WHERE item_name = ?",
+                (old_column_name,)
+            )
+            if cursor.fetchone() is not None:
+                cursor.execute(
+                    f"UPDATE {quoted_meta_table_name} "
+                    f"SET item_name = ?, description = ? "
+                    f"WHERE item_name = ?",
+                    (new_column_name, new_description, old_column_name)
+                )
+            else:
+                cursor.execute(
+                    f"UPDATE {quoted_meta_table_name} SET description = ? WHERE item_name = ?",
+                    (new_description, new_column_name)
+                )
 
     def _map_data_compact_with_none(self,data_list, columns_mapping):
         """
