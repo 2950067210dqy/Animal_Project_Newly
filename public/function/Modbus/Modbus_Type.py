@@ -101,6 +101,7 @@ class Others_Tables(Enum):
                 ("ZOS_temperature_num", "ZOS温度测量值(°C)", " REAL "),
                 ("ZOS_gas_pressure", "气体压力(hPa)", " REAL "),
                 ("ZOS_oxygen_num", "氧浓度(%)", " REAL "),
+                ("ZOS_oxygen_compensation_num", "补偿后氧气浓度(%)", " REAL "),
                 ("ZOS_fault_code", "ZOS故障码", " INTEGER "),
                 ("reference_oxygen_num", "参考气氧浓度(%)", " INTEGER "),
                 ("oxygen_consumption_num", "耗氧量(%)", " REAL "),
@@ -308,6 +309,7 @@ class Modbus_Slave_Tables(Enum):
                 ("zos_temperature_num", "ZOS温度测量值(°C)", " REAL "),
                 ("gas_pressure", "气体压力(hPa)", " REAL "),
                 ("oxygen_num", "氧浓度(%)", " REAL "),
+                ("oxygen_compensation_num", "补偿后氧气浓度(%)", " REAL "),
                 ("fault_code", "ZOS故障码", " INTEGER "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")

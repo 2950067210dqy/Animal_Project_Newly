@@ -121,6 +121,10 @@ class Monitor_Datas_Handle():
                                                                      item_struct=item[2],
                                                                      description=item[1])
             self._migrate_mouse_infrared_tables(gids)
+            self._migrate_o2_compensation_tables(
+                gids=gids,
+                reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+            )
             # 实例化每轮次数据表
             for data_type in Modbus_Slave_Type.Epochs.value:
                 # 添加cage_0 给参考气存储数据 这里的-1代表总轮次表，表名为Epoch_data_all 不带后面的cage_-1
@@ -265,6 +269,65 @@ class Monitor_Datas_Handle():
                 cursor.execute(
                     f"UPDATE {quoted_meta_table_name} SET description = ? WHERE item_name = ?",
                     (new_description, new_column_name)
+                )
+
+    def _migrate_o2_compensation_tables(self, gids, reference_cage_number):
+        zos_desc = "补偿后氧气浓度(%)"
+
+        for cage_number in [reference_cage_number] + gids:
+            self._ensure_column_and_meta(
+                table_name=f"ZOS_monitor_data_cage_{cage_number}",
+                column_name="oxygen_compensation_num",
+                column_struct=" REAL ",
+                description=zos_desc
+            )
+
+        for cage_number in [-1, reference_cage_number] + gids:
+            if cage_number == -1:
+                table_name = "Epoch_data_all"
+            else:
+                table_name = f"Epoch_data_cage_{cage_number}"
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name="ZOS_oxygen_compensation_num",
+                column_struct=" REAL ",
+                description=zos_desc
+            )
+
+    def _ensure_column_and_meta(self, table_name, column_name, column_struct, description):
+        if not self.sqlite_manager.is_exist_table(table_name):
+            return
+
+        meta_table_name = f"{table_name}_meta"
+        with self.sqlite_manager.execute_transaction() as cursor:
+            quoted_table_name = self.sqlite_manager.quote_ident(table_name)
+            cursor.execute(f"PRAGMA table_info({quoted_table_name})")
+            table_columns = [row[1] for row in cursor.fetchall()]
+
+            if column_name not in table_columns:
+                cursor.execute(
+                    f"ALTER TABLE {quoted_table_name} ADD COLUMN "
+                    f"{self.sqlite_manager.quote_ident(column_name)} {column_struct}"
+                )
+
+            if not self.sqlite_manager.is_exist_table(meta_table_name):
+                return
+
+            quoted_meta_table_name = self.sqlite_manager.quote_ident(meta_table_name)
+            cursor.execute(
+                f"SELECT item_name FROM {quoted_meta_table_name} WHERE item_name = ?",
+                (column_name,)
+            )
+            if cursor.fetchone() is None:
+                cursor.execute(
+                    f"INSERT INTO {quoted_meta_table_name} (item_name, item_struct, description) "
+                    f"VALUES (?, ?, ?)",
+                    (column_name, column_struct, description)
+                )
+            else:
+                cursor.execute(
+                    f"UPDATE {quoted_meta_table_name} SET description = ?, item_struct = ? WHERE item_name = ?",
+                    (description, column_struct, column_name)
                 )
 
     def _map_data_compact_with_none(self,data_list, columns_mapping):

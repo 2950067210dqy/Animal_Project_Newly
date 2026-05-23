@@ -12,9 +12,11 @@ from blinker.base import _PNamespaceSignal
 from loguru import logger
 
 
+from Service.UFC_UGC_ZOS_Service.function.o2_compensation import calculate_o2_compensated
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
 
 from public.config_class.global_setting import global_setting
+from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from public.entity.barrier.ActionCompleteBarrier import ActionCompleteBarrier
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
@@ -825,9 +827,80 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         self.send_thread: Send_Message = Send_Message(
             update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,
             send_message=self.send_message)
+        self.data_handle = None
         super().__init__(name=name)
     def before_Runing_work(self):
         pass
+
+    @staticmethod
+    def _get_data_value(data_items, desc):
+        for item in data_items or []:
+            if item.get("desc") == desc:
+                return item.get("value")
+        return None
+
+    @staticmethod
+    def _set_data_value(data_items, desc, value):
+        for item in data_items or []:
+            if item.get("desc") == desc:
+                item["value"] = value
+                return
+        data_items.append({"desc": desc, "value": value})
+
+    def _append_o2_compensation(self, result_data):
+        mouse_cage_number = result_data.get("mouse_cage_number")
+        if mouse_cage_number is None:
+            return result_data
+
+        reference_cage_number = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+        if int(mouse_cage_number) == reference_cage_number:
+            channel_id = "REF"
+        elif 1 <= int(mouse_cage_number) <= 8:
+            channel_id = f"M{int(mouse_cage_number)}"
+        else:
+            return result_data
+
+        data_items = result_data.get("data", [])
+        o2_partial_press = self._get_data_value(data_items, "氧分压(hPa)")
+        temp_sensor = self._get_data_value(data_items, "ZOS温度测量值(°C)")
+        gas_total_press = self._get_data_value(data_items, "气体压力(hPa)")
+        o2_raw_pct = self._get_data_value(data_items, "氧浓度(%)")
+
+        if None in (o2_partial_press, temp_sensor, gas_total_press, o2_raw_pct):
+            return result_data
+
+        if self.data_handle is None:
+            self.data_handle = Monitor_Datas_Handle()
+        enm_data = self.data_handle.query_current_one_data(f"ENM_monitor_data_cage_{int(mouse_cage_number)}")
+        if not enm_data:
+            return result_data
+
+        temp_cage = enm_data.get("temperature_num")
+        rh_cage = enm_data.get("humidity_num")
+        if None in (temp_cage, rh_cage):
+            return result_data
+
+        compensation_value = calculate_o2_compensated(
+            channel_id,
+            o2_partial_press,
+            temp_sensor,
+            gas_total_press,
+            o2_raw_pct,
+            temp_cage,
+            rh_cage
+        )
+        if compensation_value == -1:
+            return result_data
+
+        self._set_data_value(data_items, "补偿后氧气浓度(%)", compensation_value)
+        return result_data
+
+    def stop(self):
+        if self.data_handle is not None:
+            self.data_handle.stop()
+            self.data_handle = None
+        super().stop()
+
     def dosomething(self):
         wait_UGC_run_finish_event = global_setting.get_setting("wait_UGC_run_finish_event", None)
         if wait_UGC_run_finish_event:
@@ -867,6 +940,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
         result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        result_data = self._append_o2_compensation(result_data)
         logger.error(f"zos:{result_data}")
 
         if len(result_data.get('data', [])) > 0:
@@ -930,6 +1004,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         result_data = r['data']
         result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        result_data = self._append_o2_compensation(result_data)
         logger.error(f"zos:{result_data}")
 
         if len(result_data.get('data', [])) > 0:
