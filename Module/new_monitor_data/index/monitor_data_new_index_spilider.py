@@ -270,6 +270,7 @@ class Monitor_data_new_index(ThemedWindow):
             widget.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid == 0 else ''}")
             # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
             widget.on_replace_headers([1])
+            widget.setWindowTitle(f"通道/鼠笼 {'参考笼' if gid == 0 else gid}")
 
             self._docks_widget.append(widget)
         self.left_top_widget_content.addFrames(self._docks_widget)

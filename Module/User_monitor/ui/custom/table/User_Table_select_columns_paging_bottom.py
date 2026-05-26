@@ -16,6 +16,7 @@ from Module.User_monitor.ui.custom.table.User_Custom_table import CustomTableWid
 from Module.new_monitor_data.ui.custom.table.Table_select_columns_paging_bottom import \
     Table_select_columns_paging_bottom
 from public.config.Data_Column import Data_column_list
+from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from theme.ThemeQt6 import ThemedWindow
@@ -317,7 +318,8 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                             # 鼠笼号列：强制转为整数
                             try:
                                 num_val = float(col_val) if not isinstance(col_val, (int, float)) else col_val
-                                final_val = str(int(num_val))
+                                reference_cage = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+                                final_val = "参考笼" if int(num_val) == reference_cage else str(int(num_val))
                             except (ValueError, TypeError):
                                 final_val = str(col_val).strip()
                         else:

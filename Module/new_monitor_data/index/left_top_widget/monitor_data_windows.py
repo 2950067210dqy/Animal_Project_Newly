@@ -321,11 +321,17 @@ class MonitorDataWindows(ThemedWidget):
                 widget.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid==int(global_setting.get_setting('configer')['mouse_cage']['reference']) else ''}")
                 # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
                 widget.on_replace_headers([1])
+                widget.setWindowTitle(
+                    f"通道/鼠笼 {'参考笼' if gid == int(global_setting.get_setting('configer')['mouse_cage']['reference']) else gid}"
+                )
 
                 self._docks_widget.append(widget)
 
                 widget_charts =AdvancedChartWidget(gid=gid)
                 widget_charts.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid==int(global_setting.get_setting('configer')['mouse_cage']['reference']) else ''}")
+                widget_charts.setWindowTitle(
+                    f"通道/鼠笼 {'参考笼' if gid == int(global_setting.get_setting('configer')['mouse_cage']['reference']) else gid}"
+                )
                 self._docks_widget_charts.append(widget_charts)
             self.content_widget.addFrames(self._docks_widget)
             self.charts_widget.addFrames(self._docks_widget_charts)

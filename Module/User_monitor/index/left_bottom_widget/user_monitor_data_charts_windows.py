@@ -242,6 +242,9 @@ class UserMonitorDataChartsWindows(ThemedWidget):
                     f"通道/鼠笼 {gid} {'(参考气)' if gid == int(global_setting.get_setting('configer')['mouse_cage']['reference']) else ''}")
                 # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
                 widget.on_replace_headers([1])
+                widget.setWindowTitle(
+                    f"通道/鼠笼 {'参考笼' if gid == int(global_setting.get_setting('configer')['mouse_cage']['reference']) else gid}"
+                )
 
                 self._docks_widget.append(widget)
             self.content_widget.addFrames(self._docks_widget)

@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 
 from Module.new_monitor_data.ui.custom.table.Custom_table import CustomTableWidget
 from public.config.Data_Column import Data_column_list
+from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from theme.ThemeQt6 import ThemedWindow
@@ -332,6 +333,10 @@ class Table_select_columns_paging_bottom(ThemedWindow):
             if record.get("remarks") is not None and len(str(record.get("remarks")).strip()) > 3:
                 should_highlight_row = True
             for col_key, col_record in record.items():
+                if col_key == "mouse_cage_number":
+                    reference_cage = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+                    if col_record == reference_cage:
+                        col_record = "参考笼"
                 # 将二氧化碳的值和氧气的值小数点后4位。
                 if "oxygen" in col_key or "CO2" in col_key:
                     # 区分校0和校span的氧气 因为他们的值有可能是字符串
