@@ -12,7 +12,7 @@ from public.entity.dict.AdvancedFuzzyDict import FuzzyDict
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.DataCaculation import Data_Caculation
 from public.function.DataCaculation.Data_Caculation import DataCaculation
-from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
+from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids, Modbus_Slave_Type
 # 监控数据操作类
 from public.util.time_util import time_util
 #logger = logger.bind(category="deep_camera_logger")
@@ -203,8 +203,12 @@ class Monitor_Datas_Handle():
                 pass
         # 实例化每个笼子里的传感器的数据表
 
+            reference_cage_number = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
             for data_type in Modbus_Slave_Type.Each_Mouse_Cage.value:
-                for carge_number in gids:
+                cage_numbers = gids
+                if data_type == Modbus_Slave_Ids.ENM:
+                    cage_numbers = [reference_cage_number] + gids
+                for carge_number in cage_numbers:
                     for table_name_short in data_type.value['table']:
                         # 列
                         columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}
