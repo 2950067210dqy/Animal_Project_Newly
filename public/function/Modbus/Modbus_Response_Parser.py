@@ -20,8 +20,6 @@ def get_module_name(slave_id):
 
     slave_id_int = int(slave_id, 16)
     # print(f"slave_id_int:{slave_id_int}")
-    if slave_id_int == Modbus_Slave_Ids.ENM.value['int']:
-        return Modbus_Slave_Ids.ENM.value['name']
     if slave_id_int > 16:
         mouse_cage_number = slave_id_int // 16
         # 鼠笼内传感器
@@ -82,17 +80,7 @@ class Modbus_Response_Parser():
         response_parser = None
         slave_id_int = int(self.slave_id, 16)
         # print(f"slave_id_int:{slave_id_int}")
-        if slave_id_int == Modbus_Slave_Ids.ENM.value['int']:
-            response_parser = Modbus_Response_Diffent_Type_Each_Mouse_Cage(
-                name=Modbus_Slave_Ids.ENM.value['name'],
-                origin_slave_id=self.slave_id,
-                mouse_cage_number=0,
-                slave_id=f"{slave_id_int:02X}",
-                response=self.response,
-                response_hex=self.response_hex,
-                function_code=self.function_code,
-            )
-        elif slave_id_int > 16:
+        if slave_id_int > 16:
             mouse_cage_number = slave_id_int // 16
             # 鼠笼内传感器
             for type in Modbus_Slave_Type.Each_Mouse_Cage.value:

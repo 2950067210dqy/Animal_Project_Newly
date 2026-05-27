@@ -11,7 +11,7 @@ from public.config_class.global_setting import global_setting
 from public.entity.enum.Public_Enum import ModBusResponseCode
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Response_Parser import Modbus_Response_Parser, get_module_name
-from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids, Modbus_Slave_Type
+from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
 from public.util.time_util import time_util
 
 
@@ -262,9 +262,7 @@ class ModbusRTUMasterNew:
             slave_id_int = int(slave_id, 16)
             table_name = ""
 
-            if slave_id_int == Modbus_Slave_Ids.ENM.value['int']:
-                table_name = next(iter(Modbus_Slave_Ids.ENM.value['table'].keys()))
-            elif slave_id_int > 16:
+            if slave_id_int > 16:
                 # 鼠笼内传感器
                 for type_item in Modbus_Slave_Type.Each_Mouse_Cage.value:
                     if type_item.value['int'] == (slave_id_int % 16):
