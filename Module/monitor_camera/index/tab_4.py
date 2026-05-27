@@ -63,8 +63,7 @@ class ImageLoaderThread(MyQThread):
             camera_config["STORAGE"]["fold_path"]
             + camera_config["DEEP_CAMERA"]["path"]
             + f"{folder_name}/"
-            + camera_config["DEEP_CAMERA"]["result_dir"]
-            + camera_config["DEEP_CAMERA"]["result_img_dir"]
+            + camera_config["DEEP_CAMERA"]["color_dir"]
             for folder_name in deep_folder_list
         ]
         self.images = {"deep_camera": [], "infrared_camera": []}
