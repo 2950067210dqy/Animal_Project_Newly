@@ -1118,47 +1118,48 @@ def barrier_action():
                      'value':reference_data.get(f'ZOS_oxygen_num')-results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')})
 
 
-            # 求红外温度的最大值，兼容旧库中的 tmp_hs_mean 字段
-            temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_max', None)
-            if temp_values is None:
-                temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean', None)
-            if temp_values is not None:
-                infrared_temp_max = None
-                # 过滤掉None值
-                if type(temp_values) is list:
-                    filter_temp_values = [x for x in temp_values if x is not None]
-                    if len(filter_temp_values) != 0:
-                        infrared_temp_max = round(max(filter_temp_values), 4)
-                else:
-                    infrared_temp_max = temp_values
-                store_Datas.append({'desc': '鼠笼红外温度(°C)',
-                                    'value': infrared_temp_max})
             pass
 
-        store_Datas.append(
-            {'desc': '温度测量值(°C)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') is not None else None })
-        store_Datas.append(
-            {'desc': '湿度测量值(%RH)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') is not None else None })
-        store_Datas.append(
-            {'desc': '噪声测量值(dB)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num')  if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num') is not None else None})
-        store_Datas.append({'desc': '大气压测量值(KPa)',
-                            'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') is not None else None})
-        store_Datas.append({'desc': '当前计量周期内跑轮圈数测量值',
-                            'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num')  if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num') is not None else None})
-        store_Datas.append(
-            {'desc': '饮水重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
-                            f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None})
-        store_Datas.append(
-            {'desc': '食物重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') if results.get(
-                            f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
-        store_Datas.append(
-            {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
-                            f'WM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
+    # 本笼自己的环境/红外/称重类数据，参考笼和普通笼都应写入总表
+    temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_max', None)
+    if temp_values is None:
+        temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean', None)
+    if temp_values is not None:
+        infrared_temp_max = None
+        # 过滤掉None值
+        if type(temp_values) is list:
+            filter_temp_values = [x for x in temp_values if x is not None]
+            if len(filter_temp_values) != 0:
+                infrared_temp_max = round(max(filter_temp_values), 4)
+        else:
+            infrared_temp_max = temp_values
+        store_Datas.append({'desc': '鼠笼红外温度(°C)',
+                            'value': infrared_temp_max})
+
+    store_Datas.append(
+        {'desc': '温度测量值(°C)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') is not None else None })
+    store_Datas.append(
+        {'desc': '湿度测量值(%RH)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') is not None else None })
+    store_Datas.append(
+        {'desc': '噪声测量值(dB)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num')  if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num') is not None else None})
+    store_Datas.append({'desc': '大气压测量值(KPa)',
+                        'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') is not None else None})
+    store_Datas.append({'desc': '当前计量周期内跑轮圈数测量值',
+                        'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num')  if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num') is not None else None})
+    store_Datas.append(
+        {'desc': '饮水重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
+                        f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None})
+    store_Datas.append(
+        {'desc': '食物重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') if results.get(
+                        f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
+    store_Datas.append(
+        {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
+                        f'WM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
 
     store_Datas.append({'desc':'轮次开始时间','value':datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
     store_Datas.append({'desc':'轮次结束时间','value':datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
