@@ -76,6 +76,32 @@ THERMAL_DISPLAY_FILTER_PARAM = {
 frame_nums = 0
 lock = threading.Lock()
 
+
+def load_infrared_ellipse_mask_config(cage_id):
+    config_path = os.path.join(os.getcwd(), "config", "infrared_ellipse_mask_config.json")
+    camera_config = global_setting.get_setting("camera_config")["INFRARED_CAMERA"]
+    fallback = {
+        "enabled": int(camera_config.get("ellipse_mask_enabled", 1)),
+        "center_x_ratio": float(camera_config.get("ellipse_center_x_ratio", 0.50)),
+        "center_y_ratio": float(camera_config.get("ellipse_center_y_ratio", 0.54)),
+        "axis_x_ratio": float(camera_config.get("ellipse_axis_x_ratio", 0.36)),
+        "axis_y_ratio": float(camera_config.get("ellipse_axis_y_ratio", 0.34)),
+        "angle": float(camera_config.get("ellipse_angle", 0.0)),
+    }
+    if not os.path.exists(config_path):
+        return fallback
+
+    try:
+        raw = json_util.read_json_to_dict_list(config_path)
+    except Exception as e:
+        logger.error(f"load infrared ellipse mask config failed: {e}")
+        return fallback
+
+    merged = dict(fallback)
+    merged.update(raw.get("default", {}))
+    merged.update(raw.get("cages", {}).get(str(cage_id), {}))
+    return merged
+
 # 过滤日志
 # logger = logger.bind(category="infrared_camera_logger")
 class read_queue_data_Thread(MyQThread):
@@ -336,9 +362,55 @@ class TIP:
                            self.image_scale * self.ncol_nrow[1])
         # 伪彩色
         self.colormap = param.get('colormap', 'rainbow2')
+        self.ellipse_mask_enabled = bool(param.get('ellipse_mask_enabled', 1))
+        self.ellipse_center_x_ratio = float(param.get('ellipse_center_x_ratio', 0.50))
+        self.ellipse_center_y_ratio = float(param.get('ellipse_center_y_ratio', 0.54))
+        self.ellipse_axis_x_ratio = float(param.get('ellipse_axis_x_ratio', 0.36))
+        self.ellipse_axis_y_ratio = float(param.get('ellipse_axis_y_ratio', 0.34))
+        self.ellipse_angle = float(param.get('ellipse_angle', 0.0))
 
         # 图像分割器初始化
         self.segment = CVSegment(param)
+
+    def _ellipse_geometry(self, image_shape):
+        height, width = image_shape[:2]
+        center = (
+            int(width * self.ellipse_center_x_ratio),
+            int(height * self.ellipse_center_y_ratio),
+        )
+        axes = (
+            max(1, int(width * self.ellipse_axis_x_ratio)),
+            max(1, int(height * self.ellipse_axis_y_ratio)),
+        )
+        return center, axes, self.ellipse_angle
+
+    def _build_ellipse_mask(self, frame_shape):
+        if not self.ellipse_mask_enabled:
+            return None
+
+        mask = np.zeros(frame_shape[:2], dtype=np.uint8)
+        center, axes, angle = self._ellipse_geometry(frame_shape)
+        cv.ellipse(mask, center, axes, angle, 0, 360, 255, -1)
+        return mask
+
+    def _measure_roi_temperature(self, frame):
+        mask = self._build_ellipse_mask(frame.shape)
+        if mask is None:
+            return None, None, None
+
+        roi_pixels = frame[mask > 0]
+        if roi_pixels.size == 0:
+            return mask, None, None
+
+        return mask, float(np.max(roi_pixels)), float(np.mean(roi_pixels))
+
+    def _draw_ellipse_overlay(self, origin_image):
+        if not self.ellipse_mask_enabled:
+            return origin_image
+
+        center, axes, angle = self._ellipse_geometry(origin_image.shape)
+        cv.ellipse(origin_image, center, axes, angle, 0, 360, (0, 0, 255), 2)
+        return origin_image
 
     def set_max_temp_to_img(self, origin_image, max_temp):
         """
@@ -347,10 +419,9 @@ class TIP:
         """
         # 定义文字内容
         if max_temp is None:
-            text = f"hs_max: None degree C"
+            text = "roi_max: None degree C"
         else:
-            text = f"hs_max: {float(max_temp)} degree C"
-
+            text = f"roi_max: {float(max_temp):.4f} degree C"
         # 定义文字位置（左上角坐标）
         position = (30, 30)
 
@@ -406,10 +477,16 @@ class TIP:
         # self.img_hs_mask = cv_render(hs_mask, resize=self.image_size,
         #                              colormap='parula',
         #                              interpolation=cv.INTER_NEAREST, display=False)
+        _, roi_max, roi_mean = self._measure_roi_temperature(render_frame)
         output_struct = {
-            'hs_max': hs_osd.get('max', None),
+            'hs_max': roi_max if roi_max is not None else hs_osd.get('max', None),
+            'hs_mean': roi_mean,
         }
-        self.img_filtered = self.set_max_temp_to_img(self.img_filtered, output_struct['hs_max'])
+        self.img_filtered = self._draw_ellipse_overlay(self.img_filtered)
+        self.img_filtered = self.set_max_temp_to_img(
+            self.img_filtered,
+            output_struct['hs_max'],
+        )
         # 返回处理后图像和温度统计数据。
         images = {
             'display': self.img_filtered,
@@ -525,6 +602,17 @@ class Thermal_process(MyQThread):
                 'fpa_ncol_nrow': (self.mi48.cols, self.mi48.rows),
                 'image_scale': args.img_scale,
             }
+            ellipse_mask_config = load_infrared_ellipse_mask_config(self.id)
+            tip_param.update(
+                {
+                    'ellipse_mask_enabled': ellipse_mask_config.get('enabled', 1),
+                    'ellipse_center_x_ratio': ellipse_mask_config.get('center_x_ratio', 0.50),
+                    'ellipse_center_y_ratio': ellipse_mask_config.get('center_y_ratio', 0.54),
+                    'ellipse_axis_x_ratio': ellipse_mask_config.get('axis_x_ratio', 0.36),
+                    'ellipse_axis_y_ratio': ellipse_mask_config.get('axis_y_ratio', 0.34),
+                    'ellipse_angle': ellipse_mask_config.get('angle', 0.0),
+                }
+            )
 
             tip_param.update(TIP_SEGM_PARAM)
             self.tip = TIP(tip_param)
