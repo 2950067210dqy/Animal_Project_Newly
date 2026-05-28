@@ -655,8 +655,8 @@ class Send_thread(MyQThread):
                                 message = self.normal_queue.get(timeout=0.1)
                             send_message = message['message']
                             # logger.critical(f"send_thread:{self.name}<UNK>{message}")
-                            # 消息没带type则当前不为参考气路，则进行鼠笼内传感器值获取 否则不获取
-                            if message and message.get('type',None) is None:
+                            # 普通鼠笼消息直接发送；参考分支只放行显式允许的 reference_enm
+                            if message and message.get('type', None) in (None, 'reference_enm'):
                                 start_time=time.time()
                                 response, response_hex, send_state,return_data = self.modbus.send_command(
                                     slave_id=send_message['slave_id'],
@@ -841,8 +841,11 @@ class Add_message_thread(MyQThread):
                             message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
                             send_messages.append({'message': message_temp})
                         else:
-                            #参考气路则没有发送鼠笼内传感器
-                            send_messages.append({'message': message_temp,'type':'reference'})
+                            # Reference branch only sends ENM to avoid misrouting other cage modules.
+                            if data_type == Modbus_Slave_Send_Messages_Senior_Data.ENM:
+                                send_messages.append({'message': message_temp, 'type': 'reference_enm'})
+                            else:
+                                continue
                         MESSAGE_BATCH_SIZE += 1
 
 
@@ -854,7 +857,7 @@ class Add_message_thread(MyQThread):
             else:
                 mouse_cage = None
             #     # 等待从线程处理完当前批次
-            logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
+            logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len(send_messages)}条报文！"
             logger.info(logo_text)
             queue = global_setting.get_setting("queue", None)
             if queue:
@@ -1082,16 +1085,10 @@ def barrier_action():
 
 
 
-    # 非参考气
-    remarks_reference=""
     if mouse_cage_number != int(global_setting.get_setting('configer')['mouse_cage']['reference']):
         # 获取参考气轮次的数据：
         reference_data = handle.query_current_one_data(table_name=f"Epoch_data_cage_{int(global_setting.get_setting('configer')['mouse_cage']['reference'])}")
         if reference_data is not None:
-            # 获得所有参考备注
-            remarks_reference = ";"
-            remarks_reference += reference_data.get('remarks')  if reference_data.get('remarks') is not None else ""
-            # logger.critical(f"reference_data:{reference_data}")
             store_Datas.append(
                 {'desc': 'ufc_参考气流量计测量值(sccm)',
                  'value': reference_data.get(f'UFC_flow_num') if reference_data.get(
@@ -1169,7 +1166,7 @@ def barrier_action():
     # logger.critical(f"rs:{results}")
     remarks = "".join(f" {key}: {value}; " for key, value in results.items()
                             if "remarks" in key and value is not None and value != [])
-    store_Datas.append({'desc':'备注','value':remarks+remarks_reference})
+    store_Datas.append({'desc':'备注','value':remarks})
     # logger.critical(f"sd:{store_Datas}")
     # store_Datas.append({'desc':'获取时间','value':datetime.now().fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
     handle.stop()
