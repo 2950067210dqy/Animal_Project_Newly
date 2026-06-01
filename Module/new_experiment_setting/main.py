@@ -4,6 +4,7 @@ import time
 from PyQt6.QtWidgets import QMainWindow, QMessageBox
 
 from Module.new_experiment_setting.index.Tab_1 import Tab_1
+from Module.new_experiment_setting.index.monitor_hardware_config_dialog import MonitorHardwareConfigDialog
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
@@ -332,3 +333,22 @@ class Main_infrared_camera_mapping_config(Camera_config_action_base):
             tip="\n设置好后要重新启动程序！！！！！！"
         )
         self.dialog_frame.show_frame()
+
+class Main_monitor_hardware_config(Camera_config_action_base):
+    action_name = "Main_monitor_hardware_config"
+    action_title = "硬件配置"
+    dialog_title = "硬件配置"
+    toolbar_order = 14
+
+    def get_app_state(self) -> AppState:
+        return AppState.APPLYING
+
+    def get_menu_name(self):
+        return {"id": 1, "text": "设备信息"}
+
+    def open_dialog(self):
+        self.dialog_frame = MonitorHardwareConfigDialog(title=self.dialog_title)
+        self.dialog_frame.set_main_gui(self.main_gui)
+        self.dialog_frame.show()
+        self.dialog_frame.raise_()
+        self.dialog_frame.activateWindow()
