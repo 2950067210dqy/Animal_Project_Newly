@@ -65,12 +65,14 @@ TIP_SEGM_PARAM = {
 }
 
 THERMAL_DISPLAY_FILTER_PARAM = {
-    'temporal_window': 7,
+    'temporal_window': 10,
     'blur_ks': 3,
     'd': 7,
     'sigmaColor': 20,
     'sigmaSpace': 20,
 }
+
+ROI_EFFECTIVE_MAX_TOP_N = 100
 
 # 总图像帧数量
 frame_nums = 0
@@ -416,7 +418,10 @@ class TIP:
         if roi_pixels.size == 0:
             return mask, None, None
 
-        return mask, float(np.max(roi_pixels)), float(np.mean(roi_pixels))
+        top_n = min(ROI_EFFECTIVE_MAX_TOP_N, int(roi_pixels.size))
+        hottest_pixels = np.partition(roi_pixels, -top_n)[-top_n:]
+        effective_max = float(np.mean(hottest_pixels))
+        return mask, effective_max, float(np.mean(roi_pixels))
 
     def _draw_ellipse_overlay(self, origin_image):
         if not self.ellipse_mask_enabled:
