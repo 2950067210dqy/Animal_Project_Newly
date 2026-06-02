@@ -11,66 +11,66 @@
   "cages": {
     "1": {
       "enabled": 1,
-      "center_x_ratio": 0.48,
-      "center_y_ratio": 0.57,
-      "axis_x_ratio": 0.35,
-      "axis_y_ratio": 0.42,
+      "center_x_ratio": 0.488,
+      "center_y_ratio": 0.585,
+      "axis_x_ratio": 0.333,
+      "axis_y_ratio": 0.400,
       "angle": 0.0
     },
     "2": {
       "enabled": 1,
-      "center_x_ratio": 0.47,
-      "center_y_ratio": 0.50,
-      "axis_x_ratio": 0.36,
-      "axis_y_ratio": 0.41,
+      "center_x_ratio": 0.462,
+      "center_y_ratio": 0.492,
+      "axis_x_ratio": 0.342,
+      "axis_y_ratio": 0.392,
       "angle": 0.0
     },
     "3": {
       "enabled": 1,
       "center_x_ratio": 0.55,
       "center_y_ratio": 0.57,
-      "axis_x_ratio": 0.36,
-      "axis_y_ratio": 0.43,
+      "axis_x_ratio": 0.341,
+      "axis_y_ratio": 0.411,
       "angle": 0.0
     },
     "4": {
       "enabled": 1,
-      "center_x_ratio": 0.52,
-      "center_y_ratio": 0.66,
-      "axis_x_ratio": 0.40,
-      "axis_y_ratio": 0.45,
+      "center_x_ratio": 0.505,
+      "center_y_ratio": 0.712,
+      "axis_x_ratio": 0.352,
+      "axis_y_ratio": 0.382,
       "angle": 0.0
     },
     "5": {
       "enabled": 1,
-      "center_x_ratio": 0.435,
-      "center_y_ratio": 0.576,
-      "axis_x_ratio": 0.337,
-      "axis_y_ratio": 0.396,
+      "center_x_ratio": 0.423,
+      "center_y_ratio": 0.560,
+      "axis_x_ratio": 0.311,
+      "axis_y_ratio": 0.365,
       "angle": 0.0
     },
     "6": {
       "enabled": 1,
-      "center_x_ratio": 0.64,
-      "center_y_ratio": 0.49,
-      "axis_x_ratio": 0.35,
-      "axis_y_ratio": 0.41,
+      "center_x_ratio": 0.632,
+      "center_y_ratio": 0.482,
+      "axis_x_ratio": 0.336,
+      "axis_y_ratio": 0.396,
       "angle": 0.0
     },
     "7": {
       "enabled": 1,
-      "center_x_ratio": 0.52,
-      "center_y_ratio": 0.66,
-      "axis_x_ratio": 0.34,
-      "axis_y_ratio": 0.41,
+      "center_x_ratio": 0.507,
+      "center_y_ratio": 0.642,
+      "axis_x_ratio": 0.321,
+      "axis_y_ratio": 0.386,
       "angle": 0.0
     },
     "8": {
       "enabled": 1,
-      "center_x_ratio": 0.49,
-      "center_y_ratio": 0.54,
-      "axis_x_ratio": 0.43,
-      "axis_y_ratio": 0.47,
+      "center_x_ratio": 0.443,
+      "center_y_ratio": 0.550,
+      "axis_x_ratio": 0.357,
+      "axis_y_ratio": 0.384,
       "angle": 0.0
     }
   }
