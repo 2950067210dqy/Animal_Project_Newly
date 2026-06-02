@@ -65,7 +65,7 @@ TIP_SEGM_PARAM = {
 }
 
 THERMAL_DISPLAY_FILTER_PARAM = {
-    'temporal_window': 3,
+    'temporal_window': 7,
     'blur_ks': 3,
     'd': 7,
     'sigmaColor': 20,
@@ -174,6 +174,20 @@ read_queue_data_thread = read_queue_data_Thread(name="main_infrared_camera_read_
 
 import msvcrt
 import shutil
+
+
+def get_infrared_history_config():
+    camera_config = global_setting.get_setting("camera_config")
+    infrared_config = camera_config.get('INFRARED_CAMERA', {})
+    storage_root = camera_config.get('STORAGE', {}).get('fold_path', './data/')
+    history_root = os.path.normpath(
+        os.path.join(storage_root, infrared_config.get('history_path', 'infrared_camera_history/'))
+    )
+    return {
+        'enabled': bool(int(infrared_config.get('history_enabled', 0))),
+        'root_path': history_root,
+        'keep_days': int(infrared_config.get('history_keep_days', 0)),
+    }
 
 
 
@@ -771,12 +785,63 @@ class Delete_file(MyQThread):
         super().__init__(name=f"infrared_camera_delete_file")
         self.path = path
         self.start_time = start_time
+        self.history_config = get_infrared_history_config()
+
+    def _archive_bmp_file(self, file_path):
+        if not self.history_config['enabled']:
+            return False
+        if os.path.splitext(file_path)[1].lower() != '.bmp':
+            return False
+
+        history_root = self.history_config['root_path']
+        source_root = os.path.abspath(self.path)
+        archive_root = os.path.abspath(history_root)
+        if os.path.commonpath([source_root, archive_root]) == source_root:
+            logger.error(f"红外历史归档目录不能放在待清理目录内部: {archive_root}")
+            return False
+
+        relative_path = os.path.relpath(file_path, self.path)
+        archive_dir = os.path.join(history_root, datetime.now().strftime('%Y-%m-%d'))
+        archive_path = os.path.join(archive_dir, relative_path)
+        os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+        if os.path.exists(archive_path):
+            stem, ext = os.path.splitext(archive_path)
+            archive_path = f"{stem}_{int(time.time() * 1000)}{ext}"
+        shutil.move(file_path, archive_path)
+        return True
+
+    def _cleanup_history_files(self):
+        keep_days = self.history_config['keep_days']
+        if not self.history_config['enabled'] or keep_days <= 0:
+            return
+
+        history_root = self.history_config['root_path']
+        if not os.path.exists(history_root):
+            return
+
+        expire_before = time.time() - keep_days * 24 * 60 * 60
+        for root, dirs, files in os.walk(history_root, topdown=False):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    if os.path.getmtime(file_path) < expire_before:
+                        os.remove(file_path)
+                except Exception as e:
+                    logger.error(f"清理红外历史文件失败: {file_path}, reason:{e}")
+            for directory in dirs:
+                dir_path = os.path.join(root, directory)
+                try:
+                    if not os.listdir(dir_path):
+                        os.rmdir(dir_path)
+                except Exception as e:
+                    logger.error(f"清理红外历史目录失败: {dir_path}, reason:{e}")
 
     # 获得删除文件的大小
     def get_and_delete_files(self):
 
         total_size = 0
         total_nums = 0
+        archived_nums = 0
         for root, dirs, files in os.walk(self.path):
             # logger.warning(f"infrared {root} | {dirs} | {files}")
             for file in files:
@@ -789,20 +854,28 @@ class Delete_file(MyQThread):
                     size = float(size / 1204 / 1024 / 1024)  # 将字节B转成GB
                     total_size += size
                     total_nums += 1
-                    os.remove(file_path)  # 删除文件
+                    if self._archive_bmp_file(file_path):
+                        archived_nums += 1
+                    else:
+                        os.remove(file_path)  # 删除文件
                 except Exception as e:
                     logger.error(
                         f"infrared_camera Failed to delete {file_path}: reason:{e} |  异常堆栈跟踪：{traceback.print_exc()}")
         global frame_nums
         with lock:
-            logger.warning(f"红外相机 | 删除文件总大小: {total_size} G-bytes | 删除文件总数量： {total_nums} | 此时相机拍摄的图像数量：{frame_nums}")
+            logger.warning(
+                f"红外相机 | 清理文件总大小: {total_size} G-bytes | 清理文件总数量： {total_nums} | "
+                f"归档bmp数量：{archived_nums} | 此时相机拍摄的图像数量：{frame_nums}"
+            )
             frame_nums = 0
+        self._cleanup_history_files()
         return total_size
 
 
     def dosomething(self) :
         try:
             with delete_process_lock:
+                self.history_config = get_infrared_history_config()
                 # 获取现在时间与上次删除时间之差
                 current_time = time.time()
                 elapsed = current_time - self.start_time
