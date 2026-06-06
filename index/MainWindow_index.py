@@ -1,6 +1,8 @@
 import importlib
 import json
 import os
+import sqlite3
+import threading
 import time
 from json import JSONDecodeError
 
@@ -201,6 +203,63 @@ class read_queue_data_Thread(MyQThread):
     def close_stop_experiment_dialog(self):
         if self.window is not None and self.window.stop_dialog is not None:
             self.window.stop_dialog.update_progress_value(self.window.stop_dialog.progress_max)
+
+
+class PeriodicExcelExportThread(threading.Thread):
+    def __init__(self, db_path, export_file_path, callback=None):
+        super().__init__(name="periodic_excel_export_thread", daemon=True)
+        self.db_path = db_path
+        self.export_file_path = export_file_path
+        self.callback = callback
+
+    @staticmethod
+    def _create_snapshot(source_db_path, snapshot_db_path):
+        source_conn = None
+        snapshot_conn = None
+        try:
+            source_conn = sqlite3.connect(source_db_path, timeout=30.0)
+            snapshot_conn = sqlite3.connect(snapshot_db_path, timeout=30.0)
+            source_conn.backup(snapshot_conn)
+        finally:
+            if snapshot_conn is not None:
+                snapshot_conn.close()
+            if source_conn is not None:
+                source_conn.close()
+
+    def run(self):
+        snapshot_db_path = f"{self.db_path}.{int(time.time() * 1000)}.snapshot.db"
+        success = False
+        message = ""
+        try:
+            if not os.path.exists(self.db_path):
+                raise FileNotFoundError(f"数据库文件不存在: {self.db_path}")
+
+            export_dir = os.path.dirname(self.export_file_path)
+            if export_dir:
+                os.makedirs(export_dir, exist_ok=True)
+
+            self._create_snapshot(self.db_path, snapshot_db_path)
+            success = custom_data_file_util.export_data_to_csv(
+                export_file_path=self.export_file_path,
+                file_path=snapshot_db_path,
+                show_success_message=False,
+                use_atomic_replace=True
+            )
+            message = f"定时导出实验数据{'成功' if success else '失败'}: {os.path.basename(self.export_file_path)}"
+        except Exception as e:
+            message = f"定时导出实验数据失败: {e}"
+            logger.error(message)
+        finally:
+            if os.path.exists(snapshot_db_path):
+                try:
+                    os.remove(snapshot_db_path)
+                except OSError as remove_error:
+                    logger.error(f"删除数据库快照失败: {remove_error}")
+
+            if self.callback is not None:
+                self.callback(success, message)
+
+
 read_queue_data_thread = read_queue_data_Thread(name="MainWindow_index_read_queue_data_thread")
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
@@ -397,6 +456,13 @@ class MainWindow_Index(ThemedWindow):
         self.tab_widget :QTabWidget =None
         # 实例化ui
         self._init_ui()
+        self.periodic_export_lock = threading.Lock()
+        self.periodic_export_in_progress = False
+        self.periodic_export_thread = None
+        self.periodic_export_timer = QTimer(self)
+        self.periodic_export_timer.setSingleShot(False)
+        self.periodic_export_timer.setInterval(self._get_periodic_export_interval_ms())
+        self.periodic_export_timer.timeout.connect(self.trigger_periodic_excel_export)
         # 实例化自定义ui
         self._init_customize_ui()
         # 实例化功能
@@ -1095,6 +1161,101 @@ class MainWindow_Index(ThemedWindow):
         self.setEnabled(True)
         resolve()
 
+    def _get_experiment_root_path(self):
+        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+        if experiment_setting_file is None or not os.path.exists(experiment_setting_file):
+            return None
+
+        file_name = os.path.basename(experiment_setting_file)
+        file_name_without_extension = os.path.splitext(file_name)[0]
+        return os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE']['fold_path'] + os.path.join(
+            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
+            f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}"
+        )
+
+    def _get_experiment_db_path(self):
+        experiment_root_path = self._get_experiment_root_path()
+        if experiment_root_path is None:
+            return None
+        return os.path.join(experiment_root_path, "data", "data.db")
+
+    def _get_experiment_excel_path(self):
+        experiment_root_path = self._get_experiment_root_path()
+        if experiment_root_path is None:
+            return None
+        return f"{experiment_root_path}.xlsx"
+
+    def _get_periodic_export_interval_ms(self):
+        export_config = global_setting.get_setting("monitor_data", {}).get("EXPORT", {})
+        interval_minutes_raw = export_config.get("periodic_xlsx_interval_minutes", 30)
+        try:
+            interval_minutes = float(interval_minutes_raw)
+        except (TypeError, ValueError):
+            logger.warning(f"定时导出xlsx配置无效，使用默认值30分钟: {interval_minutes_raw}")
+            interval_minutes = 30.0
+
+        if interval_minutes <= 0:
+            return 0
+        return int(interval_minutes * 60 * 1000)
+
+    def _start_periodic_export_timer(self):
+        interval_ms = self._get_periodic_export_interval_ms()
+        if self.periodic_export_timer.isActive():
+            self.periodic_export_timer.stop()
+        if interval_ms <= 0:
+            logger.info("定时导出xlsx已关闭：EXPORT.periodic_xlsx_interval_minutes <= 0")
+            return
+        self.periodic_export_timer.setInterval(interval_ms)
+        self.periodic_export_timer.start()
+        logger.info(f"定时导出xlsx已启动，周期: {interval_ms / 60000:.2f} 分钟")
+
+    def _stop_periodic_export_timer(self):
+        if self.periodic_export_timer.isActive():
+            self.periodic_export_timer.stop()
+            logger.info("定时导出xlsx已停止")
+
+    def _is_periodic_export_running(self):
+        with self.periodic_export_lock:
+            return self.periodic_export_in_progress
+
+    def _on_periodic_export_finished(self, success, message):
+        with self.periodic_export_lock:
+            self.periodic_export_in_progress = False
+            self.periodic_export_thread = None
+
+        if success:
+            logger.info(message)
+        else:
+            logger.error(message)
+            self.update_status_tip_signal.emit(message)
+
+    def trigger_periodic_excel_export(self):
+        if global_setting.get_setting("app_state", AppState.INITIALIZED) != AppState.MONITORING:
+            return
+
+        db_path = self._get_experiment_db_path()
+        export_file_path = self._get_experiment_excel_path()
+        if db_path is None or export_file_path is None:
+            logger.warning("定时导出xlsx跳过：实验路径尚未准备好")
+            return
+        if not os.path.exists(db_path):
+            logger.warning(f"定时导出xlsx跳过：数据库不存在 {db_path}")
+            return
+
+        with self.periodic_export_lock:
+            if self.periodic_export_in_progress:
+                logger.warning("上一次定时导出xlsx尚未完成，跳过本轮导出")
+                return
+            self.periodic_export_in_progress = True
+
+        logger.info(f"开始定时导出xlsx: {export_file_path}")
+        self.periodic_export_thread = PeriodicExcelExportThread(
+            db_path=db_path,
+            export_file_path=export_file_path,
+            callback=self._on_periodic_export_finished
+        )
+        self.periodic_export_thread.start()
+
     def start_experiment(self):
 
         # ★ 重置上一次实验残留的临时提示状态，确保从绿色开始
@@ -1131,6 +1292,7 @@ class MainWindow_Index(ThemedWindow):
         global_setting.set_setting("start_experiment_time", time.time())
         global_setting.set_setting("pause_experiment_time", [])
         global_setting.set_setting("relieve_pause_experiment_time", [])
+        self._start_periodic_export_timer()
         # self.start_thread = Start_experiment_thread(name="start_thread",window=self)
         # self.start_thread.start()
 
@@ -1426,6 +1588,7 @@ class MainWindow_Index(ThemedWindow):
         if self._gas_path_timeout_timer is not None:
             self._gas_path_timeout_timer.stop()
             self._gas_path_timeout_timer = None
+        self._stop_periodic_export_timer()
 
         self.setEnabled(False)
         self.status_bar.update_tip(f"正在关闭实验监测...")
@@ -1512,24 +1675,15 @@ class MainWindow_Index(ThemedWindow):
         resolve()
 
     def stop_store_info(self):
+        if self._is_periodic_export_running():
+            if self.stop_dialog is not None:
+                self.stop_dialog.insert_data_signal.emit("等待定时导出完成.... ")
+            QTimer.singleShot(1000, self.stop_store_info)
+            return
 
         # 停止实验 将文件夹的数据合并成一个数据文件
-        # 读取实验设置文件路径
-        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
-        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
-            # 获取文件所在的文件夹路径
-            folder_path = os.path.dirname(experiment_setting_file)
-            # 获取文件名称
-            file_name = os.path.basename(experiment_setting_file)
-            # 不带扩展名的文件名称
-            file_name_without_extension = os.path.splitext(file_name)[0]
-            # 获取文件的扩展名
-            file_name_extension = os.path.splitext(file_name)[1]
-            # 定义文件夹路径
-            folder_path_data = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE'][
-                'fold_path'] + os.path.join(
-                global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
-                f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
+        folder_path_data = self._get_experiment_root_path()
+        if folder_path_data is not None and os.path.exists(folder_path_data):
             if self.stop_dialog is not None:
                 self.stop_dialog.insert_data_signal.emit(f"正在导出数据.... ")
             custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
