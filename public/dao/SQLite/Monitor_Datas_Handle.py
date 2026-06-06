@@ -18,11 +18,24 @@ from public.util.time_util import time_util
 #logger = logger.bind(category="deep_camera_logger")
 
 class Monitor_Datas_Handle():
+    ZERO_FILL_MONITOR_DESCS = {
+        "CO2(%)",
+        "氧浓度(%)",
+        "补偿后氧气浓度(%)",
+        "温度测量值(°C)",
+        "温度测量值(℃)",
+        "ZOS温度测量值(°C)",
+        "ZOS温度测量值(℃)",
+        "湿度测量值(%RH)",
+        "噪声测量值(dB)",
+    }
+
     def __init__(self,db_name=None):
         # 实验设置
         self.experiment_setting: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
         self.experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
         self.sqlite_manager: SQLiteManager = None
+        self.zero_fill_cache = {}
         self.init_construct(db_name)
 
         self.conn = None  # 为检测结果处理准备连接
@@ -363,6 +376,67 @@ class Monitor_Datas_Handle():
         result = {column: desc_to_value.fuzzy_get(desc) for desc, column in desc_to_column.items()}
 
         return result
+
+    def _coerce_numeric_value(self, value):
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            value = value.strip()
+            if value == "":
+                return None
+            try:
+                return float(value)
+            except ValueError:
+                return None
+        return None
+
+    def _query_latest_non_zero_value(self, table_name, column_name):
+        if not column_name:
+            return None
+
+        quoted_table_name = self.sqlite_manager.quote_ident(table_name)
+        quoted_column_name = self.sqlite_manager.quote_ident(column_name)
+        sql = (
+            f"SELECT {quoted_column_name} FROM {quoted_table_name} "
+            f"WHERE {quoted_column_name} IS NOT NULL "
+            f"AND ABS(CAST({quoted_column_name} AS REAL)) > ? "
+            f"ORDER BY time DESC LIMIT 1"
+        )
+
+        with self.sqlite_manager.execute_transaction(auto_commit=True) as cursor:
+            cursor.execute(sql, (1e-12,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def _fill_monitor_zero_values(self, table_name, data_items, columns_all_except_id):
+        for data_item in data_items:
+            desc = data_item.get('desc')
+            if desc not in self.ZERO_FILL_MONITOR_DESCS:
+                continue
+
+            numeric_value = self._coerce_numeric_value(data_item.get('value'))
+            if numeric_value is None:
+                continue
+
+            cache_key = (table_name, desc)
+            if abs(numeric_value) <= 1e-12:
+                previous_value = self.zero_fill_cache.get(cache_key)
+                if previous_value is None:
+                    previous_value = self._query_latest_non_zero_value(
+                        table_name=table_name,
+                        column_name=columns_all_except_id.get(desc)
+                    )
+                    if previous_value is not None:
+                        self.zero_fill_cache[cache_key] = previous_value
+
+                if previous_value is not None:
+                    logger.debug(f"{table_name} | {desc} 检测到零值，回填上一条非零值: {previous_value}")
+                    data_item['value'] = previous_value
+            else:
+                self.zero_fill_cache[cache_key] = data_item.get('value')
+
     def insert_data(self, data):
         """
 
@@ -387,6 +461,8 @@ class Monitor_Datas_Handle():
                 columns_query = self.sqlite_manager.query(table_name_meta)
                 # 把id列去掉 因为id自增
                 columns_all_except_id = {i[2]:i[0] for i in columns_query if i[0] != 'id' }
+                if data.get('table_name') == 'monitor_data':
+                    self._fill_monitor_zero_values(table_name, data['data'], columns_all_except_id)
                 data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
                 data_store['time'] = data['time']
                 # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
@@ -406,6 +482,8 @@ class Monitor_Datas_Handle():
                 columns_query = self.sqlite_manager.query(table_name_meta)
                 # 把id列去掉 因为id自增
                 columns_all_except_id = {i[2]:i[0] for i in columns_query if i[0] != 'id' }
+                if data.get('table_name') == 'monitor_data':
+                    self._fill_monitor_zero_values(table_name, data['data'], columns_all_except_id)
                 data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
                 data_store['time'] = data['time']
                 # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
