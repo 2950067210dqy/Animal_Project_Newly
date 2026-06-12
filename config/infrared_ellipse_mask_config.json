@@ -11,29 +11,13 @@
   "cages": {
     "1": {
       "enabled": 1,
-      "center_x_ratio": 0.488,
-      "center_y_ratio": 0.585,
-      "axis_x_ratio": 0.333,
-      "axis_y_ratio": 0.400,
+      "center_x_ratio": 0.507,
+      "center_y_ratio": 0.642,
+      "axis_x_ratio": 0.321,
+      "axis_y_ratio": 0.386,
       "angle": 0.0
     },
     "2": {
-      "enabled": 1,
-      "center_x_ratio": 0.462,
-      "center_y_ratio": 0.492,
-      "axis_x_ratio": 0.342,
-      "axis_y_ratio": 0.392,
-      "angle": 0.0
-    },
-    "3": {
-      "enabled": 1,
-      "center_x_ratio": 0.55,
-      "center_y_ratio": 0.57,
-      "axis_x_ratio": 0.341,
-      "axis_y_ratio": 0.411,
-      "angle": 0.0
-    },
-    "4": {
       "enabled": 1,
       "center_x_ratio": 0.505,
       "center_y_ratio": 0.712,
@@ -41,12 +25,28 @@
       "axis_y_ratio": 0.382,
       "angle": 0.0
     },
+    "3": {
+      "enabled": 1,
+      "center_x_ratio": 0.547,
+      "center_y_ratio": 0.610,
+      "axis_x_ratio": 0.318,
+      "axis_y_ratio": 0.380,
+      "angle": 0.0
+    },
+    "4": {
+      "enabled": 1,
+      "center_x_ratio": 0.462,
+      "center_y_ratio": 0.492,
+      "axis_x_ratio": 0.342,
+      "axis_y_ratio": 0.392,
+      "angle": 0.0
+    },
     "5": {
       "enabled": 1,
-      "center_x_ratio": 0.423,
-      "center_y_ratio": 0.560,
-      "axis_x_ratio": 0.311,
-      "axis_y_ratio": 0.365,
+      "center_x_ratio": 0.55,
+      "center_y_ratio": 0.57,
+      "axis_x_ratio": 0.341,
+      "axis_y_ratio": 0.411,
       "angle": 0.0
     },
     "6": {
@@ -59,18 +59,18 @@
     },
     "7": {
       "enabled": 1,
-      "center_x_ratio": 0.507,
-      "center_y_ratio": 0.642,
-      "axis_x_ratio": 0.321,
-      "axis_y_ratio": 0.386,
+      "center_x_ratio": 0.423,
+      "center_y_ratio": 0.560,
+      "axis_x_ratio": 0.311,
+      "axis_y_ratio": 0.365,
       "angle": 0.0
     },
     "8": {
       "enabled": 1,
-      "center_x_ratio": 0.443,
-      "center_y_ratio": 0.550,
-      "axis_x_ratio": 0.357,
-      "axis_y_ratio": 0.384,
+      "center_x_ratio": 0.488,
+      "center_y_ratio": 0.585,
+      "axis_x_ratio": 0.333,
+      "axis_y_ratio": 0.400,
       "angle": 0.0
     }
   }
