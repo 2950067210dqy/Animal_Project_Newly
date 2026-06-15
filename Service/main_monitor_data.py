@@ -75,6 +75,8 @@ class read_queue_data_Thread(MyQThread):
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.stop()
         super().stop()
+
+
     def dosomething(self):
         global gids
         if not self.queue.empty():
@@ -212,6 +214,45 @@ class read_queue_data_Thread(MyQThread):
 
 
 read_queue_data_thread = read_queue_data_Thread(name="main_monitor_data_read_queue_data_thread")
+
+
+class PeriodicXlsxExportThread(MyQThread):
+    """Periodically exports the current experiment database to xlsx."""
+
+    def __init__(self, name, interval_minutes):
+        super().__init__(name)
+        self.interval_seconds = max(float(interval_minutes) * 60, 1.0)
+        self.next_run_time = time.time() + self.interval_seconds
+
+    def dosomething(self):
+        now = time.time()
+        if now < self.next_run_time:
+            time.sleep(min(1.0, self.next_run_time - now))
+            return
+
+        db_file_path = get_monitor_data_db_file_path()
+        export_file_path = f"{get_monitor_data_export_base_path()}.xlsx"
+
+        if not os.path.exists(db_file_path):
+            logger.warning(f"定时导出xlsx跳过，数据库文件不存在: {db_file_path}")
+            self.next_run_time = time.time() + self.interval_seconds
+            return
+
+        try:
+            success = custom_data_file_util.export_data_to_csv(
+                export_file_path=export_file_path,
+                file_path=db_file_path,
+                show_success_message=False,
+                use_atomic_replace=True
+            )
+            if success:
+                logger.info(f"定时导出xlsx成功: {export_file_path}")
+            else:
+                logger.error(f"定时导出xlsx失败: {export_file_path}")
+        except Exception as e:
+            logger.error(f"定时导出xlsx异常: {e}")
+        finally:
+            self.next_run_time = time.time() + self.interval_seconds
 
 
 def  all_modules_check_online_state():
@@ -916,6 +957,39 @@ class Add_message_thread(MyQThread):
 
 
 
+def _get_monitor_data_experiment_name():
+    experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+    if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+        return os.path.splitext(os.path.basename(experiment_setting_file))[0]
+    return "experiment"
+
+
+def get_monitor_data_experiment_dir():
+    monitor_data_config = global_setting.get_setting('monitor_data')
+    storage_config = monitor_data_config['STORAGE']
+    folder_name = (
+        f"{_get_monitor_data_experiment_name()}_"
+        f"{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}"
+    )
+    return os.path.abspath(
+        os.path.join(
+            os.getcwd(),
+            storage_config['fold_path'],
+            str(storage_config['sub_fold_path']).strip("/\\"),
+            folder_name
+        )
+    )
+
+
+def get_monitor_data_db_file_path():
+    return os.path.join(get_monitor_data_experiment_dir(), "data", "data.db")
+
+
+def get_monitor_data_export_base_path():
+    experiment_dir = get_monitor_data_experiment_dir()
+    return os.path.join(os.path.dirname(experiment_dir), os.path.basename(experiment_dir))
+
+
 def copy_experiment_setting_file():
     #将实验配置存储到该实验的文件夹中去
     # 将实验设置存入全局变量
@@ -930,8 +1004,7 @@ def copy_experiment_setting_file():
         #获取文件的扩展名
         file_name_extension = os.path.splitext(file_name)[1]
         # 定义文件夹路径
-        folder_path_copy = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE']['fold_path'] + os.path.join(
-            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time',time.time()))}","experiment_setting")
+        folder_path_copy = os.path.join(get_monitor_data_experiment_dir(), "experiment_setting")
 
         # 创建文件夹（如果不存在）
         os.makedirs(folder_path_copy, exist_ok=True)
@@ -947,6 +1020,7 @@ ufc_ugc_zos=None
 ufc_ugc_zos_thread:UFC_UGC_ZOS_index =None
 # 存储线程
 store_thread:Store_Thread = None
+periodic_xlsx_export_thread: PeriodicXlsxExportThread = None
 # 发送报文线程
 send_thread :Send_thread= None
 add_message_thread:Add_message_thread = None
@@ -1271,7 +1345,7 @@ def start():
     gids = [group.id for group in experiment_settings.groups if
             group.is_selected == 1] if experiment_settings is not None else []
     # UFC_UGC_ZOS
-    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
+    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread
     ufc_ugc_zos_thread = None
     ufc_ugc_zos = None
     try:
@@ -1286,6 +1360,22 @@ def start():
     # 存储线程
     store_thread = Store_Thread(name="monitor_data_store_message")
     store_thread.start()
+
+    export_config = global_setting.get_setting('monitor_data').get('EXPORT', {})
+    periodic_interval = float(export_config.get('periodic_xlsx_interval_minutes', 0) or 0)
+    if periodic_interval > 0:
+        if periodic_xlsx_export_thread is not None and periodic_xlsx_export_thread.isRunning():
+            periodic_xlsx_export_thread.stop()
+            periodic_xlsx_export_thread.deleteLater()
+        periodic_xlsx_export_thread = PeriodicXlsxExportThread(
+            name="monitor_data_periodic_xlsx_export",
+            interval_minutes=periodic_interval
+        )
+        periodic_xlsx_export_thread.start()
+        logger.info(f"已启用定时xlsx快照导出，间隔: {periodic_interval} 分钟")
+    else:
+        periodic_xlsx_export_thread = None
+        logger.info("未启用定时xlsx快照导出")
 
 
 
@@ -1358,7 +1448,7 @@ def stop():
     barrier = global_setting.get_setting("barrier")
     if barrier is not None:
         barrier.reset(parties=1)
-    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
+    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread
     try:
         logger.error("stop_ufc_ugc_zos")
 
@@ -1387,6 +1477,15 @@ def stop():
                 ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_zos_gap_system_return",
                                 data=f"关闭zos气路模块错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
+
+    try:
+        logger.error("stop_periodic_xlsx_export_thread")
+        if periodic_xlsx_export_thread is not None and periodic_xlsx_export_thread.isRunning():
+            periodic_xlsx_export_thread.stop()
+            periodic_xlsx_export_thread.deleteLater()
+        periodic_xlsx_export_thread = None
+    except Exception as e:
+        logger.error(f"关闭实验监测periodic_xlsx_export_thread错误，原因：{e}")
 
     try:
         logger.error("stop_store_thread")

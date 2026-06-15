@@ -142,9 +142,10 @@ class custom_data_file_util:
         temp_export_file_path = None
         if use_atomic_replace and export_file_path is not None:
             temp_dir = os.path.dirname(export_file_path) or "."
+            export_extension = os.path.splitext(export_file_path)[1] or ".xlsx"
             temp_fd, temp_export_file_path = tempfile.mkstemp(
                 prefix=f".{os.path.basename(export_file_path)}.",
-                suffix=".tmp",
+                suffix=export_extension,
                 dir=temp_dir
             )
             os.close(temp_fd)
