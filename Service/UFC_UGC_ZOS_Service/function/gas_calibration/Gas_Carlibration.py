@@ -805,7 +805,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
 
                 self.send_message = {
                     'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"00{channel:02X}000A"),
+                    'data': number_util.set_int_to_4_bytes_list(f"00{channel:02X}000E"),
                     'slave_id': '4',
                     'function_code': '4',
                     'timeout': 1
@@ -905,7 +905,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
         cage_addr = mouse_cages_inc[mouse_cage_index] - 1 if mouse_cage_index is not None else 8
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"00{cage_addr}000A"),
+            'data': number_util.set_int_to_4_bytes_list(f"00{cage_addr}000E"),
             'slave_id': '4',
             'function_code': '4',
             'timeout': 1
@@ -1282,7 +1282,7 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
 
                 self.send_message = {
                     'port': port,
-                    'data': number_util.set_int_to_4_bytes_list(f"00{channel:02X}000A"),
+                    'data': number_util.set_int_to_4_bytes_list(f"00{channel:02X}000E"),
                     'slave_id': '4',
                     'function_code': '4',
                     'timeout': 1
@@ -1380,7 +1380,7 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
 
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"00{cage_addr}000A"),
+            'data': number_util.set_int_to_4_bytes_list(f"00{cage_addr}000E"),
             'slave_id': '4',
             'function_code': '4',
             'timeout': 1

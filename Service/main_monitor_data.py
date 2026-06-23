@@ -1155,6 +1155,12 @@ def barrier_action():
     store_Datas.append({'desc': 'ZOS故障码',
                         'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__fault_code') if results.get(
                             f'ZOS_monitor_data_cage_{mouse_cage_number}__fault_code') is not None else None})
+    store_Datas.append({'desc': 'ZOS温度2测量值(°C)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_temperature_2_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_temperature_2_num') is not None else None})
+    store_Datas.append({'desc': 'ZOS湿度测量值(%RH)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_humidity_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_humidity_num') is not None else None})
 
 
 

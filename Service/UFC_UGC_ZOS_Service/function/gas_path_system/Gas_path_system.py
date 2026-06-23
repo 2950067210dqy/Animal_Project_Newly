@@ -925,7 +925,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         cage_addr = mouse_cages_inc[mouse_cage_index] - 1 if mouse_cage_index is not None else 8
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"000{cage_addr}000A"),
+            'data': number_util.set_int_to_4_bytes_list(f"000{cage_addr}000E"),
             'slave_id': '4',
             'function_code': '4',
             'timeout': 1
@@ -970,7 +970,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
     def circular_read(self,resolve,reject,port,mouse_cages_inc):
         """
-        ZOS-运行 1. 读取氧浓度（新协议：04 04 00 0X 00 0A，返回氧分压/温度/气体总压/氧浓度/故障码）
+        ZOS-运行 1. 读取氧浓度（新协议：04 04 00 0X 00 0E，返回氧分压/温度1/气体总压/氧浓度/故障码/温度2/湿度）
         """
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         self.update_status_main_signal_gui_update.send(
@@ -978,7 +978,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         cage_addr = mouse_cages_inc[mouse_cage_index] - 1 if mouse_cage_index is not None else 8
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"000{cage_addr}000A"),
+            'data': number_util.set_int_to_4_bytes_list(f"000{cage_addr}000E"),
             'slave_id': '4',
             'function_code': '4',
             'timeout': 1

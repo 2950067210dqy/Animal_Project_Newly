@@ -223,6 +223,32 @@ class Data_Column(Enum):
         "columns": "CO2_num"
     }
 
+    ZOS_temperature_2 = {
+        "id": 61,
+        "column_text": "ZOS温度2测量值(°C)",
+        "column_name": "zos_temperature_2",
+        "unit": "°C",
+        "desc": "ZOS第二温度测量值",
+        "data_format": "origin_data",
+        "note": "显示到0.1",
+        "module":Modbus_Slave_Ids.ZOS,
+        "table":"monitor_data",
+        "columns": "oxygen_temperature_2_num"
+    }
+
+    ZOS_humidity = {
+        "id": 62,
+        "column_text": "ZOS湿度测量值(%RH)",
+        "column_name": "zos_humidity",
+        "unit": "%RH",
+        "desc": "ZOS湿度测量值",
+        "data_format": "origin_data",
+        "note": "显示到0.1",
+        "module":Modbus_Slave_Ids.ZOS,
+        "table":"monitor_data",
+        "columns": "oxygen_humidity_num"
+    }
+
     Delta_O2 = {
         "id": 19,
         "column_text": "ΔO2",
@@ -726,6 +752,8 @@ class Data_column_list(Enum):
         Data_Column.CO2_in_concentration,
         Data_Column.O2_out_concentration,
         Data_Column.CO2_out_concentration,
+        Data_Column.ZOS_temperature_2,
+        Data_Column.ZOS_humidity,
         Data_Column.Delta_O2,
         Data_Column.Delta_CO2,
         Data_Column.V_in_flow,

@@ -1647,14 +1647,15 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
     def parser_function_code_4(self):
         function_desc = """
                                读传感器测量值
-                               参数长度：21
+                               参数长度：29
                                 """
-        pack_struct = "B " * 21
+        pack_struct = "B " * 29
         self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['氧分压(hPa)', 'ZOS温度测量值(°C)', '气体压力(hPa)', '氧浓度(%)', 'ZOS故障码']
+        port_types = ['氧分压(hPa)', 'ZOS温度测量值(°C)', '气体压力(hPa)', '氧浓度(%)', 'ZOS故障码',
+                      'ZOS温度2测量值(°C)', 'ZOS湿度测量值(%RH)']
         j = 0
         for i in range(len(self.response_struct['data'])):
             match i:
@@ -1684,7 +1685,7 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                           (self.response_struct['data'][i - 2] << 16) | \
                           (self.response_struct['data'][i - 1] << 8) | \
                           (self.response_struct['data'][i])
-                    pressure_num = round(raw / 10, 1)
+                    pressure_num = round(raw / 100, 2)
                     return_datas.append({"desc": port_types[j], 'value': pressure_num})
                     j += 1
 
@@ -1705,6 +1706,24 @@ class Modbus_Response_ZOS(Modbus_Response_Parents):
                           (self.response_struct['data'][i - 1] << 8) | \
                           (self.response_struct['data'][i])
                     return_datas.append({"desc": port_types[j], 'value': raw})
+                    j += 1
+
+                case 23:
+                    raw = (self.response_struct['data'][i - 3] << 24) | \
+                          (self.response_struct['data'][i - 2] << 16) | \
+                          (self.response_struct['data'][i - 1] << 8) | \
+                          (self.response_struct['data'][i])
+                    oxygen_temp_2 = round(raw / 10, 1)
+                    return_datas.append({"desc": port_types[j], 'value': oxygen_temp_2})
+                    j += 1
+
+                case 27:
+                    raw = (self.response_struct['data'][i - 3] << 24) | \
+                          (self.response_struct['data'][i - 2] << 16) | \
+                          (self.response_struct['data'][i - 1] << 8) | \
+                          (self.response_struct['data'][i])
+                    oxygen_humidity = round(raw / 10, 1)
+                    return_datas.append({"desc": port_types[j], 'value': oxygen_humidity})
                     j += 1
 
                 case _:

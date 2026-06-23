@@ -12,7 +12,7 @@ from public.entity.dict.AdvancedFuzzyDict import FuzzyDict
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.DataCaculation import Data_Caculation
 from public.function.DataCaculation.Data_Caculation import DataCaculation
-from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Ids
+from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Ids, Others_Tables
 # 监控数据操作类
 from public.util.time_util import time_util
 #logger = logger.bind(category="deep_camera_logger")
@@ -28,6 +28,9 @@ class Monitor_Datas_Handle():
         "ZOS温度测量值(℃)",
         "湿度测量值(%RH)",
         "噪声测量值(dB)",
+        "ZOS温度2测量值(°C)",
+        "ZOS温度2测量值(℃)",
+        "ZOS湿度测量值(%RH)",
     }
 
     def __init__(self,db_name=None):
@@ -135,6 +138,10 @@ class Monitor_Datas_Handle():
                                                                      description=item[1])
             self._migrate_mouse_infrared_tables(gids)
             self._migrate_o2_compensation_tables(
+                gids=gids,
+                reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+            )
+            self._migrate_zos_protocol_tables(
                 gids=gids,
                 reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
             )
@@ -310,6 +317,36 @@ class Monitor_Datas_Handle():
                 column_struct=" REAL ",
                 description=zos_desc
             )
+
+    def _migrate_zos_protocol_tables(self, gids, reference_cage_number):
+        zos_columns = [
+            ("oxygen_temperature_2_num", " REAL ", "ZOS温度2测量值(°C)"),
+            ("oxygen_humidity_num", " REAL ", "ZOS湿度测量值(%RH)"),
+        ]
+        epoch_columns = [
+            ("ZOS_oxygen_temperature_2_num", " REAL ", "ZOS温度2测量值(°C)"),
+            ("ZOS_oxygen_humidity_num", " REAL ", "ZOS湿度测量值(%RH)"),
+        ]
+
+        for cage_number in [reference_cage_number] + gids:
+            table_name = f"ZOS_monitor_data_cage_{cage_number}"
+            for column_name, column_struct, description in zos_columns:
+                self._ensure_column_and_meta(
+                    table_name=table_name,
+                    column_name=column_name,
+                    column_struct=column_struct,
+                    description=description
+                )
+
+        for cage_number in [-1, reference_cage_number] + gids:
+            table_name = "Epoch_data_all" if cage_number == -1 else f"Epoch_data_cage_{cage_number}"
+            for column_name, column_struct, description in epoch_columns:
+                self._ensure_column_and_meta(
+                    table_name=table_name,
+                    column_name=column_name,
+                    column_struct=column_struct,
+                    description=description
+                )
 
     def _ensure_column_and_meta(self, table_name, column_name, column_struct, description):
         if not self.sqlite_manager.is_exist_table(table_name):
@@ -743,6 +780,7 @@ class Monitor_Datas_Handle():
         else:
             table_name = f"Epoch_data_cage_{gid}"
         result = self.sqlite_manager.query_Epoch_datas( table_name, page=page, page_size=page_size, order_asc=True )
+        result = self._reorder_epoch_query_result(result)
         result_title = []
 
         # 找到中文列名
@@ -797,6 +835,7 @@ class Monitor_Datas_Handle():
         else:
             table_name = f"Epoch_data_cage_{gid}"
         result = self.sqlite_manager.query_Epoch_datas( table_name, page=1, page_size=page_size, order_asc=True )
+        result = self._reorder_epoch_query_result(result)
         result_title = []
 
         # 找到中文列名
@@ -823,6 +862,22 @@ class Monitor_Datas_Handle():
         return result
 
         pass
+    def _reorder_epoch_query_result(self, result):
+        if not result or "columns" not in result or "rows" not in result:
+            return result
+
+        desired_columns = [column[0] for column in Others_Tables.Epoch_Data.value["data"]["column"]]
+        current_columns = result.get("columns", [])
+        ordered_columns = [column for column in desired_columns if column in current_columns]
+        ordered_columns.extend(column for column in current_columns if column not in ordered_columns)
+
+        result["columns"] = ordered_columns
+        result["rows"] = [
+            {column: row.get(column) for column in ordered_columns}
+            for row in result.get("rows", [])
+        ]
+        return result
+
     def query_monitor_data_all_tables(self, all_column_datas=[]) -> dict:
         pass
 
