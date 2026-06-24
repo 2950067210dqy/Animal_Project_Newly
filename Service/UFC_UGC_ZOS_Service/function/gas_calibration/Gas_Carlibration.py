@@ -1982,13 +1982,107 @@ def _patched_range_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, p
     ).catch(lambda e: reject(e))
 
 
+def _patched_force_close_zos_zero_or_span_valve_v2(self, resolve, reject, port):
+    self.defer_zos_close_until_finalize = False
+
+    if self.is_STOP:
+        reject("stop")
+        return
+
+    match self.type:
+        case Gas_Carlibration_Type.ZERO:
+            self.send_message = {
+                'port': port,
+                'data': number_util.set_int_to_4_bytes_list("00090000"),
+                'slave_id': '4',
+                'function_code': '5',
+                'timeout': 1
+            }
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | {self.name}校准：UGC完成后再关闭ZOS零点阀门"
+            )
+        case Gas_Carlibration_Type.SPAN:
+            self.send_message = {
+                'port': port,
+                'data': number_util.set_int_to_4_bytes_list("000A0000"),
+                'slave_id': '4',
+                'function_code': '5',
+                'timeout': 1
+            }
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | {self.name}校准：UGC完成后再关闭ZOS span阀门"
+            )
+        case _:
+            reject("default calibration")
+            return
+
+    self.send_thread.send_message = self.send_message
+    AsyPromise(self.send_thread.Send).then(
+        lambda _: resolve()
+    ).catch(
+        lambda e: self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | {self.name}校准：关闭ZOS阀门失败，继续当前收尾流程",
+            title=self.title
+        ) or resolve()
+    )
+
+
+def _patched_close_zos_zero_or_span_valve_v2(self, resolve, reject, port):
+    if getattr(self, "defer_zos_close_until_finalize", False):
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | {self.name}校准：当前先保持ZOS校准状态，暂不发送结束指令",
+            title=self.title
+        )
+        resolve()
+        return
+
+    _patched_force_close_zos_zero_or_span_valve_v2(self, resolve, reject, port)
+
+
+def _patched_zero_dosomething_v2(self):
+    self.defer_zos_close_until_finalize = True
+    AsyPromise(self.close_reference_valve, port=self.port).then(
+        lambda _: AsyPromise(self.open_zos_zero_or_span_valve, port=self.port).then(
+            lambda __: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=self.port).then(
+                lambda ___: AsyPromise(self.open_ugc_zero_or_span_valve, port=self.port).then(
+                    lambda ____: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor, port=self.port).then(
+                        lambda _____: AsyPromise(self.force_close_zos_zero_or_span_valve, port=self.port).then(
+                            lambda ______: AsyPromise(self.finish_calibration).then(
+                                lambda _______: self.stop()
+                            ).catch(lambda e: self.stop())
+                        ).catch(lambda e: self.stop())
+                    ).catch(lambda e: self.stop())
+                ).catch(lambda e: self.stop())
+            ).catch(lambda e: self.stop())
+        ).catch(lambda e: self.stop())
+    ).catch(lambda e: self.stop())
+
+
+def _patched_range_dosomething_v2(self):
+    self.defer_zos_close_until_finalize = True
+    AsyPromise(self.open_zos_zero_or_span_valve, port=self.port).then(
+        lambda _: AsyPromise(self.cyclic_sampling_of_zos_oxygen_sensor, port=self.port).then(
+            lambda __: AsyPromise(self.open_ugc_zero_or_span_valve, port=self.port).then(
+                lambda ___: AsyPromise(self.cyclic_sampling_of_ugc_carbon_sensor, port=self.port).then(
+                    lambda ____: AsyPromise(self.force_close_zos_zero_or_span_valve, port=self.port).then(
+                        lambda _____: AsyPromise(self.finish_calibration).then(
+                            lambda ______: self.stop()
+                        ).catch(lambda e: self.stop())
+                    ).catch(lambda e: self.stop())
+                ).catch(lambda e: self.stop())
+            ).catch(lambda e: self.stop())
+        ).catch(lambda e: self.stop())
+    ).catch(lambda e: self.stop())
+
+
 Gas_Carlibration._normalize_co2_to_ppm = _patched_normalize_co2_to_ppm
 Gas_Carlibration._normalize_oxygen_percent = _patched_normalize_oxygen_percent
 Gas_Carlibration._read_zos_channel_snapshot = _patched_read_zos_channel_snapshot
 Gas_Carlibration._calculate_compensated_co2_ppm = _patched_calculate_compensated_co2_ppm
 Gas_Carlibration.close_ugc_zero_or_span_valve = _patched_close_ugc_zero_or_span_valve
-Gas_Carlibration.close_zos_zero_or_span_valve = _patched_close_zos_zero_or_span_valve
-Zero_Carlibration.dosomething = _patched_zero_dosomething
+Gas_Carlibration.force_close_zos_zero_or_span_valve = _patched_force_close_zos_zero_or_span_valve_v2
+Gas_Carlibration.close_zos_zero_or_span_valve = _patched_close_zos_zero_or_span_valve_v2
+Zero_Carlibration.dosomething = _patched_zero_dosomething_v2
 Zero_Carlibration.cyclic_sampling_of_ugc_carbon_sensor = _patched_zero_cyclic_sampling_of_ugc_carbon_sensor
-Range_Carlibration.dosomething = _patched_range_dosomething
+Range_Carlibration.dosomething = _patched_range_dosomething_v2
 Range_Carlibration.cyclic_sampling_of_ugc_carbon_sensor = _patched_range_cyclic_sampling_of_ugc_carbon_sensor
