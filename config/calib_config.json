@@ -1,13 +1,83 @@
 {
-    "TARGET_O2": 20.93,
-    "BASE_CHANNEL": "M2",
-    "REF": { "K": 1.0, "B": 0.0 },
-    "M1": { "K": 1.0549, "B": 0.0 },
-    "M2": { "K": 1.0602, "B": 0.0 },
-    "M3": { "K": 1.0529, "B": 0.0 },
-    "M4": { "K": 1.0724, "B": 0.0 },
-    "M5": { "K": 1.0532, "B": 0.0 },
-    "M6": { "K": 1.0621, "B": 0.0 },
-    "M7": { "K": 1.0641, "B": 0.0 },
-    "M8": { "K": 1.0530, "B": 0.0 }
+  "version": "1.0",
+  "target_o2": 20.93,
+  "calibration_info": {
+    "calibration_date": "2026-06-26 17:39:24",
+    "calibration_points": 120,
+    "note": "上位机实时标定完成"
+  },
+  "smoothing_params": {
+    "zos_temp_window": 3,
+    "humidity_window": 5,
+    "pressure_window": 5,
+    "humidity_clip_min": 45,
+    "humidity_clip_max": 85,
+    "pressure_clip_min": 85,
+    "pressure_clip_max": 110
+  },
+  "channels": {
+    "REF": {
+      "coef_moist": 1.018506,
+      "coef_zos_t": 0.021968,
+      "coef_rh": 0.006565,
+      "coef_p": -0.003487,
+      "intercept": -0.577596
+    },
+    "M1": {
+      "coef_moist": 1.018295,
+      "coef_zos_t": 0.021579,
+      "coef_rh": 0.006521,
+      "coef_p": 0.0,
+      "intercept": -0.901929
+    },
+    "M2": {
+      "coef_moist": 1.019702,
+      "coef_zos_t": 0.021802,
+      "coef_rh": 0.006636,
+      "coef_p": -0.003723,
+      "intercept": -0.577098
+    },
+    "M3": {
+      "coef_moist": 1.019018,
+      "coef_zos_t": 0.021305,
+      "coef_rh": 0.006543,
+      "coef_p": -0.002906,
+      "intercept": -0.627822
+    },
+    "M4": {
+      "coef_moist": 1.01827,
+      "coef_zos_t": 0.021068,
+      "coef_rh": 0.006382,
+      "coef_p": 0.0,
+      "intercept": -0.888842
+    },
+    "M5": {
+      "coef_moist": 1.016518,
+      "coef_zos_t": 0.021114,
+      "coef_rh": 0.006494,
+      "coef_p": -0.00285,
+      "intercept": -0.576434
+    },
+    "M6": {
+      "coef_moist": 1.016761,
+      "coef_zos_t": 0.021208,
+      "coef_rh": 0.006418,
+      "coef_p": -0.00366,
+      "intercept": -0.499517
+    },
+    "M7": {
+      "coef_moist": 1.018685,
+      "coef_zos_t": 0.021383,
+      "coef_rh": 0.00644,
+      "coef_p": -0.003401,
+      "intercept": -0.567673
+    },
+    "M8": {
+      "coef_moist": 1.019002,
+      "coef_zos_t": 0.022033,
+      "coef_rh": 0.0066,
+      "coef_p": -0.004037,
+      "intercept": -0.536197
+    }
+  }
 }
