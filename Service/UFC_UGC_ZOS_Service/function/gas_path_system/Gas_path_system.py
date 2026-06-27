@@ -191,6 +191,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
         if self.is_stop:
             reject("Stop")
         self.parent_class.ufc_start_time_state = True
+        global_setting.set_setting("ufc_start_time_state", True)
         # logger.critical(f"ufc_finish_start:{self.parent_class.ufc_start_time_state}")
         # 释放 正在等待ufc启动的地方
         global wait_UFC_start_finish_event
@@ -290,6 +291,7 @@ class UFC_gas_path_system_close_thread(MyQThread):
         ).catch(lambda e: logger.error(f"{e}"))
 
     def finish_close(self,resolve,reject):
+        global_setting.set_setting("ufc_start_time_state", False)
         # 释放 正在等待ufc启动的地方
         global wait_UFC_stop_finish_event
         wait_UFC_stop_finish_event.set()
@@ -433,6 +435,7 @@ class UFC_gas_path_system(Gas_path_system):
     process_nums =3+1
     def __init__(self):
         super().__init__()
+        self.ufc_start_time_state = False
 
 
         #开启线程

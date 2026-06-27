@@ -1382,8 +1382,9 @@ class MainWindow_Index(ThemedWindow):
         else:
             # ★ 先 reject 解除当前 Promise 链，再延迟调用 stop_experiment
             #    避免 reject() 与 stop_experiment 内部的异步链互相干扰
-            reject()
-            QTimer.singleShot(100, self.stop_experiment)
+            logger.warning("start_dialog returned Rejected, skip auto stop_experiment")
+            self.show_temp_status_tip_signal.emit("启动弹窗已关闭，实验保持当前运行状态", "#ff8800", 5000)
+            resolve()
         pass
 
     def _on_start_experiment_timeout(self):

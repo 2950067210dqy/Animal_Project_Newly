@@ -1449,6 +1449,17 @@ def pause():
     pass
 
 def stop():
+    if global_setting.get_setting("is_calibrating", False):
+        calibration_type = global_setting.get_setting("current_calibration_type", "校准")
+        logger.warning(f"skip monitor_data_stop while calibration is running: {calibration_type}")
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                                title="stop_show_info_except_status_counts",
+                                data=f"{calibration_type}进行中，已跳过自动停止气路，避免误关闭UFC",
+                                time=time_util.get_format_from_time(time.time())))
+        return
     logger.info(f"{'-' * 30}monitor_data_stop{'-' * 30}")
     # 重置barrier回1，下次实验从1开始
     barrier = global_setting.get_setting("barrier")
