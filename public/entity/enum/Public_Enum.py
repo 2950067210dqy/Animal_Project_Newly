@@ -19,6 +19,7 @@ class GapSystem_Running_Type(Enum):
     ZERO_CALIBRATION = 10
     RANGE_CALIBRATION = 11
     UFC_STATE_CHECK =12
+    STARTUP_AIR_CALIBRATION = 13
     def __lt__(self, other):
         if other is None:
             return False

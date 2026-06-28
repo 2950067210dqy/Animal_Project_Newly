@@ -18,6 +18,14 @@ def _read_test_bool(config: dict, section: str, key: str, default: bool = False)
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _init_startup_calibration_mode():
+    mode = global_setting.get_setting("startup_calibration_mode", None)
+    if mode not in {"none", "air", "full"}:
+        mode = "none"
+    global_setting.set_setting("startup_calibration_mode", mode)
+    global_setting.set_setting("is_auto_calibration", mode == "full")
+
+
 def load_global_setting():
     config_path = "/config"
     # 加载配置
@@ -75,6 +83,7 @@ def load_global_setting():
     global_setting.set_setting("thread_pool", thread_pool)
     # 程序状态
     global_setting.set_setting("app_state", AppState.INITIALIZED)
+    _init_startup_calibration_mode()
     pass
 def load_global_setting_without_Qt():
     config_path = "/config"
@@ -131,6 +140,7 @@ def load_global_setting_without_Qt():
 
     # 程序状态
     global_setting.set_setting("app_state", AppState.INITIALIZED)
+    _init_startup_calibration_mode()
     pass
 def load_global_setting_without_Qt_for_subprocess():
     config_path = "/config"
@@ -176,3 +186,4 @@ def load_global_setting_without_Qt_for_subprocess():
 
     # 程序状态
     global_setting.set_setting("app_state", AppState.INITIALIZED)
+    _init_startup_calibration_mode()

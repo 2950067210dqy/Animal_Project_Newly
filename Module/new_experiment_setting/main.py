@@ -195,6 +195,55 @@ class Main_experiment_calibration(BaseModule):
                 break
 
         self.sync_action_enabled_state()
+        return
+        self.title = "校准"
+
+        if self.main_gui is None:
+            return
+
+        action_name = f"dynamic_{self.name}"
+        for action_dict in getattr(self.main_gui, "dynamic_tool_bar_actions", []):
+            if action_dict.get("obj_name") == action_name:
+                action_dict["action"].setText(self.title)
+                break
+
+        self.sync_action_enabled_state()
+
+    @staticmethod
+    def normalize_startup_calibration_mode(mode):
+        if mode in {"none", "air", "full"}:
+            return mode
+        return "none"
+
+    def get_startup_calibration_mode(self):
+        mode = global_setting.get_setting("startup_calibration_mode", None)
+        if mode not in {"none", "air", "full"}:
+            mode = "full" if global_setting.get_setting("is_auto_calibration", False) else "none"
+        return mode
+
+    def sync_startup_calibration_mode(self, mode, selection_made=True):
+        mode = self.normalize_startup_calibration_mode(mode)
+        global_setting.set_setting("startup_calibration_mode", mode)
+        global_setting.set_setting("is_auto_calibration", mode == "full")
+        global_setting.set_setting("device_config_calibration_selected", selection_made)
+
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        if send_message_queue is not None:
+            send_message_queue.put(
+                ObjectQueueItem(
+                    origin='Main_experiment_calibration',
+                    to='main_monitor_data',
+                    title='set_experiment_basic_config',
+                    data={
+                        "startup_calibration_mode": mode,
+                        "is_auto_calibration": mode == "full"
+                    },
+                    time=time_util.get_format_from_time(time.time())
+                )
+            )
+
+        if self.main_gui is not None and hasattr(self.main_gui, "calibration_selection_changed_signal"):
+            self.main_gui.calibration_selection_changed_signal.emit(selection_made, mode)
 
     def is_calibration_gate_passed(self) -> bool:
         if global_setting.get_setting("allow_test_calibration_without_air_validation", False):
@@ -214,6 +263,39 @@ class Main_experiment_calibration(BaseModule):
                 break
 
     def click_method(self):
+        if not self.is_calibration_gate_passed():
+            QMessageBox.warning(self.main_gui, "提示", "请先完成气路检测，并确认 UFC、UGC、ZOS 全部有效后再选择校准。")
+            self.sync_action_enabled_state()
+            return
+
+        current_mode = self.get_startup_calibration_mode()
+
+        msg_box = QMessageBox(self.main_gui)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        msg_box.setWindowTitle("启动前校准模式")
+        msg_box.setText("请选择确认设备配置后、开始实验前的校准模式：")
+
+        air_button = msg_box.addButton("Air 空气校准后开启实验", QMessageBox.ButtonRole.ActionRole)
+        full_button = msg_box.addButton("调零+调span后开启实验", QMessageBox.ButtonRole.ActionRole)
+        msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setDefaultButton({
+            "air": air_button,
+            "full": full_button
+        }.get(current_mode, air_button))
+        msg_box.exec()
+
+        clicked_button = msg_box.clickedButton()
+        if clicked_button == air_button:
+            mode = "air"
+        elif clicked_button == full_button:
+            mode = "full"
+        else:
+            self.refresh_display_text()
+            return
+
+        self.sync_startup_calibration_mode(mode, selection_made=True)
+        self.refresh_display_text()
+        return
         if not self.is_calibration_gate_passed():
             QMessageBox.warning(self.main_gui, "提示", "请先完成气路检测，且确保 UFC、UGC、ZOS 全部有效后再选择校准。")
             self.sync_action_enabled_state()

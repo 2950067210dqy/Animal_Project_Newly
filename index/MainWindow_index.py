@@ -183,6 +183,14 @@ class read_queue_data_Thread(MyQThread):
                         if self.window is not None and self.window.calibration_details_windows is not None:
                             self.window.calibration_details_windows.updateSpanEndTime(message.data)
                             self.window.calibration_details_windows.updateStatus("未标定")
+                    case 'set_start_air_calibration_time':
+                        if self.window is not None and self.window.calibration_details_windows is not None:
+                            self.window.calibration_details_windows.updateZeroStartTime(message.data)
+                            self.window.calibration_details_windows.updateStatus("Air空气校准")
+                    case 'set_stop_air_calibration_time':
+                        if self.window is not None and self.window.calibration_details_windows is not None:
+                            self.window.calibration_details_windows.updateZeroEndTime(message.data)
+                            self.window.calibration_details_windows.updateStatus("未标定")
                     case 'set_calibration_values':
                         """
                         设置校准窗口显示值
@@ -265,7 +273,7 @@ class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
     change_enable_component_app_state_signal = QtCore.pyqtSignal()
     # 设备配置页校准选择变化信号 (是否已选择, 是否校准)
-    calibration_selection_changed_signal = QtCore.pyqtSignal(bool, bool)
+    calibration_selection_changed_signal = QtCore.pyqtSignal(bool, str)
     # 显示校准详情dialog的信号
     show_calibration_window_signal = QtCore.pyqtSignal(dict)
     # 释放校准详情dialog的信号
@@ -607,7 +615,7 @@ class MainWindow_Index(ThemedWindow):
                 "name": "开始实验时校准气体",
                 "short_name": "校准",
                 "obj_name": "calibration_gas",
-                "type": "checkbox",
+                "type": "button",
                 "icon": "📏",
                 "callback": self.calibration_gas_state_change,
                 "app_state": AppState.INITIALIZED,
@@ -827,11 +835,12 @@ class MainWindow_Index(ThemedWindow):
 
         if menu_id == 1:
             global_setting.set_setting("device_config_calibration_selected", False)
+            global_setting.set_setting("startup_calibration_mode", "none")
             global_setting.set_setting("is_auto_calibration", False)
             global_setting.set_setting("air_modules_all_valid", False)
             self.calibration_selection_changed_signal.emit(
                 False,
-                global_setting.get_setting("is_auto_calibration", False)
+                global_setting.get_setting("startup_calibration_mode", "none")
             )
 
         # 找到属于这个菜单的所有模块
@@ -1358,8 +1367,21 @@ class MainWindow_Index(ThemedWindow):
                 countdown_seconds=start_wait_times,
                 title="开始实验", message="正在启动气路...")
 
-        is_auto_calibration = global_setting.get_setting('is_auto_calibration', False)
-        if is_auto_calibration:
+        startup_calibration_mode = global_setting.get_setting('startup_calibration_mode', None)
+        if startup_calibration_mode not in {"none", "air", "full"}:
+            startup_calibration_mode = "full" if global_setting.get_setting('is_auto_calibration', False) else "none"
+
+        if startup_calibration_mode == "air":
+            calibration_config = global_setting.get_setting('UFC_UGC_ZOS_config', {}).get('Calibration', {})
+            try:
+                start_wait_times += max(float(calibration_config.get('startup_air_calibration_wait_time', 1800)), 0)
+            except Exception:
+                start_wait_times += 1800
+            if self.start_dialog is not None:
+                self.start_dialog.countdown_seconds = start_wait_times
+                self.start_dialog.current_seconds = start_wait_times
+
+        if startup_calibration_mode in {"air", "full"}:
             self.init__calibration_windows()
             self.start_dialog.insert_calibration_dialog(self.calibration_details_windows)
 
@@ -1868,7 +1890,56 @@ class MainWindow_Index(ThemedWindow):
 
             self.status_bar.update_tip("✅ 所有页面的首次访问状态已重置")
 # 监听是否自动校准气路模块的框选
-    def calibration_gas_state_change(self,state):
+    def calibration_gas_state_change(self, state=None):
+        current_mode = global_setting.get_setting("startup_calibration_mode", None)
+        if current_mode not in {"none", "air", "full"}:
+            current_mode = "full" if global_setting.get_setting("is_auto_calibration", False) else "none"
+
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        msg_box.setWindowTitle("启动前校准模式")
+        msg_box.setText("请选择开始实验前的校准模式：")
+
+        air_button = msg_box.addButton("Air 空气校准后开启实验", QMessageBox.ButtonRole.ActionRole)
+        full_button = msg_box.addButton("调零+调span后开启实验", QMessageBox.ButtonRole.ActionRole)
+        msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setDefaultButton({
+            "air": air_button,
+            "full": full_button
+        }.get(current_mode, air_button))
+        msg_box.exec()
+
+        clicked_button = msg_box.clickedButton()
+        mode = None
+        if clicked_button == air_button:
+            mode = "air"
+        elif clicked_button == full_button:
+            mode = "full"
+
+        if mode is None:
+            return
+
+        global_setting.set_setting("startup_calibration_mode", mode)
+        global_setting.set_setting("is_auto_calibration", mode == "full")
+        global_setting.set_setting("device_config_calibration_selected", True)
+
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        if send_message_queue is not None:
+            send_message_queue.put(
+                ObjectQueueItem(
+                    origin='MainWindow_Index',
+                    to='main_monitor_data',
+                    title='set_experiment_basic_config',
+                    data={
+                        "startup_calibration_mode": mode,
+                        "is_auto_calibration": mode == "full"
+                    },
+                    time=time_util.get_format_from_time(time.time())
+                )
+            )
+
+        self.calibration_selection_changed_signal.emit(True, mode)
+        return
         is_checked = bool(state)  # 直接转为布尔值
         # 是否自动校准气体给其他进程同步设置
         global_setting.set_setting("is_auto_calibration", is_checked)

@@ -13,6 +13,7 @@ from Service.UFC_UGC_ZOS_Service.function.gas_calibration.Gas_Carlibration impor
 from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
     UGC_gas_path_system, UFC_gas_path_system
 from Service.UFC_UGC_ZOS_Service.function.gas_state_check.Gas_State_Check import UFC_Gas_State_Check
+from Service.UFC_UGC_ZOS_Service.function.startup_air_calibration import Startup_Air_Calibration
 from public.config_class.global_setting import global_setting
 from public.config_class.ini_parser import ini_parser
 from public.entity.MyQThread import MyQThread, MyThread
@@ -108,6 +109,7 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.ZOS_gas_path_system_obj: ZOS_gas_path_system = None
         self.Zero_carlibration_obj: Zero_Carlibration = None
         self.Range_carlibration_obj: Range_Carlibration = None
+        self.Startup_air_calibration_obj: Startup_Air_Calibration = None
         self.UFC_gas_state_check_obj: UFC_Gas_State_Check = None
 
         self.zos_start_timer: PeriodicTimer = None
@@ -139,7 +141,7 @@ class UFC_UGC_ZOS_index(MyQThread):
             title = kwargs.get("title",GapSystem_Running_Type.DEFAULT)
 
             match title:
-                case GapSystem_Running_Type.ZERO_CALIBRATION|GapSystem_Running_Type.RANGE_CALIBRATION:
+                case GapSystem_Running_Type.ZERO_CALIBRATION | GapSystem_Running_Type.RANGE_CALIBRATION | GapSystem_Running_Type.STARTUP_AIR_CALIBRATION:
                     """此时text为{
                         'type':'set_start_zero_calibration_time'
                                 |'set_stop_zero_calibration_time'
@@ -197,6 +199,22 @@ class UFC_UGC_ZOS_index(MyQThread):
                                     wait_span_calibration_finished_event.set()
                                     wait_span_calibration_finished_event.clear()
                                     pass
+                                case 'set_start_air_calibration_time':
+                                    queue.put(
+                                        ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index',
+                                                        title='set_start_air_calibration_time',
+                                                        data=text.get('value', ''),
+                                                        time=time_util.get_format_from_time(time.time())))
+                                    self.pause_running_gap_system()
+                                    pass
+                                case 'set_stop_air_calibration_time':
+                                    queue.put(
+                                        ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index',
+                                                        title='set_stop_air_calibration_time',
+                                                        data=text.get('value', ''),
+                                                        time=time_util.get_format_from_time(time.time())))
+                                    self.resume_running_gap_system()
+                                    pass
                                 case 'set_calibration_values':
                                     queue.put(
                                         ObjectQueueItem(origin='UFC_UGC_ZOS_index', to='MainWindow_index',
@@ -253,6 +271,9 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.Range_carlibration_obj = Range_Carlibration()
         self.Range_carlibration_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         self.Range_carlibration_obj.update()
+        self.Startup_air_calibration_obj = Startup_Air_Calibration()
+        self.Startup_air_calibration_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
+        self.Startup_air_calibration_obj.update()
         self.UFC_gas_state_check_obj = UFC_Gas_State_Check()
         self.UFC_gas_state_check_obj.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
         self.UFC_gas_state_check_obj.update()
@@ -303,6 +324,29 @@ class UFC_UGC_ZOS_index(MyQThread):
         ).catch(lambda e: logger.error(f"{e}"))
 
 
+
+        return p
+
+    def start_btn_handle_with_air_calibration(self):
+        """启动气路，并在进入正常实验前执行 Air 空气校准。"""
+        global stop_flag
+        stop_flag = False
+
+        p = AsyPromise(self.ZOS_gas_path_system_obj.start).then(
+            lambda _: AsyPromise(self.UGC_gas_path_system_obj.start).then(
+                lambda _: AsyPromise(self.Startup_air_calibration_obj.start).then(
+                    lambda _: AsyPromise(self.UFC_gas_path_system_obj.start).then(
+                        lambda _: AsyPromise(self.Startup_air_calibration_obj.wait_air_calibration_prepare).then(
+                            lambda _: AsyPromise(self.Startup_air_calibration_obj.run).then(
+                                lambda _: AsyPromise(self.Startup_air_calibration_obj.stop).then(
+                                    lambda _: AsyPromise(self.finish_start)
+                                ).catch(lambda e: logger.error(f"{e}"))
+                            ).catch(lambda e: logger.error(f"{e}"))
+                        ).catch(lambda e: logger.error(f"{e}"))
+                    ).catch(lambda e: logger.error(f"{e}"))
+                ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(lambda e: logger.error(f"{e}"))
 
         return p
 
@@ -572,10 +616,24 @@ class UFC_UGC_ZOS_index(MyQThread):
 
     def dosomething(self):
         # 是否自动校准气路
-        is_auto_calibration = global_setting.get_setting("is_auto_calibration",True)
+        startup_calibration_mode = global_setting.get_setting("startup_calibration_mode", None)
+        is_auto_calibration = global_setting.get_setting("is_auto_calibration", True)
         logger.critical(f"{self.name}<UNK>is_auto_calibration：{is_auto_calibration}")
-        if is_auto_calibration:
+        if startup_calibration_mode not in {"none", "air", "full"}:
+            startup_calibration_mode = "full" if global_setting.get_setting("is_auto_calibration", True) else "none"
+        global_setting.set_setting("startup_calibration_mode", startup_calibration_mode)
+        global_setting.set_setting("is_auto_calibration", startup_calibration_mode == "full")
+        logger.critical(f"{self.name} startup_calibration_mode: {startup_calibration_mode}")
+        if startup_calibration_mode == "full":
             self.start_btn_handle_with_calibration().then(
+                lambda _: self.run_btn_handle().then(
+                    lambda _: self.gas_state_check_handle().then(
+                        self.stop()
+                    ).catch(lambda e: logger.error(f"{e}"))
+                ).catch(lambda e: logger.error(f"{e}"))
+            ).catch(lambda e: logger.error(f"{e}"))
+        elif startup_calibration_mode == "air":
+            self.start_btn_handle_with_air_calibration().then(
                 lambda _: self.run_btn_handle().then(
                     lambda _: self.gas_state_check_handle().then(
                         self.stop()

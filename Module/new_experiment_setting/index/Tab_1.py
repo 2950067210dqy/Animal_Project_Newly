@@ -807,10 +807,21 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.group_box.setLayout(main_layout)
 
     def calibration_gas_state_change(self, state):
+        legacy_mode = "full" if bool(state) else "none"
+        self.set_startup_calibration_mode(legacy_mode, sync_checkbox=False)
+        return
         """校准气体状态变化处理"""
         self.set_calibration_mode(bool(state), sync_checkbox=False)
 
     def set_calibration_mode(self, is_checked, sync_checkbox=True, sync_toolbar=True, notify_monitor=True):
+        legacy_mode = "full" if bool(is_checked) else "none"
+        self.set_startup_calibration_mode(
+            legacy_mode,
+            sync_checkbox=sync_checkbox,
+            sync_toolbar=sync_toolbar,
+            notify_monitor=notify_monitor
+        )
+        return
         """统一处理是否启用校准配置"""
         if sync_checkbox and self.calibration_checkbox is not None:
             self.calibration_checkbox.blockSignals(True)
@@ -836,6 +847,57 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                                     data={"is_auto_calibration": is_checked},
                                     time=time_util.get_format_from_time(time.time())))
 
+    @staticmethod
+    def normalize_startup_calibration_mode(mode):
+        if mode in {"none", "air", "full"}:
+            return mode
+        return "none"
+
+    def get_startup_calibration_mode(self):
+        mode = global_setting.get_setting("startup_calibration_mode", None)
+        if mode not in {"none", "air", "full"}:
+            mode = "full" if global_setting.get_setting("is_auto_calibration", False) else "none"
+        return mode
+
+    def set_startup_calibration_mode(self, mode, sync_checkbox=True, sync_toolbar=True, notify_monitor=True):
+        mode = self.normalize_startup_calibration_mode(mode)
+        is_checked = mode == "full"
+
+        if sync_checkbox and self.calibration_checkbox is not None:
+            self.calibration_checkbox.blockSignals(True)
+            self.calibration_checkbox.setChecked(is_checked)
+            self.calibration_checkbox.blockSignals(False)
+
+        if sync_toolbar and self.main_gui is not None:
+            for tool_bar_action in self.main_gui.tool_bar_actions:
+                if tool_bar_action['obj_name'] in ["calibration_gas"]:
+                    action = tool_bar_action["action"]
+                    if hasattr(action, "setChecked"):
+                        action.blockSignals(True)
+                        action.setChecked(is_checked)
+                        action.blockSignals(False)
+                    break
+
+        global_setting.set_setting("startup_calibration_mode", mode)
+        global_setting.set_setting("is_auto_calibration", is_checked)
+        self.update_calibration_button_text()
+
+        if notify_monitor:
+            send_message_queue = global_setting.get_setting("send_message_queue")
+            if send_message_queue is not None:
+                send_message_queue.put(
+                    ObjectQueueItem(
+                        origin='tab_7',
+                        to='main_monitor_data',
+                        title='set_experiment_basic_config',
+                        data={
+                            "startup_calibration_mode": mode,
+                            "is_auto_calibration": is_checked
+                        },
+                        time=time_util.get_format_from_time(time.time())
+                    )
+                )
+
     def update_calibration_button_text(self):
         """同步红框区域里的校准按钮文案"""
         if self.main_gui is None:
@@ -853,12 +915,12 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         """开始新实验或重新检测时，重置校准选择状态。"""
         self.calibration_selected = False
         global_setting.set_setting("device_config_calibration_selected", False)
-        self.set_calibration_mode(False, sync_checkbox=True, sync_toolbar=True, notify_monitor=False)
+        self.set_startup_calibration_mode("none", sync_checkbox=True, sync_toolbar=True, notify_monitor=False)
 
         if emit_signal and self.main_gui is not None and hasattr(self.main_gui, "calibration_selection_changed_signal"):
             self.main_gui.calibration_selection_changed_signal.emit(
                 False,
-                global_setting.get_setting("is_auto_calibration", False)
+                global_setting.get_setting("startup_calibration_mode", "none")
             )
 
         self.update_calibration_button_text()
@@ -874,7 +936,17 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         if self.config_btn is not None:
             self.config_btn.setEnabled(can_config)
 
-    def on_calibration_selection_changed(self, selection_made, is_auto_calibration):
+    def on_calibration_selection_changed(self, selection_made, startup_calibration_mode):
+        self.calibration_selected = bool(selection_made)
+        global_setting.set_setting("device_config_calibration_selected", self.calibration_selected)
+        self.set_startup_calibration_mode(
+            startup_calibration_mode,
+            sync_checkbox=True,
+            sync_toolbar=True,
+            notify_monitor=False
+        )
+        self.update_device_config_button_state()
+        return
         """接收主窗口红框区域校准按钮的选择结果"""
         self.calibration_selected = bool(selection_made)
         global_setting.set_setting("device_config_calibration_selected", self.calibration_selected)
@@ -1425,7 +1497,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         if event.type() == QEvent.Type.ActivationChange:
             if self.isActiveWindow():
                 if self.calibration_checkbox is not None:
-                    self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', False))
+                    self.calibration_checkbox.setChecked(self.get_startup_calibration_mode() == "full")
                 self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
                 self.update_calibration_button_text()
                 self.update_device_config_button_state()
@@ -1437,7 +1509,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         logger.warning("tab1——show")
 
         if self.calibration_checkbox is not None:
-            self.calibration_checkbox.setChecked(global_setting.get_setting('is_auto_calibration', False))
+            self.calibration_checkbox.setChecked(self.get_startup_calibration_mode() == "full")
         self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
         self.update_calibration_button_text()
         self.update_device_config_button_state()
@@ -2343,11 +2415,8 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         #     self.show_warning("提示", "请先完成串口确认和设备检测。")
         #     return
 
-        if not self.calibration_selected and global_setting.get_setting("require_device_config_calibration_selection", False):
-            self.show_warning("提示", "请先点击红框区域的“校准”按钮选择是否校准。")
-            return
-
-        is_auto_calibration = global_setting.get_setting("is_auto_calibration", False)
+        startup_calibration_mode = self.get_startup_calibration_mode()
+        is_auto_calibration = startup_calibration_mode == "full"
         reply = QMessageBox.question(self, '确定设备配置',
                                      "确定该设备配置？",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -2362,7 +2431,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                                                    data=self.send_message['port'],
                                                    time=time_util.get_format_from_time(time.time())))
             basic_experiment_config = {}
+            basic_experiment_config["startup_calibration_mode"] = startup_calibration_mode
             basic_experiment_config["is_auto_calibration"] = is_auto_calibration
+            global_setting.set_setting("startup_calibration_mode", startup_calibration_mode)
             global_setting.set_setting("is_auto_calibration", is_auto_calibration)
             vr_value = self.vr_desc_text.value()
             if vr_value:
