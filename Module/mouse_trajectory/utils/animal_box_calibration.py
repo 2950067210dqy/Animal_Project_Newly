@@ -1982,44 +1982,76 @@ class AnimalBoxCalibrationApp:
 
         solved: List[Point] = []
         for box in self.yolo_boxes:
+            raw_x_min = min(float(box["startX"]), float(box["endX"]))
+            raw_x_max = max(float(box["startX"]), float(box["endX"]))
+            raw_y_min = min(float(box["startY"]), float(box["endY"]))
+            raw_y_max = max(float(box["startY"]), float(box["endY"]))
             raw_u = (float(box["startX"]) + float(box["endX"])) / 2.0
-            raw_v_bottom = max(float(box["startY"]), float(box["endY"]))
+            raw_v_bottom = raw_y_max
             raw_v_center = (float(box["startY"]) + float(box["endY"])) / 2.0
             source_image = str(box.get("sourceImage", "ref"))
             mapped_center: Optional[Point] = None
             mapped_bottom: Optional[Point] = None
+            mapped_box_corners: Optional[List[Point]] = None
             registration_applied = False
             if source_image == "test":
                 H_test_to_ref = self.registration.get("H_test_to_ref")
                 if not H_test_to_ref:
                     continue
+                raw_box_corners = [
+                    {"x": raw_x_min, "y": raw_y_min},
+                    {"x": raw_x_max, "y": raw_y_min},
+                    {"x": raw_x_max, "y": raw_y_max},
+                    {"x": raw_x_min, "y": raw_y_max},
+                ]
+                mapped_box_corners = [apply_homography(H_test_to_ref, point) for point in raw_box_corners]
                 mapped_center = apply_homography(H_test_to_ref, {"x": raw_u, "y": raw_v_center})
                 mapped_bottom = apply_homography(H_test_to_ref, {"x": raw_u, "y": raw_v_bottom})
-                if not mapped_center:
+                if not mapped_center or any(point is None for point in mapped_box_corners):
                     continue
+                mapped_box_corners = [dict(point) for point in mapped_box_corners if point is not None]
                 registration_applied = True
                 u = float(mapped_center["x"])
                 v_center = float(mapped_center["y"])
                 bottom_point = mapped_bottom or mapped_center
                 u_bottom = float(bottom_point["x"])
                 v_bottom = float(bottom_point["y"])
-                x_min = min(float(box["startX"]), float(box["endX"]))
-                x_max = max(float(box["startX"]), float(box["endX"]))
-                y_min = min(float(box["startY"]), float(box["endY"]))
-                y_max = max(float(box["startY"]), float(box["endY"]))
             else:
                 u = raw_u
                 v_center = raw_v_center
                 u_bottom = raw_u
                 v_bottom = raw_v_bottom
-                x_min = min(float(box["startX"]), float(box["endX"]))
-                x_max = max(float(box["startX"]), float(box["endX"]))
-                y_min = min(float(box["startY"]), float(box["endY"]))
-                y_max = max(float(box["startY"]), float(box["endY"]))
-            raw_bbox_width = max(0.0, x_max - x_min)
-            raw_bbox_height = max(0.0, y_max - y_min)
+            raw_bbox_width = max(0.0, raw_x_max - raw_x_min)
+            raw_bbox_height = max(0.0, raw_y_max - raw_y_min)
             raw_bbox_area = raw_bbox_width * raw_bbox_height
-            bbox_scale_y = estimate_y_from_bbox_scale(raw_bbox_width, raw_bbox_height)
+            bbox_width_for_scale = raw_bbox_width
+            bbox_height_for_scale = raw_bbox_height
+            mapped_bbox_width = None
+            mapped_bbox_height = None
+            mapped_bbox_area = None
+            if mapped_box_corners:
+                top_width = math.hypot(
+                    float(mapped_box_corners[1]["x"]) - float(mapped_box_corners[0]["x"]),
+                    float(mapped_box_corners[1]["y"]) - float(mapped_box_corners[0]["y"]),
+                )
+                bottom_width = math.hypot(
+                    float(mapped_box_corners[2]["x"]) - float(mapped_box_corners[3]["x"]),
+                    float(mapped_box_corners[2]["y"]) - float(mapped_box_corners[3]["y"]),
+                )
+                left_height = math.hypot(
+                    float(mapped_box_corners[3]["x"]) - float(mapped_box_corners[0]["x"]),
+                    float(mapped_box_corners[3]["y"]) - float(mapped_box_corners[0]["y"]),
+                )
+                right_height = math.hypot(
+                    float(mapped_box_corners[2]["x"]) - float(mapped_box_corners[1]["x"]),
+                    float(mapped_box_corners[2]["y"]) - float(mapped_box_corners[1]["y"]),
+                )
+                mapped_bbox_width = max(0.0, (top_width + bottom_width) / 2.0)
+                mapped_bbox_height = max(0.0, (left_height + right_height) / 2.0)
+                mapped_bbox_area = mapped_bbox_width * mapped_bbox_height
+                bbox_width_for_scale = mapped_bbox_width
+                bbox_height_for_scale = mapped_bbox_height
+            bbox_scale_y = estimate_y_from_bbox_scale(bbox_width_for_scale, bbox_height_for_scale)
             center3d = self.knn_locate_3d(volume_candidates, u, v_center, VOLUME_KNN, "label5_volume_knn")
             support3d = self.knn_locate_3d(
                 ground_candidates,
@@ -2138,6 +2170,9 @@ class AnimalBoxCalibrationApp:
                     "rawBBoxWidth": raw_bbox_width,
                     "rawBBoxHeight": raw_bbox_height,
                     "rawBBoxArea": raw_bbox_area,
+                    "mappedBBoxWidth": mapped_bbox_width,
+                    "mappedBBoxHeight": mapped_bbox_height,
+                    "mappedBBoxArea": mapped_bbox_area,
                     "bboxScaleY": bbox_scale_y,
                     "bboxBottomX": u_bottom,
                     "bboxBottomY": v_bottom,
