@@ -22,6 +22,7 @@ class Monitor_Datas_Handle():
         "CO2(%)",
         "氧浓度(%)",
         "补偿后氧气浓度(%)",
+        "干基氧浓度(%)",
         "温度测量值(°C)",
         "温度测量值(℃)",
         "ZOS温度测量值(°C)",
@@ -297,6 +298,7 @@ class Monitor_Datas_Handle():
 
     def _migrate_o2_compensation_tables(self, gids, reference_cage_number):
         zos_desc = "补偿后氧气浓度(%)"
+        dry_basis_desc = "干基氧浓度(%)"
 
         for cage_number in [reference_cage_number] + gids:
             self._ensure_column_and_meta(
@@ -304,6 +306,12 @@ class Monitor_Datas_Handle():
                 column_name="oxygen_compensation_num",
                 column_struct=" REAL ",
                 description=zos_desc
+            )
+            self._ensure_column_and_meta(
+                table_name=f"ZOS_monitor_data_cage_{cage_number}",
+                column_name="dry_basis_oxygen_num",
+                column_struct=" REAL ",
+                description=dry_basis_desc
             )
 
         for cage_number in [-1, reference_cage_number] + gids:
@@ -316,6 +324,12 @@ class Monitor_Datas_Handle():
                 column_name="ZOS_oxygen_compensation_num",
                 column_struct=" REAL ",
                 description=zos_desc
+            )
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name="ZOS_dry_basis_oxygen_num",
+                column_struct=" REAL ",
+                description=dry_basis_desc
             )
 
     def _migrate_zos_protocol_tables(self, gids, reference_cage_number):

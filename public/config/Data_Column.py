@@ -210,6 +210,19 @@ class Data_Column(Enum):
         "columns": "oxygen_num"
     }
 
+    Dry_basis_O2_out_concentration = {
+        "id": 63,
+        "column_text": "干基氧浓度",
+        "column_name": "dry_basis_o2_out_concentration",
+        "unit": "%",
+        "desc": "通过补偿算法得到的干基氧浓度",
+        "data_format": "origin_data",
+        "note": "显示到0.0001",
+        "module":Modbus_Slave_Ids.ZOS,
+        "table":"monitor_data",
+        "columns": "dry_basis_oxygen_num"
+    }
+
     CO2_out_concentration = {
         "id": 18,
         "column_text": "CO2out浓度",
@@ -751,6 +764,7 @@ class Data_column_list(Enum):
         Data_Column.O2_in_concentration,
         Data_Column.CO2_in_concentration,
         Data_Column.O2_out_concentration,
+        Data_Column.Dry_basis_O2_out_concentration,
         Data_Column.CO2_out_concentration,
         Data_Column.ZOS_temperature_2,
         Data_Column.ZOS_humidity,

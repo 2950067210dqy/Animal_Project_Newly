@@ -831,6 +831,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,
             send_message=self.send_message)
         self.data_handle = None
+        self.last_zos_channel_read_time = 0.0
         super().__init__(name=name)
     def before_Runing_work(self):
         pass
@@ -849,6 +850,61 @@ class ZOS_gas_path_system_run_thread(MyQThread):
                 item["value"] = value
                 return
         data_items.append({"desc": desc, "value": value})
+
+    @staticmethod
+    def _is_zero_value(value):
+        try:
+            return float(value) == 0.0
+        except Exception:
+            return value == 0
+
+    def _wait_zos_channel_read_interval(self):
+        min_read_interval = 1.0
+        try:
+            zos_config = global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']
+            min_read_interval = max(1.0, float(zos_config.get('min_channel_read_interval', 1)))
+        except Exception:
+            pass
+
+        elapsed = time.time() - self.last_zos_channel_read_time
+        if elapsed < min_read_interval:
+            time.sleep(min_read_interval - elapsed)
+        self.last_zos_channel_read_time = time.time()
+
+    def _replace_zero_zos_values_with_previous(self, result_data):
+        mouse_cage_number = result_data.get("mouse_cage_number")
+        if mouse_cage_number is None:
+            return result_data
+
+        if self.data_handle is None:
+            self.data_handle = Monitor_Datas_Handle()
+
+        previous_data = self.data_handle.query_current_one_data(
+            f"ZOS_monitor_data_cage_{int(mouse_cage_number)}"
+        )
+        if not previous_data:
+            return result_data
+
+        zero_replace_columns = {
+            "氧分压(hPa)": "oxygen_partial_pressure",
+            "ZOS温度测量值(°C)": "zos_temperature_num",
+            "气体压力(hPa)": "gas_pressure",
+            "氧浓度(%)": "oxygen_num",
+            "ZOS温度2测量值(°C)": "oxygen_temperature_2_num",
+            "ZOS湿度测量值(%RH)": "oxygen_humidity_num",
+        }
+
+        data_items = result_data.get("data", [])
+        for desc, column_name in zero_replace_columns.items():
+            current_value = self._get_data_value(data_items, desc)
+            previous_value = previous_data.get(column_name)
+            if self._is_zero_value(current_value) and previous_value not in (None, 0, 0.0):
+                self._set_data_value(data_items, desc, previous_value)
+                logger.warning(
+                    f"ZOS运行：{mouse_cage_number}号通道 {desc} 返回0，已使用前值覆盖：{previous_value}"
+                )
+
+        return result_data
 
     def _append_o2_compensation(self, result_data):
         mouse_cage_number = result_data.get("mouse_cage_number")
@@ -896,6 +952,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             return result_data
 
         self._set_data_value(data_items, "补偿后氧气浓度(%)", compensation_value)
+        self._set_data_value(data_items, "干基氧浓度(%)", compensation_value)
         return result_data
 
     def stop(self):
@@ -934,6 +991,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             'timeout': 1
         }
         self.send_thread.send_message = self.send_message
+        self._wait_zos_channel_read_interval()
         result_data, message = self.send_thread.Send_no_promise()
 
         if not result_data or 'data' not in result_data:
@@ -943,6 +1001,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
         result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        result_data = self._replace_zero_zos_values_with_previous(result_data)
         result_data = self._append_o2_compensation(result_data)
         logger.error(f"zos:{result_data}")
 
@@ -987,6 +1046,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             'timeout': 1
         }
         self.send_thread.send_message = self.send_message
+        self._wait_zos_channel_read_interval()
         result_data, message = self.send_thread.Send_no_promise()
 
         # 检查数据有效性
@@ -1007,6 +1067,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         result_data = r['data']
         result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        result_data = self._replace_zero_zos_values_with_previous(result_data)
         result_data = self._append_o2_compensation(result_data)
         logger.error(f"zos:{result_data}")
 

@@ -103,10 +103,24 @@ class Gas_Carlibration:
             'carbon_value': None,
             'oxygen_pressure_value': None,
         }
+        self.last_zos_channel_read_time = 0.0
 
     def update(self):
         self.send_thread.update_status_main_signal_gui_update=self.update_status_main_signal_gui_update
         self.is_STOP = self.is_STOP
+
+    def wait_zos_channel_read_interval(self):
+        min_read_interval = 1.0
+        try:
+            calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']
+            min_read_interval = max(1.0, float(calibration_config.get('zos_channel_read_interval', 1)))
+        except Exception:
+            pass
+
+        elapsed = time.time() - self.last_zos_channel_read_time
+        if elapsed < min_read_interval:
+            time.sleep(min_read_interval - elapsed)
+        self.last_zos_channel_read_time = time.time()
 
     def set_calibration_running_state(self, is_running: bool):
         global_setting.set_setting("is_calibrating", is_running)
@@ -816,7 +830,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
                     'timeout': 1
                 }
                 self.send_thread.send_message = self.send_message
-
+                self.wait_zos_channel_read_interval()
                 oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
                 now_oxygen_values = [
                     item['value'] for item in oxygen_data['data']
@@ -847,10 +861,11 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
                     channels_data[channel] = []
                     continue
 
-                channels_data[channel].append({'time': current_time, 'value': now_oxygen_value})
+                sample_time = time.time()
+                channels_data[channel].append({'time': sample_time, 'value': now_oxygen_value})
                 channels_data[channel] = [
                     d for d in channels_data[channel]
-                    if current_time - d['time'] <= stable_duration
+                    if sample_time - d['time'] <= stable_duration
                 ]
 
                 if len(channels_data[channel]) >= 2:
@@ -861,7 +876,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
                         if channels_stable_start[channel] is None:
                             channels_stable_start[channel] = channels_data[channel][0]['time']
 
-                        stable_time = current_time - channels_stable_start[channel]
+                        stable_time = sample_time - channels_stable_start[channel]
                         if stable_time >= stable_duration:
                             channels_finish_state[channel] = True
                             self.update_status_main_signal_gui_update.send(
@@ -918,6 +933,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
         self.send_thread.send_message = self.send_message
         if self.is_STOP:
             reject()
+        self.wait_zos_channel_read_interval()
         oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
         now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧气浓度(%)" in item['desc']]
         now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
@@ -1297,7 +1313,7 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
                     'timeout': 1
                 }
                 self.send_thread.send_message = self.send_message
-
+                self.wait_zos_channel_read_interval()
                 oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
                 if not oxygen_data or 'data' not in oxygen_data:
                     channels_stable_start[channel] = None
@@ -1333,13 +1349,14 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
                     channels_data[channel] = []
                     continue
 
+                sample_time = time.time()
                 channels_data[channel].append({
-                    'time': current_time,
+                    'time': sample_time,
                     'value': now_oxygen_value
                 })
                 channels_data[channel] = [
                     d for d in channels_data[channel]
-                    if current_time - d['time'] <= stable_duration
+                    if sample_time - d['time'] <= stable_duration
                 ]
 
                 if len(channels_data[channel]) >= 2:
@@ -1350,7 +1367,7 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
                         if channels_stable_start[channel] is None:
                             channels_stable_start[channel] = channels_data[channel][0]['time']
 
-                        stable_time = current_time - channels_stable_start[channel]
+                        stable_time = sample_time - channels_stable_start[channel]
                         if stable_time >= stable_duration:
                             channels_finish_state[channel] = True
                             self.update_status_main_signal_gui_update.send(
@@ -1395,7 +1412,7 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
             'timeout': 1
         }
         self.send_thread.send_message = self.send_message
-
+        self.wait_zos_channel_read_interval()
         oxygen_data, oxygen_message = self.send_thread.Send_no_promise()
         now_oxygen_values = [item['value'] for item in oxygen_data['data'] if "氧浓度" in item.get('desc', '')]
         now_oxygen_value = now_oxygen_values[0] if now_oxygen_values else None
@@ -1478,6 +1495,7 @@ def _patched_read_zos_channel_snapshot(self, port, channel):
         'timeout': 1
     }
     self.send_thread.send_message = self.send_message
+    self.wait_zos_channel_read_interval()
     zos_data, _ = self.send_thread.Send_no_promise()
     if not zos_data or 'data' not in zos_data:
         return None
