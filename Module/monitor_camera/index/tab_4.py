@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 )
 from loguru import logger
 
+from Module.mouse_trajectory.service import MouseTrajectoryThread
 from Module.monitor_camera.ui.tab4_window import Ui_tab4_window
 from public.component.dialog.index.infrared_camera_read_SN_dialog_index import infrared_camera_read_SN_dialog
 from public.config_class.global_setting import global_setting
@@ -197,6 +198,16 @@ class DisplayPanel(QWidget):
     def set_title(self, text):
         self.title_label.setText(text)
 
+    def _detach_custom_widget(self):
+        if self.custom_widget is None:
+            return
+
+        widget = self.custom_widget
+        widget.hide()
+        self.content_layout.removeWidget(widget)
+        widget.setParent(None)
+        self.custom_widget = None
+
     def show_custom_widget(self, widget: QWidget):
         if widget is None:
             return
@@ -217,8 +228,7 @@ class DisplayPanel(QWidget):
             scene = QGraphicsScene()
             self.graphics_view.setScene(scene)
 
-        if self.custom_widget is not None:
-            self.custom_widget.hide()
+        self._detach_custom_widget()
         scene.clear()
         self.placeholder_label.hide()
         self.graphics_view.show()
@@ -246,8 +256,7 @@ class DisplayPanel(QWidget):
         if scene is None:
             scene = QGraphicsScene()
             self.graphics_view.setScene(scene)
-        if self.custom_widget is not None:
-            self.custom_widget.hide()
+        self._detach_custom_widget()
         scene.clear()
         scene.setSceneRect(0, 0, 1, 1)
         self.graphics_view.hide()
@@ -918,10 +927,15 @@ class Tab_4(ThemedWindow):
         super().__init__()
         self.charts_list = []
         self.loader_thread: ImageLoaderThread | None = None
+        self.trajectory_thread: MouseTrajectoryThread | None = None
         self.infrared_camera_read_SN_dialog_frame = None
         self.current_cage_number: int | None = None
         self.current_mode = display_mode if display_mode in {self.MODE_INFRARED, self.MODE_VIDEO} else self.MODE_INFRARED
         self.latest_image_paths = {"deep_camera": {}, "infrared_camera": {}}
+        self.latest_trajectory_plot_paths: dict[int, dict[str, str]] = {}
+        self.latest_trajectory_annotation_paths: dict[int, str] = {}
+        self.latest_trajectory_status: dict[int, str] = {}
+        self.current_trajectory_plot_key = "xy_trajectory"
         self.temperature_widget: TemperatureTrendWidget | None = None
 
         self._init_ui(parent, geometry, title)
@@ -945,6 +959,7 @@ class Tab_4(ThemedWindow):
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
         logger.warning("tab4-close")
         self.pause_loader_thread()
+        self.stop_trajectory_thread()
         if self.temperature_widget is not None:
             self.temperature_widget.stop()
         super().closeEvent(a0)
@@ -977,6 +992,10 @@ class Tab_4(ThemedWindow):
             return
 
         infrared_camera_setting_btn.setVisible(self.current_mode == self.MODE_INFRARED)
+        if hasattr(self, "trajectory_plot_selector_label"):
+            is_video_mode = self.current_mode == self.MODE_VIDEO
+            self.trajectory_plot_selector_label.setVisible(is_video_mode)
+            self.trajectory_plot_selector.setVisible(is_video_mode)
 
     def init_header_selectors(self):
         self.cage_selector_label = QLabel("已开启笼子:", self.ui.verticalLayoutWidget)
@@ -990,7 +1009,19 @@ class Tab_4(ThemedWindow):
         insert_index = max(self.ui.horizontalLayout.count() - 1, 0)
         self.ui.horizontalLayout.insertWidget(insert_index, self.cage_selector_label)
         self.ui.horizontalLayout.insertWidget(insert_index + 1, self.cage_selector)
+        self.trajectory_plot_selector_label = QLabel("轨迹图", self.ui.verticalLayoutWidget)
+        self.trajectory_plot_selector = QComboBox(self.ui.verticalLayoutWidget)
+        self.trajectory_plot_selector.setObjectName("trajectory_plot_selector")
+        self.trajectory_plot_selector.setMinimumWidth(150)
+        self.trajectory_plot_selector.addItem("X-Y轨迹", "xy_trajectory")
+        self.trajectory_plot_selector.addItem("高度轨迹", "height_trajectory")
+        self.trajectory_plot_selector.addItem("停留热力图", "occupancy_heatmap")
+        self.trajectory_plot_selector.currentIndexChanged.connect(self.on_trajectory_plot_changed)
+
         self.ui.horizontalLayout.insertWidget(insert_index + 2, self.current_cage_label)
+        self.ui.horizontalLayout.insertWidget(insert_index + 3, self.trajectory_plot_selector_label)
+        self.ui.horizontalLayout.insertWidget(insert_index + 4, self.trajectory_plot_selector)
+        self.update_mode_specific_controls()
 
     def init_display_area(self):
         if hasattr(self.ui, "scrollArea"):
@@ -1007,7 +1038,8 @@ class Tab_4(ThemedWindow):
 
         self.left_panel = DisplayPanel(self.monitor_content_widget)
         self.right_panel = DisplayPanel(self.monitor_content_widget)
-        self.temperature_widget = TemperatureTrendWidget(self.right_panel.content_widget)
+        self.temperature_widget = TemperatureTrendWidget()
+        self.temperature_widget.hide()
 
         content_layout.addWidget(self.left_panel, 1)
         content_layout.addWidget(self.right_panel, 1)
@@ -1018,6 +1050,7 @@ class Tab_4(ThemedWindow):
 
     def start_loader_thread(self):
         self.refresh_cage_selector()
+        self.start_trajectory_thread()
         if self.loader_thread is not None and self.loader_thread.isRunning():
             if self.loader_thread.isPaused():
                 self.loader_thread.resume()
@@ -1038,12 +1071,48 @@ class Tab_4(ThemedWindow):
 
         self.loader_thread = None
 
+    def start_trajectory_thread(self):
+        if self.trajectory_thread is not None and self.trajectory_thread.isRunning():
+            if self.trajectory_thread.isPaused():
+                self.trajectory_thread.resume()
+            return
+
+        self.trajectory_thread = MouseTrajectoryThread()
+        self.trajectory_thread.trajectory_ready.connect(self.update_trajectory_result)
+        self.trajectory_thread.start()
+
+    def stop_trajectory_thread(self):
+        if self.trajectory_thread is None:
+            return
+
+        if self.trajectory_thread.isRunning():
+            self.trajectory_thread.stop()
+            self.trajectory_thread.requestInterruption()
+            self.trajectory_thread.wait(2000)
+
+        self.trajectory_thread = None
+
     def pause_loader_thread(self):
         if self.loader_thread is None:
             return
 
         if self.loader_thread.isRunning() and not self.loader_thread.isPaused():
             self.loader_thread.pause()
+
+    def update_trajectory_result(self, result_dict):
+        if not result_dict:
+            return
+
+        cage_number = int(result_dict.get("cage_number", 0) or 0)
+        if cage_number <= 0:
+            return
+
+        self.latest_trajectory_plot_paths[cage_number] = result_dict.get("plot_paths", {}) or {}
+        self.latest_trajectory_annotation_paths[cage_number] = result_dict.get("annotation_path", "") or ""
+        self.latest_trajectory_status[cage_number] = result_dict.get("status", "")
+
+        if self.current_mode == self.MODE_VIDEO and self.current_cage_number == cage_number:
+            self.render_selected_content()
 
     def _build_cage_image_map(self, image_paths, prefix):
         cage_image_map = {}
@@ -1116,6 +1185,13 @@ class Tab_4(ThemedWindow):
         self.current_cage_number = self.cage_selector.itemData(index)
         self.render_selected_content()
 
+    def on_trajectory_plot_changed(self, index):
+        if index < 0:
+            return
+
+        self.current_trajectory_plot_key = self.trajectory_plot_selector.itemData(index) or "xy_trajectory"
+        self.render_selected_content()
+
     def set_display_mode(self, mode: str):
         if mode not in {self.MODE_INFRARED, self.MODE_VIDEO}:
             return
@@ -1139,6 +1215,9 @@ class Tab_4(ThemedWindow):
                 global_setting.get_setting("camera_config")["INFRARED_CAMERA"]["mouse_cage_prefix"],
             ),
         }
+
+        if self.trajectory_thread is not None:
+            self.trajectory_thread.submit_frames(self.latest_image_paths["deep_camera"])
 
         self.refresh_cage_selector()
         self.render_selected_content()
@@ -1169,6 +1248,75 @@ class Tab_4(ThemedWindow):
             self.right_panel.show_custom_widget(self.temperature_widget)
         else:
             self.right_panel.show_placeholder("温度功能待接入")
+
+    def render_selected_content(self):
+        if self.current_cage_number is None:
+            self.left_panel.set_title("左侧")
+            self.right_panel.set_title("右侧")
+            self.left_panel.show_placeholder("请选择已开启笼子")
+            self.right_panel.show_placeholder("请选择已开启笼子")
+            return
+
+        cage_number = self.current_cage_number
+        self.current_cage_label.setText(f"当前显示: 鼠笼{cage_number}")
+
+        if self.current_mode == self.MODE_VIDEO:
+            self.left_panel.set_title(f"视频图像 - 鼠笼{cage_number}")
+            self.left_panel.show_image(self.latest_image_paths["deep_camera"].get(cage_number, ""))
+            self.right_panel.set_title(f"轨迹 - 鼠笼{cage_number}")
+            trajectory_plot_path = self.latest_trajectory_plot_paths.get(cage_number, "")
+            if trajectory_plot_path:
+                self.right_panel.show_image(trajectory_plot_path)
+            else:
+                self.right_panel.show_placeholder("暂无轨迹数据")
+            return
+
+        self.left_panel.set_title(f"红外相机 - 鼠笼{cage_number}")
+        self.left_panel.show_image(self.latest_image_paths["infrared_camera"].get(cage_number, ""))
+        self.right_panel.set_title(f"温度 - 鼠笼{cage_number}")
+        if self.temperature_widget is not None:
+            self.temperature_widget.refresh_data(cage_number)
+            self.right_panel.show_custom_widget(self.temperature_widget)
+        else:
+            self.right_panel.show_placeholder("暂无温度数据")
+
+    def render_selected_content(self):
+        if self.current_cage_number is None:
+            self.left_panel.set_title("左侧")
+            self.right_panel.set_title("右侧")
+            self.left_panel.show_placeholder("请选择已开启笼子")
+            self.right_panel.show_placeholder("请选择已开启笼子")
+            return
+
+        cage_number = self.current_cage_number
+        self.current_cage_label.setText(f"当前显示: 鼠笼{cage_number}")
+
+        if self.current_mode == self.MODE_VIDEO:
+            self.left_panel.set_title(f"视频检测效果 - 鼠笼{cage_number}")
+            annotation_path = self.latest_trajectory_annotation_paths.get(cage_number, "")
+            if annotation_path:
+                self.left_panel.show_image(annotation_path)
+            else:
+                self.left_panel.show_image(self.latest_image_paths["deep_camera"].get(cage_number, ""))
+
+            plot_paths = self.latest_trajectory_plot_paths.get(cage_number, {})
+            selected_plot_path = plot_paths.get(self.current_trajectory_plot_key, "")
+            plot_label = self.trajectory_plot_selector.currentText() if hasattr(self, "trajectory_plot_selector") else "X-Y轨迹"
+            self.right_panel.set_title(f"{plot_label} - 鼠笼{cage_number}")
+            if selected_plot_path:
+                self.right_panel.show_image(selected_plot_path)
+            else:
+                self.right_panel.show_placeholder("暂无轨迹数据")
+            return
+
+        self.left_panel.set_title(f"红外相机 - 鼠笼{cage_number}")
+        self.left_panel.show_image(self.latest_image_paths["infrared_camera"].get(cage_number, ""))
+        self.right_panel.set_title(f"温度 - 鼠笼{cage_number}")
+        if self.temperature_widget is not None:
+            self.temperature_widget.refresh_data(cage_number)
+            self.right_panel.show_custom_widget(self.temperature_widget)
+        else:
+            self.right_panel.show_placeholder("暂无温度数据")
 
     def _init_function(self):
         self.init_btn_handle()
