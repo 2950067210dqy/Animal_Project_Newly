@@ -275,6 +275,8 @@ class CalibrationDialog(QDialog):
     def __init__(self, parent=None, main_gui=None):
         super().__init__(parent)
         self.main_gui: BaseWindow = main_gui
+        self.max_visible_logs = 0
+        self.log_history = []
         self.initUI()
         self.setupData()
 
@@ -699,11 +701,12 @@ class CalibrationDialog(QDialog):
             log_entry = f"[{timestamp}] [{log_type}] {message}"
         else:
             log_entry = f"{message}"
+        self.log_history.append(log_entry)
         # 在最前面插入新日志
         self.log_list.insertItem(0, log_entry)
 
         # 限制日志条目数量（可选，防止内存占用过多）
-        if self.log_list.count() > 1000:
+        if self.max_visible_logs > 0 and self.log_list.count() > self.max_visible_logs:
             self.log_list.takeItem(self.log_list.count() - 1)
 
         # 自动滚动到顶部显示最新日志
@@ -711,7 +714,7 @@ class CalibrationDialog(QDialog):
 
     def exportLogs(self):
         """导出日志到txt文件"""
-        if self.log_list.count() == 0:
+        if not self.log_history:
             QMessageBox.information(self, "提示", "没有日志可以导出！")
             return
 
@@ -732,10 +735,9 @@ class CalibrationDialog(QDialog):
                     f.write(f"导出时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write("=" * 50 + "\n\n")
 
-                    # 按顺序写入日志（最新的在前面）
-                    for i in range(self.log_list.count()):
-                        log_item = self.log_list.item(i)
-                        f.write(log_item.text() + "\n")
+                    # 按完整历史写入日志
+                    for log_entry in self.log_history:
+                        f.write(log_entry + "\n")
 
                 QMessageBox.information(self, "成功", f"日志已成功导出到:\n{file_path}")
                 self.addLog(f"日志已导出到: {os.path.basename(file_path)}")
