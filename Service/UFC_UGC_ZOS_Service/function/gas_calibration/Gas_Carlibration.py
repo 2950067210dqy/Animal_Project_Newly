@@ -2029,7 +2029,7 @@ def _patched_start_ufc_if_needed_for_zero_v2(self, resolve, reject, port):
         reject("stop")
         return
 
-    if self.is_ufc_started_for_zero():
+    if False and self.is_ufc_started_for_zero():
         self.ufc_started_by_calibration = False
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | {self.name}校准：当前UFC已开启，跳过启动指令",

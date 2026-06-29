@@ -306,18 +306,16 @@ class UFC_UGC_ZOS_index(MyQThread):
                                                    time=time_util.get_format_from_time(time.time())))
             pass
     def start_btn_handle_with_calibration(self):
-        """启动气路 并且还要校准气路"""
+        """先按流程完成调零+调span，再重新启动正常实验气路"""
         global stop_flag
         stop_flag = False
 
-        p = AsyPromise(self.ZOS_gas_path_system_obj.start).then(
-            lambda _: AsyPromise(
-                self.UFC_gas_path_system_obj.start,
-            ).then(
-                lambda _: AsyPromise(self.UGC_gas_path_system_obj.start).then(
-                    lambda _: AsyPromise(self.calibration_start).then(
-                            lambda _: AsyPromise(self.finish_start).then(
-                            ).catch(lambda e: logger.error(f"{e}"))
+        p = AsyPromise(self.calibration_start).then(
+            lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start).then(
+                lambda _: AsyPromise(self.UFC_gas_path_system_obj.start).then(
+                    lambda _: AsyPromise(self.UGC_gas_path_system_obj.start).then(
+                        lambda _: AsyPromise(self.finish_start).then(
+                        ).catch(lambda e: logger.error(f"{e}"))
                     ).catch(lambda e: logger.error(f"{e}"))
                 ).catch(lambda e: logger.error(f"{e}"))
             ).catch(lambda e: logger.error(f"{e}"))
