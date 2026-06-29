@@ -584,9 +584,76 @@ class UGC_gas_path_system_run_thread(MyQThread):
         self.send_thread: Send_Message = Send_Message(
             update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,
             send_message=self.send_message)
+        self.data_handle = None
+        self.last_ugc_channel_read_time = 0.0
         super().__init__(name=name)
     def before_Runing_work(self):
         pass
+    @staticmethod
+    def _get_data_value(data_items, desc):
+        for item in data_items or []:
+            if item.get("desc") == desc:
+                return item.get("value")
+        return None
+
+    @staticmethod
+    def _set_data_value(data_items, desc, value):
+        for item in data_items or []:
+            if item.get("desc") == desc:
+                item["value"] = value
+                return
+        data_items.append({"desc": desc, "value": value})
+
+    @staticmethod
+    def _is_zero_value(value):
+        try:
+            return float(value) == 0.0
+        except Exception:
+            return value == 0
+
+    def _wait_ugc_channel_read_interval(self):
+        min_read_interval = 1.0
+        try:
+            ugc_config = global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']
+            min_read_interval = max(1.0, float(ugc_config.get('min_channel_read_interval', 1)))
+        except Exception:
+            pass
+
+        elapsed = time.time() - self.last_ugc_channel_read_time
+        if elapsed < min_read_interval:
+            time.sleep(min_read_interval - elapsed)
+        self.last_ugc_channel_read_time = time.time()
+
+    def _replace_zero_ugc_values_with_previous(self, result_data):
+        mouse_cage_number = result_data.get("mouse_cage_number")
+        if mouse_cage_number is None:
+            return result_data
+
+        if self.data_handle is None:
+            self.data_handle = Monitor_Datas_Handle()
+
+        previous_data = self.data_handle.query_current_one_data(
+            f"UGC_monitor_data_cage_{int(mouse_cage_number)}"
+        )
+        if not previous_data:
+            return result_data
+
+        zero_replace_columns = {
+            "气压(KPa)": "air_pressure",
+            "CO2(%)": "CO2_num",
+        }
+
+        data_items = result_data.get("data", [])
+        for desc, column_name in zero_replace_columns.items():
+            current_value = self._get_data_value(data_items, desc)
+            previous_value = previous_data.get(column_name)
+            if self._is_zero_value(current_value) and previous_value not in (None, 0, 0.0):
+                self._set_data_value(data_items, desc, previous_value)
+                logger.warning(
+                    f"UGC运行：{mouse_cage_number}号通道 {desc} 返回0，已使用前值覆盖：{previous_value}"
+                )
+
+        return result_data
     def dosomething(self):
         wait_UFC_run_finish_event=global_setting.get_setting("wait_UFC_run_finish_event",None )
         if wait_UFC_run_finish_event:
@@ -612,11 +679,13 @@ class UGC_gas_path_system_run_thread(MyQThread):
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} | UGC-运行 2. 循环读取{'鼠笼'+str(mouse_cages_inc[mouse_cage_index]) if mouse_cage_index is not None else '参考气'}的CO2浓度")
         self.send_thread.send_message = self.send_message
+        self._wait_ugc_channel_read_interval()
         result_data, message = self.send_thread.Send_no_promise()
         logger.error(f"ugc:{result_data}")
 
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+        result_data = self._replace_zero_ugc_values_with_previous(result_data)
         result = store_data_with_result(result_data, need_result=True, timeout=5)
         if result and result.success:
             logger.info(f"数据存储成功，ID: {result.item_id}")
