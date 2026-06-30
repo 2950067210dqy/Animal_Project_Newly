@@ -274,21 +274,13 @@ class UVCCameraProcessor(MyQThread):
 
         deep_config = _deep_camera_config()
         color_dir = os.path.join(self.path, deep_config["color_dir"].strip("/\\"))
-        result_dir = os.path.join(
-            self.path,
-            deep_config["result_dir"].strip("/\\"),
-            deep_config["result_img_dir"].strip("/\\"),
-        )
 
         self._ensure_dir(color_dir)
-        self._ensure_dir(result_dir)
 
         color_path = os.path.join(color_dir, file_name)
-        result_path = os.path.join(result_dir, file_name)
 
-        # Keep writing to both locations so the old UI/read path stays compatible.
+        # The monitor UI reads deep-camera frames from color_dir only.
         cv2.imwrite(color_path, image)
-        cv2.imwrite(result_path, image)
         file_locks[file_name] = threading.Lock()
 
     def stop(self):
@@ -326,12 +318,10 @@ class UVCCameraProcessor(MyQThread):
         global frame_nums
 
         # Reconnect lazily if the device dropped during runtime.
-        target_interval = max(float(_deep_camera_config()["delay"]), 0.001)
-
         if not self.init_state:
             self.init_state = self.init_camera()
             if not self.init_state:
-                time.sleep(target_interval)
+                time.sleep(float(_deep_camera_config()["delay"]))
                 return
 
         if self.capture is None:
@@ -343,7 +333,7 @@ class UVCCameraProcessor(MyQThread):
         if not ret or color_image is None:
             logger.error(f"deep_camera_{self.id} read frame failed from UVC device {self.device_index}")
             self.init_state = False
-            time.sleep(target_interval)
+            time.sleep(float(_deep_camera_config()["delay"]))
             return
 
         self.img_save(color_image)
@@ -354,7 +344,7 @@ class UVCCameraProcessor(MyQThread):
         logger.debug(
             f"deep_camera_{self.id} capture frame cost={elapsed:.3f}s total_frames={frame_nums}"
         )
-        time.sleep(max(0.0, target_interval - elapsed))
+        time.sleep(float(_deep_camera_config()["delay"]))
 
 
 def load_global_setting():
