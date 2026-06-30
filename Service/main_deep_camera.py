@@ -35,6 +35,24 @@ def _deep_camera_config():
     return _camera_config()["DEEP_CAMERA"]
 
 
+def _deep_delete_interval_seconds():
+    deep_config = _deep_camera_config()
+    delete_config = _camera_config()["DELETE"]
+    try:
+        return float(deep_config.get("delete_interval_seconds", delete_config["interval_seconds"]))
+    except Exception:
+        return float(delete_config["interval_seconds"])
+
+
+def _deep_delete_loop_delay_seconds():
+    deep_config = _deep_camera_config()
+    delete_config = _camera_config()["DELETE"]
+    try:
+        return max(float(deep_config.get("delete_delay", delete_config["delay"])), 0.01)
+    except Exception:
+        return max(float(delete_config["delay"]), 0.01)
+
+
 def _storage_root():
     config = _camera_config()
     return config["STORAGE"]["fold_path"] + config["DEEP_CAMERA"]["path"]
@@ -178,13 +196,13 @@ class Delete_file(MyQThread):
             with delete_process_lock:
                 current_time = time.time()
                 elapsed = current_time - self.start_time
-                delete_config = _camera_config()["DELETE"]
-                if elapsed >= float(delete_config["interval_seconds"]):
+                delete_interval_seconds = _deep_delete_interval_seconds()
+                if delete_interval_seconds <= 0 or elapsed >= delete_interval_seconds:
                     self.get_and_delete_files()
                     logger.info("deep_camera delete files finished")
                     self.start_time = time.time()
 
-            time.sleep(float(_camera_config()["DELETE"]["delay"]))
+            time.sleep(_deep_delete_loop_delay_seconds())
         except Exception as e:
             logger.error(f"deep_camera delete thread failed: {e} | {traceback.format_exc()}")
 
@@ -218,6 +236,16 @@ class UVCCameraProcessor(MyQThread):
         self.frame_width = 1280
         self.frame_height = 720
         self.init_state = self.init_camera()
+
+    def _frame_interval_seconds(self):
+        try:
+            configured_delay = float(_deep_camera_config()["delay"])
+        except Exception:
+            configured_delay = 0.0
+
+        if configured_delay > 0:
+            return configured_delay
+        return 1.0 / max(float(self.fps), 1.0)
 
     def _open_capture(self, index):
         # Try common Windows backends first, then fall back to OpenCV default.
@@ -321,7 +349,7 @@ class UVCCameraProcessor(MyQThread):
         if not self.init_state:
             self.init_state = self.init_camera()
             if not self.init_state:
-                time.sleep(float(_deep_camera_config()["delay"]))
+                time.sleep(self._frame_interval_seconds())
                 return
 
         if self.capture is None:
@@ -333,7 +361,7 @@ class UVCCameraProcessor(MyQThread):
         if not ret or color_image is None:
             logger.error(f"deep_camera_{self.id} read frame failed from UVC device {self.device_index}")
             self.init_state = False
-            time.sleep(float(_deep_camera_config()["delay"]))
+            time.sleep(self._frame_interval_seconds())
             return
 
         self.img_save(color_image)
@@ -344,7 +372,9 @@ class UVCCameraProcessor(MyQThread):
         logger.debug(
             f"deep_camera_{self.id} capture frame cost={elapsed:.3f}s total_frames={frame_nums}"
         )
-        time.sleep(float(_deep_camera_config()["delay"]))
+        remaining = self._frame_interval_seconds() - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
 
 
 def load_global_setting():
