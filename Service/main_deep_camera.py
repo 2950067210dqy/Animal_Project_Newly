@@ -326,10 +326,12 @@ class UVCCameraProcessor(MyQThread):
         global frame_nums
 
         # Reconnect lazily if the device dropped during runtime.
+        target_interval = max(float(_deep_camera_config()["delay"]), 0.001)
+
         if not self.init_state:
             self.init_state = self.init_camera()
             if not self.init_state:
-                time.sleep(float(_deep_camera_config()["delay"]))
+                time.sleep(target_interval)
                 return
 
         if self.capture is None:
@@ -341,7 +343,7 @@ class UVCCameraProcessor(MyQThread):
         if not ret or color_image is None:
             logger.error(f"deep_camera_{self.id} read frame failed from UVC device {self.device_index}")
             self.init_state = False
-            time.sleep(float(_deep_camera_config()["delay"]))
+            time.sleep(target_interval)
             return
 
         self.img_save(color_image)
@@ -352,7 +354,7 @@ class UVCCameraProcessor(MyQThread):
         logger.debug(
             f"deep_camera_{self.id} capture frame cost={elapsed:.3f}s total_frames={frame_nums}"
         )
-        time.sleep(float(_deep_camera_config()["delay"]))
+        time.sleep(max(0.0, target_interval - elapsed))
 
 
 def load_global_setting():
