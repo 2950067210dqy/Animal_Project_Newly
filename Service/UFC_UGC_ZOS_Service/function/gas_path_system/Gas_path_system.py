@@ -997,14 +997,12 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         if None in (o2_partial_press, temp_sensor, gas_total_press, o2_raw_pct):
             return result_data
 
-        if self.data_handle is None:
-            self.data_handle = Monitor_Datas_Handle()
-        enm_data = self.data_handle.query_current_one_data(f"ENM_monitor_data_cage_{int(mouse_cage_number)}")
-        if not enm_data:
-            return result_data
-
-        temp_cage = enm_data.get("temperature_num")
-        rh_cage = enm_data.get("humidity_num")
+        # 干基氧浓度改为使用 ZOS 自身返回的温湿度数据计算：
+        # 优先取 ZOS温度2 + ZOS湿度，温度2 缺失时回退到 ZOS温度1。
+        temp_cage = self._get_data_value(data_items, "ZOS温度2测量值(°C)")
+        if temp_cage is None:
+            temp_cage = temp_sensor
+        rh_cage = self._get_data_value(data_items, "ZOS湿度测量值(%RH)")
         if None in (temp_cage, rh_cage):
             return result_data
 
