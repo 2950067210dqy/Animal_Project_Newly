@@ -360,7 +360,7 @@ class MouseTrajectoryThread(MyQThread):
         fixed_corners = BoxCorners(
             [dict(point) for point in corners.corners],
             corners.conf,
-            "fixed_box_json",
+            f"fixed_{corners.source}_json",
         )
         self.fixed_corners_by_cage[cage_number] = fixed_corners
         self.previous_corners_by_cage[cage_number] = [dict(point) for point in corners.corners]
@@ -372,6 +372,7 @@ class MouseTrajectoryThread(MyQThread):
         (data_dir / "fixed_box_corners.json").write_text(
             json.dumps(
                 {
+                    "schemaVersion": 2,
                     "cageNumber": cage_number,
                     "frameName": image_file.name,
                     "sourceImage": str(image_file),
@@ -392,10 +393,15 @@ class MouseTrajectoryThread(MyQThread):
 
         try:
             json_data = json.loads(json_path.read_text(encoding="utf-8"))
+            schema_version = int(json_data.get("schemaVersion", 1) or 1)
+            source = str(json_data.get("source", "fixed_box_json") or "fixed_box_json")
+            # Legacy cache files were generated from mask->minAreaRect and should be re-detected.
+            if schema_version < 2 or source == "fixed_box_json":
+                return None
             corners = BoxCorners(
                 [dict(point) for point in json_data.get("corners", [])],
                 float(json_data.get("confidence", 0.0) or 0.0),
-                str(json_data.get("source", "fixed_box_json") or "fixed_box_json"),
+                source,
             )
             if len(corners.corners) != 4:
                 return None

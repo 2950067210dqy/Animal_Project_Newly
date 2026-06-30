@@ -262,6 +262,35 @@ def best_box_from_result(result: Any) -> Optional[DetectionBox]:
     return DetectionBox(tuple(xyxy), float(confs[idx]), cls)
 
 
+def approximate_mask_quadrilateral(poly: np.ndarray) -> Optional[np.ndarray]:
+    pts = np.asarray(poly, dtype=np.float32).reshape(-1, 2)
+    if len(pts) < 4:
+        return None
+
+    hull = cv2.convexHull(pts).reshape(-1, 2)
+    if len(hull) < 4:
+        return None
+
+    perimeter = cv2.arcLength(hull.reshape(-1, 1, 2), True)
+    if perimeter <= 0:
+        return None
+
+    best_quad: Optional[np.ndarray] = None
+    best_area = -1.0
+    for ratio in np.linspace(0.005, 0.08, 24):
+        approx = cv2.approxPolyDP(hull.reshape(-1, 1, 2), ratio * perimeter, True)
+        approx_pts = approx.reshape(-1, 2)
+        if len(approx_pts) != 4:
+            continue
+
+        area = abs(float(cv2.contourArea(approx_pts)))
+        if area > best_area:
+            best_area = area
+            best_quad = approx_pts.astype(np.float32)
+
+    return best_quad
+
+
 def extract_box_corners(result: Any) -> Optional[BoxCorners]:
     best_box = best_box_from_result(result)
     masks = getattr(result, "masks", None)
@@ -273,9 +302,13 @@ def extract_box_corners(result: Any) -> Optional[BoxCorners]:
                 candidates.append((abs(float(cv2.contourArea(poly))), poly))
         if candidates:
             _area, poly = max(candidates, key=lambda item: item[0])
+            quad = approximate_mask_quadrilateral(poly)
+            if quad is not None:
+                return BoxCorners(order_corners(quad), best_box.conf if best_box else 0.0, "mask_quad")
+
             rect = cv2.minAreaRect(poly)
             corners = cv2.boxPoints(rect)
-            return BoxCorners(order_corners(corners), best_box.conf if best_box else 0.0, "mask")
+            return BoxCorners(order_corners(corners), best_box.conf if best_box else 0.0, "mask_min_area_rect")
 
     return None
 
