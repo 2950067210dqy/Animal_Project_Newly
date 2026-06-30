@@ -1149,9 +1149,6 @@ def barrier_action():
     store_Datas.append({'desc': '氧浓度(%)',
                         'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') if results.get(
                             f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None else None})
-    store_Datas.append({'desc': '补偿后氧气浓度(%)',
-                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_compensation_num') if results.get(
-                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_compensation_num') is not None else None})
     store_Datas.append({'desc': '干基氧浓度(%)',
                         'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__dry_basis_oxygen_num') if results.get(
                             f'ZOS_monitor_data_cage_{mouse_cage_number}__dry_basis_oxygen_num') is not None else None})

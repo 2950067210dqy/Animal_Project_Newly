@@ -1019,8 +1019,6 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         )
         if compensation_value == -1:
             return result_data
-
-        self._set_data_value(data_items, "补偿后氧气浓度(%)", compensation_value)
         self._set_data_value(data_items, "干基氧浓度(%)", compensation_value)
         return result_data
 
