@@ -35,6 +35,7 @@ class Startup_Air_Calibration:
             'oxygen_pressure_value': None,
         }
         self.calibration_handler = None
+        self.previous_valid_snapshots = {}
 
     def update(self):
         self.send_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
@@ -67,6 +68,50 @@ class Startup_Air_Calibration:
                 },
                 title=self.title
             )
+
+    @staticmethod
+    def _is_zero_value(value):
+        try:
+            return float(value) == 0.0
+        except (TypeError, ValueError):
+            return False
+
+    def _normalize_snapshot_with_previous(self, channel, snapshot):
+        if snapshot is None:
+            return None
+
+        fields = (
+            "o2_partial",
+            "zos_temp",
+            "gas_pressure",
+            "o2_percent",
+            "sht_temp",
+            "sht_rh",
+        )
+        previous_snapshot = self.previous_valid_snapshots.get(channel)
+        normalized_snapshot = dict(snapshot)
+
+        for field in fields:
+            current_value = normalized_snapshot.get(field)
+            if not self._is_zero_value(current_value):
+                continue
+
+            previous_value = previous_snapshot.get(field) if previous_snapshot else None
+            if previous_value not in (None, 0, 0.0):
+                normalized_snapshot[field] = previous_value
+                logger.warning(
+                    f"{self.name}：通道 {channel} 的 {field} 返回0，已使用前值覆盖：{previous_value}"
+                )
+
+        merged_snapshot = dict(previous_snapshot) if previous_snapshot else {}
+        for field in fields:
+            current_value = normalized_snapshot.get(field)
+            if not self._is_zero_value(current_value):
+                merged_snapshot[field] = current_value
+        if merged_snapshot:
+            self.previous_valid_snapshots[channel] = merged_snapshot
+
+        return normalized_snapshot
 
     @staticmethod
     def _normalize_startup_wait_seconds():
@@ -146,6 +191,7 @@ class Startup_Air_Calibration:
 
         self.calibration_handler = CalibrationHandler(target_points=self._normalize_target_points())
         self.calibration_handler.start_new_calibration()
+        self.previous_valid_snapshots = {}
 
     def _read_zos_channel_snapshot(self, channel):
         port = self._get_port()
@@ -256,6 +302,7 @@ class Startup_Air_Calibration:
                 if snapshot is None:
                     logger.warning(f"{self.name}读取 {self._channel_to_display_name(channel)} 数据失败")
                     continue
+                snapshot = self._normalize_snapshot_with_previous(channel, snapshot)
 
                 self.push_calibration_values_to_ui(
                     oxygen_value=snapshot["o2_percent"],
@@ -284,10 +331,16 @@ class Startup_Air_Calibration:
             if current_time - last_progress_log_time >= 5:
                 status = self.calibration_handler.get_status()
                 counts = status.get("current_counts", {})
-                ref_count = counts.get("REF", 0)
-                m1_count = counts.get("M1", 0)
+                progress_parts = [
+                    f"REF={counts.get('REF', 0)}/{target_points}"
+                ]
+                for idx in range(1, 9):
+                    channel_name = f"M{idx}"
+                    progress_parts.append(
+                        f"{channel_name}={counts.get(channel_name, 0)}/{target_points}"
+                    )
                 self._send_text(
-                    f"{self.name}采集中：REF={ref_count}/{target_points}，M1={m1_count}/{target_points}，已运行 {int(elapsed_time)}/{int(max_timeout)} 秒"
+                    f"{self.name}采集中：{'，'.join(progress_parts)}，已运行 {int(elapsed_time)}/{int(max_timeout)} 秒"
                 )
                 last_progress_log_time = current_time
 
