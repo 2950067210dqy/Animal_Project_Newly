@@ -257,7 +257,7 @@ class Startup_Air_Calibration:
             return
 
         for second in range(wait_seconds):
-            if second == 0 or (second + 1) % 60 == 0 or second == wait_seconds - 1:
+            if second == 0 or (second + 1) % 5 == 0 or second == wait_seconds - 1:
                 self._send_text(
                     f"{self.name}等待稳定：当前等待 {second + 1}/{wait_seconds} 秒"
                 )
