@@ -277,6 +277,9 @@ class CalibrationDialog(QDialog):
         self.main_gui: BaseWindow = main_gui
         self.max_visible_logs = 0
         self.log_history = []
+        self.log_sequence = 0
+        self._suppress_next_log = False
+        self._next_log_event_time = None
         self.initUI()
         self.setupData()
 
@@ -694,14 +697,51 @@ class CalibrationDialog(QDialog):
         self.move(x, y)
 
     # 日志相关方法
-    def addLog(self, message, log_type="INFO", has_time=False):
+    def _parse_event_time(self, value):
+        if isinstance(value, datetime):
+            return value
+        if value in (None, ""):
+            return None
+
+        text = str(value).strip()
+        if text.startswith("["):
+            closing_index = text.find("]")
+            if closing_index != -1:
+                text = text[1:closing_index].strip()
+        elif " | " in text:
+            text = text.split(" | ", 1)[0].strip()
+
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+        return None
+
+    def addLog(self, message, log_type="INFO", has_time=False, event_time=None):
         """添加日志条目"""
+        if self._suppress_next_log:
+            self._suppress_next_log = False
+            self._next_log_event_time = None
+            return
+
+        effective_event_time = event_time if event_time is not None else self._next_log_event_time
+        self._next_log_event_time = None
+        event_dt = self._parse_event_time(effective_event_time)
         if not has_time:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_entry = f"[{timestamp}] [{log_type}] {message}"
+            if event_dt is None:
+                event_dt = datetime.now()
+            log_entry = f"[{event_dt.strftime('%Y-%m-%d %H:%M:%S')}] [{log_type}] {message}"
         else:
             log_entry = f"{message}"
-        self.log_history.append(log_entry)
+            if event_dt is None:
+                event_dt = self._parse_event_time(message)
+        self.log_history.append({
+            "display": log_entry,
+            "event_time": event_dt,
+            "sequence": self.log_sequence,
+        })
+        self.log_sequence += 1
         # 在最前面插入新日志
         self.log_list.insertItem(0, log_entry)
 
@@ -734,10 +774,19 @@ class CalibrationDialog(QDialog):
                     f.write("=" * 50 + "\n")
                     f.write(f"导出时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write("=" * 50 + "\n\n")
+                    sorted_logs = sorted(
+                        self.log_history,
+                        key=lambda item: (
+                            item.get("event_time") is None,
+                            item.get("event_time") or datetime.max,
+                            item.get("sequence", 0),
+                        ),
+                    )
+                    self.log_history = sorted_logs
 
                     # 按完整历史写入日志
                     for log_entry in self.log_history:
-                        f.write(log_entry + "\n")
+                        f.write(log_entry.get("display", "") + "\n")
 
                 QMessageBox.information(self, "成功", f"日志已成功导出到:\n{file_path}")
                 self.addLog(f"日志已导出到: {os.path.basename(file_path)}")
@@ -747,10 +796,12 @@ class CalibrationDialog(QDialog):
                 self.addLog(f"导出日志失败: {str(e)}", "ERROR")
 
     # 公共接口方法
-    def updateStatus(self, status_text):
+    def updateStatus(self, status_text, event_time=None, log_event=True):
         """更新状态文字"""
         old_status = self.status_label.text()
         self.status_label.setText(status_text)
+        self._next_log_event_time = event_time
+        self._suppress_next_log = not log_event
 
         # 添加日志
         self.addLog(f"状态变更: {old_status} -> {status_text}", "STATUS")
@@ -799,83 +850,103 @@ class CalibrationDialog(QDialog):
         except (TypeError, ValueError):
             return none_text
 
-    def updateO2Current(self, value):
+    def updateO2Current(self, value, event_time=None, log_event=True):
         """更新O2当前数据"""
         formatted = self.format_value(value, 4)
         self.cells[self.data_cells['o2_current']].setText(formatted)
+        self._next_log_event_time = event_time
+        self._suppress_next_log = not log_event
         if value is not None:
             self.addLog(f"O2当前数据更新: {formatted}%")
         # 添加数据到图表（包括None值）
         if hasattr(self, 'chart_widget'):
             self.chart_widget.addDataPoint("o2_current", value)
 
-    def updateO2Span(self, value):
+    def updateO2Span(self, value, event_time=None, log_event=True):
         """更新O2 Span数值"""
         formatted = self.format_value(value, 4)
         self.cells[self.data_cells['o2_span']].setText(formatted)
+        self._next_log_event_time = event_time
+        self._suppress_next_log = not log_event
         if value is not None:
             self.addLog(f"O2 Span数值更新: {formatted}%")
 
-    def updateCO2Current(self, value):
+    def updateCO2Current(self, value, event_time=None, log_event=True):
         """更新CO2当前数据"""
         formatted = self.format_value(value, 4)
         self.cells[self.data_cells['co2_current']].setText(formatted)
+        self._next_log_event_time = event_time
+        self._suppress_next_log = not log_event
         if value is not None:
             self.addLog(f"CO2当前数据更新: {formatted}ppm")
         # 添加数据到图表（包括None值）
         if hasattr(self, 'chart_widget'):
             self.chart_widget.addDataPoint("co2_current", value)
 
-    def updateCO2Span(self, value):
+    def updateCO2Span(self, value, event_time=None, log_event=True):
         """更新CO2 Span数值"""
         formatted = self.format_value(value, 4)
         self.cells[self.data_cells['co2_span']].setText(formatted)
+        self._next_log_event_time = event_time
+        self._suppress_next_log = not log_event
         if value is not None:
             self.addLog(f"CO2 Span数值更新: {formatted}ppm")
 
-    def updatePressureCurrent(self, value):
+    def updatePressureCurrent(self, value, event_time=None, log_event=True):
         """更新O2压力当前数据"""
         formatted = self.format_value(value, 3)
         self.cells[self.data_cells['pressure_current']].setText(formatted)
+        self._next_log_event_time = event_time
+        self._suppress_next_log = not log_event
         if value is not None:
             self.addLog(f"O2压力当前数据更新: {formatted} KPa")
         # 添加数据到图表（包括None值）
         if hasattr(self, 'chart_widget'):
             self.chart_widget.addDataPoint("pressure_current", value)
 
-    def updatePressureSpan(self, value):
+    def updatePressureSpan(self, value, event_time=None, log_event=True):
         """更新O2压力Span数值"""
         formatted = self.format_value(value, 3)
         self.cells[self.data_cells['pressure_span']].setText(formatted)
+        self._next_log_event_time = event_time
+        self._suppress_next_log = not log_event
         if value is not None:
             self.addLog(f"O2压力Span数值更新: {formatted} KPa")
 
-    def updateZeroStartTime(self, time_str=None):
+    def updateZeroStartTime(self, time_str=None, event_time=None, log_event=True):
         """更新零点标定开始时间"""
         if time_str is None:
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.cells[self.data_cells['zero_start_time']].setText(time_str)
+        self._next_log_event_time = event_time or time_str
+        self._suppress_next_log = not log_event
         self.addLog("零点标定开始", "CALIBRATION")
 
-    def updateZeroEndTime(self, time_str=None):
+    def updateZeroEndTime(self, time_str=None, event_time=None, log_event=True):
         """更新零点标定结束时间"""
         if time_str is None:
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.cells[self.data_cells['zero_end_time']].setText(time_str)
+        self._next_log_event_time = event_time or time_str
+        self._suppress_next_log = not log_event
         self.addLog("零点标定结束", "CALIBRATION")
 
-    def updateSpanStartTime(self, time_str=None):
+    def updateSpanStartTime(self, time_str=None, event_time=None, log_event=True):
         """更新量程标定开始时间"""
         if time_str is None:
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.cells[self.data_cells['span_start_time']].setText(time_str)
+        self._next_log_event_time = event_time or time_str
+        self._suppress_next_log = not log_event
         self.addLog("量程标定开始", "CALIBRATION")
 
-    def updateSpanEndTime(self, time_str=None):
+    def updateSpanEndTime(self, time_str=None, event_time=None, log_event=True):
         """更新量程标定结束时间"""
         if time_str is None:
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.cells[self.data_cells['span_end_time']].setText(time_str)
+        self._next_log_event_time = event_time or time_str
+        self._suppress_next_log = not log_event
         self.addLog("量程标定结束", "CALIBRATION")
 
     def updateAllData(self, data_dict):
