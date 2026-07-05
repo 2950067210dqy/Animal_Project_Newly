@@ -66,14 +66,27 @@ class CO2CalibrationHandler:
 
             coefficient_items = []
             for channel in self.channels:
+                if channel == "REF":
+                    coefficient_items.append(
+                        {
+                            "channel": "REF",
+                            "coef_k": 1.0,
+                            "coef_b": 0.0,
+                        }
+                    )
+                    continue
+
                 channel_df = pd.DataFrame(self.data[channel][: self.target_points])
                 channel_df["co2_std"] = channel_df["co2_std"].replace(0, np.nan).ffill().bfill()
 
+                sample_count = min(len(channel_df), len(ref_df))
                 model = LinearRegression()
-                model.fit(channel_df[["co2_std"]].values, ref_df["co2_smooth"].values)
+                x_values = channel_df[["co2_std"]].iloc[:sample_count].values
+                y_values = ref_df["co2_smooth"].iloc[:sample_count].values
+                model.fit(x_values, y_values)
 
                 coef_k = max(0.95, min(1.05, float(model.coef_[0])))
-                coef_b = float(model.intercept_)
+                coef_b = float(y_values.mean() - coef_k * x_values.mean())
                 coefficient_items.append(
                     {
                         "channel": channel,

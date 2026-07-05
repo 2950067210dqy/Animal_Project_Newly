@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -45,18 +46,26 @@ class CO2RealtimeCompensator:
         self.reload_config()
 
         if channel not in self.channels:
-            return 0.0
+            return float("nan")
 
         value = float(co2_std)
         if pd.isna(value) or value < 0 or value > 10000:
             if self.last_valid[channel] is None:
-                return 0.0
+                return float("nan")
             value = self.last_valid[channel]
         else:
             self.last_valid[channel] = value
 
-        coef = self.coefs.get(channel, {"coef_k": 1.0, "coef_b": 0.0})
+        if channel == "REF":
+            return round(value, 2)
+
+        coef = self.coefs.get(channel)
+        if coef is None:
+            return float("nan")
+
         compensated = coef["coef_k"] * value + coef["coef_b"]
+        if math.isnan(compensated):
+            return float("nan")
         if compensated < 0:
             compensated = 0.0
         return round(compensated, 2)
