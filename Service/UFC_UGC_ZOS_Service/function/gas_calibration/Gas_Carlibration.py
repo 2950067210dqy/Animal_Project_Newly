@@ -605,9 +605,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
             reject("未配置笼子列表")
             return
 
-        active_channels = [cage - 1 for cage in mouse_cages_inc]
-        if 8 not in active_channels:
-            active_channels.append(8)
+        active_channels = [8]
 
         total_channels = len(active_channels)
 
@@ -619,7 +617,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
         start_time = time.time()
 
         max_timeout = float(config.get('calibration_max_timeout', 300))
-        stable_duration = float(config.get('calibration_stable_duration', 15))
+        stable_duration = float(config.get('reference_channel_stable_duration', 30))
         sample_interval = float(config.get('calibration_sample_interval', 1))
         threshold = float(config.get('zero_calibration_carbon_threshold', 5))
         min_range = float(config.get('zero_calibration_co2_min', 0))
@@ -776,9 +774,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
             reject("未配置笼子列表")
             return
 
-        active_channels = [cage - 1 for cage in mouse_cages_inc]
-        if 8 not in active_channels:
-            active_channels.append(8)
+        active_channels = [8]
 
         total_channels = len(active_channels)
 
@@ -790,7 +786,7 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
         start_time = time.time()
 
         max_timeout = float(config.get('calibration_max_timeout', 300))
-        stable_duration = float(config.get('calibration_stable_duration', 15))
+        stable_duration = float(config.get('reference_channel_stable_duration', 30))
         sample_interval = float(config.get('calibration_sample_interval', 1))
         threshold = float(config.get('zero_calibration_oxygen_threshold', 0.1))
 
@@ -1586,9 +1582,7 @@ def _patched_zero_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, po
         reject("未配置鼠笼列表")
         return
 
-    active_channels = [cage - 1 for cage in mouse_cages_inc]
-    if 8 not in active_channels:
-        active_channels.append(8)
+    active_channels = [8]
 
     total_channels = len(active_channels)
     self.update_status_main_signal_gui_update.send(
@@ -1598,11 +1592,9 @@ def _patched_zero_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, po
     config = global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']
     start_time = time.time()
     max_timeout = float(config.get('calibration_max_timeout', 300))
-    stable_duration = float(config.get('calibration_stable_duration', 15))
+    stable_duration = float(config.get('reference_channel_stable_duration', 30))
     sample_interval = float(config.get('calibration_sample_interval', 1))
     threshold = float(config.get('zero_calibration_carbon_threshold', 5))
-    min_range = float(config.get('zero_calibration_co2_min', 0))
-    max_range = float(config.get('zero_calibration_co2_max', 25))
 
     channels_data = {ch: [] for ch in active_channels}
     channels_stable_start = {ch: None for ch in active_channels}
@@ -1672,13 +1664,6 @@ def _patched_zero_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, po
                 oxygen_pressure_value=zos_pressure_value
             )
 
-            if not (min_range <= compensated_carbon_value <= max_range):
-                self.update_status_main_signal_gui_update.send(
-                    f"{time_util.get_format_from_time(time.time())} | 零点标定 {cage_name}补偿后CO2超出范围[{min_range},{max_range}]ppm，当前值={compensated_carbon_value}ppm，原始值={now_carbon_value}ppm，ZOS气压={zos_pressure_value}",
-                    title=self.title)
-                channels_stable_start[channel] = None
-                channels_data[channel] = []
-                continue
 
             channels_data[channel].append({'time': current_time, 'value': compensated_carbon_value})
             channels_data[channel] = [
@@ -1759,9 +1744,7 @@ def _patched_range_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, p
         reject("未配置鼠笼列表")
         return
 
-    active_channels = [cage - 1 for cage in mouse_cages_inc]
-    if 8 not in active_channels:
-        active_channels.append(8)
+    active_channels = [8]
 
     total_channels = len(active_channels)
     self.update_status_main_signal_gui_update.send(
@@ -1771,7 +1754,7 @@ def _patched_range_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, p
     config = global_setting.get_setting("UFC_UGC_ZOS_config")['Calibration']
     start_time = time.time()
     max_timeout = float(config.get('calibration_max_timeout', 300))
-    stable_duration = float(config.get('calibration_stable_duration', 15))
+    stable_duration = float(config.get('reference_channel_stable_duration', 30))
     sample_interval = float(config.get('calibration_sample_interval', 1))
     threshold = float(config.get('span_calibration_carbon_threshold', 15))
     tolerance = float(config.get('span_calibration_co2_tolerance', 25))
@@ -1786,8 +1769,6 @@ def _patched_range_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, p
                 float(config.get('standard_co2_concentration', config.get('standard_gas_concentration', 5300)))
             ))
 
-    min_range = target_co2 - tolerance
-    max_range = target_co2 + tolerance
 
     channels_data = {ch: [] for ch in active_channels}
     channels_stable_start = {ch: None for ch in active_channels}
@@ -1865,13 +1846,6 @@ def _patched_range_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, p
                 oxygen_pressure_value=zos_pressure_value
             )
 
-            if not (min_range <= compensated_carbon_value <= max_range):
-                self.update_status_main_signal_gui_update.send(
-                    f"{time_util.get_format_from_time(time.time())} | SPan量程标定 {cage_name}补偿后CO2超出范围[{min_range},{max_range}]ppm，当前值={compensated_carbon_value}ppm，原始值={now_carbon_value}ppm，ZOS气压={zos_pressure_value}",
-                    title=self.title)
-                channels_stable_start[channel] = None
-                channels_data[channel] = []
-                continue
 
             channels_data[channel].append({'time': current_time, 'value': compensated_carbon_value})
             channels_data[channel] = [

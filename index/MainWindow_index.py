@@ -1392,10 +1392,10 @@ class MainWindow_Index(ThemedWindow):
                 title="开始实验", message="正在启动气路...")
 
         startup_calibration_mode = global_setting.get_setting('startup_calibration_mode', None)
-        if startup_calibration_mode not in {"none", "air", "full"}:
+        if startup_calibration_mode not in {"none", "air", "air_co2", "full"}:
             startup_calibration_mode = "full" if global_setting.get_setting('is_auto_calibration', False) else "none"
 
-        if startup_calibration_mode == "air":
+        if startup_calibration_mode in {"air", "air_co2"}:
             calibration_config = global_setting.get_setting('UFC_UGC_ZOS_config', {}).get('Calibration', {})
             try:
                 start_wait_times += max(float(calibration_config.get('startup_air_calibration_wait_time', 1800)), 0)
@@ -1405,7 +1405,7 @@ class MainWindow_Index(ThemedWindow):
                 self.start_dialog.countdown_seconds = start_wait_times
                 self.start_dialog.current_seconds = start_wait_times
 
-        if startup_calibration_mode in {"air", "full"}:
+        if startup_calibration_mode in {"air", "air_co2", "full"}:
             self.init__calibration_windows()
             self.start_dialog.insert_calibration_dialog(self.calibration_details_windows)
 
@@ -1999,3 +1999,61 @@ class MainWindow_Index(ThemedWindow):
             ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='set_experiment_basic_config',
                             data={"is_auto_calibration": is_checked},
                             time=time_util.get_format_from_time(time.time())))
+
+
+def _patched_calibration_gas_state_change(self, state=None):
+    current_mode = global_setting.get_setting("startup_calibration_mode", None)
+    if current_mode not in {"none", "air", "air_co2", "full"}:
+        current_mode = "full" if global_setting.get_setting("is_auto_calibration", False) else "none"
+
+    msg_box = QMessageBox(self)
+    msg_box.setIcon(QMessageBox.Icon.Question)
+    msg_box.setWindowTitle("启动前校准模式")
+    msg_box.setText("请选择开始实验前的校准模式：")
+
+    air_button = msg_box.addButton("Air空气校准O2后开启实验", QMessageBox.ButtonRole.ActionRole)
+    air_co2_button = msg_box.addButton("Air空气校准CO2后开启实验", QMessageBox.ButtonRole.ActionRole)
+    full_button = msg_box.addButton("调零+调span后开启实验", QMessageBox.ButtonRole.ActionRole)
+    msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+    msg_box.setDefaultButton({
+        "air": air_button,
+        "air_co2": air_co2_button,
+        "full": full_button,
+    }.get(current_mode, air_button))
+    msg_box.exec()
+
+    clicked_button = msg_box.clickedButton()
+    mode = None
+    if clicked_button == air_button:
+        mode = "air"
+    elif clicked_button == air_co2_button:
+        mode = "air_co2"
+    elif clicked_button == full_button:
+        mode = "full"
+
+    if mode is None:
+        return
+
+    global_setting.set_setting("startup_calibration_mode", mode)
+    global_setting.set_setting("is_auto_calibration", mode != "none")
+    global_setting.set_setting("device_config_calibration_selected", True)
+
+    send_message_queue = global_setting.get_setting("send_message_queue")
+    if send_message_queue is not None:
+        send_message_queue.put(
+            ObjectQueueItem(
+                origin='MainWindow_Index',
+                to='main_monitor_data',
+                title='set_experiment_basic_config',
+                data={
+                    "startup_calibration_mode": mode,
+                    "is_auto_calibration": mode != "none",
+                },
+                time=time_util.get_format_from_time(time.time()),
+            )
+        )
+
+    self.calibration_selection_changed_signal.emit(True, mode)
+
+
+MainWindow_Index.calibration_gas_state_change = _patched_calibration_gas_state_change

@@ -20,6 +20,7 @@ class GapSystem_Running_Type(Enum):
     RANGE_CALIBRATION = 11
     UFC_STATE_CHECK =12
     STARTUP_AIR_CALIBRATION = 13
+    STARTUP_CO2_AIR_CALIBRATION = 14
     def __lt__(self, other):
         if other is None:
             return False

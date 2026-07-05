@@ -849,19 +849,19 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
     @staticmethod
     def normalize_startup_calibration_mode(mode):
-        if mode in {"none", "air", "full"}:
+        if mode in {"none", "air", "air_co2", "full"}:
             return mode
         return "none"
 
     def get_startup_calibration_mode(self):
         mode = global_setting.get_setting("startup_calibration_mode", None)
-        if mode not in {"none", "air", "full"}:
+        if mode not in {"none", "air", "air_co2", "full"}:
             mode = "full" if global_setting.get_setting("is_auto_calibration", False) else "none"
         return mode
 
     def set_startup_calibration_mode(self, mode, sync_checkbox=True, sync_toolbar=True, notify_monitor=True):
         mode = self.normalize_startup_calibration_mode(mode)
-        is_checked = mode == "full"
+        is_checked = mode != "none"
 
         if sync_checkbox and self.calibration_checkbox is not None:
             self.calibration_checkbox.blockSignals(True)
@@ -1497,7 +1497,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         if event.type() == QEvent.Type.ActivationChange:
             if self.isActiveWindow():
                 if self.calibration_checkbox is not None:
-                    self.calibration_checkbox.setChecked(self.get_startup_calibration_mode() == "full")
+                    self.calibration_checkbox.setChecked(self.get_startup_calibration_mode() != "none")
                 self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
                 self.update_calibration_button_text()
                 self.update_device_config_button_state()
@@ -1509,7 +1509,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         logger.warning("tab1——show")
 
         if self.calibration_checkbox is not None:
-            self.calibration_checkbox.setChecked(self.get_startup_calibration_mode() == "full")
+            self.calibration_checkbox.setChecked(self.get_startup_calibration_mode() != "none")
         self.calibration_selected = global_setting.get_setting("device_config_calibration_selected", False)
         self.update_calibration_button_text()
         self.update_device_config_button_state()
@@ -2416,7 +2416,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         #     return
 
         startup_calibration_mode = self.get_startup_calibration_mode()
-        is_auto_calibration = startup_calibration_mode == "full"
+        is_auto_calibration = startup_calibration_mode != "none"
         reply = QMessageBox.question(self, '确定设备配置',
                                      "确定该设备配置？",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

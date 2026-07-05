@@ -20,10 +20,10 @@ def _read_test_bool(config: dict, section: str, key: str, default: bool = False)
 
 def _init_startup_calibration_mode():
     mode = global_setting.get_setting("startup_calibration_mode", None)
-    if mode not in {"none", "air", "full"}:
+    if mode not in {"none", "air", "air_co2", "full"}:
         mode = "none"
     global_setting.set_setting("startup_calibration_mode", mode)
-    global_setting.set_setting("is_auto_calibration", mode == "full")
+    global_setting.set_setting("is_auto_calibration", mode != "none")
 
 
 def load_global_setting():

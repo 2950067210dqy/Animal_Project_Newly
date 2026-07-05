@@ -211,20 +211,20 @@ class Main_experiment_calibration(BaseModule):
 
     @staticmethod
     def normalize_startup_calibration_mode(mode):
-        if mode in {"none", "air", "full"}:
+        if mode in {"none", "air", "air_co2", "full"}:
             return mode
         return "none"
 
     def get_startup_calibration_mode(self):
         mode = global_setting.get_setting("startup_calibration_mode", None)
-        if mode not in {"none", "air", "full"}:
+        if mode not in {"none", "air", "air_co2", "full"}:
             mode = "full" if global_setting.get_setting("is_auto_calibration", False) else "none"
         return mode
 
     def sync_startup_calibration_mode(self, mode, selection_made=True):
         mode = self.normalize_startup_calibration_mode(mode)
         global_setting.set_setting("startup_calibration_mode", mode)
-        global_setting.set_setting("is_auto_calibration", mode == "full")
+        global_setting.set_setting("is_auto_calibration", mode != "none")
         global_setting.set_setting("device_config_calibration_selected", selection_made)
 
         send_message_queue = global_setting.get_setting("send_message_queue")
@@ -236,7 +236,7 @@ class Main_experiment_calibration(BaseModule):
                     title='set_experiment_basic_config',
                     data={
                         "startup_calibration_mode": mode,
-                        "is_auto_calibration": mode == "full"
+                        "is_auto_calibration": mode != "none"
                     },
                     time=time_util.get_format_from_time(time.time())
                 )
@@ -275,11 +275,13 @@ class Main_experiment_calibration(BaseModule):
         msg_box.setWindowTitle("启动前校准模式")
         msg_box.setText("请选择确认设备配置后、开始实验前的校准模式：")
 
-        air_button = msg_box.addButton("Air 空气校准后开启实验", QMessageBox.ButtonRole.ActionRole)
+        air_button = msg_box.addButton("Air空气校准O2后开启实验", QMessageBox.ButtonRole.ActionRole)
+        air_co2_button = msg_box.addButton("Air空气校准CO2后开启实验", QMessageBox.ButtonRole.ActionRole)
         full_button = msg_box.addButton("调零+调span后开启实验", QMessageBox.ButtonRole.ActionRole)
         msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
         msg_box.setDefaultButton({
             "air": air_button,
+            "air_co2": air_co2_button,
             "full": full_button
         }.get(current_mode, air_button))
         msg_box.exec()
@@ -287,6 +289,8 @@ class Main_experiment_calibration(BaseModule):
         clicked_button = msg_box.clickedButton()
         if clicked_button == air_button:
             mode = "air"
+        elif clicked_button == air_co2_button:
+            mode = "air_co2"
         elif clicked_button == full_button:
             mode = "full"
         else:

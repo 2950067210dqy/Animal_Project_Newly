@@ -1,0 +1,47 @@
+{
+  "version": "2.0",
+  "sensor_model": "GS5T",
+  "calibration_info": {
+    "calibration_date": "2026-07-04 15:30:00",
+    "calibration_points": 150,
+    "method": "Air_Consistency_Alignment_SingleVar"
+  },
+  "channels": {
+    "REF": {
+      "coef_k": 1.0,
+      "coef_b": 0.0
+    },
+    "M1": {
+      "coef_k": 1.0,
+      "coef_b": 0.0
+    },
+    "M2": {
+      "coef_k": 1.0,
+      "coef_b": 0.0
+    },
+    "M3": {
+      "coef_k": 1.0,
+      "coef_b": 0.0
+    },
+    "M4": {
+      "coef_k": 1.0,
+      "coef_b": 0.0
+    },
+    "M5": {
+      "coef_k": 1.0,
+      "coef_b": 0.0
+    },
+    "M6": {
+      "coef_k": 1.0,
+      "coef_b": 0.0
+    },
+    "M7": {
+      "coef_k": 1.0,
+      "coef_b": 0.0
+    },
+    "M8": {
+      "coef_k": 1.0,
+      "coef_b": 0.0
+    }
+  }
+}
