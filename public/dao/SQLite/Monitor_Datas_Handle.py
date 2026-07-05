@@ -145,6 +145,10 @@ class Monitor_Datas_Handle():
                 gids=gids,
                 reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
             )
+            self._migrate_co2_display_tables(
+                gids=gids,
+                reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+            )
             # 实例化每轮次数据表
             for data_type in Modbus_Slave_Type.Epochs.value:
                 # 添加cage_0 给参考气存储数据 这里的-1代表总轮次表，表名为Epoch_data_all 不带后面的cage_-1
@@ -1293,3 +1297,38 @@ class Monitor_Datas_Handle():
     @create_time 2026-1-5
     @end
     """
+
+
+def _monitor_datas_handle_migrate_co2_display_tables(self, gids, reference_cage_number):
+    for cage_number in [reference_cage_number] + gids:
+        self._ensure_column_and_meta(
+            table_name=f"UGC_monitor_data_cage_{cage_number}",
+            column_name="flow_num_1",
+            column_struct=" TEXT ",
+            description="传感器状态"
+        )
+
+    epoch_columns = [
+        ("UGC_flow_num_1", " TEXT ", "传感器状态"),
+        ("UGC_air_pressure", " REAL ", "拟合后CO2"),
+        ("UGC_CO2_origin_num", " REAL ", "补偿前CO2"),
+        ("UGC_CO2_num", " REAL ", "气压补偿后CO2"),
+    ]
+
+    for cage_number in [-1, reference_cage_number] + gids:
+        table_name = "Epoch_data_all" if cage_number == -1 else f"Epoch_data_cage_{cage_number}"
+        for column_name, column_struct, description in epoch_columns:
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name=column_name,
+                column_struct=column_struct,
+                description=description
+            )
+
+
+Monitor_Datas_Handle.ZERO_FILL_MONITOR_DESCS.update({
+    "补偿前CO2",
+    "气压补偿后CO2",
+    "拟合后CO2",
+})
+Monitor_Datas_Handle._migrate_co2_display_tables = _monitor_datas_handle_migrate_co2_display_tables

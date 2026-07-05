@@ -16,6 +16,7 @@ from PyQt6.QtCore import QThread, QTimer, QCoreApplication
 from loguru import logger
 
 
+from Service.UFC_UGC_ZOS_Service.function.co2_compensation import CO2RealtimeCompensator
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 
 from public.config_class import global_load
@@ -61,6 +62,14 @@ global_setting.set_setting("wait_ZOS_run_finish_event",wait_ZOS_run_finish_event
 
 #使用端口
 port_use=None
+_co2_realtime_compensator = CO2RealtimeCompensator()
+
+
+def _channel_number_to_co2_channel_name(mouse_cage_number):
+    reference_cage_number = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+    if int(mouse_cage_number) == reference_cage_number:
+        return "REF"
+    return f"M{int(mouse_cage_number)}"
 
 # 过滤日志
 #logger = logger.bind(category="deep_camera_logger")
@@ -1116,11 +1125,8 @@ def barrier_action():
                             'SpanCalibration_data__carbon_calibration_span_value') is not None else None})
     store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') if results.get(
                             f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') is not None else None   })
-    store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
+    store_Datas.append({'desc': '传感器状态', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
                             f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1')  is not None else None })
-    store_Datas.append({'desc': '气压(KPa)',
-                        'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__air_pressure') if results.get(
-                            f'UGC_monitor_data_cage_{mouse_cage_number}__air_pressure') is not None else None})
     co2_origin_num = results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
         f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None
     gas_pressure = results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') if results.get(
@@ -1132,9 +1138,18 @@ def barrier_action():
     if co2_origin_num is not None and gas_pressure is not None and gas_pressure != 0:
         co2_num = round(co2_origin_num * standard_atmospheric_pressure / gas_pressure, 4)
 
+    fitted_co2_num = None
+    if co2_num is not None:
+        fitted_co2_ppm = _co2_realtime_compensator.compensate(
+            _channel_number_to_co2_channel_name(mouse_cage_number),
+            float(co2_num) * 10000
+        )
+        fitted_co2_num = round(float(fitted_co2_ppm) / 10000, 4)
+
+    store_Datas.append({'desc': '拟合后CO2', 'value': fitted_co2_num})
     store_Datas.append(
-        {'desc': '补偿前CO2(%)', 'value': co2_origin_num})
-    store_Datas.append({'desc': 'CO2(%)', 'value': co2_num})
+        {'desc': '补偿前CO2', 'value': co2_origin_num})
+    store_Datas.append({'desc': '气压补偿后CO2', 'value': co2_num})
     store_Datas.append({'desc': '氧分压(hPa)',
                         'value': results.get(
                             f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_partial_pressure') if results.get(
@@ -1280,6 +1295,73 @@ def barrier_action():
     global_setting.set_setting("start_time_messages_sent_epoch_for_running", end_time)
     global_setting.set_setting("messages_sent_epoch_for_running",
                                0)
+
+
+_raw_store_data_with_result = store_data_with_result
+
+
+def _patch_epoch_store_payload(return_data_struct):
+    if return_data_struct.get("module_name") != "Epoch":
+        return return_data_struct
+
+    payload = copy.deepcopy(return_data_struct)
+    data = payload.get("data")
+    if not isinstance(data, list) or len(data) < 12:
+        return payload
+
+    ufc_flow_index = None
+    oxygen_partial_index = None
+    for index, item in enumerate(data):
+        desc = str(item.get("desc", ""))
+        if ufc_flow_index is None and "sccm)" in desc and "参考" not in desc:
+            ufc_flow_index = index
+        if ufc_flow_index is not None and index > ufc_flow_index and "hPa)" in desc:
+            oxygen_partial_index = index
+            break
+
+    if ufc_flow_index is None or oxygen_partial_index is None or oxygen_partial_index <= ufc_flow_index:
+        return payload
+
+    ugc_block = data[ufc_flow_index + 1:oxygen_partial_index]
+    status_value = None
+    numeric_values = []
+    for item in ugc_block:
+        value = item.get("value")
+        if isinstance(value, str) and status_value is None:
+            status_value = value
+        elif isinstance(value, (int, float)):
+            numeric_values.append(value)
+
+    raw_co2 = numeric_values[-2] if len(numeric_values) >= 2 else None
+    pressure_compensated_co2 = numeric_values[-1] if len(numeric_values) >= 1 else None
+
+    channel_number = payload.get("mouse_cage_number")
+    if channel_number in (None, -1) and data:
+        channel_number = data[0].get("value")
+
+    fitted_co2 = None
+    if pressure_compensated_co2 is not None and channel_number is not None:
+        fitted_ppm = _co2_realtime_compensator.compensate(
+            _channel_number_to_co2_channel_name(channel_number),
+            float(pressure_compensated_co2) * 10000
+        )
+        fitted_co2 = round(float(fitted_ppm) / 10000, 4)
+
+    rebuilt_data = list(data[:ufc_flow_index + 1])
+    rebuilt_data.extend([
+        {"desc": "传感器状态", "value": status_value},
+        {"desc": "拟合后CO2", "value": fitted_co2},
+        {"desc": "补偿前CO2", "value": raw_co2},
+        {"desc": "气压补偿后CO2", "value": pressure_compensated_co2},
+    ])
+    rebuilt_data.extend(data[oxygen_partial_index:])
+    payload["data"] = rebuilt_data
+    return payload
+
+
+def store_data_with_result(return_data_struct, need_result=False, timeout=None):
+    payload = _patch_epoch_store_payload(return_data_struct)
+    return _raw_store_data_with_result(payload, need_result=need_result, timeout=timeout)
 
 
 # def after_run_of_ufc_ugc_zos_barrier_action():
