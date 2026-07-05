@@ -2126,6 +2126,14 @@ class Modbus_Response_UGC(Modbus_Response_Parents):
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
         data = self.response_struct['data']
+        sensor_status = None
+        if len(data) > 1:
+            if data[1] == 1:
+                sensor_status = "正常"
+            elif data[1] == 0:
+                sensor_status = "故障"
+        if sensor_status is not None:
+            return_datas.append({"desc": "传感器状态", "value": sensor_status})
 
         # 气压：data[7][8]，单位/10 -> KPa
         pressure_raw = "".join(self.int_to_8bit_binary(num_list=[data[7], data[8]]))
