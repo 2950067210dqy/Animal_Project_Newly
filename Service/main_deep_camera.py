@@ -35,6 +35,26 @@ def _deep_camera_config():
     return _camera_config()["DEEP_CAMERA"]
 
 
+def _deep_delete_interval_seconds():
+    deep_config = _deep_camera_config()
+    return float(
+        deep_config.get(
+            "delete_interval_seconds",
+            _camera_config()["DELETE"]["interval_seconds"],
+        )
+    )
+
+
+def _deep_delete_delay():
+    deep_config = _deep_camera_config()
+    return float(
+        deep_config.get(
+            "delete_delay",
+            _camera_config()["DELETE"]["delay"],
+        )
+    )
+
+
 def _storage_root():
     config = _camera_config()
     return config["STORAGE"]["fold_path"] + config["DEEP_CAMERA"]["path"]
@@ -178,13 +198,12 @@ class Delete_file(MyQThread):
             with delete_process_lock:
                 current_time = time.time()
                 elapsed = current_time - self.start_time
-                delete_config = _camera_config()["DELETE"]
-                if elapsed >= float(delete_config["interval_seconds"]):
+                if elapsed >= _deep_delete_interval_seconds():
                     self.get_and_delete_files()
                     logger.info("deep_camera delete files finished")
                     self.start_time = time.time()
 
-            time.sleep(float(_camera_config()["DELETE"]["delay"]))
+            time.sleep(_deep_delete_delay())
         except Exception as e:
             logger.error(f"deep_camera delete thread failed: {e} | {traceback.format_exc()}")
 
