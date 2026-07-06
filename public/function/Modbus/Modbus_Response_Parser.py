@@ -411,6 +411,17 @@ class Modbus_Response_Parents():
             binary_str = bin(num & 0xFF)[2:].zfill(8)
             binary_str_list.append(binary_str)
         return binary_str_list
+
+    def parse_signed_32bit_value(self, num_list, scale=1):
+        """
+        将4个字节按32位有符号整数解析，并按比例缩放。
+        """
+        if len(num_list) != 4:
+            raise ValueError(f"32位有符号整数解析需要4个字节，当前为{len(num_list)}个")
+        bit_str = "".join(self.int_to_8bit_binary(num_list=num_list))
+        value = self.get_signed_int(bit_str)
+        return round(value / scale, 2) if scale else value
+
     def ieee754_single_to_float(self,binary_str):
 
         if len(binary_str) != 32:
@@ -1021,10 +1032,15 @@ class Modbus_Response_DWM(Modbus_Response_Parents):
                 case 3:
                     return_datas.append({
                         "desc": port_types[j],
-                        'value': round(int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
-                                      self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2) / 100,
-                                       2)
+                        'value': self.parse_signed_32bit_value(
+                            num_list=[
+                                self.response_struct['data'][i - 3],
+                                self.response_struct['data'][i - 2],
+                                self.response_struct['data'][i - 1],
+                                self.response_struct['data'][i],
+                            ],
+                            scale=100
+                        )
                     }
                     )
                     j += 1
@@ -1224,10 +1240,15 @@ class Modbus_Response_EM(Modbus_Response_Parents):
                 case 3:
                     return_datas.append({
                         "desc": port_types[j],
-                        'value': round(int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
-                                      self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2) / 100,
-                                       2)
+                        'value': self.parse_signed_32bit_value(
+                            num_list=[
+                                self.response_struct['data'][i - 3],
+                                self.response_struct['data'][i - 2],
+                                self.response_struct['data'][i - 1],
+                                self.response_struct['data'][i],
+                            ],
+                            scale=100
+                        )
                     }
                     )
                     j += 1
@@ -1434,10 +1455,15 @@ class Modbus_Response_WM(Modbus_Response_Parents):
                 case 3:
                     return_datas.append({
                         "desc": port_types[j],
-                        'value': round(int("".join(self.int_to_8bit_binary(
-                            num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
-                                      self.response_struct['data'][i - 1], self.response_struct['data'][i]])), 2) / 100,
-                                       2)
+                        'value': self.parse_signed_32bit_value(
+                            num_list=[
+                                self.response_struct['data'][i - 3],
+                                self.response_struct['data'][i - 2],
+                                self.response_struct['data'][i - 1],
+                                self.response_struct['data'][i],
+                            ],
+                            scale=100
+                        )
                     }
                     )
                     j += 1
