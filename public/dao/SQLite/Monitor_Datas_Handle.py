@@ -1,5 +1,6 @@
 import os
 import time
+import math
 from datetime import datetime
 from typing import Dict, Any, List
 
@@ -32,6 +33,13 @@ class Monitor_Datas_Handle():
         "ZOS温度2测量值(℃)",
         "ZOS湿度测量值(%RH)",
     }
+    ENM_CARRY_FORWARD_COLUMNS = {
+        "temperature_num",
+        "humidity_num",
+        "noise_num",
+        "barometer_num",
+        "running_wheel_num",
+    }
 
     def __init__(self,db_name=None):
         # 实验设置
@@ -39,6 +47,7 @@ class Monitor_Datas_Handle():
         self.experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
         self.sqlite_manager: SQLiteManager = None
         self.zero_fill_cache = {}
+        self.last_valid_value_cache = {}
         self.init_construct(db_name)
 
         self.conn = None  # 为检测结果处理准备连接
@@ -422,16 +431,39 @@ class Monitor_Datas_Handle():
         if value is None or isinstance(value, bool):
             return None
         if isinstance(value, (int, float)):
-            return float(value)
+            numeric_value = float(value)
+            if math.isnan(numeric_value) or math.isinf(numeric_value):
+                return None
+            return numeric_value
         if isinstance(value, str):
             value = value.strip()
             if value == "":
                 return None
             try:
-                return float(value)
+                numeric_value = float(value)
+                if math.isnan(numeric_value) or math.isinf(numeric_value):
+                    return None
+                return numeric_value
             except ValueError:
                 return None
         return None
+
+    def _query_latest_valid_value(self, table_name, column_name):
+        if not column_name:
+            return None
+
+        quoted_table_name = self.sqlite_manager.quote_ident(table_name)
+        quoted_column_name = self.sqlite_manager.quote_ident(column_name)
+        sql = (
+            f"SELECT {quoted_column_name} FROM {quoted_table_name} "
+            f"WHERE {quoted_column_name} IS NOT NULL "
+            f"ORDER BY time DESC LIMIT 1"
+        )
+
+        with self.sqlite_manager.execute_transaction(auto_commit=True) as cursor:
+            cursor.execute(sql)
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     def _query_latest_non_zero_value(self, table_name, column_name):
         if not column_name:
@@ -478,6 +510,28 @@ class Monitor_Datas_Handle():
             else:
                 self.zero_fill_cache[cache_key] = data_item.get('value')
 
+    def _fill_enm_invalid_values(self, table_name, data_store):
+        for column_name in self.ENM_CARRY_FORWARD_COLUMNS:
+            if column_name not in data_store:
+                continue
+
+            current_value = data_store.get(column_name)
+            numeric_value = self._coerce_numeric_value(current_value)
+            cache_key = (table_name, column_name)
+
+            if numeric_value is None:
+                previous_value = self.last_valid_value_cache.get(cache_key)
+                if previous_value is None:
+                    previous_value = self._query_latest_valid_value(table_name, column_name)
+                    if previous_value is not None:
+                        self.last_valid_value_cache[cache_key] = previous_value
+
+                if previous_value is not None:
+                    logger.debug(f"{table_name} | {column_name} 检测到无效值，回填上一条有效值: {previous_value}")
+                    data_store[column_name] = previous_value
+            else:
+                self.last_valid_value_cache[cache_key] = current_value
+
     def insert_data(self, data):
         """
 
@@ -505,6 +559,8 @@ class Monitor_Datas_Handle():
                 if data.get('table_name') == 'monitor_data':
                     self._fill_monitor_zero_values(table_name, data['data'], columns_all_except_id)
                 data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
+                if table_name.startswith("ENM_monitor_data_cage_"):
+                    self._fill_enm_invalid_values(table_name, data_store)
                 data_store['time'] = data['time']
                 # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
                 result = self.sqlite_manager.insert(table_name, **data_store)
@@ -526,6 +582,8 @@ class Monitor_Datas_Handle():
                 if data.get('table_name') == 'monitor_data':
                     self._fill_monitor_zero_values(table_name, data['data'], columns_all_except_id)
                 data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
+                if table_name.startswith("ENM_monitor_data_cage_"):
+                    self._fill_enm_invalid_values(table_name, data_store)
                 data_store['time'] = data['time']
                 # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
                 result = self.sqlite_manager.insert(table_name, **data_store)
