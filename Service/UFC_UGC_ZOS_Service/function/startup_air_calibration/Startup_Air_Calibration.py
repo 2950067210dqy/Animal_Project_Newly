@@ -35,7 +35,8 @@ class Startup_Air_Calibration:
             "carbon_value": None,
             "oxygen_pressure_value": None,
         }
-        self.calibration_handler = None
+        self.o2_calibration_handler = None
+        self.co2_calibration_handler = None
         self.previous_valid_snapshots = {}
         self.data_handle = None
 
@@ -56,9 +57,11 @@ class Startup_Air_Calibration:
                 title=self.title,
             )
 
-    def push_calibration_values_to_ui(self, oxygen_value=None, oxygen_pressure_value=None):
+    def push_calibration_values_to_ui(self, oxygen_value=None, carbon_value=None, oxygen_pressure_value=None):
         if oxygen_value is not None:
             self.current_calibration_values["oxygen_value"] = oxygen_value
+        if carbon_value is not None:
+            self.current_calibration_values["carbon_value"] = carbon_value
         if oxygen_pressure_value is not None:
             self.current_calibration_values["oxygen_pressure_value"] = oxygen_pressure_value
 
@@ -160,6 +163,13 @@ class Startup_Air_Calibration:
         return value
 
     @staticmethod
+    def _normalize_co2_to_ppm(value):
+        value = float(value)
+        if value < 100:
+            value = value * 10000
+        return value
+
+    @staticmethod
     def _extract_data_value(data_items, keyword):
         for item in data_items or []:
             desc = str(item.get("desc", ""))
@@ -206,15 +216,59 @@ class Startup_Air_Calibration:
             "env_rh": env_data.get("humidity_num"),
         }
 
-    def _build_calibration_handler(self):
+    def _build_calibration_handlers(self):
         try:
             from Service.UFC_UGC_ZOS_Service.function.o2_compensation.calibration_handler import CalibrationHandler
-        except Exception as e:
-            raise RuntimeError(f"加载 CalibrationHandler 失败: {e}")
+            from Service.UFC_UGC_ZOS_Service.function.co2_compensation.co2_calibration_handler import (
+                CO2CalibrationHandler,
+            )
+        except Exception as exc:
+            raise RuntimeError(f"加载 Air 校准处理器失败: {exc}")
 
-        self.calibration_handler = CalibrationHandler(target_points=self._normalize_target_points())
-        self.calibration_handler.start_new_calibration()
+        target_points = self._normalize_target_points()
+        self.o2_calibration_handler = CalibrationHandler(target_points=target_points)
+        self.co2_calibration_handler = CO2CalibrationHandler(target_points=target_points)
+        self.o2_calibration_handler.start_new_calibration()
+        self.co2_calibration_handler.start_new_calibration()
         self.previous_valid_snapshots = {}
+
+    def _read_ugc_channel_snapshot(self, channel):
+        port = self._get_port()
+        self.send_message = {
+            "port": port,
+            "data": number_util.set_int_to_4_bytes_list(f"00{int(channel):02X}0005"),
+            "slave_id": "3",
+            "function_code": "4",
+            "timeout": 1,
+        }
+        self.send_thread.send_message = self.send_message
+        result_data, _ = self.send_thread.Send_no_promise()
+        if not result_data or "data" not in result_data:
+            return None
+
+        data_items = result_data.get("data", [])
+        raw_co2 = self._extract_data_value(data_items, "CO2")
+        if raw_co2 is None:
+            return None
+
+        try:
+            raw_co2 = self._normalize_co2_to_ppm(raw_co2)
+        except Exception:
+            return None
+
+        return {"raw_co2_ppm": raw_co2}
+
+    @staticmethod
+    def _calculate_pressure_compensated_co2(raw_co2_ppm, gas_pressure):
+        if raw_co2_ppm is None or gas_pressure in (None, 0, 0.0):
+            return None
+        try:
+            standard_pressure = float(
+                global_setting.get_setting("UFC_UGC_ZOS_config")["PARAM"]["standard_atmospheric_pressure"]
+            )
+        except Exception:
+            standard_pressure = 1013.25
+        return round(float(raw_co2_ppm) * standard_pressure / float(gas_pressure), 4)
 
     def _read_zos_channel_snapshot(self, channel):
         port = self._get_port()
@@ -310,9 +364,9 @@ class Startup_Air_Calibration:
             return
 
         try:
-            self._build_calibration_handler()
-        except Exception as e:
-            reject(str(e))
+            self._build_calibration_handlers()
+        except Exception as exc:
+            reject(str(exc))
             return
 
         sample_interval = self._normalize_sample_interval()
@@ -322,7 +376,7 @@ class Startup_Air_Calibration:
         start_time = time.time()
 
         self._send_text(
-            f"{self.name}开始采集 9 路氧浓度信息并执行 CalibrationHandler 判定，目标点数 {target_points}"
+            f"{self.name}开始采集 9 路 O2 / CO2 数据并行校准，目标点数 {target_points}"
         )
 
         while True:
@@ -332,45 +386,80 @@ class Startup_Air_Calibration:
                 return
 
             for channel in active_channels:
+                display_name = self._channel_to_display_name(channel)
                 snapshot = self._read_zos_channel_snapshot(channel)
-                if snapshot is None:
-                    logger.warning(f"{self.name}读取 {self._channel_to_display_name(channel)} 数据失败")
+                if snapshot is not None:
+                    snapshot = self._normalize_snapshot_with_previous(channel, snapshot)
+
+                co2_snapshot = self._read_ugc_channel_snapshot(channel)
+                if snapshot is None and co2_snapshot is None:
+                    logger.warning(f"{self.name}读取 {display_name} O2 / CO2 数据失败")
                     continue
-                snapshot = self._normalize_snapshot_with_previous(channel, snapshot)
 
-                self.push_calibration_values_to_ui(
-                    oxygen_value=snapshot["o2_percent"],
-                    oxygen_pressure_value=snapshot["gas_pressure"],
-                )
-                try:
-                    finished = self.calibration_handler.add_data(
-                        self._channel_to_handler_name(channel),
-                        snapshot["o2_partial"],
-                        snapshot["zos_temp"],
-                        snapshot["gas_pressure"],
-                        snapshot["o2_percent"],
-                        snapshot["env_temp"],
-                        snapshot["env_rh"],
+                if snapshot is not None:
+                    self.push_calibration_values_to_ui(
+                        oxygen_value=snapshot["o2_percent"],
+                        oxygen_pressure_value=snapshot["gas_pressure"],
                     )
-                except Exception as e:
-                    reject(f"{self.name}执行 CalibrationHandler 失败: {e}")
-                    return
+                    try:
+                        self.o2_calibration_handler.add_data(
+                            self._channel_to_handler_name(channel),
+                            snapshot["o2_partial"],
+                            snapshot["zos_temp"],
+                            snapshot["gas_pressure"],
+                            snapshot["o2_percent"],
+                            snapshot["env_temp"],
+                            snapshot["env_rh"],
+                        )
+                    except Exception as exc:
+                        reject(f"{self.name}执行 O2 CalibrationHandler 失败: {exc}")
+                        return
+                else:
+                    logger.warning(f"{self.name}读取 {display_name} O2 数据失败")
 
-                if finished:
-                    self._send_text(f"{self.name}判定完成，CalibrationHandler 已输出补偿系数")
+                if co2_snapshot is not None and snapshot is not None:
+                    compensated_co2 = self._calculate_pressure_compensated_co2(
+                        co2_snapshot.get("raw_co2_ppm"),
+                        snapshot.get("gas_pressure"),
+                    )
+                    if compensated_co2 is not None:
+                        self.push_calibration_values_to_ui(
+                            carbon_value=compensated_co2,
+                            oxygen_pressure_value=snapshot["gas_pressure"],
+                        )
+                        try:
+                            self.co2_calibration_handler.add_data(
+                                self._channel_to_handler_name(channel),
+                                compensated_co2,
+                            )
+                        except Exception as exc:
+                            reject(f"{self.name}执行 CO2 CalibrationHandler 失败: {exc}")
+                            return
+                elif co2_snapshot is None:
+                    logger.warning(f"{self.name}读取 {display_name} CO2 数据失败")
+                else:
+                    logger.warning(f"{self.name}读取 {display_name} 气压数据失败，CO2 无法补偿")
+
+                if self.o2_calibration_handler.calibrated and self.co2_calibration_handler.calibrated:
+                    self._send_text(f"{self.name}判定完成，O2 / CO2 校准配置已输出")
                     resolve()
                     return
 
             current_time = time.time()
             if current_time - last_progress_log_time >= 5:
-                status = self.calibration_handler.get_status()
-                counts = status.get("current_counts", {})
-                progress_parts = [f"REF={counts.get('REF', 0)}/{target_points}"]
+                o2_status = self.o2_calibration_handler.get_status()
+                co2_status = self.co2_calibration_handler.get_status()
+                o2_counts = o2_status.get("current_counts", {})
+                co2_counts = co2_status.get("current_counts", {})
+                o2_progress_parts = [f"REF={o2_counts.get('REF', 0)}/{target_points}"]
+                co2_progress_parts = [f"REF={co2_counts.get('REF', 0)}/{target_points}"]
                 for idx in range(1, 9):
                     channel_name = f"M{idx}"
-                    progress_parts.append(f"{channel_name}={counts.get(channel_name, 0)}/{target_points}")
+                    o2_progress_parts.append(f"{channel_name}={o2_counts.get(channel_name, 0)}/{target_points}")
+                    co2_progress_parts.append(f"{channel_name}={co2_counts.get(channel_name, 0)}/{target_points}")
                 self._send_text(
-                    f"{self.name}采集中：{'，'.join(progress_parts)}，已运行 {int(elapsed_time)}/{int(max_timeout)} 秒"
+                    f"{self.name}采集中：O2[{'，'.join(o2_progress_parts)}] | "
+                    f"CO2[{'，'.join(co2_progress_parts)}]，已运行 {int(elapsed_time)}/{int(max_timeout)} 秒"
                 )
                 last_progress_log_time = current_time
 

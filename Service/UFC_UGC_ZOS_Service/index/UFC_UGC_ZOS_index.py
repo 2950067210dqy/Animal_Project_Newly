@@ -645,21 +645,15 @@ class UFC_UGC_ZOS_index(MyQThread):
         startup_calibration_mode = global_setting.get_setting("startup_calibration_mode", None)
         is_auto_calibration = global_setting.get_setting("is_auto_calibration", True)
         logger.critical(f"{self.name}<UNK>is_auto_calibration：{is_auto_calibration}")
-        if startup_calibration_mode not in {"none", "air", "air_co2", "full"}:
+        if startup_calibration_mode == "air_co2":
+            startup_calibration_mode = "air"
+        if startup_calibration_mode not in {"none", "air", "full"}:
             startup_calibration_mode = "full" if global_setting.get_setting("is_auto_calibration", True) else "none"
         global_setting.set_setting("startup_calibration_mode", startup_calibration_mode)
         global_setting.set_setting("is_auto_calibration", startup_calibration_mode != "none")
         logger.critical(f"{self.name} startup_calibration_mode: {startup_calibration_mode}")
         if startup_calibration_mode == "full":
             self.start_btn_handle_with_calibration().then(
-                lambda _: self.run_btn_handle().then(
-                    lambda __: self.gas_state_check_handle().then(
-                        self.stop()
-                    ).catch(lambda e: logger.error(f"{e}"))
-                ).catch(lambda e: logger.error(f"{e}"))
-            ).catch(lambda e: logger.error(f"{e}"))
-        elif startup_calibration_mode == "air_co2":
-            self.start_btn_handle_with_co2_air_calibration().then(
                 lambda _: self.run_btn_handle().then(
                     lambda __: self.gas_state_check_handle().then(
                         self.stop()
