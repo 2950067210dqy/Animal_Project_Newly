@@ -143,7 +143,7 @@ class UFC_UGC_ZOS_index(MyQThread):
             title = kwargs.get("title",GapSystem_Running_Type.DEFAULT)
 
             match title:
-                case GapSystem_Running_Type.ZERO_CALIBRATION | GapSystem_Running_Type.RANGE_CALIBRATION | GapSystem_Running_Type.STARTUP_AIR_CALIBRATION:
+                case GapSystem_Running_Type.ZERO_CALIBRATION | GapSystem_Running_Type.RANGE_CALIBRATION | GapSystem_Running_Type.STARTUP_AIR_CALIBRATION | GapSystem_Running_Type.STARTUP_CO2_AIR_CALIBRATION:
                     """此时text为{
                         'type':'set_start_zero_calibration_time'
                                 |'set_stop_zero_calibration_time'
