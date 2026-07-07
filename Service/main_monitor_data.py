@@ -1,4 +1,5 @@
 import copy
+import math
 
 import multiprocessing
 import os
@@ -63,6 +64,38 @@ global_setting.set_setting("wait_ZOS_run_finish_event",wait_ZOS_run_finish_event
 #使用端口
 port_use=None
 _co2_realtime_compensator = CO2RealtimeCompensator()
+_epoch_carry_forward_handle = None
+_epoch_last_valid_cache = {}
+_epoch_missing_streak_cache = {}
+_epoch_missing_fill_limit = 10
+_epoch_carry_forward_desc_to_column = {
+    "ufc_流量计测量值(sccm)": "UFC_flow_num",
+    "ufc_参考气流量计测量值(sccm)": "reference_flow_num",
+    "拟合后CO2": "UGC_air_pressure",
+    "补偿前CO2": "UGC_CO2_origin_num",
+    "补偿前CO2(%)": "UGC_CO2_origin_num",
+    "气压补偿后CO2": "UGC_CO2_num",
+    "参考气CO2(%)": "reference_CO2_num",
+    "CO2生产量(%)": "CO2_output_num",
+    "氧分压(hPa)": "ZOS_oxygen_partial_pressure",
+    "ZOS温度测量值(°C)": "ZOS_temperature_num",
+    "气体压力(hPa)": "ZOS_gas_pressure",
+    "氧浓度(%)": "ZOS_oxygen_num",
+    "干基氧浓度(%)": "ZOS_dry_basis_oxygen_num",
+    "ZOS故障码": "ZOS_fault_code",
+    "ZOS温度2测量值(°C)": "ZOS_oxygen_temperature_2_num",
+    "ZOS湿度测量值(%RH)": "ZOS_oxygen_humidity_num",
+    "参考气氧浓度(%)": "reference_oxygen_num",
+    "耗氧量(%)": "oxygen_consumption_num",
+    "温度测量值(°C)": "ENM_temperature_num",
+    "湿度测量值(%RH)": "ENM_humidity_num",
+    "噪声测量值(dB)": "ENM_noise_num",
+    "大气压测量值(KPa)": "ENM_barometer_num",
+    "当前计量周期内跑轮圈数测量值": "ENM_running_wheel_num",
+    "饮水重量测量值(g)": "DWM_weight_num",
+    "食物重量测量值(g)": "EM_weight_num",
+    "称重重量测量值(g)": "WM_weight_num",
+}
 
 
 def _channel_number_to_co2_channel_name(mouse_cage_number):
@@ -70,6 +103,88 @@ def _channel_number_to_co2_channel_name(mouse_cage_number):
     if int(mouse_cage_number) == reference_cage_number:
         return "REF"
     return f"M{int(mouse_cage_number)}"
+
+
+def _is_epoch_missing_value(value):
+    if value is None:
+        return True
+    if isinstance(value, float) and math.isnan(value):
+        return True
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return normalized in {"", "none", "nan"}
+    return False
+
+
+def _get_epoch_payload_cage_number(payload):
+    mouse_cage_number = payload.get("mouse_cage_number")
+    if mouse_cage_number not in (None, -1):
+        return int(mouse_cage_number)
+
+    for item in payload.get("data", []):
+        if item.get("desc") == "鼠笼号":
+            try:
+                return int(item.get("value"))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _get_epoch_previous_row(cage_number):
+    global _epoch_carry_forward_handle
+
+    if cage_number is None:
+        return None
+
+    if _epoch_carry_forward_handle is None:
+        _epoch_carry_forward_handle = Monitor_Datas_Handle()
+
+    return _epoch_carry_forward_handle.query_current_one_data(f"Epoch_data_cage_{int(cage_number)}")
+
+
+def _apply_epoch_carry_forward(payload):
+    if payload.get("module_name") != "Epoch":
+        return payload
+
+    cage_number = _get_epoch_payload_cage_number(payload)
+    if cage_number is None:
+        return payload
+
+    should_update_state = payload.get("mouse_cage_number") != -1
+    previous_row = None
+
+    for item in payload.get("data", []):
+        desc = str(item.get("desc", "")).strip()
+        column_name = _epoch_carry_forward_desc_to_column.get(desc)
+        if not column_name:
+            continue
+
+        cache_key = (int(cage_number), column_name)
+        current_value = item.get("value")
+
+        if _is_epoch_missing_value(current_value):
+            streak = _epoch_missing_streak_cache.get(cache_key, 0)
+            if should_update_state:
+                streak += 1
+                _epoch_missing_streak_cache[cache_key] = streak
+
+            previous_value = _epoch_last_valid_cache.get(cache_key)
+            if previous_value is None:
+                if previous_row is None:
+                    previous_row = _get_epoch_previous_row(cage_number)
+                if previous_row is not None:
+                    previous_value = previous_row.get(column_name)
+                    if not _is_epoch_missing_value(previous_value):
+                        _epoch_last_valid_cache[cache_key] = previous_value
+
+            if not _is_epoch_missing_value(previous_value) and streak < _epoch_missing_fill_limit:
+                item["value"] = previous_value
+        else:
+            if should_update_state:
+                _epoch_last_valid_cache[cache_key] = current_value
+                _epoch_missing_streak_cache[cache_key] = 0
+
+    return payload
 
 # 过滤日志
 #logger = logger.bind(category="deep_camera_logger")
@@ -1356,7 +1471,7 @@ def _patch_epoch_store_payload(return_data_struct):
     ])
     rebuilt_data.extend(data[oxygen_partial_index:])
     payload["data"] = rebuilt_data
-    return payload
+    return _apply_epoch_carry_forward(payload)
 
 
 def store_data_with_result(return_data_struct, need_result=False, timeout=None):
