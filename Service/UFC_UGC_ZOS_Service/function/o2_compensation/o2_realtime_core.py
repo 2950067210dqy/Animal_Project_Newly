@@ -5,6 +5,9 @@ from pathlib import Path
 
 import numpy as np
 
+from public.config_class.global_setting import global_setting
+from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
+
 
 VALID_CHANNELS = ["REF"] + [f"M{i}" for i in range(1, 9)]
 
@@ -21,6 +24,8 @@ DEFAULT_SMOOTHING_PARAMS = {
 LEGACY_O2_UPPER_LIMIT = 23.0
 LEGACY_O2_LOWER_LIMIT = 10.0
 LEGACY_FILTER_WINDOW = 15
+
+_ENV_DATA_HANDLE = None
 
 
 def get_default_config():
@@ -67,6 +72,39 @@ def _safe_float(value, default=None):
         return result
     except Exception:
         return default
+
+
+def _get_monitor_data_handle():
+    global _ENV_DATA_HANDLE
+    if _ENV_DATA_HANDLE is None:
+        _ENV_DATA_HANDLE = Monitor_Datas_Handle()
+    return _ENV_DATA_HANDLE
+
+
+def _channel_to_cage_number(channel_id):
+    if channel_id == "REF":
+        return int(global_setting.get_setting("configer")["mouse_cage"]["reference"])
+    if isinstance(channel_id, str) and channel_id.startswith("M") and channel_id[1:].isdigit():
+        return int(channel_id[1:])
+    return None
+
+
+def _get_environment_temp_humidity(channel_id):
+    cage_number = _channel_to_cage_number(channel_id)
+    if cage_number is None:
+        return None, None
+
+    try:
+        env_data = _get_monitor_data_handle().query_current_one_data(
+            f"ENM_monitor_data_cage_{int(cage_number)}"
+        )
+    except Exception:
+        return None, None
+
+    if not env_data:
+        return None, None
+
+    return env_data.get("temperature_num"), env_data.get("humidity_num")
 
 
 class RealtimeO2Compensator:
@@ -231,35 +269,37 @@ class RealtimeO2Compensator:
         self.last_compensated[channel] = final_value
         return round(final_value, 4)
 
-    def compensate(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, sht_temp, sht_rh):
+    def compensate(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, env_temp, env_rh):
         del o2_partial
-        del sht_temp
 
         if channel not in self.channels:
             return round(self.target, 4)
 
         self.ensure_latest()
+        env_temp_value = _safe_float(env_temp)
+        if env_temp_value is None:
+            env_temp_value = _safe_float(zos_temp)
+        env_rh_value = _safe_float(env_rh)
+
         if self.config_mode == "legacy":
             gas_pressure_value = _safe_float(gas_pressure)
             o2_percent_value = _safe_float(o2_percent)
-            zos_temp_value = _safe_float(zos_temp)
-            sht_rh_value = _safe_float(sht_rh)
-            if None in (gas_pressure_value, o2_percent_value, zos_temp_value, sht_rh_value):
+            if None in (gas_pressure_value, o2_percent_value, env_temp_value, env_rh_value):
                 return round(self.legacy_last_valid_value_cache.get(channel, self.target), 3)
             return self._compensate_legacy(
                 channel,
                 gas_pressure_value,
                 o2_percent_value,
-                zos_temp_value,
-                sht_rh_value,
+                env_temp_value,
+                env_rh_value,
             )
 
         return self._compensate_calibrated(
             channel,
-            zos_temp,
+            env_temp_value,
             gas_pressure,
             o2_percent,
-            sht_rh,
+            env_rh_value,
         )
 
     def set_target(self, new_target):
@@ -315,7 +355,7 @@ def start_new_o2_calibration(target_points=120):
     return handler.start_new_calibration()
 
 
-def append_o2_calibration_data(channel, o2_partial, zos_temp, gas_pressure, o2_percent, sht_temp, sht_rh):
+def append_o2_calibration_data(channel, o2_partial, zos_temp, gas_pressure, o2_percent, env_temp, env_rh):
     handler = get_o2_calibration_handler()
     success = handler.add_data(
         channel=channel,
@@ -323,8 +363,8 @@ def append_o2_calibration_data(channel, o2_partial, zos_temp, gas_pressure, o2_p
         zos_temp=zos_temp,
         gas_pressure=gas_pressure,
         o2_percent=o2_percent,
-        sht_temp=sht_temp,
-        sht_rh=sht_rh,
+        env_temp=env_temp,
+        env_rh=env_rh,
     )
     if success:
         reload_o2_compensation_config()
@@ -342,11 +382,17 @@ def calculate_o2_compensated(
         temp_sensor,
         gas_total_press,
         o2_raw_pct,
-        temp_cage,
-        rh_cage
+        env_temp,
+        env_rh
 ):
     if channel_id not in VALID_CHANNELS:
         return -1
+
+    env_temp_from_db, env_rh_from_db = _get_environment_temp_humidity(channel_id)
+    if env_temp_from_db is not None:
+        env_temp = env_temp_from_db
+    if env_rh_from_db is not None:
+        env_rh = env_rh_from_db
 
     compensator = get_realtime_o2_compensator()
     return compensator.compensate(
@@ -355,6 +401,6 @@ def calculate_o2_compensated(
         zos_temp=temp_sensor,
         gas_pressure=gas_total_press,
         o2_percent=o2_raw_pct,
-        sht_temp=temp_cage,
-        sht_rh=rh_cage,
+        env_temp=env_temp,
+        env_rh=env_rh,
     )

@@ -6,6 +6,7 @@ from loguru import logger
 
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
 from public.config_class.global_setting import global_setting
+from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.enum.Public_Enum import GapSystem_Running_Type
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.number_util import number_util
@@ -18,24 +19,25 @@ class Startup_Air_Calibration:
         self.name = "运行前 Air 空气校准"
         self.update_status_main_signal_gui_update: _PNamespaceSignal = None
         self.send_message = {
-            'port': '',
-            'data': '',
-            'slave_id': 0,
-            'function_code': 0,
-            'timeout': 0
+            "port": "",
+            "data": "",
+            "slave_id": 0,
+            "function_code": 0,
+            "timeout": 0,
         }
         self.send_thread = Send_Message(
             update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,
             send_message=self.send_message,
-            update_status_main_signal_gui_update_type=title
+            update_status_main_signal_gui_update_type=title,
         )
         self.current_calibration_values = {
-            'oxygen_value': None,
-            'carbon_value': None,
-            'oxygen_pressure_value': None,
+            "oxygen_value": None,
+            "carbon_value": None,
+            "oxygen_pressure_value": None,
         }
         self.calibration_handler = None
         self.previous_valid_snapshots = {}
+        self.data_handle = None
 
     def update(self):
         self.send_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
@@ -44,29 +46,29 @@ class Startup_Air_Calibration:
         if self.update_status_main_signal_gui_update is not None:
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | {text}",
-                title=self.title
+                title=self.title,
             )
 
     def _send_state(self, state_type, value):
         if self.update_status_main_signal_gui_update is not None:
             self.update_status_main_signal_gui_update.send(
-                {'type': state_type, 'value': value},
-                title=self.title
+                {"type": state_type, "value": value},
+                title=self.title,
             )
 
     def push_calibration_values_to_ui(self, oxygen_value=None, oxygen_pressure_value=None):
         if oxygen_value is not None:
-            self.current_calibration_values['oxygen_value'] = oxygen_value
+            self.current_calibration_values["oxygen_value"] = oxygen_value
         if oxygen_pressure_value is not None:
-            self.current_calibration_values['oxygen_pressure_value'] = oxygen_pressure_value
+            self.current_calibration_values["oxygen_pressure_value"] = oxygen_pressure_value
 
         if self.update_status_main_signal_gui_update is not None:
             self.update_status_main_signal_gui_update.send(
                 {
-                    'type': 'set_calibration_values',
-                    'value': copy.deepcopy(self.current_calibration_values)
+                    "type": "set_calibration_values",
+                    "value": copy.deepcopy(self.current_calibration_values),
                 },
-                title=self.title
+                title=self.title,
             )
 
     @staticmethod
@@ -85,8 +87,8 @@ class Startup_Air_Calibration:
             "zos_temp",
             "gas_pressure",
             "o2_percent",
-            "sht_temp",
-            "sht_rh",
+            "env_temp",
+            "env_rh",
         )
         previous_snapshot = self.previous_valid_snapshots.get(channel)
         normalized_snapshot = dict(snapshot)
@@ -100,7 +102,7 @@ class Startup_Air_Calibration:
             if previous_value not in (None, 0, 0.0):
                 normalized_snapshot[field] = previous_value
                 logger.warning(
-                    f"{self.name}：通道 {channel} 的 {field} 返回0，已使用前值覆盖：{previous_value}"
+                    f"{self.name}: channel {channel} field {field} returned 0, fallback to previous value {previous_value}"
                 )
 
         merged_snapshot = dict(previous_snapshot) if previous_snapshot else {}
@@ -126,7 +128,7 @@ class Startup_Air_Calibration:
     def _normalize_sample_interval():
         calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
         try:
-            sample_interval = float(calibration_config.get('calibration_sample_interval', 1))
+            sample_interval = float(calibration_config.get("calibration_sample_interval", 1))
         except Exception:
             sample_interval = 1.0
         return max(sample_interval, 0.5)
@@ -135,7 +137,7 @@ class Startup_Air_Calibration:
     def _normalize_target_points():
         calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
         try:
-            target_points = int(float(calibration_config.get('startup_air_calibration_target_points', 120)))
+            target_points = int(float(calibration_config.get("startup_air_calibration_target_points", 120)))
         except Exception:
             target_points = 120
         return max(target_points, 1)
@@ -145,7 +147,7 @@ class Startup_Air_Calibration:
         calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
         default_timeout = max(int(target_points * sample_interval * 3), 300)
         try:
-            max_timeout = int(float(calibration_config.get('startup_air_calibration_max_timeout', default_timeout)))
+            max_timeout = int(float(calibration_config.get("startup_air_calibration_max_timeout", default_timeout)))
         except Exception:
             max_timeout = default_timeout
         return max(max_timeout, default_timeout)
@@ -183,6 +185,27 @@ class Startup_Air_Calibration:
     def _get_active_channels(self):
         return list(range(9))
 
+    def _channel_to_cage_number(self, channel):
+        if int(channel) == 8:
+            return int(global_setting.get_setting("configer")["mouse_cage"]["reference"])
+        return int(channel) + 1
+
+    def _read_environment_snapshot(self, channel):
+        cage_number = self._channel_to_cage_number(channel)
+        if self.data_handle is None:
+            self.data_handle = Monitor_Datas_Handle()
+
+        env_data = self.data_handle.query_current_one_data(
+            f"ENM_monitor_data_cage_{int(cage_number)}"
+        )
+        if not env_data:
+            return None
+
+        return {
+            "env_temp": env_data.get("temperature_num"),
+            "env_rh": env_data.get("humidity_num"),
+        }
+
     def _build_calibration_handler(self):
         try:
             from Service.UFC_UGC_ZOS_Service.function.o2_compensation.calibration_handler import CalibrationHandler
@@ -196,26 +219,37 @@ class Startup_Air_Calibration:
     def _read_zos_channel_snapshot(self, channel):
         port = self._get_port()
         self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list(f"00{int(channel):02X}000E"),
-            'slave_id': '4',
-            'function_code': '4',
-            'timeout': 1
+            "port": port,
+            "data": number_util.set_int_to_4_bytes_list(f"00{int(channel):02X}000E"),
+            "slave_id": "4",
+            "function_code": "4",
+            "timeout": 1,
         }
         self.send_thread.send_message = self.send_message
         result_data, _ = self.send_thread.Send_no_promise()
-        if not result_data or 'data' not in result_data:
+        if not result_data or "data" not in result_data:
             return None
 
-        data_items = result_data.get('data', [])
+        data_items = result_data.get("data", [])
         o2_partial = self._extract_data_value(data_items, "氧分压")
         zos_temp = self._extract_data_value(data_items, "ZOS温度测量值")
         gas_pressure = self._extract_data_value(data_items, "气体压力")
         o2_percent = self._extract_data_value(data_items, "氧浓度")
-        sht_temp = self._extract_data_value(data_items, "ZOS温度2测量值")
-        sht_rh = self._extract_data_value(data_items, "ZOS湿度测量值")
+        zos_temp_2 = self._extract_data_value(data_items, "ZOS温度2测量值")
+        zos_rh = self._extract_data_value(data_items, "ZOS湿度测量值")
 
-        if None in [o2_partial, zos_temp, gas_pressure, o2_percent, sht_temp, sht_rh]:
+        env_snapshot = self._read_environment_snapshot(channel)
+        env_temp = None if env_snapshot is None else env_snapshot.get("env_temp")
+        env_rh = None if env_snapshot is None else env_snapshot.get("env_rh")
+
+        if env_temp is None:
+            env_temp = zos_temp_2 if zos_temp_2 is not None else zos_temp
+        if env_rh is None:
+            env_rh = zos_rh
+        if zos_temp is None:
+            zos_temp = env_temp
+
+        if None in [o2_partial, gas_pressure, o2_percent, env_temp, env_rh]:
             return None
 
         o2_percent = self._normalize_oxygen_percent(o2_percent)
@@ -224,8 +258,8 @@ class Startup_Air_Calibration:
             "zos_temp": float(zos_temp),
             "gas_pressure": float(gas_pressure),
             "o2_percent": float(o2_percent),
-            "sht_temp": float(sht_temp),
-            "sht_rh": float(sht_rh),
+            "env_temp": float(env_temp),
+            "env_rh": float(env_rh),
         }
 
     def start(self, resolve, reject):
@@ -235,14 +269,14 @@ class Startup_Air_Calibration:
             return
 
         start_time_text = time_util.get_format_from_time(time.time())
-        self._send_state('set_start_air_calibration_time', start_time_text)
+        self._send_state("set_start_air_calibration_time", start_time_text)
         self._send_text(f"{self.name}开始：发送 ZOS Air 校准开始指令")
         self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("0009FF00"),
-            'slave_id': '4',
-            'function_code': '5',
-            'timeout': 1
+            "port": port,
+            "data": number_util.set_int_to_4_bytes_list("0009FF00"),
+            "slave_id": "4",
+            "function_code": "5",
+            "timeout": 1,
         }
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
@@ -272,7 +306,7 @@ class Startup_Air_Calibration:
 
         active_channels = self._get_active_channels()
         if len(active_channels) == 0:
-            reject("未配置 mouse_cages，无法执行运行前 Air 空气校准")
+            reject("未配置有效通道，无法执行运行前 Air 空气校准")
             return
 
         try:
@@ -306,7 +340,7 @@ class Startup_Air_Calibration:
 
                 self.push_calibration_values_to_ui(
                     oxygen_value=snapshot["o2_percent"],
-                    oxygen_pressure_value=snapshot["gas_pressure"]
+                    oxygen_pressure_value=snapshot["gas_pressure"],
                 )
                 try:
                     finished = self.calibration_handler.add_data(
@@ -315,8 +349,8 @@ class Startup_Air_Calibration:
                         snapshot["zos_temp"],
                         snapshot["gas_pressure"],
                         snapshot["o2_percent"],
-                        snapshot["sht_temp"],
-                        snapshot["sht_rh"]
+                        snapshot["env_temp"],
+                        snapshot["env_rh"],
                     )
                 except Exception as e:
                     reject(f"{self.name}执行 CalibrationHandler 失败: {e}")
@@ -331,14 +365,10 @@ class Startup_Air_Calibration:
             if current_time - last_progress_log_time >= 5:
                 status = self.calibration_handler.get_status()
                 counts = status.get("current_counts", {})
-                progress_parts = [
-                    f"REF={counts.get('REF', 0)}/{target_points}"
-                ]
+                progress_parts = [f"REF={counts.get('REF', 0)}/{target_points}"]
                 for idx in range(1, 9):
                     channel_name = f"M{idx}"
-                    progress_parts.append(
-                        f"{channel_name}={counts.get(channel_name, 0)}/{target_points}"
-                    )
+                    progress_parts.append(f"{channel_name}={counts.get(channel_name, 0)}/{target_points}")
                 self._send_text(
                     f"{self.name}采集中：{'，'.join(progress_parts)}，已运行 {int(elapsed_time)}/{int(max_timeout)} 秒"
                 )
@@ -354,11 +384,11 @@ class Startup_Air_Calibration:
 
         self._send_text(f"{self.name}结束：发送 ZOS Air 校准结束指令")
         self.send_message = {
-            'port': port,
-            'data': number_util.set_int_to_4_bytes_list("00090000"),
-            'slave_id': '4',
-            'function_code': '5',
-            'timeout': 1
+            "port": port,
+            "data": number_util.set_int_to_4_bytes_list("00090000"),
+            "slave_id": "4",
+            "function_code": "5",
+            "timeout": 1,
         }
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
@@ -366,6 +396,9 @@ class Startup_Air_Calibration:
         ).catch(lambda e: reject(e))
 
     def _finish_stop(self, resolve):
+        if self.data_handle is not None:
+            self.data_handle.stop()
+            self.data_handle = None
         stop_time_text = time_util.get_format_from_time(time.time())
-        self._send_state('set_stop_air_calibration_time', stop_time_text)
+        self._send_state("set_stop_air_calibration_time", stop_time_text)
         resolve()

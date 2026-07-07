@@ -42,9 +42,9 @@ class CalibrationHandler:
             self.is_active = True
         return True
 
-    def add_data(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, sht_temp, sht_rh):
+    def add_data(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, env_temp, env_rh):
         del o2_partial
-        del sht_temp
+        del zos_temp
 
         with self.lock:
             if channel not in self.channels:
@@ -55,10 +55,10 @@ class CalibrationHandler:
                 return False
 
             point = {
-                "zos_temp": float(zos_temp),
+                "zos_temp": float(env_temp),
                 "gas_pressure": float(gas_pressure),
                 "o2_percent": float(o2_percent),
-                "sht_rh": float(sht_rh),
+                "sht_rh": float(env_rh),
             }
             self.data[channel].append(point)
 
