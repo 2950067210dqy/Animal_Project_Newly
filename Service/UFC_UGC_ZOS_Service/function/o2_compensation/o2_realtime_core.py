@@ -1,77 +1,42 @@
 import json
 import threading
-from copy import deepcopy
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
+from scipy.signal import savgol_filter
 
 from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 
 
 VALID_CHANNELS = ["REF"] + [f"M{i}" for i in range(1, 9)]
-
-DEFAULT_SMOOTHING_PARAMS = {
-    "zos_temp_window": 3,
-    "humidity_window": 5,
-    "pressure_window": 5,
-    "humidity_clip_min": 45,
-    "humidity_clip_max": 85,
-    "pressure_clip_min": 85,
-    "pressure_clip_max": 110,
-}
-
-LEGACY_O2_UPPER_LIMIT = 23.0
-LEGACY_O2_LOWER_LIMIT = 10.0
-LEGACY_FILTER_WINDOW = 15
-
 _ENV_DATA_HANDLE = None
-
-
-def get_default_config():
-    config = {
-        "version": "1.0",
-        "target_o2": 20.93,
-        "calibration_info": {
-            "calibration_date": "",
-            "calibration_points": 0,
-            "note": "default config",
-        },
-        "smoothing_params": deepcopy(DEFAULT_SMOOTHING_PARAMS),
-        "channels": {},
-    }
-    for channel in VALID_CHANNELS:
-        config["channels"][channel] = {
-            "coef_moist": 1.0,
-            "coef_zos_t": 0.0,
-            "coef_rh": 0.0,
-            "coef_p": 0.0,
-            "intercept": 0.0,
-        }
-    return config
+_COMPENSATOR_LOCK = threading.Lock()
+_COMPENSATOR = None
+_CALIBRATION_HANDLER_LOCK = threading.Lock()
+_CALIBRATION_HANDLER = None
 
 
 def get_default_config_path():
     return Path(__file__).resolve().parents[4] / "config" / "calib_config.json"
 
 
-def calc_dry_o2(o2_wet, temp_celsius, rh_percent, press_kpa):
-    sat_vapor_pressure = 0.61094 * np.exp(17.625 * temp_celsius / (temp_celsius + 243.04))
-    actual_vapor_pressure = sat_vapor_pressure * rh_percent / 100.0
-    dry_pressure = max(press_kpa - actual_vapor_pressure, 1e-6)
-    return float(o2_wet * (press_kpa / dry_pressure))
+def sequential_jump_clean(series, threshold):
+    cleaned = series.copy().astype(float)
+    for index in range(1, len(cleaned)):
+        if abs(cleaned.iloc[index] - cleaned.iloc[index - 1]) > threshold:
+            cleaned.iloc[index] = cleaned.iloc[index - 1]
+    return cleaned
 
 
-def _safe_float(value, default=None):
-    try:
-        if value is None:
-            return default
-        result = float(value)
-        if np.isnan(result) or np.isinf(result):
-            return default
-        return result
-    except Exception:
-        return default
+def calc_dry_o2(moist_o2, gas_pressure, temp_value, rh_value):
+    if pd.isna(gas_pressure) or gas_pressure <= 0 or pd.isna(temp_value) or pd.isna(rh_value):
+        return np.nan
+    sat_pressure = 0.61094 * np.exp(17.625 * temp_value / (temp_value + 243.04))
+    water_pressure = min((rh_value / 100.0) * sat_pressure, gas_pressure * 0.99)
+    return moist_o2 * (gas_pressure / (gas_pressure - water_pressure))
 
 
 def _get_monitor_data_handle():
@@ -103,25 +68,20 @@ def _get_environment_temp_humidity(channel_id):
 
     if not env_data:
         return None, None
-
     return env_data.get("temperature_num"), env_data.get("humidity_num")
 
 
 class RealtimeO2Compensator:
     def __init__(self, config_path=None):
         self.config_path = Path(config_path or get_default_config_path())
-        self.channels = VALID_CHANNELS.copy()
-        self.config_mode = "calibrated"
-        self.target = 20.93
-        self.base_channel = "REF"
-        self.config = get_default_config()
-        self.coefs = {}
-        self.legacy_models = {}
-        self.last_valid = {channel: None for channel in self.channels}
-        self.last_compensated = {channel: self.target for channel in self.channels}
-        self.last_ref_deviation = 0.0
-        self.filter_cache = {channel: [] for channel in self.channels}
-        self.legacy_last_valid_value_cache = {channel: self.target for channel in self.channels}
+        self.offsets = {}
+        self.secondary_models = {}
+        self.target_o2 = 20.93
+        self.dry_buffer = defaultdict(list)
+        self.rh_buffer = defaultdict(list)
+        self.ref_rh_buffer = []
+        self.dry_ref_buffer = []
+        self.last_values = {}
         self._config_mtime_ns = None
         self.reload_config(force=True)
 
@@ -136,183 +96,126 @@ class RealtimeO2Compensator:
 
     def reload_config(self, force=False):
         current_mtime_ns = self._get_config_mtime_ns()
-        if not force and self._config_mtime_ns == current_mtime_ns:
-            return
+        if not force and current_mtime_ns == self._config_mtime_ns:
+            return True
 
-        config = self._load_config()
-        if "target_o2" in config and "channels" in config:
-            self._load_calibrated_config(config)
-        else:
-            self._load_legacy_config(config)
         self._config_mtime_ns = current_mtime_ns
+        config = self._load_config()
+        self.offsets = config.get("offsets", {})
+        self.secondary_models = config.get("secondary_models", {})
+        self.target_o2 = float(config.get("target_o2", 20.93))
+        return True
 
     def _load_config(self):
         try:
-            with self.config_path.open("r", encoding="utf-8") as f:
-                return json.load(f)
+            with self.config_path.open("r", encoding="utf-8") as file:
+                return json.load(file)
         except Exception:
-            return get_default_config()
-
-    def _load_calibrated_config(self, config):
-        self.config_mode = "calibrated"
-        self.config = config
-        self.target = _safe_float(config.get("target_o2"), 20.93)
-        self.coefs = {}
-        for channel in self.channels:
-            channel_config = config.get("channels", {}).get(channel, {})
-            self.coefs[channel] = {
-                "coef_moist": _safe_float(channel_config.get("coef_moist"), 1.0),
-                "coef_zos_t": _safe_float(channel_config.get("coef_zos_t"), 0.0),
-                "coef_rh": _safe_float(channel_config.get("coef_rh"), 0.0),
-                "coef_p": _safe_float(channel_config.get("coef_p"), 0.0),
-                "intercept": _safe_float(channel_config.get("intercept"), 0.0),
-            }
-        for channel in self.channels:
-            self.last_compensated.setdefault(channel, self.target)
-        self.legacy_last_valid_value_cache = {channel: self.target for channel in self.channels}
-        self.filter_cache = {channel: [] for channel in self.channels}
-
-    def _load_legacy_config(self, config):
-        self.config_mode = "legacy"
-        self.config = config
-        self.target = _safe_float(config.get("TARGET_O2"), 20.93)
-        self.base_channel = config.get("BASE_CHANNEL", "REF")
-        self.legacy_models = {}
-        for channel in self.channels:
-            channel_config = config.get(channel, {})
-            self.legacy_models[channel] = {
-                "K": _safe_float(channel_config.get("K"), 1.0),
-                "B": _safe_float(channel_config.get("B"), 0.0),
-            }
-        self.filter_cache = {channel: [] for channel in self.channels}
-        self.legacy_last_valid_value_cache = {channel: self.target for channel in self.channels}
-
-    def _is_valid_realtime_value(self, field, value):
-        if value is None:
-            return False
-        if field == "zos_temp":
-            return 10 <= value <= 50
-        if field == "gas_pressure":
-            return 85 <= value <= 110
-        if field == "o2_percent":
-            return 18 <= value <= 23
-        if field == "sht_rh":
-            return 20 <= value <= 95
-        return True
-
-    def _filter_legacy_value(self, channel, value):
-        cache = self.filter_cache[channel]
-        cache.append(value)
-        if len(cache) > LEGACY_FILTER_WINDOW:
-            cache.pop(0)
-        return float(np.mean(cache))
-
-    def _compensate_legacy(self, channel, gas_pressure, o2_raw_pct, temp_cage, rh_cage):
-        channel_model = self.legacy_models.get(channel, {"K": 1.0, "B": 0.0})
-        dry_o2 = calc_dry_o2(o2_raw_pct, temp_cage, rh_cage, gas_pressure)
-        calibrated_o2 = dry_o2 * channel_model["K"] + channel_model["B"]
-        if channel == self.base_channel:
-            final_o2 = self.target
-        else:
-            final_o2 = calibrated_o2
-
-        filtered_value = self._filter_legacy_value(channel, final_o2)
-        if LEGACY_O2_LOWER_LIMIT <= filtered_value <= LEGACY_O2_UPPER_LIMIT:
-            self.legacy_last_valid_value_cache[channel] = filtered_value
-            return round(filtered_value, 3)
-        return round(self.legacy_last_valid_value_cache[channel], 3)
-
-    def _compensate_calibrated(self, channel, zos_temp, gas_pressure, o2_percent, sht_rh):
-        current = {
-            "zos_temp": _safe_float(zos_temp),
-            "gas_pressure": _safe_float(gas_pressure),
-            "o2_percent": _safe_float(o2_percent),
-            "sht_rh": _safe_float(sht_rh),
-        }
-
-        if all(self._is_valid_realtime_value(key, value) for key, value in current.items()):
-            self.last_valid[channel] = current.copy()
-        elif self.last_valid[channel] is not None:
-            current = self.last_valid[channel].copy()
-        else:
-            return round(self.last_compensated.get(channel, self.target), 4)
-
-        physical_dry = calc_dry_o2(
-            current["o2_percent"],
-            current["zos_temp"],
-            current["sht_rh"],
-            current["gas_pressure"],
-        )
-
-        coef = self.coefs.get(channel, {
-            "coef_moist": 1.0,
-            "coef_zos_t": 0.0,
-            "coef_rh": 0.0,
-            "coef_p": 0.0,
-            "intercept": 0.0,
-        })
-        model_pred = (
-            coef["coef_moist"] * current["o2_percent"]
-            + coef["coef_zos_t"] * current["zos_temp"]
-            + coef["coef_rh"] * current["sht_rh"]
-            + coef["coef_p"] * current["gas_pressure"]
-            + coef["intercept"]
-        )
-        compensated = physical_dry - (model_pred - self.target)
-
-        if channel == "REF":
-            self.last_ref_deviation = compensated - self.target
-            final_value = self.target
-        else:
-            final_value = compensated - self.last_ref_deviation
-
-        self.last_compensated[channel] = final_value
-        return round(final_value, 4)
+            return {"offsets": {}, "secondary_models": {}, "target_o2": 20.93}
 
     def compensate(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, env_temp, env_rh):
         del o2_partial
 
-        if channel not in self.channels:
-            return round(self.target, 4)
-
         self.ensure_latest()
-        env_temp_value = _safe_float(env_temp)
-        if env_temp_value is None:
-            env_temp_value = _safe_float(zos_temp)
-        env_rh_value = _safe_float(env_rh)
 
-        if self.config_mode == "legacy":
-            gas_pressure_value = _safe_float(gas_pressure)
-            o2_percent_value = _safe_float(o2_percent)
-            if None in (gas_pressure_value, o2_percent_value, env_temp_value, env_rh_value):
-                return round(self.legacy_last_valid_value_cache.get(channel, self.target), 3)
-            return self._compensate_legacy(
-                channel,
-                gas_pressure_value,
-                o2_percent_value,
-                env_temp_value,
-                env_rh_value,
-            )
+        if channel not in self.last_values:
+            self.last_values[channel] = {
+                "o2": o2_percent,
+                "p": gas_pressure,
+                "t": env_temp if env_temp is not None else zos_temp,
+                "rh": env_rh,
+            }
 
-        return self._compensate_calibrated(
-            channel,
-            env_temp_value,
-            gas_pressure,
-            o2_percent,
-            env_rh_value,
-        )
+        temp_value = env_temp if env_temp is not None else zos_temp
+        rh_value = env_rh
+        last = self.last_values[channel]
+        if abs(float(o2_percent) - float(last["o2"])) > 0.15:
+            o2_percent = last["o2"]
+        if abs(float(gas_pressure) - float(last["p"])) > 2.0:
+            gas_pressure = last["p"]
+        if abs(float(temp_value) - float(last["t"])) > 1.0:
+            temp_value = last["t"]
+        if abs(float(rh_value) - float(last["rh"])) > 4.0:
+            rh_value = last["rh"]
 
-    def set_target(self, new_target):
-        target = _safe_float(new_target)
-        if target is None:
-            return
-        self.target = target
+        self.last_values[channel] = {
+            "o2": o2_percent,
+            "p": gas_pressure,
+            "t": temp_value,
+            "rh": rh_value,
+        }
 
+        dry_raw = calc_dry_o2(float(o2_percent), float(gas_pressure), float(temp_value), float(rh_value))
 
-_COMPENSATOR_LOCK = threading.Lock()
-_COMPENSATOR = None
-_CALIBRATION_HANDLER_LOCK = threading.Lock()
-_CALIBRATION_HANDLER = None
+        self.dry_buffer[channel].append(dry_raw)
+        self.rh_buffer[channel].append(float(rh_value))
+        if channel == "REF":
+            self.ref_rh_buffer.append(float(rh_value))
+            self.dry_ref_buffer.append(dry_raw)
+
+        for buffer_item in (self.dry_buffer[channel], self.rh_buffer[channel]):
+            if len(buffer_item) > 50:
+                buffer_item.pop(0)
+        if len(self.ref_rh_buffer) > 50:
+            self.ref_rh_buffer.pop(0)
+            self.dry_ref_buffer.pop(0)
+
+        if len(self.dry_buffer[channel]) >= 11:
+            dry_sg = savgol_filter(self.dry_buffer[channel][-11:], window_length=11, polyorder=2)[-1]
+        else:
+            dry_sg = dry_raw
+
+        dry_sec = self._apply_secondary(dry_sg, float(rh_value), float(temp_value), channel)
+        ref_dry = self.dry_ref_buffer[-1] if self.dry_ref_buffer else dry_sec
+        offset = float(self.offsets.get(channel, 0.0))
+        final_value = dry_sec - (ref_dry - self.target_o2) - offset
+
+        mode = self._detect_mode_20points(channel)
+        output = self.target_o2 if mode == "empty" else final_value
+        output = min(output, self.target_o2)
+        return round(float(output), 3)
+
+    def _apply_secondary(self, dry_value, rh_value, temp_value, channel):
+        model = self.secondary_models.get(channel)
+        if not model:
+            return dry_value
+
+        coef = model.get("coef", [])
+        intercept = float(model.get("intercept", 0.0))
+        if len(coef) != 5:
+            return dry_value
+
+        features = np.array([
+            rh_value,
+            temp_value,
+            rh_value ** 2,
+            rh_value * temp_value,
+            temp_value ** 2,
+        ], dtype=float)
+        prediction = float(np.dot(features, np.array(coef, dtype=float)) + intercept)
+        return dry_value - prediction + self.target_o2
+
+    def _detect_mode_20points(self, channel):
+        if len(self.dry_buffer[channel]) < 40:
+            return "unknown"
+
+        recent_dry = np.array(self.dry_buffer[channel][-40:], dtype=float)
+        recent_rh = np.array(self.rh_buffer[channel][-40:], dtype=float)
+        if len(self.ref_rh_buffer) >= 40:
+            recent_ref_rh = np.array(self.ref_rh_buffer[-40:], dtype=float)
+        else:
+            recent_ref_rh = recent_rh
+
+        rolling_std = float(np.std(recent_dry))
+        rh_diff = float(np.mean(recent_rh) - np.mean(recent_ref_rh))
+        if rolling_std < 0.012 and rh_diff < 4.0:
+            return "empty"
+        if rolling_std > 0.015 or rh_diff > 4.5:
+            return "metabolic"
+        return "metabolic"
+
+    def get_mode(self, channel):
+        return self._detect_mode_20points(channel)
 
 
 def get_realtime_o2_compensator():

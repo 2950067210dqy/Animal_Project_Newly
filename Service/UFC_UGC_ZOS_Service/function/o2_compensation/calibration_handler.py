@@ -1,28 +1,37 @@
 import json
 import threading
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.signal import savgol_filter
 from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
 
 
 VALID_CHANNELS = ["REF"] + [f"M{i}" for i in range(1, 9)]
 
-DEFAULT_SMOOTHING_PARAMS = {
-    "zos_temp_window": 3,
-    "humidity_window": 5,
-    "pressure_window": 5,
-    "humidity_clip_min": 45,
-    "humidity_clip_max": 85,
-    "pressure_clip_min": 85,
-    "pressure_clip_max": 110,
-}
-
 
 def get_default_config_path():
     return Path(__file__).resolve().parents[4] / "config" / "calib_config.json"
+
+
+def sequential_jump_clean(series, threshold):
+    cleaned = series.copy().astype(float)
+    for index in range(1, len(cleaned)):
+        if abs(cleaned.iloc[index] - cleaned.iloc[index - 1]) > threshold:
+            cleaned.iloc[index] = cleaned.iloc[index - 1]
+    return cleaned
+
+
+def calc_dry_o2(moist_o2, gas_pressure, temp_value, rh_value):
+    if pd.isna(gas_pressure) or gas_pressure <= 0 or pd.isna(temp_value) or pd.isna(rh_value):
+        return np.nan
+    sat_pressure = 0.61094 * np.exp(17.625 * temp_value / (temp_value + 243.04))
+    water_pressure = min((rh_value / 100.0) * sat_pressure, gas_pressure * 0.99)
+    return moist_o2 * (gas_pressure / (gas_pressure - water_pressure))
 
 
 class CalibrationHandler:
@@ -30,21 +39,25 @@ class CalibrationHandler:
         self.channels = VALID_CHANNELS.copy()
         self.target_points = int(target_points)
         self.config_path = Path(config_path or get_default_config_path())
-        self.data = {channel: [] for channel in self.channels}
-        self.calibrated = False
-        self.is_active = False
         self.lock = threading.Lock()
+        self.reset()
+
+    def reset(self):
+        self.data = defaultdict(list)
+        self.is_active = False
+        self.calibrated = False
+        self.completed = False
+        self.offsets = {}
+        self.secondary_models = {}
 
     def start_new_calibration(self):
         with self.lock:
-            self.data = {channel: [] for channel in self.channels}
-            self.calibrated = False
+            self.reset()
             self.is_active = True
         return True
 
     def add_data(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, env_temp, env_rh):
         del o2_partial
-        del zos_temp
 
         with self.lock:
             if channel not in self.channels:
@@ -54,127 +67,126 @@ class CalibrationHandler:
             if not self.is_active:
                 return False
 
-            point = {
-                "zos_temp": float(env_temp),
+            temp_value = float(env_temp) if env_temp is not None else float(zos_temp)
+            rh_value = float(env_rh) if env_rh is not None else None
+            self.data[channel].append({
                 "gas_pressure": float(gas_pressure),
                 "o2_percent": float(o2_percent),
-                "sht_rh": float(env_rh),
-            }
-            self.data[channel].append(point)
+                "temp_value": temp_value,
+                "rh_value": float(rh_value) if rh_value is not None else np.nan,
+            })
 
             if all(len(self.data[item]) >= self.target_points for item in self.channels):
-                success = self._perform_calibration()
+                success = self._perform_enhanced_calibration()
                 if success:
                     self.calibrated = True
+                    self.completed = True
                     self.is_active = False
                 return success
             return False
 
-    def _perform_calibration(self):
+    def _perform_enhanced_calibration(self):
+        processed = {}
+        thresholds = {
+            "o2_percent": 0.15,
+            "gas_pressure": 2.0,
+            "temp_value": 1.0,
+            "rh_value": 4.0,
+        }
+
         try:
-            coefficient_items = []
             for channel in self.channels:
-                channel_frame = self._build_channel_frame(self.data[channel][:self.target_points])
-                features = channel_frame[["o2_percent", "T_smooth", "RH_smooth", "P_smooth"]].values
-                labels = channel_frame["dry_o2"].values
-                model = LinearRegression()
-                model.fit(features, labels)
-                coefficient_items.append({
-                    "channel": channel,
-                    "coef_moist": round(float(model.coef_[0]), 6),
-                    "coef_zos_t": round(float(model.coef_[1]), 6),
-                    "coef_rh": round(float(model.coef_[2]), 6),
-                    "coef_p": round(float(model.coef_[3]), 6),
-                    "intercept": round(float(model.intercept_), 6),
-                })
-            self._write_config(coefficient_items)
+                frame = pd.DataFrame(self.data[channel][: self.target_points])
+                for key, threshold in thresholds.items():
+                    if key in frame.columns:
+                        frame[key] = sequential_jump_clean(frame[key], threshold)
+                processed[channel] = self._enhanced_process(frame, channel)
+
+            ref_final = processed["REF"]["final"].mean()
+            for channel in self.channels:
+                if channel == "REF":
+                    self.offsets[channel] = 0.0
+                else:
+                    self.offsets[channel] = float(processed[channel]["final"].mean() - ref_final)
+
+            self._save_config()
             return True
         except Exception:
             return False
 
-    def _build_channel_frame(self, points):
-        frame = pd.DataFrame(points)
-        for field in ["o2_percent", "gas_pressure", "zos_temp", "sht_rh"]:
-            frame[field] = frame[field].replace(0, np.nan).ffill().bfill().astype(float)
-
-        frame["T_smooth"] = frame["zos_temp"].rolling(
-            window=DEFAULT_SMOOTHING_PARAMS["zos_temp_window"],
-            center=True,
-            min_periods=1,
-        ).median().ffill().bfill()
-
-        frame["RH_smooth"] = frame["sht_rh"].rolling(
-            window=DEFAULT_SMOOTHING_PARAMS["humidity_window"],
-            center=True,
-            min_periods=2,
-        ).median()
-        frame["RH_smooth"] = frame["RH_smooth"].clip(
-            lower=DEFAULT_SMOOTHING_PARAMS["humidity_clip_min"],
-            upper=DEFAULT_SMOOTHING_PARAMS["humidity_clip_max"],
-        ).ffill().bfill()
-
-        frame["P_smooth"] = frame["gas_pressure"].clip(
-            lower=DEFAULT_SMOOTHING_PARAMS["pressure_clip_min"],
-            upper=DEFAULT_SMOOTHING_PARAMS["pressure_clip_max"],
-        )
-        frame["P_smooth"] = frame["P_smooth"].rolling(
-            window=DEFAULT_SMOOTHING_PARAMS["pressure_window"],
-            center=True,
-            min_periods=1,
-        ).median().ffill().bfill()
-
-        frame["dry_o2"] = frame.apply(
-            lambda row: self._calculate_dry_o2(
+    def _enhanced_process(self, frame, channel):
+        frame["dry_raw"] = frame.apply(
+            lambda row: calc_dry_o2(
                 row["o2_percent"],
-                row["P_smooth"],
-                row["T_smooth"],
-                row["RH_smooth"],
+                row["gas_pressure"],
+                row["temp_value"],
+                row["rh_value"],
             ),
             axis=1,
         )
-        return frame
 
-    def _calculate_dry_o2(self, moist_o2, gas_pressure, zos_temp, sht_rh):
-        if pd.isna(gas_pressure) or gas_pressure <= 0 or pd.isna(zos_temp) or pd.isna(sht_rh):
-            return np.nan
-        sat_vapor_pressure = 0.61094 * np.exp(17.625 * zos_temp / (zos_temp + 243.04))
-        actual_vapor_pressure = (sht_rh / 100.0) * sat_vapor_pressure
-        if actual_vapor_pressure >= gas_pressure * 0.99:
-            actual_vapor_pressure = gas_pressure * 0.99
-        return moist_o2 * (gas_pressure / (gas_pressure - actual_vapor_pressure))
+        dry_values = frame["dry_raw"].ffill().bfill().values
+        if len(dry_values) >= 11:
+            frame["dry_sg"] = savgol_filter(dry_values, window_length=11, polyorder=2)
+        else:
+            frame["dry_sg"] = dry_values
 
-    def _write_config(self, coefficient_items):
-        config = {
-            "version": "1.0",
-            "target_o2": 20.93,
-            "calibration_info": {
-                "calibration_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "calibration_points": self.target_points,
-                "note": "上位机实时标定完成",
-            },
-            "smoothing_params": DEFAULT_SMOOTHING_PARAMS.copy(),
-            "channels": {},
-        }
+        mask = (
+            frame["dry_sg"].notna()
+            & frame["rh_value"].notna()
+            & frame["temp_value"].notna()
+        )
+        if mask.sum() > 50:
+            features = np.column_stack((
+                frame.loc[mask, "rh_value"].values,
+                frame.loc[mask, "temp_value"].values,
+            ))
+            labels = frame.loc[mask, "dry_sg"].values
 
-        for item in coefficient_items:
-            config["channels"][item["channel"]] = {
-                "coef_moist": item["coef_moist"],
-                "coef_zos_t": item["coef_zos_t"],
-                "coef_rh": item["coef_rh"],
-                "coef_p": item["coef_p"],
-                "intercept": item["intercept"],
+            poly = PolynomialFeatures(degree=2, include_bias=False)
+            features_poly = poly.fit_transform(features)
+            model = LinearRegression().fit(features_poly, labels)
+
+            self.secondary_models[channel] = {
+                "coef": model.coef_.tolist(),
+                "intercept": float(model.intercept_),
             }
 
+            full_features = np.column_stack((
+                frame["rh_value"].ffill().bfill(),
+                frame["temp_value"].ffill().bfill(),
+            ))
+            full_features_poly = poly.transform(full_features)
+            prediction = model.predict(full_features_poly)
+            frame["dry_sec"] = frame["dry_sg"] - (prediction - np.nanmean(prediction))
+        else:
+            frame["dry_sec"] = frame["dry_sg"]
+
+        frame["final"] = frame["dry_sec"]
+        return frame
+
+    def _save_config(self):
+        config = {
+            "version": "2.0",
+            "calibration_time": datetime.now().isoformat(),
+            "target_o2": 20.93,
+            "target_points": self.target_points,
+            "offsets": self.offsets,
+            "secondary_models": self.secondary_models,
+        }
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.config_path.open("w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        with self.config_path.open("w", encoding="utf-8") as file:
+            json.dump(config, file, indent=2, ensure_ascii=False)
 
     def get_status(self):
         with self.lock:
-            current_counts = {channel: len(self.data[channel]) for channel in self.channels}
+            points_received = {channel: len(records) for channel, records in self.data.items()}
+            current_counts = {channel: points_received.get(channel, 0) for channel in self.channels}
             return {
                 "is_active": self.is_active,
                 "calibrated": self.calibrated,
+                "completed": self.completed,
+                "points_received": points_received,
                 "current_counts": current_counts,
                 "all_ready": all(count >= self.target_points for count in current_counts.values()),
                 "target_points": self.target_points,
