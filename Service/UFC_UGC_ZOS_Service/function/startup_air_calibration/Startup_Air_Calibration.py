@@ -131,9 +131,9 @@ class Startup_Air_Calibration:
     def _normalize_sample_interval():
         calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
         try:
-            sample_interval = float(calibration_config.get("calibration_sample_interval", 1))
+            sample_interval = float(calibration_config.get("startup_air_calibration_channel_interval", 2))
         except Exception:
-            sample_interval = 1.0
+            sample_interval = 2.0
         return max(sample_interval, 0.5)
 
     @staticmethod
@@ -376,26 +376,27 @@ class Startup_Air_Calibration:
         start_time = time.time()
 
         self._send_text(
-            f"{self.name}开始采集 9 路 O2 / CO2 数据并行校准，目标点数 {target_points}"
+            f"{self.name}开始采集 9 路 O2 / CO2 数据并行校准，"
+            f"每 {sample_interval:g} 秒读取 1 个通道，目标点数 {target_points}"
         )
 
+        channel_index = 0
         while True:
             elapsed_time = time.time() - start_time
             if elapsed_time > max_timeout:
                 reject(f"{self.name}超时，已运行 {int(elapsed_time)} 秒")
                 return
 
-            for channel in active_channels:
-                display_name = self._channel_to_display_name(channel)
-                snapshot = self._read_zos_channel_snapshot(channel)
-                if snapshot is not None:
-                    snapshot = self._normalize_snapshot_with_previous(channel, snapshot)
+            channel = active_channels[channel_index]
+            display_name = self._channel_to_display_name(channel)
+            snapshot = self._read_zos_channel_snapshot(channel)
+            if snapshot is not None:
+                snapshot = self._normalize_snapshot_with_previous(channel, snapshot)
 
-                co2_snapshot = self._read_ugc_channel_snapshot(channel)
-                if snapshot is None and co2_snapshot is None:
-                    logger.warning(f"{self.name}读取 {display_name} O2 / CO2 数据失败")
-                    continue
-
+            co2_snapshot = self._read_ugc_channel_snapshot(channel)
+            if snapshot is None and co2_snapshot is None:
+                logger.warning(f"{self.name}读取 {display_name} O2 / CO2 数据失败")
+            else:
                 if snapshot is not None:
                     self.push_calibration_values_to_ui(
                         oxygen_value=snapshot["o2_percent"],
@@ -444,6 +445,8 @@ class Startup_Air_Calibration:
                     self._send_text(f"{self.name}判定完成，O2 / CO2 校准配置已输出")
                     resolve()
                     return
+
+            channel_index = (channel_index + 1) % len(active_channels)
 
             current_time = time.time()
             if current_time - last_progress_log_time >= 5:
