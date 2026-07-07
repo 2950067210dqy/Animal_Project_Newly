@@ -1,7 +1,7 @@
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
-import threading
 
 import numpy as np
 import pandas as pd
@@ -20,30 +20,41 @@ class CO2CalibrationHandler:
         self.channels = VALID_CHANNELS.copy()
         self.target_points = int(target_points)
         self.config_path = Path(config_path or get_default_config_path())
-        self.data = {ch: [] for ch in self.channels}
+        self.data = {channel: [] for channel in self.channels}
         self.calibrated = False
         self.is_active = False
         self.lock = threading.Lock()
 
+        self.valid_range = (300, 5000)
+        self.min_valid_ratio = 0.8
+        self.k_limit = (0.80, 1.20)
+        self.time_sync_tolerance = 2.0
+
     def start_new_calibration(self):
         with self.lock:
-            self.data = {ch: [] for ch in self.channels}
+            self.data = {channel: [] for channel in self.channels}
             self.calibrated = False
             self.is_active = True
         return True
 
-    def add_data(self, channel, co2_std):
+    def add_data(self, channel, co2_std, timestamp=None):
         with self.lock:
-            if channel not in self.channels:
-                return False
-            if self.calibrated:
-                return True
-            if not self.is_active:
-                return False
+            if channel not in self.channels or not self.is_active or self.calibrated:
+                return self.calibrated
 
-            self.data[channel].append({"co2_std": float(co2_std)})
+            if timestamp is None:
+                ts = datetime.now()
+            elif isinstance(timestamp, (int, float)):
+                ts = datetime.fromtimestamp(timestamp)
+            else:
+                ts = pd.to_datetime(timestamp)
 
-            all_ready = all(len(self.data[ch]) >= self.target_points for ch in self.channels)
+            self.data[channel].append({
+                "co2_std": float(co2_std),
+                "timestamp": ts,
+            })
+
+            all_ready = all(len(self.data[item]) >= self.target_points for item in self.channels)
             if not all_ready:
                 return False
 
@@ -53,11 +64,50 @@ class CO2CalibrationHandler:
                 self.is_active = False
             return success
 
+    def _preprocess_channel_data(self, channel):
+        frame = pd.DataFrame(self.data[channel])
+        if frame.empty:
+            return frame
+
+        frame["is_valid"] = (
+            (frame["co2_std"] >= self.valid_range[0])
+            & (frame["co2_std"] <= self.valid_range[1])
+        )
+        valid_median = frame.loc[frame["is_valid"], "co2_std"].median()
+        frame["co2_clean"] = frame["co2_std"].where(frame["is_valid"], valid_median)
+
+        if frame["co2_clean"].isna().all():
+            return pd.DataFrame()
+
+        return frame[["timestamp", "co2_clean", "is_valid"]]
+
+    def _align_data_by_time(self, ref_frame, channel_frame):
+        ref_frame = ref_frame.sort_values("timestamp").reset_index(drop=True)
+        channel_frame = channel_frame.sort_values("timestamp").reset_index(drop=True)
+
+        aligned = pd.merge_asof(
+            channel_frame,
+            ref_frame,
+            on="timestamp",
+            direction="nearest",
+            tolerance=pd.Timedelta(seconds=self.time_sync_tolerance),
+            suffixes=("_ch", "_ref"),
+        )
+        return aligned.dropna(subset=["co2_clean_ref", "co2_clean_ch"])
+
     def _perform_calibration(self):
         try:
-            ref_df = pd.DataFrame(self.data["REF"][: self.target_points])
-            ref_df["co2_smooth"] = (
-                ref_df["co2_std"]
+            ref_raw = self._preprocess_channel_data("REF")
+            if ref_raw.empty:
+                return False
+
+            valid_count_ref = int(ref_raw["is_valid"].sum())
+            if valid_count_ref < self.target_points * self.min_valid_ratio:
+                return False
+
+            ref_raw = ref_raw.sort_values("timestamp").reset_index(drop=True)
+            ref_raw["co2_smooth"] = (
+                ref_raw["co2_clean"]
                 .rolling(window=11, center=True, min_periods=5)
                 .mean()
                 .ffill()
@@ -67,33 +117,53 @@ class CO2CalibrationHandler:
             coefficient_items = []
             for channel in self.channels:
                 if channel == "REF":
-                    coefficient_items.append(
-                        {
-                            "channel": "REF",
-                            "coef_k": 1.0,
-                            "coef_b": 0.0,
-                        }
-                    )
+                    coefficient_items.append({
+                        "Channel": "REF",
+                        "Coef_K": 1.0,
+                        "Coef_B": 0.0,
+                        "R2": 1.0,
+                        "Valid_Points": len(ref_raw),
+                    })
                     continue
 
-                channel_df = pd.DataFrame(self.data[channel][: self.target_points])
-                channel_df["co2_std"] = channel_df["co2_std"].replace(0, np.nan).ffill().bfill()
+                channel_raw = self._preprocess_channel_data(channel)
+                if channel_raw.empty:
+                    continue
 
-                sample_count = min(len(channel_df), len(ref_df))
+                valid_count_channel = int(channel_raw["is_valid"].sum())
+                if valid_count_channel < self.target_points * self.min_valid_ratio:
+                    continue
+
+                aligned = self._align_data_by_time(ref_raw, channel_raw)
+                if len(aligned) < self.target_points * self.min_valid_ratio:
+                    continue
+
+                x_values = aligned[["co2_clean_ch"]].values
+                y_values = aligned["co2_smooth"].values
+
                 model = LinearRegression()
-                x_values = channel_df[["co2_std"]].iloc[:sample_count].values
-                y_values = ref_df["co2_smooth"].iloc[:sample_count].values
                 model.fit(x_values, y_values)
 
-                coef_k = max(0.95, min(1.05, float(model.coef_[0])))
-                coef_b = float(y_values.mean() - coef_k * x_values.mean())
-                coefficient_items.append(
-                    {
-                        "channel": channel,
-                        "coef_k": round(coef_k, 6),
-                        "coef_b": round(coef_b, 4),
-                    }
-                )
+                coef_k = float(model.coef_[0])
+                coef_b = float(model.intercept_)
+                r2 = float(model.score(x_values, y_values))
+
+                x_mean = x_values.mean()
+                y_mean = y_values.mean()
+                coef_k_limited = max(self.k_limit[0], min(self.k_limit[1], coef_k))
+                if coef_k_limited != coef_k:
+                    coef_b = y_mean - coef_k_limited * x_mean
+
+                coefficient_items.append({
+                    "Channel": channel,
+                    "Coef_K": round(coef_k_limited, 6),
+                    "Coef_B": round(coef_b, 4),
+                    "R2": round(r2, 4),
+                    "Valid_Points": len(aligned),
+                })
+
+            if len(coefficient_items) < 2:
+                return False
 
             self._write_config(coefficient_items)
             return True
@@ -102,34 +172,82 @@ class CO2CalibrationHandler:
 
     def _write_config(self, coefficient_items):
         config = {
-            "version": "2.0",
+            "version": "2.1",
             "sensor_model": "GS5T",
             "calibration_info": {
                 "calibration_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "calibration_points": self.target_points,
-                "method": "Air_Consistency_Alignment_SingleVar",
+                "method": "Air_Consistency_Alignment_TimeSync",
             },
             "channels": {},
         }
 
         for item in coefficient_items:
-            config["channels"][item["channel"]] = {
-                "coef_k": item["coef_k"],
-                "coef_b": item["coef_b"],
+            channel = item["Channel"]
+            config["channels"][channel] = {
+                "coef_k": item["Coef_K"],
+                "coef_b": item["Coef_B"],
+                "r2": item.get("R2", 1.0),
+                "valid_points": item.get("Valid_Points", 0),
             }
 
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.config_path.open("w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        with self.config_path.open("w", encoding="utf-8") as file:
+            json.dump(config, file, indent=2, ensure_ascii=False)
 
     def get_status(self):
         with self.lock:
             counts = {channel: len(self.data[channel]) for channel in self.channels}
+            valid_counts = {}
+
+            for channel in self.channels:
+                if self.data[channel]:
+                    frame = self._preprocess_channel_data(channel)
+                    valid_counts[channel] = int(frame["is_valid"].sum()) if not frame.empty else 0
+                else:
+                    valid_counts[channel] = 0
+
             return {
                 "is_active": self.is_active,
                 "calibrated": self.calibrated,
                 "current_counts": counts,
+                "valid_counts": valid_counts,
                 "target_points": self.target_points,
-                "all_ready": all(count >= self.target_points for count in counts.values()),
+                "min_valid_ratio": self.min_valid_ratio,
                 "config_path": str(self.config_path),
             }
+
+    def get_calibration_quality(self):
+        try:
+            with self.config_path.open("r", encoding="utf-8") as file:
+                config = json.load(file)
+
+            report = {
+                "calibration_date": config["calibration_info"]["calibration_date"],
+                "channels": [],
+            }
+
+            for channel, data in config.get("channels", {}).items():
+                if channel == "REF":
+                    continue
+                report["channels"].append({
+                    "channel": channel,
+                    "k": data["coef_k"],
+                    "b": data["coef_b"],
+                    "r2": data.get("r2", "N/A"),
+                    "quality": self._evaluate_quality(data["coef_k"], data.get("r2", 0)),
+                })
+
+            return report
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    @staticmethod
+    def _evaluate_quality(coef_k, r2):
+        if coef_k < 0.85 or coef_k > 1.15:
+            return "较差"
+        if coef_k < 0.95 or coef_k > 1.05:
+            return "一般"
+        if r2 < 0.95:
+            return "一般"
+        return "良好"
