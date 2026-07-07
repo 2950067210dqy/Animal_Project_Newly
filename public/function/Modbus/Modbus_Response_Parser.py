@@ -2595,8 +2595,8 @@ class Modbus_Response_UFC(Modbus_Response_Parents):
                     # 流量测量值 四字节IEEE754码
                     # 首先将其展开为二进制数，
                     data_str = "".join(self.int_to_8bit_binary(
-                        num_list=[self.response_struct['data'][i - 3] << 24, self.response_struct['data'][i - 2]<< 16,
-                                  self.response_struct['data'][i - 1]<< 8, self.response_struct['data'][i]]))
+                        num_list=[self.response_struct['data'][i - 3], self.response_struct['data'][i - 2],
+                                  self.response_struct['data'][i - 1], self.response_struct['data'][i]]))
                     # # 最高位为符号位s，从高位向下8位为阶码位E,剩余的位23为有效数字M。
                     # sign_bit = int(data_str[0], 2)
                     # exponent_bit = int(data_str[1:9], 2)
