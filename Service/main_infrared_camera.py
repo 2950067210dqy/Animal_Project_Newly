@@ -418,10 +418,9 @@ class TIP:
         if roi_pixels.size == 0:
             return mask, None, None
 
-        top_n = min(ROI_EFFECTIVE_MAX_TOP_N, int(roi_pixels.size))
-        hottest_pixels = np.partition(roi_pixels, -top_n)[-top_n:]
-        effective_max = float(np.mean(hottest_pixels))
-        return mask, effective_max, float(np.mean(roi_pixels))
+        roi_max = float(np.max(roi_pixels))
+        roi_background = float(np.median(roi_pixels))
+        return mask, roi_max, roi_background
 
     def _draw_ellipse_overlay(self, origin_image):
         if not self.ellipse_mask_enabled:
