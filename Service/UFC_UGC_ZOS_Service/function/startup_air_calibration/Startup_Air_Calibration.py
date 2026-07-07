@@ -389,11 +389,11 @@ class Startup_Air_Calibration:
 
             channel = active_channels[channel_index]
             display_name = self._channel_to_display_name(channel)
+            co2_snapshot = self._read_ugc_channel_snapshot(channel)
+
             snapshot = self._read_zos_channel_snapshot(channel)
             if snapshot is not None:
                 snapshot = self._normalize_snapshot_with_previous(channel, snapshot)
-
-            co2_snapshot = self._read_ugc_channel_snapshot(channel)
             if snapshot is None and co2_snapshot is None:
                 logger.warning(f"{self.name}读取 {display_name} O2 / CO2 数据失败")
             else:
