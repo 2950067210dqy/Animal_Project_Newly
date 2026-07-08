@@ -146,9 +146,9 @@ class Startup_Air_Calibration:
         return max(target_points, 1)
 
     @staticmethod
-    def _normalize_run_timeout(target_points, sample_interval):
+    def _normalize_run_timeout(target_points, sample_interval, channel_count):
         calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
-        default_timeout = max(int(target_points * sample_interval * 3), 300)
+        default_timeout = max(int(target_points * sample_interval * channel_count + 120), 300)
         try:
             max_timeout = int(float(calibration_config.get("startup_air_calibration_max_timeout", default_timeout)))
         except Exception:
@@ -371,7 +371,7 @@ class Startup_Air_Calibration:
 
         sample_interval = self._normalize_sample_interval()
         target_points = self._normalize_target_points()
-        max_timeout = self._normalize_run_timeout(target_points, sample_interval)
+        max_timeout = self._normalize_run_timeout(target_points, sample_interval, len(active_channels))
         last_progress_log_time = 0.0
         start_time = time.time()
 
