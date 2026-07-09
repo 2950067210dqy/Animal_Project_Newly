@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+from loguru import logger
 
 
 VALID_CHANNELS = ["REF"] + [f"M{i}" for i in range(1, 9)]
@@ -58,10 +59,20 @@ class CO2CalibrationHandler:
             if not all_ready:
                 return False
 
+            logger.info(
+                f"CO2 Air calibration points ready, starting coefficient calculation: "
+                f"{ {item: len(self.data[item]) for item in self.channels} }"
+            )
             success = self._perform_calibration()
             if success:
+                logger.info(
+                    f"CO2 Air calibration coefficients saved to {self.config_path} "
+                    f"(time_sync_tolerance={self.time_sync_tolerance}s)"
+                )
                 self.calibrated = True
                 self.is_active = False
+            else:
+                logger.error("CO2 Air calibration coefficient calculation failed")
             return success
 
     def _preprocess_channel_data(self, channel):
@@ -212,6 +223,7 @@ class CO2CalibrationHandler:
                 "calibrated": self.calibrated,
                 "current_counts": counts,
                 "valid_counts": valid_counts,
+                "all_ready": all(count >= self.target_points for count in counts.values()),
                 "target_points": self.target_points,
                 "min_valid_ratio": self.min_valid_ratio,
                 "config_path": str(self.config_path),

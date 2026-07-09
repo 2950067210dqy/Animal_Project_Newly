@@ -39,6 +39,7 @@ class Startup_Air_Calibration:
         self.co2_calibration_handler = None
         self.previous_valid_snapshots = {}
         self.data_handle = None
+        self.calculation_started_logged = False
 
     def update(self):
         self.send_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
@@ -148,7 +149,7 @@ class Startup_Air_Calibration:
     @staticmethod
     def _normalize_run_timeout(target_points, sample_interval, channel_count):
         calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
-        default_timeout = max(int(target_points * sample_interval * channel_count + 120), 300)
+        default_timeout = max(int(target_points * sample_interval * channel_count + 300), 300)
         try:
             max_timeout = int(float(calibration_config.get("startup_air_calibration_max_timeout", default_timeout)))
         except Exception:
@@ -216,7 +217,7 @@ class Startup_Air_Calibration:
             "env_rh": env_data.get("humidity_num"),
         }
 
-    def _build_calibration_handlers(self):
+    def _build_calibration_handlers(self, sample_interval=None, active_channel_count=None):
         try:
             from Service.UFC_UGC_ZOS_Service.function.o2_compensation.calibration_handler import CalibrationHandler
             from Service.UFC_UGC_ZOS_Service.function.co2_compensation.co2_calibration_handler import (
@@ -228,9 +229,20 @@ class Startup_Air_Calibration:
         target_points = self._normalize_target_points()
         self.o2_calibration_handler = CalibrationHandler(target_points=target_points)
         self.co2_calibration_handler = CO2CalibrationHandler(target_points=target_points)
+        if sample_interval is not None and active_channel_count is not None:
+            channel_gap_window = max(
+                float(sample_interval) * max(int(active_channel_count) - 1, 1) + 2.0,
+                self.co2_calibration_handler.time_sync_tolerance,
+            )
+            self.co2_calibration_handler.time_sync_tolerance = channel_gap_window
+            logger.info(
+                f"{self.name}: CO2 time sync tolerance adjusted to {channel_gap_window:.1f}s "
+                f"for {active_channel_count} sequential channels"
+            )
         self.o2_calibration_handler.start_new_calibration()
         self.co2_calibration_handler.start_new_calibration()
         self.previous_valid_snapshots = {}
+        self.calculation_started_logged = False
 
     def _read_ugc_channel_snapshot(self, channel):
         port = self._get_port()
@@ -363,14 +375,16 @@ class Startup_Air_Calibration:
             reject("未配置有效通道，无法执行运行前 Air 空气校准")
             return
 
+        sample_interval = self._normalize_sample_interval()
+        target_points = self._normalize_target_points()
         try:
-            self._build_calibration_handlers()
+            self._build_calibration_handlers(
+                sample_interval=sample_interval,
+                active_channel_count=len(active_channels),
+            )
         except Exception as exc:
             reject(str(exc))
             return
-
-        sample_interval = self._normalize_sample_interval()
-        target_points = self._normalize_target_points()
         max_timeout = self._normalize_run_timeout(target_points, sample_interval, len(active_channels))
         last_progress_log_time = 0.0
         start_time = time.time()
@@ -440,6 +454,17 @@ class Startup_Air_Calibration:
                     logger.warning(f"{self.name}读取 {display_name} CO2 数据失败")
                 else:
                     logger.warning(f"{self.name}读取 {display_name} 气压数据失败，CO2 无法补偿")
+
+                o2_status = self.o2_calibration_handler.get_status()
+                co2_status = self.co2_calibration_handler.get_status()
+                co2_ready = all(
+                    count >= target_points for count in co2_status.get("current_counts", {}).values()
+                )
+                if not self.calculation_started_logged and o2_status.get("all_ready") and co2_ready:
+                    self.calculation_started_logged = True
+                    self._send_text(
+                        f"{self.name}全部通道已收满 {target_points} 点，开始计算 O2 / CO2 补偿系数"
+                    )
 
                 if self.o2_calibration_handler.calibrated and self.co2_calibration_handler.calibrated:
                     self._send_text(f"{self.name}判定完成，O2 / CO2 校准配置已输出")

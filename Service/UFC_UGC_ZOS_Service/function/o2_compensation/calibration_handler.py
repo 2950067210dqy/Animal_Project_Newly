@@ -9,6 +9,7 @@ import pandas as pd
 from scipy.signal import savgol_filter
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
+from loguru import logger
 
 
 VALID_CHANNELS = ["REF"] + [f"M{i}" for i in range(1, 9)]
@@ -77,11 +78,18 @@ class CalibrationHandler:
             })
 
             if all(len(self.data[item]) >= self.target_points for item in self.channels):
+                logger.info(
+                    f"O2 Air calibration points ready, starting coefficient calculation: "
+                    f"{ {item: len(self.data[item]) for item in self.channels} }"
+                )
                 success = self._perform_enhanced_calibration()
                 if success:
+                    logger.info(f"O2 Air calibration coefficients saved to {self.config_path}")
                     self.calibrated = True
                     self.completed = True
                     self.is_active = False
+                else:
+                    logger.error("O2 Air calibration coefficient calculation failed")
                 return success
             return False
 
