@@ -1403,6 +1403,10 @@ class MainWindow_Index(ThemedWindow):
                 start_wait_times += max(float(calibration_config.get('startup_air_calibration_wait_time', 1800)), 0)
             except Exception:
                 start_wait_times += 1800
+            try:
+                start_wait_times += max(float(calibration_config.get('startup_air_calibration_max_timeout', 2700)), 0)
+            except Exception:
+                start_wait_times += 2700
             if self.start_dialog is not None:
                 self.start_dialog.countdown_seconds = start_wait_times
                 self.start_dialog.current_seconds = start_wait_times
