@@ -958,6 +958,9 @@ class Modbus_Response_DWM(Modbus_Response_Parents):
                 return_data, parser_message = self.parser_function_code_4()
                 table_name = "monitor_data"
 
+            case 5:
+                return_data, parser_message = self.parser_function_code_5()
+
             case 17:
                 return_data, parser_message = self.parser_function_code_17()
                 table_name = "module_information"
@@ -1054,6 +1057,45 @@ class Modbus_Response_DWM(Modbus_Response_Parents):
         logger.info(parser_message)
         return return_datas, parser_message
         pass
+
+    def parser_function_code_5(self):
+        function_desc = """
+                                      写从机单个开关量输出(ON/OFF)
+                                      参数长度: 4
+                                      """
+        pack_struct = "B B B B"
+        self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=False)
+        logger.info(
+            f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
+        return_datas = []
+        port_types = ['门控控制起始地址值', '门控控制']
+
+        j = 0
+        for i in range(len(self.response_struct['data'])):
+            match i:
+                case 1:
+                    return_datas.append({
+                        "desc": port_types[j],
+                        'value': f"0X{self.response_struct['data'][i - 1]:02X}{self.response_struct['data'][i]:02X}"
+                    }
+                    )
+                    j += 1
+                case 2:
+                    return_datas.append({
+                        "desc": port_types[j],
+                        'value': "开门" if int(self.response_struct['data'][i]) == 255 else "关门"
+                    }
+                    )
+                    j += 1
+                case _:
+                    pass
+
+        return_data_str = ""
+        for return_data in return_datas:
+            return_data_str += f"{return_data['desc']}:{return_data['value']} | "
+        parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-鼠笼{self.mouse_cage_number}-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
+        logger.info(parser_message)
+        return return_datas, parser_message
 
     """
            12 11 X

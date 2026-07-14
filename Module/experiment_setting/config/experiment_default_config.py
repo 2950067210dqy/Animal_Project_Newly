@@ -172,7 +172,7 @@ def get_default_config():
     
         "{Modbus_Slave_Ids.EM.value['name']}":{{
             "desc":"{Modbus_Slave_Ids.EM.value['description']}",
-            "address":{Modbus_Slave_Ids.EM.value['address']},
+            "address":{Modbus_Slave_Ids.DWM.value['address']},
             "config":[
                 {{
                     "function_code":5,
