@@ -124,20 +124,20 @@ class RealtimeO2Compensator:
 
     def compensate(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, env_temp, env_rh):
         del o2_partial
+        del env_temp
 
         self.ensure_latest()
 
-        temp_value = env_temp if env_temp is not None else zos_temp
         o2_value = _coerce_float(o2_percent)
         gas_pressure_value = _coerce_float(gas_pressure)
-        temp_value = _coerce_float(temp_value)
+        zos_temp_value = _coerce_float(zos_temp)
         rh_value = _coerce_float(env_rh)
 
         if channel not in self.last_values:
             self.last_values[channel] = {
                 "o2": o2_value,
                 "p": gas_pressure_value,
-                "t": temp_value,
+                "t": zos_temp_value,
                 "rh": rh_value,
             }
 
@@ -150,19 +150,19 @@ class RealtimeO2Compensator:
             and abs(gas_pressure_value - last["p"]) > 2.0
         ):
             gas_pressure_value = last["p"]
-        if not pd.isna(temp_value) and not pd.isna(last["t"]) and abs(temp_value - last["t"]) > 1.0:
-            temp_value = last["t"]
+        if not pd.isna(zos_temp_value) and not pd.isna(last["t"]) and abs(zos_temp_value - last["t"]) > 1.0:
+            zos_temp_value = last["t"]
         if not pd.isna(rh_value) and not pd.isna(last["rh"]) and abs(rh_value - last["rh"]) > 4.0:
             rh_value = last["rh"]
 
         self.last_values[channel] = {
             "o2": o2_value,
             "p": gas_pressure_value,
-            "t": temp_value,
+            "t": zos_temp_value,
             "rh": rh_value,
         }
 
-        dry_raw = calc_dry_o2(o2_value, gas_pressure_value, temp_value, rh_value)
+        dry_raw = calc_dry_o2(o2_value, gas_pressure_value, zos_temp_value, rh_value)
 
         self.dry_buffer[channel].append(dry_raw)
         self.rh_buffer[channel].append(rh_value)
@@ -182,7 +182,7 @@ class RealtimeO2Compensator:
         else:
             dry_sg = dry_raw
 
-        dry_sec = self._apply_secondary(dry_sg, rh_value, temp_value, channel)
+        dry_sec = self._apply_secondary(dry_sg, rh_value, zos_temp_value, channel)
         ref_dry = self.dry_ref_buffer[-1] if self.dry_ref_buffer else dry_sec
         offset = float(self.offsets.get(channel, 0.0))
         final_value = dry_sec - (ref_dry - self.target_o2) - offset
@@ -298,9 +298,9 @@ def calculate_o2_compensated(
         return -1
 
     env_temp_from_db, env_rh_from_db = _get_environment_temp_humidity(channel_id)
-    if env_temp_from_db is not None:
+    if env_temp is None and env_temp_from_db is not None:
         env_temp = env_temp_from_db
-    if env_rh_from_db is not None:
+    if env_rh is None and env_rh_from_db is not None:
         env_rh = env_rh_from_db
 
     compensator = get_realtime_o2_compensator()
