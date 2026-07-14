@@ -3,6 +3,8 @@ import sys
 import time
 import threading
 import traceback
+from collections import deque
+from typing import Any
 
 import cv2
 from PyQt6.QtCore import QCoreApplication
@@ -14,11 +16,13 @@ from public.entity.MyQThread import MyQThread
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.folder_util import folder_util
 from public.util.json_util import json_util
+from public.util.shared_video_frames import shared_video_frame_store
 from public.util.time_util import time_util
 
 
 logged_errors = set()
 delete_file_thread = None
+save_frame_thread = None
 camera_list = []
 frame_nums = 0
 lock = threading.Lock()
@@ -208,6 +212,43 @@ class Delete_file(MyQThread):
             logger.error(f"deep_camera delete thread failed: {e} | {traceback.format_exc()}")
 
 
+class SaveRawFrameThread(MyQThread):
+    def __init__(self, max_pending: int = 64):
+        super().__init__(name="deep_camera_save_raw_frame")
+        self.max_pending = max_pending
+        self.pending_items: deque[tuple[str, str, Any]] = deque()
+        self.pending_lock = threading.Lock()
+        self.dropped_count = 0
+
+    def submit_frame(self, output_path: str, file_name: str, frame):
+        if not output_path or frame is None:
+            return
+        with self.pending_lock:
+            if len(self.pending_items) >= self.max_pending:
+                self.pending_items.popleft()
+                self.dropped_count += 1
+            self.pending_items.append((output_path, file_name, frame.copy()))
+
+    def dosomething(self):
+        item = None
+        with self.pending_lock:
+            if self.pending_items:
+                item = self.pending_items.popleft()
+
+        if item is None:
+            time.sleep(0.01)
+            return
+
+        output_path, file_name, frame = item
+        folder_path = os.path.dirname(output_path)
+        if folder_path and not os.path.exists(folder_path):
+            os.makedirs(folder_path, exist_ok=True)
+
+        file_lock = file_locks.setdefault(file_name, threading.Lock())
+        with file_lock:
+            cv2.imwrite(output_path, frame)
+
+
 def parse_uvc_device_index(device_identifier):
     # Support both raw indices and the persisted "uvc_index_x" format.
     if isinstance(device_identifier, int):
@@ -228,6 +269,7 @@ def parse_uvc_device_index(device_identifier):
 class UVCCameraProcessor(MyQThread):
     def __init__(self, path="", id=1, serial_number="", device_index=None):
         super().__init__(name=f"deep_camera_{id}")
+        self.cage_number = int(id)
         self.serial_number = serial_number
         self.device_index = device_index if device_index is not None else parse_uvc_device_index(serial_number)
         self.id = id
@@ -236,6 +278,7 @@ class UVCCameraProcessor(MyQThread):
         self.fps = 30
         self.frame_width = 1280
         self.frame_height = 720
+        self.frame_id = 0
         self.init_state = self.init_camera()
 
     def _open_capture(self, index):
@@ -285,27 +328,24 @@ class UVCCameraProcessor(MyQThread):
         if not os.path.exists(path):
             os.makedirs(path)
 
-    def img_save(self, image):
-        global file_locks
+    def img_save(self, image, *, timestamp: float):
+        global save_frame_thread
 
-        timestrf = time_util.get_format_file_from_time(time.time())
+        timestrf = time_util.get_format_file_from_time(timestamp)
         file_name = f"{timestrf}.bmp"
-
         deep_config = _deep_camera_config()
         color_dir = os.path.join(self.path, deep_config["color_dir"].strip("/\\"))
-
         self._ensure_dir(color_dir)
-
         color_path = os.path.join(color_dir, file_name)
-
-        # The monitor UI reads deep-camera frames from color_dir only.
-        cv2.imwrite(color_path, image)
-        file_locks[file_name] = threading.Lock()
+        if save_frame_thread is not None and save_frame_thread.isRunning():
+            save_frame_thread.submit_frame(color_path, file_name, image)
+        return color_path, file_name
 
     def stop(self):
         if self.capture is not None:
             self.capture.release()
             self.capture = None
+        shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
         super().stop()
 
     def run(self):
@@ -355,7 +395,16 @@ class UVCCameraProcessor(MyQThread):
             time.sleep(float(_deep_camera_config()["delay"]))
             return
 
-        self.img_save(color_image)
+        timestamp = time.time()
+        self.frame_id += 1
+        self.img_save(color_image, timestamp=timestamp)
+        shared_video_frame_store.write_frame(
+            "deep_camera",
+            self.cage_number,
+            color_image,
+            frame_id=self.frame_id,
+            timestamp=timestamp,
+        )
         with lock:
             frame_nums += 1
 
@@ -481,7 +530,7 @@ def main(q=None):
 
 
 def start():
-    global delete_file_thread
+    global delete_file_thread, save_frame_thread
 
     try:
         logger.info(f"{'-' * 30}deep_camera_run{'-' * 30}")
@@ -492,6 +541,17 @@ def start():
                 delete_file_thread.stop()
         except Exception as e:
             logger.error(f"stop deep_camera_delete_file_thread failed: {e}")
+
+        try:
+            if save_frame_thread is not None and save_frame_thread.isRunning():
+                save_frame_thread.stop()
+                save_frame_thread.requestInterruption()
+                save_frame_thread.wait(2000)
+        except Exception as e:
+            logger.error(f"stop deep_camera_save_raw_frame failed: {e}")
+
+        save_frame_thread = SaveRawFrameThread()
+        save_frame_thread.start()
 
         delete_file_thread = Delete_file(
             path=path,
@@ -513,7 +573,7 @@ def pause():
 
 
 def stop():
-    global delete_file_thread, camera_list
+    global delete_file_thread, camera_list, save_frame_thread
 
     logger.info(f"{'-' * 30}deep_camera_stop{'-' * 30}")
     logger.warning("stop_deep_camera_thread")
@@ -583,6 +643,15 @@ def stop():
                         time=time_util.get_format_from_time(time.time()),
                     )
                 )
+
+    if save_frame_thread is not None:
+        try:
+            save_frame_thread.stop()
+            save_frame_thread.requestInterruption()
+            save_frame_thread.wait(2000)
+        except Exception as e:
+            logger.error(f"stop deep_camera_save_raw_frame failed: {e}")
+        save_frame_thread = None
 
 
 if __name__ == "__main__":

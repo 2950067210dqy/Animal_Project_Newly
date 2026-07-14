@@ -15,8 +15,6 @@ from Module.mouse_trajectory.paths import (
     DEFAULT_MOUSE_MODEL_PATH,
     DEFAULT_REFERENCE_IMAGE_PATH,
     EXPORT_DIR,
-    get_cage_annotated_history_dir,
-    get_cage_annotated_latest_dir,
     get_cage_data_dir,
     get_cage_export_dir,
     get_cage_plots_dir,
@@ -34,8 +32,8 @@ from Module.mouse_trajectory.service.auto_mouse_trajectory import (
     parse_grid_json,
     parse_image_registration_json,
     parse_topdown_instrument_polygons,
+    render_annotation_image,
     run_yolo_single,
-    save_annotation,
     save_csv,
     save_plots,
     solve_mouse_location,
@@ -50,14 +48,14 @@ class MouseTrajectoryThread(MyQThread):
 
     def __init__(self):
         super().__init__(name="mouse_trajectory_thread")
-        self.pending_frames: dict[int, str] = {}
-        self.processed_files: dict[int, set[str]] = {}
+        self.pending_frames: dict[int, dict[str, Any]] = {}
+        self.last_processed_frame_ids: dict[int, int] = {}
         self.fixed_corners_by_cage: dict[int, BoxCorners] = {}
         self.previous_corners_by_cage: dict[int, list[dict[str, Any]]] = {}
         self.trajectory_rows: dict[int, list[dict[str, Any]]] = {}
         self.shift_logs: dict[int, list[dict[str, Any]]] = {}
         self.latest_plot_paths: dict[int, dict[str, str]] = {}
-        self.latest_annotation_paths: dict[int, str] = {}
+        self.last_output_flush_by_cage: dict[int, float] = {}
 
         self.reference_image_path = DEFAULT_REFERENCE_IMAGE_PATH
         self.grid_json_path = DEFAULT_GRID_JSON_PATH
@@ -70,6 +68,7 @@ class MouseTrajectoryThread(MyQThread):
         self.conf_mouse = 0.4
         self.imgsz = 640
         self.shift_threshold_px = 10.0
+        self.output_flush_interval_seconds = 1.0
 
         self.solver: HeadlessCalibration | None = None
         self.static_registration: dict[str, Any] | None = None
@@ -83,24 +82,24 @@ class MouseTrajectoryThread(MyQThread):
     def before_Runing_work(self):
         self._prepare_runtime()
 
-    def submit_frame(self, cage_number: int, image_path: str):
-        if not image_path:
+    def submit_frame(self, cage_number: int, frame_payload: dict[str, Any]):
+        if not frame_payload or frame_payload.get("frame") is None:
             return
-        self.pending_frames[int(cage_number)] = image_path
+        self.pending_frames[int(cage_number)] = frame_payload
 
-    def submit_frames(self, cage_image_map: dict[int, str]):
-        for cage_number, image_path in cage_image_map.items():
-            self.submit_frame(cage_number, image_path)
+    def submit_frames(self, cage_frame_map: dict[int, dict[str, Any]]):
+        for cage_number, frame_payload in cage_frame_map.items():
+            self.submit_frame(cage_number, frame_payload)
 
     def dosomething(self):
         self._cleanup_history_outputs_if_needed()
         if not self.pending_frames:
-            time.sleep(0.15)
+            time.sleep(0.03)
             return
 
         cage_number = next(iter(self.pending_frames.keys()))
-        image_path = self.pending_frames.pop(cage_number)
-        self._process_frame(cage_number, image_path)
+        frame_payload = self.pending_frames.pop(cage_number)
+        self._process_frame(cage_number, frame_payload)
 
     def _prepare_runtime(self):
         for required_path in (
@@ -137,18 +136,23 @@ class MouseTrajectoryThread(MyQThread):
         if self.ref_corners is None:
             raise RuntimeError(f"could not detect reference box corners from {self.reference_image_path}")
 
-    def _process_frame(self, cage_number: int, image_path: str):
+    def _process_frame(self, cage_number: int, frame_payload: dict[str, Any]):
         if self.solver is None or self.box_model is None or self.mouse_model is None or self.ref_corners is None:
             return
 
-        image_file = Path(image_path)
-        if not image_file.exists():
+        source_frame = frame_payload.get("frame")
+        if source_frame is None:
             return
 
-        processed_files = self.processed_files.setdefault(cage_number, set())
-        if image_path in processed_files:
+        frame_id = int(frame_payload.get("frame_id", 0) or 0)
+        if frame_id > 0 and self.last_processed_frame_ids.get(cage_number) == frame_id:
             return
-        processed_files.add(image_path)
+        if frame_id > 0:
+            self.last_processed_frame_ids[cage_number] = frame_id
+
+        timestamp = float(frame_payload.get("timestamp", time.time()) or time.time())
+        frame_name = str(frame_payload.get("frame_name") or f"{timestamp:.6f}".replace(".", "_") + ".bmp")
+        image_file = Path(frame_name)
 
         rows = self.trajectory_rows.setdefault(cage_number, [])
         shift_log = self.shift_logs.setdefault(cage_number, [])
@@ -170,6 +174,7 @@ class MouseTrajectoryThread(MyQThread):
                     image_file=image_file,
                     frame_index=frame_index,
                     shift_log=shift_log,
+                    source_frame=source_frame,
                 )
                 if corners is None:
                     status = "no_box_corners"
@@ -198,7 +203,7 @@ class MouseTrajectoryThread(MyQThread):
             if h_test_to_ref is None:
                 status = "registration_failed"
             else:
-                mouse_result = run_yolo_single(self.mouse_model, image_file, self.imgsz, self.conf_mouse)
+                mouse_result = run_yolo_single(self.mouse_model, source_frame, self.imgsz, self.conf_mouse)
                 mouse_box = best_box_from_result(mouse_result)
                 if mouse_box is None:
                     status = "no_mouse"
@@ -229,28 +234,23 @@ class MouseTrajectoryThread(MyQThread):
         rows.append(row)
         stabilize_trajectory_rows(rows)
 
-        export_dir = get_cage_export_dir(cage_number)
-        plot_paths = self._save_outputs(
+        annotation_frame = render_annotation_image(source_frame, corners, mouse_box, solved, status)
+        plot_paths = self._maybe_flush_outputs(
             cage_number=cage_number,
             image_file=image_file,
-            export_dir=export_dir,
             rows=rows,
             shift_log=shift_log,
-            corners=corners,
-            mouse_box=mouse_box,
-            solved=solved,
-            status=status,
+            timestamp=timestamp,
         )
-        annotation_path = self.latest_annotation_paths.get(cage_number, "")
-        self.latest_plot_paths[cage_number] = plot_paths
 
         self.trajectory_ready.emit(
             {
                 "cage_number": cage_number,
                 "frame_name": image_file.name,
+                "frame_id": frame_id,
                 "status": status,
                 "plot_paths": plot_paths,
-                "annotation_path": annotation_path,
+                "annotation_frame": annotation_frame,
             }
         )
 
@@ -261,16 +261,10 @@ class MouseTrajectoryThread(MyQThread):
         export_dir: Path,
         rows: list[dict[str, Any]],
         shift_log: list[dict[str, Any]],
-        corners: BoxCorners | None,
-        mouse_box: DetectionBox | None,
-        solved: dict[str, Any] | None,
-        status: str,
     ) -> dict[str, str]:
         export_dir.mkdir(parents=True, exist_ok=True)
         plots_dir = get_cage_plots_dir(cage_number)
         data_dir = get_cage_data_dir(cage_number)
-        latest_annotated_dir = get_cage_annotated_latest_dir(cage_number)
-        history_annotated_dir = get_cage_annotated_history_dir(cage_number)
         self._cleanup_legacy_flat_files(export_dir)
 
         metadata = {
@@ -312,17 +306,48 @@ class MouseTrajectoryThread(MyQThread):
 
         save_plots(plots_dir, rows, self.instrument_polygon_phys)
 
-        latest_annotation_path = latest_annotated_dir / "annotated_latest.png"
-        history_annotation_path = history_annotated_dir / image_file.name
-        save_annotation(image_file, latest_annotation_path, corners, mouse_box, solved, status)
-        save_annotation(image_file, history_annotation_path, corners, mouse_box, solved, status)
-        self.latest_annotation_paths[cage_number] = str(latest_annotation_path)
-
         return {
             "xy_trajectory": str(plots_dir / "xy_trajectory.png"),
             "height_trajectory": str(plots_dir / "height_trajectory.png"),
             "occupancy_heatmap": str(plots_dir / "occupancy_heatmap.png"),
         }
+
+    def _build_plot_paths(self, cage_number: int) -> dict[str, str]:
+        plots_dir = get_cage_plots_dir(cage_number)
+        return {
+            "xy_trajectory": str(plots_dir / "xy_trajectory.png"),
+            "height_trajectory": str(plots_dir / "height_trajectory.png"),
+            "occupancy_heatmap": str(plots_dir / "occupancy_heatmap.png"),
+        }
+
+    def _maybe_flush_outputs(
+        self,
+        cage_number: int,
+        image_file: Path,
+        rows: list[dict[str, Any]],
+        shift_log: list[dict[str, Any]],
+        timestamp: float,
+    ) -> dict[str, str]:
+        last_flush_time = self.last_output_flush_by_cage.get(cage_number, 0.0)
+        expected_plot_paths = self._build_plot_paths(cage_number)
+        should_flush = (
+            cage_number not in self.latest_plot_paths
+            or len(rows) <= 1
+            or (timestamp - last_flush_time) >= self.output_flush_interval_seconds
+        )
+        if not should_flush:
+            return self.latest_plot_paths.get(cage_number, expected_plot_paths)
+
+        plot_paths = self._save_outputs(
+            cage_number=cage_number,
+            image_file=image_file,
+            export_dir=get_cage_export_dir(cage_number),
+            rows=rows,
+            shift_log=shift_log,
+        )
+        self.latest_plot_paths[cage_number] = plot_paths
+        self.last_output_flush_by_cage[cage_number] = timestamp
+        return plot_paths
 
     def _detect_and_cache_fixed_corners(
         self,
@@ -330,8 +355,10 @@ class MouseTrajectoryThread(MyQThread):
         image_file: Path,
         frame_index: int,
         shift_log: list[dict[str, Any]],
+        source_frame: Any = None,
     ) -> BoxCorners | None:
-        box_result = run_yolo_single(self.box_model, image_file, self.imgsz, self.conf_box)
+        box_source = image_file if source_frame is None else source_frame
+        box_result = run_yolo_single(self.box_model, box_source, self.imgsz, self.conf_box)
         corners = extract_box_corners(box_result)
         previous_corners = self.previous_corners_by_cage.get(cage_number, list(self.ref_corners.corners))
 

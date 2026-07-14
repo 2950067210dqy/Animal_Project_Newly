@@ -391,10 +391,11 @@ def resolve_mouse_weight(explicit: Optional[Path], box_weight: Path) -> Path:
     return preferred
 
 
-def run_yolo_single(model: YOLO, image_path: Path, imgsz: int, conf: float) -> Any:
-    results = model.predict(source=str(image_path), imgsz=imgsz, conf=conf, verbose=False, save=False)
+def run_yolo_single(model: YOLO, image_source: Path | np.ndarray, imgsz: int, conf: float) -> Any:
+    source = str(image_source) if isinstance(image_source, Path) else image_source
+    results = model.predict(source=source, imgsz=imgsz, conf=conf, verbose=False, save=False)
     if not results:
-        raise RuntimeError(f"YOLO returned no results for {image_path}")
+        raise RuntimeError(f"YOLO returned no results for {image_source}")
     return results[0]
 
 
@@ -727,17 +728,20 @@ def draw_polyline(image: np.ndarray, corners: Sequence[Point], color: Tuple[int,
         cv2.putText(image, str(idx), (xy[0] + 5, xy[1] - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
 
-def save_annotation(
-    path: Path,
-    output_path: Path,
+def render_annotation_image(
+    image_source: Path | np.ndarray,
     corners: Optional[BoxCorners],
     mouse_box: Optional[DetectionBox],
     solved: Optional[Point],
     status: str,
-) -> None:
-    image = cv2.imread(str(path))
+) -> Optional[np.ndarray]:
+    image: np.ndarray | None
+    if isinstance(image_source, Path):
+        image = cv2.imread(str(image_source))
+    else:
+        image = None if image_source is None else image_source.copy()
     if image is None:
-        return
+        return None
     if corners:
         draw_polyline(image, corners.corners, (0, 255, 255))
     if mouse_box:
@@ -747,6 +751,20 @@ def save_annotation(
     if solved:
         label = f"X:{solved.get('X', 0):.1f} Y:{solved.get('Y', 0):.1f} Z:{solved.get('Z_total', solved.get('Z', 0)):.1f}"
     cv2.putText(image, label, (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+    return image
+
+
+def save_annotation(
+    image_source: Path | np.ndarray,
+    output_path: Path,
+    corners: Optional[BoxCorners],
+    mouse_box: Optional[DetectionBox],
+    solved: Optional[Point],
+    status: str,
+) -> None:
+    image = render_annotation_image(image_source, corners, mouse_box, solved, status)
+    if image is None:
+        return
     cv2.imwrite(str(output_path), image)
 
 

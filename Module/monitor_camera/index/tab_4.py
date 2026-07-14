@@ -5,10 +5,11 @@ import traceback
 import typing
 from datetime import datetime, timedelta
 
+import cv2
 from PyQt6 import QtGui
 from PyQt6.QtCharts import QChart, QChartView, QDateTimeAxis, QScatterSeries, QValueAxis
 from PyQt6.QtCore import QDateTime, QPointF, QRect, QRectF, Qt, pyqtSignal, QMargins
-from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
     QGraphicsScene,
@@ -31,44 +32,45 @@ from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from public.util.folder_util import folder_util
+from public.util.shared_video_frames import shared_video_frame_store
 from theme.ThemeQt6 import ThemedWindow
 
 
 class ImageLoaderThread(MyQThread):
     image_loaded = pyqtSignal(dict)
 
-    def __init__(self):
+    def __init__(self, display_mode: str = "infrared"):
         super().__init__(name="tab4_image_loader")
+        self.display_mode = display_mode
         self.refresh_camera_paths()
+
+    def set_display_mode(self, display_mode: str):
+        self.display_mode = display_mode
 
     def refresh_camera_paths(self):
         camera_config = global_setting.get_setting("camera_config")
         self.infrared_camera_nums = int(camera_config["INFRARED_CAMERA"]["nums"])
-        self.deep_camera_nums = int(camera_config["DEEP_CAMERA"]["nums"])
 
-        infrared_folder_list = folder_util.list_directories(
-            camera_config["STORAGE"]["fold_path"] + camera_config["INFRARED_CAMERA"]["path"]
-        )
-        deep_folder_list = folder_util.list_directories(
-            camera_config["STORAGE"]["fold_path"] + camera_config["DEEP_CAMERA"]["path"]
-        )
+        self.infrared_path = []
+        if self.display_mode != "video":
+            infrared_folder_list = folder_util.list_directories(
+                camera_config["STORAGE"]["fold_path"] + camera_config["INFRARED_CAMERA"]["path"]
+            )
 
-        self.infrared_path = [
-            camera_config["STORAGE"]["fold_path"]
-            + camera_config["INFRARED_CAMERA"]["path"]
-            + f"{folder_name}/"
-            + camera_config["INFRARED_CAMERA"]["pic_dir"]
-            for folder_name in infrared_folder_list
-        ]
-        self.deep_path = [
-            camera_config["STORAGE"]["fold_path"]
-            + camera_config["DEEP_CAMERA"]["path"]
-            + f"{folder_name}/"
-            + camera_config["DEEP_CAMERA"]["color_dir"]
-            for folder_name in deep_folder_list
-        ]
-        self.images = {"deep_camera": [], "infrared_camera": []}
+            self.infrared_path = [
+                camera_config["STORAGE"]["fold_path"]
+                + camera_config["INFRARED_CAMERA"]["path"]
+                + f"{folder_name}/"
+                + camera_config["INFRARED_CAMERA"]["pic_dir"]
+                for folder_name in infrared_folder_list
+            ]
+        self.images = {"deep_camera_frames": {}, "infrared_camera": []}
         self.running = True
+
+    def _get_sleep_delay(self, configer) -> float:
+        if self.display_mode == "video":
+            return 0.03
+        return float(configer["monitor_camera_pic"]["delay"])
 
     @staticmethod
     def parse_filename_datetime(filename):
@@ -98,31 +100,35 @@ class ImageLoaderThread(MyQThread):
         try:
             self.refresh_camera_paths()
             configer = global_setting.get_setting("configer")
-            deep_camera_list = []
             infrared_camera_list = []
 
-            for path in self.deep_path:
-                if not os.path.exists(path):
-                    os.makedirs(path)
-                file_name = self.filter_files_earlier_than(
-                    folder=path,
-                    delta_seconds=float(configer["monitor_camera_pic"]["data_delay"]),
-                )
-                deep_camera_list.append("" if file_name is None else os.path.join(path, file_name))
+            if self.display_mode != "video":
+                for path in self.infrared_path:
+                    if not os.path.exists(path):
+                        os.makedirs(path)
+                    file_name = self.filter_files_earlier_than(
+                        folder=path,
+                        delta_seconds=float(configer["monitor_camera_pic"]["data_delay"]),
+                    )
+                    infrared_camera_list.append("" if file_name is None else os.path.join(path, file_name))
 
-            for path in self.infrared_path:
-                if not os.path.exists(path):
-                    os.makedirs(path)
-                file_name = self.filter_files_earlier_than(
-                    folder=path,
-                    delta_seconds=float(configer["monitor_camera_pic"]["data_delay"]),
-                )
-                infrared_camera_list.append("" if file_name is None else os.path.join(path, file_name))
+            deep_camera_frames = {}
+            target_cages = set(int(cage) for cage in (global_setting.get_setting("mouse_cages", []) or []))
+            experiment_setting = global_setting.get_setting("experiment_setting", None)
+            if experiment_setting is not None and getattr(experiment_setting, "groups", None):
+                for group in experiment_setting.groups:
+                    if getattr(group, "is_selected", 0) == 1:
+                        target_cages.add(int(group.id))
 
-            self.images["deep_camera"] = deep_camera_list
+            for cage_number in sorted(target_cages):
+                frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
+                if frame_payload is not None:
+                    deep_camera_frames[cage_number] = frame_payload
+
+            self.images["deep_camera_frames"] = deep_camera_frames
             self.images["infrared_camera"] = infrared_camera_list
             self.image_loaded.emit(self.images)
-            time.sleep(float(configer["monitor_camera_pic"]["delay"]))
+            time.sleep(self._get_sleep_delay(configer))
         except Exception as e:
             logger.error(f"tab4线程异常，原因: {e} | 堆栈: {traceback.format_exc()}")
 
@@ -250,6 +256,40 @@ class DisplayPanel(QWidget):
         self.placeholder_label.setText("暂无画面")
         self.placeholder_label.show()
         self.graphics_view.hide()
+
+    def show_frame(self, frame):
+        scene = self.graphics_view.scene()
+        if scene is None:
+            scene = QGraphicsScene()
+            self.graphics_view.setScene(scene)
+
+        self._detach_custom_widget()
+        scene.clear()
+        self.placeholder_label.hide()
+        self.graphics_view.show()
+
+        if frame is not None:
+            if len(frame.shape) == 2:
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+            else:
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width = rgb_frame.shape[:2]
+            bytes_per_line = rgb_frame.strides[0]
+            image = QImage(
+                rgb_frame.data,
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format.Format_RGB888,
+            ).copy()
+            pixmap = QPixmap.fromImage(image)
+            if not pixmap.isNull():
+                scene.addPixmap(pixmap)
+                scene.setSceneRect(QRectF(pixmap.rect()))
+                self.graphics_view.fit_scene()
+                return
+
+        self.show_placeholder("鏆傛棤鐢婚潰")
 
     def show_placeholder(self, text):
         scene = self.graphics_view.scene()
@@ -931,9 +971,10 @@ class Tab_4(ThemedWindow):
         self.infrared_camera_read_SN_dialog_frame = None
         self.current_cage_number: int | None = None
         self.current_mode = display_mode if display_mode in {self.MODE_INFRARED, self.MODE_VIDEO} else self.MODE_INFRARED
-        self.latest_image_paths = {"deep_camera": {}, "infrared_camera": {}}
+        self.latest_image_paths = {"infrared_camera": {}}
+        self.latest_video_frames: dict[int, dict[str, typing.Any]] = {}
         self.latest_trajectory_plot_paths: dict[int, dict[str, str]] = {}
-        self.latest_trajectory_annotation_paths: dict[int, str] = {}
+        self.latest_trajectory_annotation_frames: dict[int, typing.Any] = {}
         self.latest_trajectory_status: dict[int, str] = {}
         self.current_trajectory_plot_key = "xy_trajectory"
         self.temperature_widget: TemperatureTrendWidget | None = None
@@ -1052,11 +1093,12 @@ class Tab_4(ThemedWindow):
         self.refresh_cage_selector()
         self.start_trajectory_thread()
         if self.loader_thread is not None and self.loader_thread.isRunning():
+            self.loader_thread.set_display_mode(self.current_mode)
             if self.loader_thread.isPaused():
                 self.loader_thread.resume()
             return
 
-        self.loader_thread = ImageLoaderThread()
+        self.loader_thread = ImageLoaderThread(display_mode=self.current_mode)
         self.loader_thread.image_loaded.connect(self.update_image)
         self.loader_thread.start()
 
@@ -1108,7 +1150,7 @@ class Tab_4(ThemedWindow):
             return
 
         self.latest_trajectory_plot_paths[cage_number] = result_dict.get("plot_paths", {}) or {}
-        self.latest_trajectory_annotation_paths[cage_number] = result_dict.get("annotation_path", "") or ""
+        self.latest_trajectory_annotation_frames[cage_number] = result_dict.get("annotation_frame")
         self.latest_trajectory_status[cage_number] = result_dict.get("status", "")
 
         if self.current_mode == self.MODE_VIDEO and self.current_cage_number == cage_number:
@@ -1151,7 +1193,7 @@ class Tab_4(ThemedWindow):
             if enabled_cages:
                 return sorted(set(enabled_cages))
 
-        available_cages = set(self.latest_image_paths["deep_camera"].keys())
+        available_cages = set(self.latest_video_frames.keys())
         available_cages.update(self.latest_image_paths["infrared_camera"].keys())
         return sorted(available_cages)
 
@@ -1197,19 +1239,18 @@ class Tab_4(ThemedWindow):
             return
 
         self.current_mode = mode
+        if self.loader_thread is not None:
+            self.loader_thread.set_display_mode(mode)
         self.update_mode_specific_controls()
         self.render_selected_content()
 
     def update_image(self, pixmap_path_dict):
-        if pixmap_path_dict is None or "deep_camera" not in pixmap_path_dict or "infrared_camera" not in pixmap_path_dict:
+        if pixmap_path_dict is None or "infrared_camera" not in pixmap_path_dict:
             logger.error("未获取到图片数据")
             return
 
+        self.latest_video_frames = dict(pixmap_path_dict.get("deep_camera_frames", {}) or {})
         self.latest_image_paths = {
-            "deep_camera": self._build_cage_image_map(
-                pixmap_path_dict["deep_camera"],
-                global_setting.get_setting("camera_config")["DEEP_CAMERA"]["mouse_cage_prefix"],
-            ),
             "infrared_camera": self._build_cage_image_map(
                 pixmap_path_dict["infrared_camera"],
                 global_setting.get_setting("camera_config")["INFRARED_CAMERA"]["mouse_cage_prefix"],
@@ -1217,7 +1258,7 @@ class Tab_4(ThemedWindow):
         }
 
         if self.trajectory_thread is not None:
-            self.trajectory_thread.submit_frames(self.latest_image_paths["deep_camera"])
+            self.trajectory_thread.submit_frames(self.latest_video_frames)
 
         self.refresh_cage_selector()
         self.render_selected_content()
@@ -1293,11 +1334,12 @@ class Tab_4(ThemedWindow):
 
         if self.current_mode == self.MODE_VIDEO:
             self.left_panel.set_title(f"视频检测效果 - 鼠笼{cage_number}")
-            annotation_path = self.latest_trajectory_annotation_paths.get(cage_number, "")
-            if annotation_path:
-                self.left_panel.show_image(annotation_path)
+            annotation_frame = self.latest_trajectory_annotation_frames.get(cage_number)
+            if annotation_frame is not None:
+                self.left_panel.show_frame(annotation_frame)
             else:
-                self.left_panel.show_image(self.latest_image_paths["deep_camera"].get(cage_number, ""))
+                frame_payload = self.latest_video_frames.get(cage_number)
+                self.left_panel.show_frame(None if frame_payload is None else frame_payload.get("frame"))
 
             plot_paths = self.latest_trajectory_plot_paths.get(cage_number, {})
             selected_plot_path = plot_paths.get(self.current_trajectory_plot_key, "")
