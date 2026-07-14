@@ -393,7 +393,7 @@ def resolve_mouse_weight(explicit: Optional[Path], box_weight: Path) -> Path:
 
 def run_yolo_single(model: YOLO, image_source: Path | np.ndarray, imgsz: int, conf: float) -> Any:
     source = str(image_source) if isinstance(image_source, Path) else image_source
-    results = model.predict(source=source, imgsz=imgsz, conf=conf, verbose=False, save=False)
+    results = model.predict(source=source, imgsz=imgsz, conf=conf, verbose=False, save=False, half=False)
     if not results:
         raise RuntimeError(f"YOLO returned no results for {image_source}")
     return results[0]
