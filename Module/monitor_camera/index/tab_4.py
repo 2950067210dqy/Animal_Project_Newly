@@ -289,7 +289,7 @@ class DisplayPanel(QWidget):
                 self.graphics_view.fit_scene()
                 return
 
-        self.show_placeholder("鏆傛棤鐢婚潰")
+        self.show_placeholder("暂无画面")
 
     def show_placeholder(self, text):
         scene = self.graphics_view.scene()
@@ -978,6 +978,7 @@ class Tab_4(ThemedWindow):
         self.latest_trajectory_status: dict[int, str] = {}
         self.current_trajectory_plot_key = "xy_trajectory"
         self.temperature_widget: TemperatureTrendWidget | None = None
+        self.last_enabled_cages: list[int] = []
 
         self._init_ui(parent, geometry, title)
         self._init_customize_ui()
@@ -1197,26 +1198,45 @@ class Tab_4(ThemedWindow):
         available_cages.update(self.latest_image_paths["infrared_camera"].keys())
         return sorted(available_cages)
 
+    def _get_selector_cages(self) -> list[int]:
+        cages: list[int] = []
+        for index in range(self.cage_selector.count()):
+            cage_number = self.cage_selector.itemData(index)
+            if cage_number is None:
+                continue
+            cages.append(int(cage_number))
+        return cages
+
     def refresh_cage_selector(self):
         enabled_cages = self.get_enabled_cages()
         previous_cage = self.current_cage_number
 
-        self.cage_selector.blockSignals(True)
-        self.cage_selector.clear()
-        for cage_number in enabled_cages:
-            self.cage_selector.addItem(f"鼠笼{cage_number}", cage_number)
-        self.cage_selector.blockSignals(False)
-
         if not enabled_cages:
             self.current_cage_number = None
+            self.last_enabled_cages = []
+            self.cage_selector.blockSignals(True)
+            self.cage_selector.clear()
+            self.cage_selector.blockSignals(False)
             self.cage_selector.setEnabled(False)
             self.current_cage_label.setText("当前显示: 未选择")
             return
 
+        if self.cage_selector.view().isVisible():
+            return
+
+        current_selector_cages = self._get_selector_cages()
+        if current_selector_cages != enabled_cages:
+            self.cage_selector.blockSignals(True)
+            self.cage_selector.clear()
+            for cage_number in enabled_cages:
+                self.cage_selector.addItem(f"鼠笼{cage_number}", cage_number)
+            self.cage_selector.blockSignals(False)
+            self.last_enabled_cages = list(enabled_cages)
+
         self.cage_selector.setEnabled(True)
         target_cage = previous_cage if previous_cage in enabled_cages else enabled_cages[0]
         index = self.cage_selector.findData(target_cage)
-        if index >= 0:
+        if index >= 0 and index != self.cage_selector.currentIndex():
             self.cage_selector.setCurrentIndex(index)
         self.current_cage_number = target_cage
 
