@@ -1,3 +1,4 @@
+from configparser import ConfigParser
 from pathlib import Path
 
 
@@ -6,8 +7,31 @@ PROJECT_ROOT = PACKAGE_DIR.parent.parent
 CALIBRATION_DIR = PACKAGE_DIR / "calibration"
 CALIBRATION_IMAGES_DIR = CALIBRATION_DIR / "images"
 CALIBRATION_JSON_DIR = CALIBRATION_DIR / "json"
-EXPORT_DIR = PROJECT_ROOT / "exports" / "mouse_trajectory"
 MODEL_DIR = PROJECT_ROOT / "model"
+
+
+def _resolve_export_dir() -> Path:
+    default_dir = PROJECT_ROOT / "exports" / "mouse_trajectory"
+    config_path = PROJECT_ROOT / "config" / "camera_config.ini"
+    if not config_path.exists():
+        return default_dir
+
+    parser = ConfigParser()
+    try:
+        parser.read(config_path, encoding="utf-8")
+        configured_dir = parser.get("MOUSE_TRAJECTORY", "export_dir", fallback="").strip()
+        if not configured_dir:
+            return default_dir
+
+        export_dir = Path(configured_dir)
+        if not export_dir.is_absolute():
+            export_dir = (PROJECT_ROOT / export_dir).resolve()
+        return export_dir
+    except Exception:
+        return default_dir
+
+
+EXPORT_DIR = _resolve_export_dir()
 
 
 def first_existing_path(*paths: Path) -> Path | None:
