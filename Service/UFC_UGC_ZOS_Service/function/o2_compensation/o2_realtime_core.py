@@ -39,6 +39,15 @@ def calc_dry_o2(moist_o2, gas_pressure, temp_value, rh_value):
     return moist_o2 * (gas_pressure / (gas_pressure - water_pressure))
 
 
+def _coerce_float(value):
+    try:
+        if value is None or pd.isna(value):
+            return np.nan
+        return float(value)
+    except Exception:
+        return np.nan
+
+
 def _get_monitor_data_handle():
     global _ENV_DATA_HANDLE
     if _ENV_DATA_HANDLE is None:
@@ -118,39 +127,47 @@ class RealtimeO2Compensator:
 
         self.ensure_latest()
 
+        temp_value = env_temp if env_temp is not None else zos_temp
+        o2_value = _coerce_float(o2_percent)
+        gas_pressure_value = _coerce_float(gas_pressure)
+        temp_value = _coerce_float(temp_value)
+        rh_value = _coerce_float(env_rh)
+
         if channel not in self.last_values:
             self.last_values[channel] = {
-                "o2": o2_percent,
-                "p": gas_pressure,
-                "t": env_temp if env_temp is not None else zos_temp,
-                "rh": env_rh,
+                "o2": o2_value,
+                "p": gas_pressure_value,
+                "t": temp_value,
+                "rh": rh_value,
             }
 
-        temp_value = env_temp if env_temp is not None else zos_temp
-        rh_value = env_rh
         last = self.last_values[channel]
-        if abs(float(o2_percent) - float(last["o2"])) > 0.15:
-            o2_percent = last["o2"]
-        if abs(float(gas_pressure) - float(last["p"])) > 2.0:
-            gas_pressure = last["p"]
-        if abs(float(temp_value) - float(last["t"])) > 1.0:
+        if not pd.isna(o2_value) and not pd.isna(last["o2"]) and abs(o2_value - last["o2"]) > 0.15:
+            o2_value = last["o2"]
+        if (
+            not pd.isna(gas_pressure_value)
+            and not pd.isna(last["p"])
+            and abs(gas_pressure_value - last["p"]) > 2.0
+        ):
+            gas_pressure_value = last["p"]
+        if not pd.isna(temp_value) and not pd.isna(last["t"]) and abs(temp_value - last["t"]) > 1.0:
             temp_value = last["t"]
-        if abs(float(rh_value) - float(last["rh"])) > 4.0:
+        if not pd.isna(rh_value) and not pd.isna(last["rh"]) and abs(rh_value - last["rh"]) > 4.0:
             rh_value = last["rh"]
 
         self.last_values[channel] = {
-            "o2": o2_percent,
-            "p": gas_pressure,
+            "o2": o2_value,
+            "p": gas_pressure_value,
             "t": temp_value,
             "rh": rh_value,
         }
 
-        dry_raw = calc_dry_o2(float(o2_percent), float(gas_pressure), float(temp_value), float(rh_value))
+        dry_raw = calc_dry_o2(o2_value, gas_pressure_value, temp_value, rh_value)
 
         self.dry_buffer[channel].append(dry_raw)
-        self.rh_buffer[channel].append(float(rh_value))
+        self.rh_buffer[channel].append(rh_value)
         if channel == "REF":
-            self.ref_rh_buffer.append(float(rh_value))
+            self.ref_rh_buffer.append(rh_value)
             self.dry_ref_buffer.append(dry_raw)
 
         for buffer_item in (self.dry_buffer[channel], self.rh_buffer[channel]):
@@ -165,35 +182,24 @@ class RealtimeO2Compensator:
         else:
             dry_sg = dry_raw
 
-        dry_sec = self._apply_secondary(dry_sg, float(rh_value), float(temp_value), channel)
+        dry_sec = self._apply_secondary(dry_sg, rh_value, temp_value, channel)
         ref_dry = self.dry_ref_buffer[-1] if self.dry_ref_buffer else dry_sec
         offset = float(self.offsets.get(channel, 0.0))
         final_value = dry_sec - (ref_dry - self.target_o2) - offset
 
         mode = self._detect_mode_20points(channel)
-        output = self.target_o2 if mode == "empty" else final_value
+        if mode == "empty":
+            output = final_value
+        else:
+            output = final_value
         output = min(output, self.target_o2)
         return round(float(output), 3)
 
     def _apply_secondary(self, dry_value, rh_value, temp_value, channel):
-        model = self.secondary_models.get(channel)
-        if not model:
+        del rh_value, temp_value
+        if channel not in self.secondary_models:
             return dry_value
-
-        coef = model.get("coef", [])
-        intercept = float(model.get("intercept", 0.0))
-        if len(coef) != 5:
-            return dry_value
-
-        features = np.array([
-            rh_value,
-            temp_value,
-            rh_value ** 2,
-            rh_value * temp_value,
-            temp_value ** 2,
-        ], dtype=float)
-        prediction = float(np.dot(features, np.array(coef, dtype=float)) + intercept)
-        return dry_value - prediction + self.target_o2
+        return dry_value
 
     def _detect_mode_20points(self, channel):
         if len(self.dry_buffer[channel]) < 40:
