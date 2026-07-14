@@ -10,15 +10,26 @@ CALIBRATION_JSON_DIR = CALIBRATION_DIR / "json"
 MODEL_DIR = PROJECT_ROOT / "model"
 
 
-def _resolve_export_dir() -> Path:
-    default_dir = PROJECT_ROOT / "exports" / "mouse_trajectory"
+def _load_camera_config_parser() -> ConfigParser | None:
     config_path = PROJECT_ROOT / "config" / "camera_config.ini"
     if not config_path.exists():
-        return default_dir
+        return None
 
     parser = ConfigParser()
     try:
         parser.read(config_path, encoding="utf-8")
+        return parser
+    except Exception:
+        return None
+
+
+def _resolve_export_dir() -> Path:
+    default_dir = PROJECT_ROOT / "exports" / "mouse_trajectory"
+    parser = _load_camera_config_parser()
+    if parser is None:
+        return default_dir
+
+    try:
         configured_dir = parser.get("MOUSE_TRAJECTORY", "export_dir", fallback="").strip()
         if not configured_dir:
             return default_dir
@@ -41,6 +52,22 @@ def first_existing_path(*paths: Path) -> Path | None:
     return None
 
 
+def _resolve_configured_model_path(option_name: str) -> Path | None:
+    parser = _load_camera_config_parser()
+    if parser is None or not parser.has_section("MOUSE_TRAJECTORY"):
+        return None
+
+    configured_value = parser.get("MOUSE_TRAJECTORY", option_name, fallback="").strip()
+    if not configured_value:
+        return None
+
+    configured_path = Path(configured_value)
+    if not configured_path.is_absolute():
+        configured_path = (PROJECT_ROOT / configured_path).resolve()
+
+    return configured_path if configured_path.exists() else None
+
+
 DEFAULT_REFERENCE_IMAGE_PATH = first_existing_path(
     CALIBRATION_IMAGES_DIR / "WIN_20260419_15_45_44_Pro.jpg",
     CALIBRATION_IMAGES_DIR / "top.jpg",
@@ -60,11 +87,17 @@ DEFAULT_INSTRUMENT_AREA_JSON_PATH = first_existing_path(
 )
 
 DEFAULT_BOX_MODEL_PATH = first_existing_path(
+    _resolve_configured_model_path("box_model_path"),
+    MODEL_DIR / "best_box_fp16.onnx",
+    MODEL_DIR / "best_box.onnx",
     MODEL_DIR / "best_box.pt",
     MODEL_DIR / "best.pt",
 )
 
 DEFAULT_MOUSE_MODEL_PATH = first_existing_path(
+    _resolve_configured_model_path("mouse_model_path"),
+    MODEL_DIR / "best_mouse_fp16.onnx",
+    MODEL_DIR / "best_mouse.onnx",
     MODEL_DIR / "best_mouse.pt",
     MODEL_DIR / "best.pt",
     MODEL_DIR / "best_box.pt",

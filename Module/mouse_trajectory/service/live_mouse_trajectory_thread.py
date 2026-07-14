@@ -79,6 +79,10 @@ class MouseTrajectoryThread(MyQThread):
         self.ref_corners: BoxCorners | None = None
         self.last_cleanup_time = time.time()
 
+    @staticmethod
+    def _build_model(model_path: Path | str, task: str) -> YOLO:
+        return YOLO(str(model_path), task=task)
+
     def before_Runing_work(self):
         self._prepare_runtime()
 
@@ -122,9 +126,9 @@ class MouseTrajectoryThread(MyQThread):
         )
 
         logger.info(f"loading mouse trajectory box model: {self.box_model_path}")
-        self.box_model = YOLO(str(self.box_model_path))
+        self.box_model = self._build_model(self.box_model_path, task="segment")
         logger.info(f"loading mouse trajectory mouse model: {self.mouse_model_path}")
-        self.mouse_model = YOLO(str(self.mouse_model_path))
+        self.mouse_model = self._build_model(self.mouse_model_path, task="detect")
 
         ref_result = run_yolo_single(
             self.box_model,
