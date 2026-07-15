@@ -58,48 +58,48 @@ class CalibrationHandler:
         return True
 
     def add_data(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, env_temp, env_rh):
-        del o2_partial
+        del o2_partial, env_temp
 
         with self.lock:
             if channel not in self.channels:
                 return False
             if self.calibrated:
                 return True
-            if not self.is_active:
+            if not self.is_active or self.completed:
                 return False
 
-            temp_value = float(env_temp) if env_temp is not None else float(zos_temp)
-            rh_value = float(env_rh) if env_rh is not None else None
             self.data[channel].append({
                 "gas_pressure": float(gas_pressure),
                 "o2_percent": float(o2_percent),
-                "temp_value": temp_value,
-                "rh_value": float(rh_value) if rh_value is not None else np.nan,
+                "zos_temp": float(zos_temp),
+                "sht_rh": float(env_rh),
             })
 
-            if all(len(self.data[item]) >= self.target_points for item in self.channels):
-                logger.info(
-                    f"O2 Air calibration points ready, starting coefficient calculation: "
-                    f"{ {item: len(self.data[item]) for item in self.channels} }"
-                )
-                success = self._perform_enhanced_calibration()
-                if success:
-                    logger.info(f"O2 Air calibration coefficients saved to {self.config_path}")
-                    self.calibrated = True
-                    self.completed = True
-                    self.is_active = False
-                else:
-                    logger.error("O2 Air calibration coefficient calculation failed")
-                return success
-            return False
+            all_ready = all(len(self.data[item]) >= self.target_points for item in self.channels)
+            if not all_ready:
+                return False
+
+            logger.info(
+                f"O2 Air calibration points ready, starting coefficient calculation: "
+                f"{ {item: len(self.data[item]) for item in self.channels} }"
+            )
+            success = self._perform_enhanced_calibration()
+            if success:
+                logger.info(f"O2 Air calibration coefficients saved to {self.config_path}")
+                self.calibrated = True
+                self.completed = True
+                self.is_active = False
+            else:
+                logger.error("O2 Air calibration coefficient calculation failed")
+            return success
 
     def _perform_enhanced_calibration(self):
         processed = {}
         thresholds = {
             "o2_percent": 0.15,
             "gas_pressure": 2.0,
-            "temp_value": 1.0,
-            "rh_value": 4.0,
+            "zos_temp": 1.0,
+            "sht_rh": 4.0,
         }
 
         try:
@@ -127,8 +127,8 @@ class CalibrationHandler:
             lambda row: calc_dry_o2(
                 row["o2_percent"],
                 row["gas_pressure"],
-                row["temp_value"],
-                row["rh_value"],
+                row["zos_temp"],
+                row["sht_rh"],
             ),
             axis=1,
         )
@@ -141,13 +141,13 @@ class CalibrationHandler:
 
         mask = (
             frame["dry_sg"].notna()
-            & frame["rh_value"].notna()
-            & frame["temp_value"].notna()
+            & frame["sht_rh"].notna()
+            & frame["zos_temp"].notna()
         )
         if mask.sum() > 50:
             features = np.column_stack((
-                frame.loc[mask, "rh_value"].values,
-                frame.loc[mask, "temp_value"].values,
+                frame.loc[mask, "sht_rh"].values,
+                frame.loc[mask, "zos_temp"].values,
             ))
             labels = frame.loc[mask, "dry_sg"].values
 
@@ -161,8 +161,8 @@ class CalibrationHandler:
             }
 
             full_features = np.column_stack((
-                frame["rh_value"].ffill().bfill(),
-                frame["temp_value"].ffill().bfill(),
+                frame["sht_rh"].ffill().bfill(),
+                frame["zos_temp"].ffill().bfill(),
             ))
             full_features_poly = poly.transform(full_features)
             prediction = model.predict(full_features_poly)

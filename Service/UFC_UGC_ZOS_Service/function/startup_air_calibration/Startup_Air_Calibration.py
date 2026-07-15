@@ -466,7 +466,9 @@ class Startup_Air_Calibration:
                         f"{self.name}全部通道已收满 {target_points} 点，开始计算 O2 / CO2 补偿系数"
                     )
 
-                if self.o2_calibration_handler.calibrated and self.co2_calibration_handler.calibrated:
+                o2_calibrated = o2_status.get("calibrated", getattr(self.o2_calibration_handler, "calibrated", False))
+                co2_calibrated = co2_status.get("calibrated", getattr(self.co2_calibration_handler, "calibrated", False))
+                if o2_calibrated and co2_calibrated:
                     self._send_text(f"{self.name}判定完成，O2 / CO2 校准配置已输出")
                     resolve()
                     return
