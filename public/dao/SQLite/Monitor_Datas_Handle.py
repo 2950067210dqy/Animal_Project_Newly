@@ -48,7 +48,6 @@ class Monitor_Datas_Handle():
         self.sqlite_manager: SQLiteManager = None
         self.zero_fill_cache = {}
         self.last_valid_value_cache = {}
-        self._meta_title_cache = {}
         self.init_construct(db_name)
 
         self.conn = None  # 为检测结果处理准备连接
@@ -69,26 +68,6 @@ class Monitor_Datas_Handle():
         self.sqlite_manager.close()
         if self.conn:
             self.conn.close()
-
-    def _get_meta_title_map(self, table_name):
-        """Cache column display names to avoid repeated meta-table queries while paging."""
-        if table_name in self._meta_title_cache:
-            return self._meta_title_cache[table_name]
-
-        meta_table_name = f"{table_name}_meta"
-        title_map = {}
-        try:
-            rows = self.sqlite_manager.query(meta_table_name)
-            title_map = {
-                row[0]: row[2]
-                for row in rows
-                if len(row) >= 3 and row[0] is not None and row[2] is not None
-            }
-        except Exception as e:
-            logger.warning(f"query meta title map failed for {meta_table_name}: {e}")
-
-        self._meta_title_cache[table_name] = title_map
-        return title_map
     def create_db_not_time(self):
         """创建数据库 不按时间分库，直接一个实验一个库"""
         # 获取实验配置文件名称
@@ -864,8 +843,14 @@ class Monitor_Datas_Handle():
             table_name = f"Epoch_data_cage_{gid}"
         result = self.sqlite_manager.query_Epoch_datas( table_name, page=page, page_size=page_size, order_asc=True )
         result = self._reorder_epoch_query_result(result)
-        title_map = self._get_meta_title_map(table_name)
-        result_title = [title_map.get(columns, columns) for columns in result["columns"]]
+        result_title = []
+
+        # 找到中文列名
+        for columns in result["columns"]:
+
+            columns_query =self.sqlite_manager.query_conditions(table_name=f"{table_name}_meta", conditions=f" where item_name='{columns}'")
+            if columns_query and len(columns_query) > 0:
+                result_title.append(columns_query[0][2])
         result["columns_title"]=result_title
         # print("参与联立的表:", tables)
         # print(
@@ -913,8 +898,14 @@ class Monitor_Datas_Handle():
             table_name = f"Epoch_data_cage_{gid}"
         result = self.sqlite_manager.query_Epoch_datas( table_name, page=1, page_size=page_size, order_asc=True )
         result = self._reorder_epoch_query_result(result)
-        title_map = self._get_meta_title_map(table_name)
-        result_title = [title_map.get(columns, columns) for columns in result["columns"]]
+        result_title = []
+
+        # 找到中文列名
+        for columns in result["columns"]:
+
+            columns_query =self.sqlite_manager.query_conditions(table_name=f"{table_name}_meta", conditions=f" where item_name='{columns}'")
+            if columns_query and len(columns_query) > 0:
+                result_title.append(columns_query[0][2])
         result["columns_title"]=result_title
         # print("参与联立的表:", tables)
         # print(
