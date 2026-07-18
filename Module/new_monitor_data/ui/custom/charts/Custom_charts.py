@@ -1,6 +1,7 @@
 # advanced_chart_widget.py
 import numpy as np
 import sys
+import threading
 import time
 from typing import Dict, List, Tuple, Optional
 from collections import deque
@@ -46,22 +47,63 @@ plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 class DataFetcher(MyQThread):
-    data_fetched = pyqtSignal(dict)  # 信号传递值
+    data_fetched = pyqtSignal(int, dict)  # 信号传递值
+    _shared_instance = None
+    _shared_lock = threading.Lock()
+
+    @classmethod
+    def shared(cls):
+        with cls._shared_lock:
+            if cls._shared_instance is None:
+                cls._shared_instance = cls(
+                    name="new_monitor_data_charts_shared_fetch_thread",
+                    gid=-1,
+                    page_size=100,
+                )
+            if not cls._shared_instance.isRunning():
+                cls._shared_instance.start()
+            return cls._shared_instance
 
     def __init__(self, name,gid,page_size):
         super().__init__(name=name)
         self.gid = gid
         self.page_size = page_size
+        self.refresh_interval = 3
+        self._fetch_requested = threading.Event()
+        self._request_lock = threading.RLock()
+        self._requests = {}
 
 
         # 数据库操作类
         self.handle: Monitor_Datas_Handle = None
 
+    def register(self, gid, page_size):
+        with self._request_lock:
+            self._requests[gid] = {
+                "page_size": page_size,
+                "fetch_requested": True,
+            }
+        self._fetch_requested.set()
+
+    def unregister(self, gid):
+        with self._request_lock:
+            self._requests.pop(gid, None)
+        self._fetch_requested.set()
+
+    def _sleep_interruptible(self, seconds):
+        end_time = time.time() + seconds
+        while time.time() < end_time:
+            if self._stop_requested or self.isInterruptionRequested() or self._fetch_requested.is_set():
+                break
+            time.sleep(min(0.1, max(0, end_time - time.time())))
+
     def stop(self):
+        super().stop()
+        self.requestInterruption()
+        self._fetch_requested.set()
         if self.handle is not None:
             self.handle.stop()
             self.handle=None
-        super().stop()
         # if self.handle is not None:
         #     self.handle.stop()
 
@@ -75,16 +117,35 @@ class DataFetcher(MyQThread):
         #     self.handle.stop()
         if self.handle is None:
             self.handle = Monitor_Datas_Handle()  # # 创建数据库
-        data =[]
 
+        with self._request_lock:
+            requests = {
+                gid: request.copy()
+                for gid, request in self._requests.items()
+            }
+            for gid in requests:
+                if gid in self._requests:
+                    self._requests[gid]["fetch_requested"] = False
 
-        datas = self.handle.query_epoch_data_all_tables_expect_text_column(gid=self.gid,page_size=self.page_size)
-        if datas is None:
-            datas = []
+        self._fetch_requested.clear()
+        if not requests:
+            self._sleep_interruptible(0.2)
+            return
 
-        self.data_fetched.emit(datas)
+        for gid, request in requests.items():
+            if self._stop_requested or self.isInterruptionRequested():
+                return
+            datas = self.handle.query_epoch_data_all_tables_expect_text_column(
+                gid=gid,
+                page_size=request["page_size"],
+            )
+            if datas is None:
+                datas = {}
 
-        time.sleep(3)  # 每秒获取一次数据
+            if not self._stop_requested and not self.isInterruptionRequested():
+                self.data_fetched.emit(gid, datas)
+
+        self._sleep_interruptible(self.refresh_interval)  # 每3秒获取一次数据
 
 class AdvancedChartWidget(BaseWidget):
     """
@@ -119,8 +180,8 @@ class AdvancedChartWidget(BaseWidget):
     }
 
     def hide(self):
-        if self.data_fetcher_thread is not None:
-            self.data_fetcher_thread.stop()
+        self._detach_data_fetcher()
+        super().hide()
     def __init__(self, parent=None, max_points: int = 100,gid=-1):
         super().__init__(parent)
         self.gid=gid
@@ -160,12 +221,28 @@ class AdvancedChartWidget(BaseWidget):
         self.setMinimumHeight(300)
         self.init_ui()
         self.apply_theme(self.current_theme)
+        self._attach_data_fetcher()
+
+    def _attach_data_fetcher(self):
         if self.data_fetcher_thread is None:
-            self.data_fetcher_thread = DataFetcher(name=f"new_monitor_data_charts_mouse_cage_{self.gid}_data_fetch_thread", gid=self.gid,
-                                                   page_size=self.max_points)
+            self.data_fetcher_thread = DataFetcher.shared()
             self.data_fetcher_thread.data_fetched.connect(self.update_page)
-        if not self.data_fetcher_thread.isRunning():
-            self.data_fetcher_thread.start()
+        self.data_fetcher_thread.register(gid=self.gid, page_size=self.max_points)
+
+    def _detach_data_fetcher(self):
+        if self.data_fetcher_thread is None:
+            return
+        thread = self.data_fetcher_thread
+        self.data_fetcher_thread = None
+        try:
+            thread.data_fetched.disconnect(self.update_page)
+        except (TypeError, RuntimeError):
+            pass
+        thread.unregister(self.gid)
+
+    def closeEvent(self, event):
+        self._detach_data_fetcher()
+        super().closeEvent(event)
 
     def _init_default_configs(self):
         """初始化所有默认配置"""
@@ -1528,7 +1605,7 @@ class AdvancedChartWidget(BaseWidget):
         self.x_data.clear()
         self.data_counter = 0
         self.refresh_chart()
-    def update_page(self,result:dict):
+    def update_page(self,result_gid:int,result:dict):
         """
         根据 current_page 与 page_size 刷新表格显示（只显示当前页数据）
         :param result: [{表名:数据}....]
@@ -1538,6 +1615,9 @@ class AdvancedChartWidget(BaseWidget):
 
 
 
+
+        if result_gid != self.gid or not result:
+            return
 
         # logger.error(result)
         new_result = convert_data_to_cage_format(result)

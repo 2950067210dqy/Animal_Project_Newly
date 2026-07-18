@@ -25,7 +25,23 @@ from theme.ThemeQt6 import ThemedWindow
 
 
 class DataFetcher(MyQThread):
-    data_fetched = pyqtSignal(dict)  # 信号传递值
+    data_fetched = pyqtSignal(int, dict)  # 信号传递值
+    _shared_instance = None
+    _shared_lock = threading.Lock()
+
+    @classmethod
+    def shared(cls):
+        with cls._shared_lock:
+            if cls._shared_instance is None:
+                cls._shared_instance = cls(
+                    name="user_monitor_data_table_shared_fetch_thread",
+                    gid=-1,
+                    page_size=200,
+                    page=1,
+                )
+            if not cls._shared_instance.isRunning():
+                cls._shared_instance.start()
+            return cls._shared_instance
 
     def __init__(self, name,gid,page_size,page,all_column_datas=[]):
         super().__init__(name=name)
@@ -36,15 +52,44 @@ class DataFetcher(MyQThread):
         self.refresh_interval = 3
         self.auto_refresh_enabled = True
         self._fetch_requested = threading.Event()
+        self._request_lock = threading.RLock()
+        self._requests = {}
 
         # 数据库操作类
         self.handle: Monitor_Datas_Handle = None
 
-    def request_fetch(self):
+    def register(self, gid, page, page_size, all_column_datas, auto_refresh_enabled):
+        with self._request_lock:
+            self._requests[gid] = {
+                "page": page,
+                "page_size": page_size,
+                "all_column_datas": list(all_column_datas),
+                "auto_refresh_enabled": auto_refresh_enabled,
+                "fetch_requested": True,
+            }
         self._fetch_requested.set()
 
-    def set_auto_refresh_enabled(self, enabled):
-        self.auto_refresh_enabled = enabled
+    def unregister(self, gid):
+        with self._request_lock:
+            self._requests.pop(gid, None)
+        self._fetch_requested.set()
+
+    def request_fetch(self, gid=None):
+        with self._request_lock:
+            if gid is None:
+                for request in self._requests.values():
+                    request["fetch_requested"] = True
+            elif gid in self._requests:
+                self._requests[gid]["fetch_requested"] = True
+        self._fetch_requested.set()
+
+    def set_auto_refresh_enabled(self, enabled, gid=None):
+        with self._request_lock:
+            if gid is None:
+                self.auto_refresh_enabled = enabled
+            elif gid in self._requests:
+                self._requests[gid]["auto_refresh_enabled"] = enabled
+        self._fetch_requested.set()
 
     def _sleep_interruptible(self, seconds):
         end_time = time.time() + seconds
@@ -54,10 +99,12 @@ class DataFetcher(MyQThread):
             time.sleep(min(0.1, max(0, end_time - time.time())))
 
     def stop(self):
+        super().stop()
+        self.requestInterruption()
+        self._fetch_requested.set()
         if self.handle is not None:
             self.handle.stop()
             self.handle=None
-        super().stop()
         # if self.handle is not None:
         #     self.handle.stop()
 
@@ -71,26 +118,47 @@ class DataFetcher(MyQThread):
         #     self.handle.stop()
         if self.handle is None:
             self.handle = Monitor_Datas_Handle()  # # 创建数据库
-        should_fetch = self.auto_refresh_enabled or self._fetch_requested.is_set()
-        if not should_fetch:
+
+        with self._request_lock:
+            requests = {
+                gid: request.copy()
+                for gid, request in self._requests.items()
+                if request.get("auto_refresh_enabled") or request.get("fetch_requested")
+            }
+            for gid in requests:
+                if gid in self._requests:
+                    self._requests[gid]["fetch_requested"] = False
+            has_auto_refresh = any(
+                request.get("auto_refresh_enabled") for request in self._requests.values()
+            )
+
+        self._fetch_requested.clear()
+        if not requests:
             self._sleep_interruptible(0.2)
             return
 
-        self._fetch_requested.clear()
-        datas = self.handle.query_epoch_data_all_tables_paging(gid=self.gid,page=self.page,page_size=self.page_size,all_column_datas=self.all_column_datas)
-        if datas is None:
-            datas = []
+        for gid, request in requests.items():
+            if self._stop_requested or self.isInterruptionRequested():
+                return
+            datas = self.handle.query_epoch_data_all_tables_paging(
+                gid=gid,
+                page=request["page"],
+                page_size=request["page_size"],
+                all_column_datas=request["all_column_datas"],
+            )
+            if datas is None:
+                datas = {}
 
-        self.data_fetched.emit(datas)
+            if not self._stop_requested and not self.isInterruptionRequested():
+                self.data_fetched.emit(gid, datas)
 
-        self._sleep_interruptible(self.refresh_interval if self.auto_refresh_enabled else 0.2)
+        self._sleep_interruptible(self.refresh_interval if has_auto_refresh else 0.2)
 
 
 class User_table_select_columns_paging_bottom(ThemedWindow):
     def hide(self):
-        # 窗口隐藏时停止数据线程
-        if self.data_fetcher_thread is not None:
-            self.data_fetcher_thread.stop()
+        self._detach_data_fetcher()
+        super().hide()
 
     def __init__(self, gid):
         super().__init__()
@@ -98,6 +166,34 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         self.data_fetcher_thread: DataFetcher = None  # 数据加载线程
         self._init_ui()
         self._init_function()
+
+    def _attach_data_fetcher(self):
+        if self.data_fetcher_thread is None:
+            self.data_fetcher_thread = DataFetcher.shared()
+            self.data_fetcher_thread.data_fetched.connect(self.update_page)
+
+        self.data_fetcher_thread.register(
+            gid=self.gid,
+            page=self.current_page,
+            page_size=self.page_size,
+            all_column_datas=self.all_column_datas,
+            auto_refresh_enabled=self.current_page == 1,
+        )
+
+    def _detach_data_fetcher(self):
+        if self.data_fetcher_thread is None:
+            return
+        thread = self.data_fetcher_thread
+        self.data_fetcher_thread = None
+        try:
+            thread.data_fetched.disconnect(self.update_page)
+        except (TypeError, RuntimeError):
+            pass
+        thread.unregister(self.gid)
+
+    def closeEvent(self, event):
+        self._detach_data_fetcher()
+        super().closeEvent(event)
 
     def _init_ui(self):
         self.setWindowTitle("带分页器的 QTableWidget（PyQt6）")
@@ -246,25 +342,8 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         self.table.setHorizontalHeaderLabels(self.all_columns)
         self._columns_sized = False
 
-        # 2. 初始化并启动数据线程
-        if self.data_fetcher_thread is None:
-            self.data_fetcher_thread = DataFetcher(
-                name="tab_2_tab_0_table_data_fetch_thread",
-                gid=self.gid,
-                page=self.current_page,
-                page_size=self.page_size,
-                all_column_datas=self.all_column_datas
-            )
-            self.data_fetcher_thread.data_fetched.connect(self.update_page)
-        # 更新线程的列配置（防止表头切换后数据不匹配）
-        self.data_fetcher_thread.all_column_datas = self.all_column_datas
-        self.data_fetcher_thread.page = self.current_page  # 确保加载第一页
-        self.data_fetcher_thread.page_size = self.page_size
-        self.data_fetcher_thread.set_auto_refresh_enabled(self.current_page == 1)
-        if not self.data_fetcher_thread.isRunning():
-            self.data_fetcher_thread.start()
-        else:
-            self.data_fetcher_thread.request_fetch()
+        # 2. 注册到共享数据线程
+        self._attach_data_fetcher()
 
         # 3. 启用分页器
         self.set_pager_enabled(True)
@@ -279,19 +358,22 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         # 更新当前页并加载数据
         self.current_page = valid_page
         if self.data_fetcher_thread is not None:
-            self.data_fetcher_thread.page = self.current_page
-            self.data_fetcher_thread.set_auto_refresh_enabled(self.current_page == 1)
-            self.data_fetcher_thread.request_fetch()
-            # 若线程未运行，启动线程；若已运行，等待下一次数据刷新（通过线程循环）
-            if not self.data_fetcher_thread.isRunning():
-                self.data_fetcher_thread.start()
+            self.data_fetcher_thread.register(
+                gid=self.gid,
+                page=self.current_page,
+                page_size=self.page_size,
+                all_column_datas=self.all_column_datas,
+                auto_refresh_enabled=self.current_page == 1,
+            )
         # 更新分页信息显示
         self.info_label.setText(self._info_text())
         self._update_nav_buttons()  # 同步按钮状态
 
-    def update_page(self, result: dict):
+    def update_page(self, result_gid: int, result: dict):
         """接收线程数据，更新表格内容（修改：预处理None值，使其参与后续计算，并过滤掉指定列）"""
         # 1. 提取结果中的列名与数据（兼容数据库返回格式）
+        if result_gid != self.gid:
+            return
         if not result:
             return
         result_page = result.get("page", self.current_page)
