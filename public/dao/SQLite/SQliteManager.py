@@ -15,6 +15,7 @@ class SQLiteManager:
         """初始化数据库管理器（不立即连接）"""
         self.db_name = db_name
         self.timeout = timeout
+        self._ensured_time_indexes = set()
 
     @contextmanager
     def get_connection(self,
@@ -224,6 +225,25 @@ class SQLiteManager:
             cursor.execute(sql)
             return cursor.fetchone()[0]
 
+    def ensure_time_index(self, table_name: str):
+        """Ensure the time column used by monitor paging has an index."""
+        if not table_name or table_name in self._ensured_time_indexes:
+            return
+
+        q_table = self.quote_ident(table_name)
+        q_index = self.quote_ident(f"idx_{table_name}_time")
+        q_time = self.quote_ident(self.TIME_COLUMN_NAME)
+
+        try:
+            with self.execute_transaction(auto_commit=True) as cursor:
+                cursor.execute(f"PRAGMA table_info({q_table})")
+                columns = [row[1] for row in cursor.fetchall()]
+                if self.TIME_COLUMN_NAME in columns:
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS {q_index} ON {q_table} ({q_time})")
+            self._ensured_time_indexes.add(table_name)
+        except Exception as e:
+            logger.warning(f"ensure time index failed for {table_name}: {e}")
+
     def query_Epoch_datas(self, table: str, page: int = 1, page_size: int = 100, order_asc: bool = True) -> Dict[
         str, Any]:
         """查询 Epoch 数据分页"""
@@ -239,6 +259,7 @@ class SQLiteManager:
                 "rows": []
             }
 
+        self.ensure_time_index(table)
         total_items = self.query_counts_conditions(table)
         total_pages = max(1, math.ceil(total_items / page_size)) if total_items > 0 else 0
 
@@ -250,10 +271,12 @@ class SQLiteManager:
         offset = (page - 1) * page_size
         order = "DESC" if order_asc else "ASC"
 
+        q_table = self.quote_ident(table)
+        q_time = self.quote_ident(self.TIME_COLUMN_NAME)
         final_sql = f"""
            SELECT *
-           FROM {table}
-           ORDER BY time {order}
+           FROM {q_table}
+           ORDER BY {q_time} {order}
            LIMIT ? OFFSET ?
         """
 
@@ -287,6 +310,9 @@ class SQLiteManager:
                 "columns": [],
                 "rows": []
             }
+
+        for table_name in tables:
+            self.ensure_time_index(table_name)
 
         all_times_sql = self.build_all_times_sql(tables)
         total_items = self.count_all_times(all_times_sql)
