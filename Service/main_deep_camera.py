@@ -59,11 +59,6 @@ def _deep_delete_delay():
     )
 
 
-def _raw_save_interval_seconds():
-    deep_config = _deep_camera_config()
-    return max(0.0, float(deep_config.get("raw_save_interval_seconds", 1.0)))
-
-
 def _storage_root():
     config = _camera_config()
     return config["STORAGE"]["fold_path"] + config["DEEP_CAMERA"]["path"]
@@ -284,7 +279,6 @@ class UVCCameraProcessor(MyQThread):
         self.frame_width = 1280
         self.frame_height = 720
         self.frame_id = 0
-        self.last_raw_save_time = 0.0
         self.init_state = self.init_camera()
 
     def _open_capture(self, index):
@@ -403,10 +397,7 @@ class UVCCameraProcessor(MyQThread):
 
         timestamp = time.time()
         self.frame_id += 1
-        raw_save_interval = _raw_save_interval_seconds()
-        if raw_save_interval <= 0 or timestamp - self.last_raw_save_time >= raw_save_interval:
-            self.img_save(color_image, timestamp=timestamp)
-            self.last_raw_save_time = timestamp
+        self.img_save(color_image, timestamp=timestamp)
         shared_video_frame_store.write_frame(
             "deep_camera",
             self.cage_number,
