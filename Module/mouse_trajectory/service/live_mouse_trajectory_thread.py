@@ -32,7 +32,6 @@ from Module.mouse_trajectory.service.auto_mouse_trajectory import (
     parse_grid_json,
     parse_image_registration_json,
     parse_topdown_instrument_polygons,
-    render_annotation_image,
     run_yolo_single,
     save_csv,
     save_plots,
@@ -41,6 +40,26 @@ from Module.mouse_trajectory.service.auto_mouse_trajectory import (
 )
 from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
+
+
+def _serialize_detection_box(mouse_box: DetectionBox | None) -> dict[str, Any] | None:
+    if mouse_box is None:
+        return None
+    return {
+        "xyxy": [float(value) for value in mouse_box.xyxy],
+        "conf": float(mouse_box.conf),
+        "cls": float(mouse_box.cls),
+    }
+
+
+def _serialize_corners(corners: BoxCorners | None) -> dict[str, Any] | None:
+    if corners is None:
+        return None
+    return {
+        "corners": [dict(point) for point in corners.corners],
+        "conf": float(corners.conf),
+        "source": corners.source,
+    }
 
 
 class MouseTrajectoryThread(MyQThread):
@@ -68,7 +87,7 @@ class MouseTrajectoryThread(MyQThread):
         self.conf_mouse = 0.4
         self.imgsz = 640
         self.shift_threshold_px = 10.0
-        self.output_flush_interval_seconds = 1.0
+        self.output_flush_interval_seconds = 3.0
 
         self.solver: HeadlessCalibration | None = None
         self.static_registration: dict[str, Any] | None = None
@@ -238,7 +257,6 @@ class MouseTrajectoryThread(MyQThread):
         rows.append(row)
         stabilize_trajectory_rows(rows)
 
-        annotation_frame = render_annotation_image(source_frame, corners, mouse_box, solved, status)
         plot_paths = self._maybe_flush_outputs(
             cage_number=cage_number,
             image_file=image_file,
@@ -254,7 +272,9 @@ class MouseTrajectoryThread(MyQThread):
                 "frame_id": frame_id,
                 "status": status,
                 "plot_paths": plot_paths,
-                "annotation_frame": annotation_frame,
+                "mouse_box": _serialize_detection_box(mouse_box),
+                "corners": _serialize_corners(corners),
+                "solved": dict(solved) if solved else None,
             }
         )
 

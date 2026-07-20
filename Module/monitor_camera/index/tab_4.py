@@ -39,13 +39,19 @@ from theme.ThemeQt6 import ThemedWindow
 class ImageLoaderThread(MyQThread):
     image_loaded = pyqtSignal(dict)
 
-    def __init__(self, display_mode: str = "infrared"):
+    def __init__(self, display_mode: str = "infrared", target_cage_number: int | None = None):
         super().__init__(name="tab4_image_loader")
         self.display_mode = display_mode
+        self.target_cage_number = int(target_cage_number) if target_cage_number is not None else None
+        self.last_trajectory_fetch_time = 0.0
+        self.trajectory_fetch_interval = 0.2
         self.refresh_camera_paths()
 
     def set_display_mode(self, display_mode: str):
         self.display_mode = display_mode
+
+    def set_target_cage_number(self, cage_number: int | None):
+        self.target_cage_number = int(cage_number) if cage_number is not None else None
 
     def refresh_camera_paths(self):
         camera_config = global_setting.get_setting("camera_config")
@@ -64,7 +70,7 @@ class ImageLoaderThread(MyQThread):
                 + camera_config["INFRARED_CAMERA"]["pic_dir"]
                 for folder_name in infrared_folder_list
             ]
-        self.images = {"deep_camera_frames": {}, "infrared_camera": []}
+        self.images = {"deep_camera_frames": {}, "trajectory_frames": {}, "infrared_camera": []}
         self.running = True
 
     def _get_sleep_delay(self, configer) -> float:
@@ -113,6 +119,7 @@ class ImageLoaderThread(MyQThread):
                     infrared_camera_list.append("" if file_name is None else os.path.join(path, file_name))
 
             deep_camera_frames = {}
+            trajectory_frames = {}
             target_cages = set(int(cage) for cage in (global_setting.get_setting("mouse_cages", []) or []))
             experiment_setting = global_setting.get_setting("experiment_setting", None)
             if experiment_setting is not None and getattr(experiment_setting, "groups", None):
@@ -120,12 +127,34 @@ class ImageLoaderThread(MyQThread):
                     if getattr(group, "is_selected", 0) == 1:
                         target_cages.add(int(group.id))
 
-            for cage_number in sorted(target_cages):
-                frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
-                if frame_payload is not None:
-                    deep_camera_frames[cage_number] = frame_payload
+            if self.display_mode == "video":
+                selected_cage = self.target_cage_number
+                if selected_cage not in target_cages:
+                    selected_cage = min(target_cages) if target_cages else None
+
+                if selected_cage is not None:
+                    frame_payload = shared_video_frame_store.read_frame("deep_camera", selected_cage)
+                    if frame_payload is not None:
+                        deep_camera_frames[selected_cage] = frame_payload
+
+                current_time = time.time()
+                if current_time - self.last_trajectory_fetch_time >= self.trajectory_fetch_interval:
+                    for cage_number in sorted(target_cages):
+                        if cage_number in deep_camera_frames:
+                            frame_payload = deep_camera_frames[cage_number]
+                        else:
+                            frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
+                        if frame_payload is not None:
+                            trajectory_frames[cage_number] = frame_payload
+                    self.last_trajectory_fetch_time = current_time
+            else:
+                for cage_number in sorted(target_cages):
+                    frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
+                    if frame_payload is not None:
+                        deep_camera_frames[cage_number] = frame_payload
 
             self.images["deep_camera_frames"] = deep_camera_frames
+            self.images["trajectory_frames"] = trajectory_frames
             self.images["infrared_camera"] = infrared_camera_list
             self.image_loaded.emit(self.images)
             time.sleep(self._get_sleep_delay(configer))
@@ -975,6 +1004,8 @@ class Tab_4(ThemedWindow):
         self.latest_video_frames: dict[int, dict[str, typing.Any]] = {}
         self.latest_trajectory_plot_paths: dict[int, dict[str, str]] = {}
         self.latest_trajectory_annotation_frames: dict[int, typing.Any] = {}
+        self.latest_trajectory_overlays: dict[int, dict[str, typing.Any]] = {}
+        self.display_overlay_boxes: dict[int, list[float]] = {}
         self.latest_trajectory_status: dict[int, str] = {}
         self.current_trajectory_plot_key = "xy_trajectory"
         self.temperature_widget: TemperatureTrendWidget | None = None
@@ -1095,11 +1126,15 @@ class Tab_4(ThemedWindow):
         self.start_trajectory_thread()
         if self.loader_thread is not None and self.loader_thread.isRunning():
             self.loader_thread.set_display_mode(self.current_mode)
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
             if self.loader_thread.isPaused():
                 self.loader_thread.resume()
             return
 
-        self.loader_thread = ImageLoaderThread(display_mode=self.current_mode)
+        self.loader_thread = ImageLoaderThread(
+            display_mode=self.current_mode,
+            target_cage_number=self.current_cage_number,
+        )
         self.loader_thread.image_loaded.connect(self.update_image)
         self.loader_thread.start()
 
@@ -1152,6 +1187,13 @@ class Tab_4(ThemedWindow):
 
         self.latest_trajectory_plot_paths[cage_number] = result_dict.get("plot_paths", {}) or {}
         self.latest_trajectory_annotation_frames[cage_number] = result_dict.get("annotation_frame")
+        self.latest_trajectory_overlays[cage_number] = {
+            "frame_id": int(result_dict.get("frame_id", 0) or 0),
+            "status": result_dict.get("status", ""),
+            "mouse_box": result_dict.get("mouse_box"),
+            "corners": result_dict.get("corners"),
+            "solved": result_dict.get("solved"),
+        }
         self.latest_trajectory_status[cage_number] = result_dict.get("status", "")
 
         if self.current_mode == self.MODE_VIDEO and self.current_cage_number == cage_number:
@@ -1239,12 +1281,16 @@ class Tab_4(ThemedWindow):
         if index >= 0 and index != self.cage_selector.currentIndex():
             self.cage_selector.setCurrentIndex(index)
         self.current_cage_number = target_cage
+        if self.loader_thread is not None:
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
 
     def on_cage_changed(self, index):
         if index < 0:
             return
 
         self.current_cage_number = self.cage_selector.itemData(index)
+        if self.loader_thread is not None:
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
         self.render_selected_content()
 
     def on_trajectory_plot_changed(self, index):
@@ -1261,8 +1307,74 @@ class Tab_4(ThemedWindow):
         self.current_mode = mode
         if self.loader_thread is not None:
             self.loader_thread.set_display_mode(mode)
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
         self.update_mode_specific_controls()
         self.render_selected_content()
+
+    @staticmethod
+    def _build_overlay_label(overlay: dict[str, typing.Any]) -> str:
+        def _safe_float(value, default=0.0):
+            try:
+                return float(default if value is None else value)
+            except (TypeError, ValueError):
+                return float(default)
+
+        solved = overlay.get("solved") or {}
+        status = str(overlay.get("status") or "")
+        if solved:
+            z_value = solved.get("Z_total", solved.get("Z", 0))
+            return (
+                f"X:{_safe_float(solved.get('X', 0)):.1f} "
+                f"Y:{_safe_float(solved.get('Y', 0)):.1f} "
+                f"Z:{_safe_float(z_value):.1f}"
+            )
+        return status
+
+    def _build_video_display_frame(self, cage_number: int, frame, overlay: dict[str, typing.Any] | None):
+        if frame is None:
+            return None
+        if not overlay:
+            return frame
+
+        display_frame = frame.copy()
+        mouse_box = overlay.get("mouse_box") or {}
+        xyxy = mouse_box.get("xyxy") or []
+        if len(xyxy) != 4:
+            return display_frame
+
+        try:
+            target_box = [float(value) for value in xyxy]
+            previous_box = self.display_overlay_boxes.get(cage_number)
+            if previous_box is not None and len(previous_box) == 4:
+                alpha = 0.35
+                draw_box = [
+                    previous + (target - previous) * alpha
+                    for previous, target in zip(previous_box, target_box)
+                ]
+            else:
+                draw_box = target_box
+            self.display_overlay_boxes[cage_number] = draw_box
+
+            x1, y1, x2, y2 = [int(value) for value in draw_box]
+            cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = self._build_overlay_label(overlay)
+            conf = mouse_box.get("conf")
+            if conf is not None:
+                label = f"{label} conf:{float(conf):.2f}" if label else f"conf:{float(conf):.2f}"
+            if label:
+                cv2.putText(
+                    display_frame,
+                    label,
+                    (max(x1, 10), max(y1 - 10, 24)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.75,
+                    (0, 0, 255),
+                    2,
+                )
+        except Exception as error:
+            logger.debug(f"draw mouse trajectory overlay failed: {error}")
+
+        return display_frame
 
     def update_image(self, pixmap_path_dict):
         if pixmap_path_dict is None or "infrared_camera" not in pixmap_path_dict:
@@ -1278,7 +1390,7 @@ class Tab_4(ThemedWindow):
         }
 
         if self.trajectory_thread is not None:
-            self.trajectory_thread.submit_frames(self.latest_video_frames)
+            self.trajectory_thread.submit_frames(pixmap_path_dict.get("trajectory_frames", {}) or {})
 
         self.refresh_cage_selector()
         self.render_selected_content()
@@ -1354,12 +1466,10 @@ class Tab_4(ThemedWindow):
 
         if self.current_mode == self.MODE_VIDEO:
             self.left_panel.set_title(f"视频检测效果 - 鼠笼{cage_number}")
-            annotation_frame = self.latest_trajectory_annotation_frames.get(cage_number)
-            if annotation_frame is not None:
-                self.left_panel.show_frame(annotation_frame)
-            else:
-                frame_payload = self.latest_video_frames.get(cage_number)
-                self.left_panel.show_frame(None if frame_payload is None else frame_payload.get("frame"))
+            frame_payload = self.latest_video_frames.get(cage_number)
+            raw_frame = None if frame_payload is None else frame_payload.get("frame")
+            overlay = self.latest_trajectory_overlays.get(cage_number)
+            self.left_panel.show_frame(self._build_video_display_frame(cage_number, raw_frame, overlay))
 
             plot_paths = self.latest_trajectory_plot_paths.get(cage_number, {})
             selected_plot_path = plot_paths.get(self.current_trajectory_plot_key, "")
