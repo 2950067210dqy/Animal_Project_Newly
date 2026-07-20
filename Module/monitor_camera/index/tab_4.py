@@ -6,9 +6,10 @@ import typing
 from datetime import datetime, timedelta
 
 import cv2
+import numpy as np
 from PyQt6 import QtGui
 from PyQt6.QtCharts import QChart, QChartView, QDateTimeAxis, QScatterSeries, QValueAxis
-from PyQt6.QtCore import QDateTime, QPointF, QRect, QRectF, Qt, pyqtSignal, QMargins
+from PyQt6.QtCore import QDateTime, QPointF, QRect, QRectF, Qt, pyqtSignal, QMargins, QTimer
 from PyQt6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -42,10 +43,21 @@ class ImageLoaderThread(MyQThread):
     def __init__(self, display_mode: str = "infrared"):
         super().__init__(name="tab4_image_loader")
         self.display_mode = display_mode
+        self.target_cage_number: int | None = None
+        self.last_trajectory_emit_time = 0.0
+        self.last_background_trajectory_emit_time = 0.0
+        self.trajectory_emit_interval = 0.12
+        self.background_trajectory_emit_interval = 1.0
+        self.cached_target_cages: set[int] = set()
+        self.last_target_cage_refresh_time = 0.0
+        self.target_cage_refresh_interval = 1.0
         self.refresh_camera_paths()
 
     def set_display_mode(self, display_mode: str):
         self.display_mode = display_mode
+
+    def set_target_cage_number(self, cage_number: int | None):
+        self.target_cage_number = None if cage_number is None else int(cage_number)
 
     def refresh_camera_paths(self):
         camera_config = global_setting.get_setting("camera_config")
@@ -64,13 +76,29 @@ class ImageLoaderThread(MyQThread):
                 + camera_config["INFRARED_CAMERA"]["pic_dir"]
                 for folder_name in infrared_folder_list
             ]
-        self.images = {"deep_camera_frames": {}, "infrared_camera": []}
+        self.images = {"deep_camera_frames": {}, "trajectory_frames": {}, "infrared_camera": []}
         self.running = True
 
     def _get_sleep_delay(self, configer) -> float:
         if self.display_mode == "video":
             return 0.03
         return float(configer["monitor_camera_pic"]["delay"])
+
+    def _get_target_cages(self) -> set[int]:
+        now = time.time()
+        if self.cached_target_cages and now - self.last_target_cage_refresh_time < self.target_cage_refresh_interval:
+            return set(self.cached_target_cages)
+
+        target_cages = set(int(cage) for cage in (global_setting.get_setting("mouse_cages", []) or []))
+        experiment_setting = global_setting.get_setting("experiment_setting", None)
+        if experiment_setting is not None and getattr(experiment_setting, "groups", None):
+            for group in experiment_setting.groups:
+                if getattr(group, "is_selected", 0) == 1:
+                    target_cages.add(int(group.id))
+
+        self.cached_target_cages = set(target_cages)
+        self.last_target_cage_refresh_time = now
+        return target_cages
 
     @staticmethod
     def parse_filename_datetime(filename):
@@ -98,7 +126,8 @@ class ImageLoaderThread(MyQThread):
 
     def dosomething(self):
         try:
-            self.refresh_camera_paths()
+            if self.display_mode != "video":
+                self.refresh_camera_paths()
             configer = global_setting.get_setting("configer")
             infrared_camera_list = []
 
@@ -113,19 +142,41 @@ class ImageLoaderThread(MyQThread):
                     infrared_camera_list.append("" if file_name is None else os.path.join(path, file_name))
 
             deep_camera_frames = {}
-            target_cages = set(int(cage) for cage in (global_setting.get_setting("mouse_cages", []) or []))
-            experiment_setting = global_setting.get_setting("experiment_setting", None)
-            if experiment_setting is not None and getattr(experiment_setting, "groups", None):
-                for group in experiment_setting.groups:
-                    if getattr(group, "is_selected", 0) == 1:
-                        target_cages.add(int(group.id))
+            trajectory_frames = {}
+            target_cages = self._get_target_cages()
 
-            for cage_number in sorted(target_cages):
+            display_cages = target_cages
+            if self.display_mode == "video" and self.target_cage_number is not None:
+                display_cages = {self.target_cage_number}
+
+            for cage_number in sorted(display_cages):
                 frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
                 if frame_payload is not None:
                     deep_camera_frames[cage_number] = frame_payload
 
+            now = time.time()
+            if self.display_mode == "video" and now - self.last_trajectory_emit_time >= self.trajectory_emit_interval:
+                if self.target_cage_number is not None:
+                    frame_payload = deep_camera_frames.get(self.target_cage_number) or shared_video_frame_store.read_frame(
+                        "deep_camera",
+                        self.target_cage_number,
+                    )
+                    if frame_payload is not None:
+                        frame_payload["trajectory_priority"] = 0
+                        trajectory_frames[self.target_cage_number] = frame_payload
+                if now - self.last_background_trajectory_emit_time >= self.background_trajectory_emit_interval:
+                    for cage_number in sorted(target_cages):
+                        if cage_number == self.target_cage_number:
+                            continue
+                        frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
+                        if frame_payload is not None:
+                            frame_payload["trajectory_priority"] = 10
+                            trajectory_frames[cage_number] = frame_payload
+                    self.last_background_trajectory_emit_time = now
+                self.last_trajectory_emit_time = now
+
             self.images["deep_camera_frames"] = deep_camera_frames
+            self.images["trajectory_frames"] = trajectory_frames
             self.images["infrared_camera"] = infrared_camera_list
             self.image_loaded.emit(self.images)
             time.sleep(self._get_sleep_delay(configer))
@@ -189,6 +240,10 @@ class DisplayPanel(QWidget):
         self.graphics_view = AutoFitGraphicsView(self.content_widget)
         self.graphics_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.content_layout.addWidget(self.graphics_view)
+        self._scene = QGraphicsScene(self.graphics_view)
+        self.graphics_view.setScene(self._scene)
+        self._pixmap_item = None
+        self._last_pixmap_size: tuple[int, int] | None = None
 
         self.placeholder_label = QLabel("", self.content_widget)
         self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -228,26 +283,52 @@ class DisplayPanel(QWidget):
         self.placeholder_label.hide()
         widget.show()
 
-    def show_image(self, image_path):
-        scene = self.graphics_view.scene()
-        if scene is None:
-            scene = QGraphicsScene()
-            self.graphics_view.setScene(scene)
+    def _set_pixmap(self, pixmap: QPixmap):
+        if self._pixmap_item is None:
+            self._pixmap_item = self._scene.addPixmap(pixmap)
+        else:
+            self._pixmap_item.setPixmap(pixmap)
 
+        pixmap_size = (pixmap.width(), pixmap.height())
+        if pixmap_size != self._last_pixmap_size:
+            self._scene.setSceneRect(QRectF(pixmap.rect()))
+            self.graphics_view.fit_scene()
+            self._last_pixmap_size = pixmap_size
+
+    def _clear_pixmap(self):
+        if self._pixmap_item is not None:
+            self._pixmap_item.setPixmap(QPixmap())
+        self._last_pixmap_size = None
+
+    def _resize_frame_for_view(self, frame):
+        if frame is None:
+            return None
+        viewport = self.graphics_view.viewport()
+        max_width = max(int(viewport.width()), 1)
+        max_height = max(int(viewport.height()), 1)
+        if max_width <= 1 or max_height <= 1:
+            max_width, max_height = 960, 540
+
+        height, width = frame.shape[:2]
+        scale = min(max_width / max(width, 1), max_height / max(height, 1), 1.0)
+        if scale >= 0.98:
+            return frame
+        target_size = (max(int(width * scale), 1), max(int(height * scale), 1))
+        return cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
+
+    def show_image(self, image_path):
         self._detach_custom_widget()
-        scene.clear()
         self.placeholder_label.hide()
         self.graphics_view.show()
 
         if image_path:
             pixmap = QPixmap(image_path)
             if not pixmap.isNull():
-                scene.addPixmap(pixmap)
-                scene.setSceneRect(QRectF(pixmap.rect()))
-                self.graphics_view.fit_scene()
+                self._set_pixmap(pixmap)
                 return
 
-        scene.setSceneRect(
+        self._clear_pixmap()
+        self._scene.setSceneRect(
             0,
             0,
             max(self.graphics_view.viewport().width(), 1),
@@ -258,17 +339,12 @@ class DisplayPanel(QWidget):
         self.graphics_view.hide()
 
     def show_frame(self, frame):
-        scene = self.graphics_view.scene()
-        if scene is None:
-            scene = QGraphicsScene()
-            self.graphics_view.setScene(scene)
-
         self._detach_custom_widget()
-        scene.clear()
         self.placeholder_label.hide()
         self.graphics_view.show()
 
         if frame is not None:
+            frame = self._resize_frame_for_view(frame)
             if len(frame.shape) == 2:
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
             else:
@@ -281,24 +357,18 @@ class DisplayPanel(QWidget):
                 height,
                 bytes_per_line,
                 QImage.Format.Format_RGB888,
-            ).copy()
+            )
             pixmap = QPixmap.fromImage(image)
             if not pixmap.isNull():
-                scene.addPixmap(pixmap)
-                scene.setSceneRect(QRectF(pixmap.rect()))
-                self.graphics_view.fit_scene()
+                self._set_pixmap(pixmap)
                 return
 
         self.show_placeholder("暂无画面")
 
     def show_placeholder(self, text):
-        scene = self.graphics_view.scene()
-        if scene is None:
-            scene = QGraphicsScene()
-            self.graphics_view.setScene(scene)
         self._detach_custom_widget()
-        scene.clear()
-        scene.setSceneRect(0, 0, 1, 1)
+        self._clear_pixmap()
+        self._scene.setSceneRect(0, 0, 1, 1)
         self.graphics_view.hide()
         self.placeholder_label.setText(text)
         self.placeholder_label.show()
@@ -973,17 +1043,30 @@ class Tab_4(ThemedWindow):
         self.current_mode = display_mode if display_mode in {self.MODE_INFRARED, self.MODE_VIDEO} else self.MODE_INFRARED
         self.latest_image_paths = {"infrared_camera": {}}
         self.latest_video_frames: dict[int, dict[str, typing.Any]] = {}
+        self.last_good_video_frames: dict[int, dict[str, typing.Any]] = {}
         self.latest_trajectory_plot_paths: dict[int, dict[str, str]] = {}
-        self.latest_trajectory_annotation_frames: dict[int, typing.Any] = {}
+        self.last_good_trajectory_plot_paths: dict[int, dict[str, str]] = {}
+        self.latest_trajectory_overlays: dict[int, dict[str, typing.Any]] = {}
         self.latest_trajectory_status: dict[int, str] = {}
+        self.last_good_corners: dict[int, list[dict[str, typing.Any]]] = {}
+        self.last_mouse_boxes: dict[int, tuple[float, float, float, float]] = {}
+        self.mouse_trackers: dict[int, typing.Any] = {}
+        self.tracker_frame_ids: dict[int, int] = {}
         self.current_trajectory_plot_key = "xy_trajectory"
         self.temperature_widget: TemperatureTrendWidget | None = None
         self.last_enabled_cages: list[int] = []
+        self.last_selector_refresh_time = 0.0
+        self.selector_refresh_interval = 1.0
+        self.video_dirty = False
 
         self._init_ui(parent, geometry, title)
         self._init_customize_ui()
         self._init_function()
         self._init_style_sheet()
+        self.video_render_timer = QTimer(self)
+        self.video_render_timer.setInterval(33)
+        self.video_render_timer.timeout.connect(self.render_video_if_dirty)
+        self.video_render_timer.start()
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         logger.warning("tab4-show")
@@ -1095,11 +1178,13 @@ class Tab_4(ThemedWindow):
         self.start_trajectory_thread()
         if self.loader_thread is not None and self.loader_thread.isRunning():
             self.loader_thread.set_display_mode(self.current_mode)
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
             if self.loader_thread.isPaused():
                 self.loader_thread.resume()
             return
 
         self.loader_thread = ImageLoaderThread(display_mode=self.current_mode)
+        self.loader_thread.set_target_cage_number(self.current_cage_number)
         self.loader_thread.image_loaded.connect(self.update_image)
         self.loader_thread.start()
 
@@ -1142,6 +1227,132 @@ class Tab_4(ThemedWindow):
         if self.loader_thread.isRunning() and not self.loader_thread.isPaused():
             self.loader_thread.pause()
 
+    @staticmethod
+    def _box_dict_to_xyxy(box_dict: dict[str, typing.Any] | None) -> tuple[float, float, float, float] | None:
+        if not box_dict:
+            return None
+        xyxy = box_dict.get("xyxy")
+        if not xyxy or len(xyxy) != 4:
+            return None
+        try:
+            x1, y1, x2, y2 = (float(value) for value in xyxy)
+        except (TypeError, ValueError):
+            return None
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return x1, y1, x2, y2
+
+    @staticmethod
+    def _create_mouse_tracker():
+        creators = (
+            ("legacy", "TrackerKCF_create"),
+            (None, "TrackerKCF_create"),
+            ("legacy", "TrackerMOSSE_create"),
+            (None, "TrackerMOSSE_create"),
+            ("legacy", "TrackerMIL_create"),
+            (None, "TrackerMIL_create"),
+        )
+        for namespace, creator_name in creators:
+            owner = getattr(cv2, namespace, cv2) if namespace else cv2
+            creator = getattr(owner, creator_name, None)
+            if creator is None:
+                continue
+            try:
+                return creator()
+            except Exception:
+                continue
+        return None
+
+    def _init_mouse_tracker(self, cage_number: int, frame, box_xyxy: tuple[float, float, float, float] | None):
+        if frame is None or box_xyxy is None:
+            return
+        tracker = self._create_mouse_tracker()
+        if tracker is None:
+            self.last_mouse_boxes[cage_number] = box_xyxy
+            return
+        x1, y1, x2, y2 = box_xyxy
+        bbox = (float(x1), float(y1), float(x2 - x1), float(y2 - y1))
+        try:
+            tracker.init(frame, bbox)
+            self.mouse_trackers[cage_number] = tracker
+            self.tracker_frame_ids[cage_number] = int(self.last_good_video_frames.get(cage_number, {}).get("frame_id", 0) or 0)
+            self.last_mouse_boxes[cage_number] = box_xyxy
+        except Exception as error:
+            logger.debug(f"init mouse tracker failed cage={cage_number}: {error}")
+            self.last_mouse_boxes[cage_number] = box_xyxy
+
+    def _update_mouse_tracker(self, cage_number: int, frame, frame_id: int) -> tuple[float, float, float, float] | None:
+        tracker = self.mouse_trackers.get(cage_number)
+        if tracker is None or frame is None:
+            return self.last_mouse_boxes.get(cage_number)
+        if frame_id > 0 and self.tracker_frame_ids.get(cage_number) == frame_id:
+            return self.last_mouse_boxes.get(cage_number)
+        try:
+            ok, bbox = tracker.update(frame)
+            if ok:
+                x, y, w, h = bbox
+                box_xyxy = (float(x), float(y), float(x + w), float(y + h))
+                self.last_mouse_boxes[cage_number] = box_xyxy
+                self.tracker_frame_ids[cage_number] = frame_id
+        except Exception as error:
+            logger.debug(f"update mouse tracker failed cage={cage_number}: {error}")
+        return self.last_mouse_boxes.get(cage_number)
+
+    def _draw_cage_corners(self, frame, corners: list[dict[str, typing.Any]] | None):
+        if frame is None or not corners or len(corners) < 4:
+            return
+        try:
+            points = np.array([[float(point["x"]), float(point["y"])] for point in corners[:4]], dtype=np.int32)
+            cv2.polylines(frame, [points], True, (0, 255, 255), 2)
+        except Exception as error:
+            logger.debug(f"draw cage corners failed: {error}")
+
+    def _draw_mouse_box(
+        self,
+        frame,
+        box_xyxy: tuple[float, float, float, float] | None,
+        overlay: dict[str, typing.Any] | None,
+    ):
+        if frame is None or box_xyxy is None:
+            return
+        try:
+            height, width = frame.shape[:2]
+            x1, y1, x2, y2 = box_xyxy
+            x1 = max(0, min(width - 1, int(round(x1))))
+            y1 = max(0, min(height - 1, int(round(y1))))
+            x2 = max(0, min(width - 1, int(round(x2))))
+            y2 = max(0, min(height - 1, int(round(y2))))
+            if x2 <= x1 or y2 <= y1:
+                return
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            solved = (overlay or {}).get("solved") or {}
+            if solved:
+                z_value = solved.get("Z_total", solved.get("Z", 0))
+                label = f"X:{float(solved.get('X', 0)):.1f} Y:{float(solved.get('Y', 0)):.1f} Z:{float(z_value):.1f}"
+            else:
+                status = (overlay or {}).get("status", "")
+                label = str(status or "mouse")
+            cv2.putText(frame, label, (x1, max(16, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        except Exception as error:
+            logger.debug(f"draw mouse box failed: {error}")
+
+    def _build_video_display_frame(self, cage_number: int, frame_payload: dict[str, typing.Any] | None):
+        if not frame_payload:
+            return None
+        frame = frame_payload.get("frame")
+        if frame is None:
+            return None
+        display_frame = frame.copy()
+        overlay = self.latest_trajectory_overlays.get(cage_number, {})
+        corners = overlay.get("corners") or self.last_good_corners.get(cage_number)
+        self._draw_cage_corners(display_frame, corners)
+        frame_id = int(frame_payload.get("frame_id", 0) or 0)
+        box_xyxy = self._update_mouse_tracker(cage_number, frame, frame_id)
+        if box_xyxy is None:
+            box_xyxy = self._box_dict_to_xyxy(overlay.get("mouse_box"))
+        self._draw_mouse_box(display_frame, box_xyxy, overlay)
+        return display_frame
+
     def update_trajectory_result(self, result_dict):
         if not result_dict:
             return
@@ -1150,12 +1361,29 @@ class Tab_4(ThemedWindow):
         if cage_number <= 0:
             return
 
-        self.latest_trajectory_plot_paths[cage_number] = result_dict.get("plot_paths", {}) or {}
-        self.latest_trajectory_annotation_frames[cage_number] = result_dict.get("annotation_frame")
+        plot_paths = result_dict.get("plot_paths", {}) or {}
+        self.latest_trajectory_plot_paths[cage_number] = plot_paths
+        if plot_paths:
+            self.last_good_trajectory_plot_paths[cage_number] = plot_paths
+        corners = result_dict.get("corners")
+        if corners:
+            self.last_good_corners[cage_number] = corners
+        overlay = {
+            "status": result_dict.get("status", ""),
+            "mouse_box": result_dict.get("mouse_box"),
+            "corners": corners or self.last_good_corners.get(cage_number),
+            "solved": result_dict.get("solved"),
+        }
+        self.latest_trajectory_overlays[cage_number] = overlay
+        box_xyxy = self._box_dict_to_xyxy(overlay.get("mouse_box"))
+        if box_xyxy is not None:
+            frame_payload = self.last_good_video_frames.get(cage_number)
+            frame = None if frame_payload is None else frame_payload.get("frame")
+            self._init_mouse_tracker(cage_number, frame, box_xyxy)
         self.latest_trajectory_status[cage_number] = result_dict.get("status", "")
 
         if self.current_mode == self.MODE_VIDEO and self.current_cage_number == cage_number:
-            self.render_selected_content()
+            self.video_dirty = True
 
     def _build_cage_image_map(self, image_paths, prefix):
         cage_image_map = {}
@@ -1239,12 +1467,29 @@ class Tab_4(ThemedWindow):
         if index >= 0 and index != self.cage_selector.currentIndex():
             self.cage_selector.setCurrentIndex(index)
         self.current_cage_number = target_cage
+        if self.loader_thread is not None:
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
+
+    def refresh_cage_selector_if_due(self):
+        now = time.time()
+        if now - self.last_selector_refresh_time < self.selector_refresh_interval:
+            return
+        self.last_selector_refresh_time = now
+        self.refresh_cage_selector()
+
+    def render_video_if_dirty(self):
+        if self.current_mode != self.MODE_VIDEO or not self.video_dirty:
+            return
+        self.video_dirty = False
+        self.render_selected_content()
 
     def on_cage_changed(self, index):
         if index < 0:
             return
 
         self.current_cage_number = self.cage_selector.itemData(index)
+        if self.loader_thread is not None:
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
         self.render_selected_content()
 
     def on_trajectory_plot_changed(self, index):
@@ -1261,6 +1506,7 @@ class Tab_4(ThemedWindow):
         self.current_mode = mode
         if self.loader_thread is not None:
             self.loader_thread.set_display_mode(mode)
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
         self.update_mode_specific_controls()
         self.render_selected_content()
 
@@ -1269,7 +1515,10 @@ class Tab_4(ThemedWindow):
             logger.error("未获取到图片数据")
             return
 
-        self.latest_video_frames = dict(pixmap_path_dict.get("deep_camera_frames", {}) or {})
+        video_frames = dict(pixmap_path_dict.get("deep_camera_frames", {}) or {})
+        if video_frames:
+            self.latest_video_frames.update(video_frames)
+            self.last_good_video_frames.update(video_frames)
         self.latest_image_paths = {
             "infrared_camera": self._build_cage_image_map(
                 pixmap_path_dict["infrared_camera"],
@@ -1278,10 +1527,15 @@ class Tab_4(ThemedWindow):
         }
 
         if self.trajectory_thread is not None:
-            self.trajectory_thread.submit_frames(self.latest_video_frames)
+            trajectory_frames = dict(pixmap_path_dict.get("trajectory_frames", {}) or {})
+            if trajectory_frames:
+                self.trajectory_thread.submit_frames(trajectory_frames)
 
-        self.refresh_cage_selector()
-        self.render_selected_content()
+        self.refresh_cage_selector_if_due()
+        if self.current_mode == self.MODE_VIDEO:
+            self.video_dirty = True
+        else:
+            self.render_selected_content()
 
     def render_selected_content(self):
         if self.current_cage_number is None:
@@ -1354,14 +1608,56 @@ class Tab_4(ThemedWindow):
 
         if self.current_mode == self.MODE_VIDEO:
             self.left_panel.set_title(f"视频检测效果 - 鼠笼{cage_number}")
-            annotation_frame = self.latest_trajectory_annotation_frames.get(cage_number)
-            if annotation_frame is not None:
-                self.left_panel.show_frame(annotation_frame)
+            frame_payload = self.latest_video_frames.get(cage_number) or self.last_good_video_frames.get(cage_number)
+            display_frame = self._build_video_display_frame(cage_number, frame_payload)
+            if display_frame is not None:
+                self.left_panel.show_frame(display_frame)
             else:
-                frame_payload = self.latest_video_frames.get(cage_number)
-                self.left_panel.show_frame(None if frame_payload is None else frame_payload.get("frame"))
+                self.left_panel.show_placeholder("暂无画面")
 
-            plot_paths = self.latest_trajectory_plot_paths.get(cage_number, {})
+            plot_paths = self.latest_trajectory_plot_paths.get(cage_number, {}) or self.last_good_trajectory_plot_paths.get(cage_number, {})
+            selected_plot_path = plot_paths.get(self.current_trajectory_plot_key, "")
+            plot_label = self.trajectory_plot_selector.currentText() if hasattr(self, "trajectory_plot_selector") else "X-Y轨迹"
+            self.right_panel.set_title(f"{plot_label} - 鼠笼{cage_number}")
+            if selected_plot_path:
+                self.right_panel.show_image(selected_plot_path)
+            else:
+                self.right_panel.show_placeholder("暂无轨迹数据")
+            return
+
+        self.left_panel.set_title(f"红外相机 - 鼠笼{cage_number}")
+        self.left_panel.show_image(self.latest_image_paths["infrared_camera"].get(cage_number, ""))
+        self.right_panel.set_title(f"温度 - 鼠笼{cage_number}")
+        if self.temperature_widget is not None:
+            self.temperature_widget.refresh_data(cage_number)
+            self.right_panel.show_custom_widget(self.temperature_widget)
+        else:
+            self.right_panel.show_placeholder("暂无温度数据")
+
+    def render_selected_content(self):
+        if self.current_cage_number is None:
+            self.left_panel.set_title("左侧")
+            self.right_panel.set_title("右侧")
+            self.left_panel.show_placeholder("请选择已开启笼子")
+            self.right_panel.show_placeholder("请选择已开启笼子")
+            return
+
+        cage_number = int(self.current_cage_number)
+        self.current_cage_label.setText(f"当前显示: 鼠笼{cage_number}")
+
+        if self.current_mode == self.MODE_VIDEO:
+            self.left_panel.set_title(f"视频检测效果 - 鼠笼{cage_number}")
+            frame_payload = self.latest_video_frames.get(cage_number) or self.last_good_video_frames.get(cage_number)
+            display_frame = self._build_video_display_frame(cage_number, frame_payload)
+            if display_frame is not None:
+                self.left_panel.show_frame(display_frame)
+            else:
+                self.left_panel.show_placeholder("暂无画面")
+
+            plot_paths = (
+                self.latest_trajectory_plot_paths.get(cage_number, {})
+                or self.last_good_trajectory_plot_paths.get(cage_number, {})
+            )
             selected_plot_path = plot_paths.get(self.current_trajectory_plot_key, "")
             plot_label = self.trajectory_plot_selector.currentText() if hasattr(self, "trajectory_plot_selector") else "X-Y轨迹"
             self.right_panel.set_title(f"{plot_label} - 鼠笼{cage_number}")
