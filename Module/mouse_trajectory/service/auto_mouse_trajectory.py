@@ -399,6 +399,50 @@ def run_yolo_single(model: YOLO, image_source: Path | np.ndarray, imgsz: int, co
     return results[0]
 
 
+def run_yolo_batch(
+    model: YOLO,
+    image_sources: Sequence[Path | np.ndarray],
+    imgsz: int,
+    conf: float,
+    batch_size: int = 8,
+) -> List[Any]:
+    if not image_sources:
+        return []
+    sources = [str(source) if isinstance(source, Path) else source for source in image_sources]
+    try:
+        results = model.predict(
+            source=sources,
+            imgsz=imgsz,
+            conf=conf,
+            verbose=False,
+            save=False,
+            half=False,
+            batch=max(int(batch_size), 1),
+        )
+        return list(results or [])
+    except Exception:
+        if len(sources) <= 1:
+            raise
+
+    # Some exported ONNX models have a fixed batch dimension of 1. Keep the
+    # queue batching logic, but fall back to one-by-one inference for those models.
+    fallback_results: List[Any] = []
+    for source in sources:
+        results = model.predict(
+            source=source,
+            imgsz=imgsz,
+            conf=conf,
+            verbose=False,
+            save=False,
+            half=False,
+            batch=1,
+        )
+        if not results:
+            raise RuntimeError(f"YOLO returned no results for {source}")
+        fallback_results.append(results[0])
+    return fallback_results
+
+
 def solve_mouse_location(
     solver: HeadlessCalibration,
     frame_box: DetectionBox,
