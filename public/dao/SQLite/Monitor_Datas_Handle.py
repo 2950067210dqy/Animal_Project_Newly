@@ -1,5 +1,6 @@
 import os
 import time
+import math
 from datetime import datetime
 from typing import Dict, Any, List
 
@@ -12,17 +13,41 @@ from public.entity.dict.AdvancedFuzzyDict import FuzzyDict
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.DataCaculation import Data_Caculation
 from public.function.DataCaculation.Data_Caculation import DataCaculation
-from public.function.Modbus.Modbus_Type import Modbus_Slave_Type
+from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Ids, Others_Tables
 # 监控数据操作类
 from public.util.time_util import time_util
 #logger = logger.bind(category="deep_camera_logger")
 
 class Monitor_Datas_Handle():
+    ZERO_FILL_MONITOR_DESCS = {
+        "CO2(%)",
+        "氧浓度(%)",
+        "干基氧浓度(%)",
+        "温度测量值(°C)",
+        "温度测量值(℃)",
+        "ZOS温度测量值(°C)",
+        "ZOS温度测量值(℃)",
+        "湿度测量值(%RH)",
+        "噪声测量值(dB)",
+        "ZOS温度2测量值(°C)",
+        "ZOS温度2测量值(℃)",
+        "ZOS湿度测量值(%RH)",
+    }
+    ENM_CARRY_FORWARD_COLUMNS = {
+        "temperature_num",
+        "humidity_num",
+        "noise_num",
+        "barometer_num",
+        "running_wheel_num",
+    }
+
     def __init__(self,db_name=None):
         # 实验设置
         self.experiment_setting: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
         self.experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
         self.sqlite_manager: SQLiteManager = None
+        self.zero_fill_cache = {}
+        self.last_valid_value_cache = {}
         self.init_construct(db_name)
 
         self.conn = None  # 为检测结果处理准备连接
@@ -120,6 +145,19 @@ class Monitor_Datas_Handle():
                                 self.sqlite_manager.insert_or_ignore(table_meta_name, item_name=item[0],
                                                                      item_struct=item[2],
                                                                      description=item[1])
+            self._migrate_mouse_infrared_tables(gids)
+            self._migrate_o2_compensation_tables(
+                gids=gids,
+                reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+            )
+            self._migrate_zos_protocol_tables(
+                gids=gids,
+                reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+            )
+            self._migrate_co2_display_tables(
+                gids=gids,
+                reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+            )
             # 实例化每轮次数据表
             for data_type in Modbus_Slave_Type.Epochs.value:
                 # 添加cage_0 给参考气存储数据 这里的-1代表总轮次表，表名为Epoch_data_all 不带后面的cage_-1
@@ -198,8 +236,12 @@ class Monitor_Datas_Handle():
                 pass
         # 实例化每个笼子里的传感器的数据表
 
+            reference_cage_number = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
             for data_type in Modbus_Slave_Type.Each_Mouse_Cage.value:
-                for carge_number in gids:
+                cage_numbers = gids
+                if data_type == Modbus_Slave_Ids.ENM:
+                    cage_numbers = [reference_cage_number] + gids
+                for carge_number in cage_numbers:
                     for table_name_short in data_type.value['table']:
                         # 列
                         columns = {item[0]: item[2] for item in data_type.value['table'][table_name_short]['column']}
@@ -221,6 +263,139 @@ class Monitor_Datas_Handle():
                                 self.sqlite_manager.insert(table_meta_name, item_name=item[0], item_struct=item[2],
                                                            description=item[1])
         pass
+
+    def _migrate_mouse_infrared_tables(self, gids):
+        for cage_number in gids:
+            self._migrate_mouse_infrared_table(f"MouseInfrared_data_cage_{cage_number}")
+
+    def _migrate_mouse_infrared_table(self, table_name):
+        old_column_name = "tmp_hs_mean"
+        new_column_name = "tmp_hs_max"
+        new_description = "最大值温度(摄氏度)"
+        meta_table_name = f"{table_name}_meta"
+
+        if not self.sqlite_manager.is_exist_table(table_name):
+            return
+
+        with self.sqlite_manager.execute_transaction() as cursor:
+            quoted_table_name = self.sqlite_manager.quote_ident(table_name)
+            cursor.execute(f"PRAGMA table_info({quoted_table_name})")
+            table_columns = [row[1] for row in cursor.fetchall()]
+
+            if old_column_name in table_columns and new_column_name not in table_columns:
+                cursor.execute(
+                    f'ALTER TABLE {quoted_table_name} RENAME COLUMN "{old_column_name}" TO "{new_column_name}"'
+                )
+
+            if not self.sqlite_manager.is_exist_table(meta_table_name):
+                return
+
+            quoted_meta_table_name = self.sqlite_manager.quote_ident(meta_table_name)
+            cursor.execute(
+                f"SELECT item_name FROM {quoted_meta_table_name} WHERE item_name = ?",
+                (old_column_name,)
+            )
+            if cursor.fetchone() is not None:
+                cursor.execute(
+                    f"UPDATE {quoted_meta_table_name} "
+                    f"SET item_name = ?, description = ? "
+                    f"WHERE item_name = ?",
+                    (new_column_name, new_description, old_column_name)
+                )
+            else:
+                cursor.execute(
+                    f"UPDATE {quoted_meta_table_name} SET description = ? WHERE item_name = ?",
+                    (new_description, new_column_name)
+                )
+
+    def _migrate_o2_compensation_tables(self, gids, reference_cage_number):
+        dry_basis_desc = "干基氧浓度(%)"
+
+        for cage_number in [reference_cage_number] + gids:
+            self._ensure_column_and_meta(
+                table_name=f"ZOS_monitor_data_cage_{cage_number}",
+                column_name="dry_basis_oxygen_num",
+                column_struct=" REAL ",
+                description=dry_basis_desc
+            )
+
+        for cage_number in [-1, reference_cage_number] + gids:
+            if cage_number == -1:
+                table_name = "Epoch_data_all"
+            else:
+                table_name = f"Epoch_data_cage_{cage_number}"
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name="ZOS_dry_basis_oxygen_num",
+                column_struct=" REAL ",
+                description=dry_basis_desc
+            )
+
+    def _migrate_zos_protocol_tables(self, gids, reference_cage_number):
+        zos_columns = [
+            ("oxygen_temperature_2_num", " REAL ", "ZOS温度2测量值(°C)"),
+            ("oxygen_humidity_num", " REAL ", "ZOS湿度测量值(%RH)"),
+        ]
+        epoch_columns = [
+            ("ZOS_oxygen_temperature_2_num", " REAL ", "ZOS温度2测量值(°C)"),
+            ("ZOS_oxygen_humidity_num", " REAL ", "ZOS湿度测量值(%RH)"),
+        ]
+
+        for cage_number in [reference_cage_number] + gids:
+            table_name = f"ZOS_monitor_data_cage_{cage_number}"
+            for column_name, column_struct, description in zos_columns:
+                self._ensure_column_and_meta(
+                    table_name=table_name,
+                    column_name=column_name,
+                    column_struct=column_struct,
+                    description=description
+                )
+
+        for cage_number in [-1, reference_cage_number] + gids:
+            table_name = "Epoch_data_all" if cage_number == -1 else f"Epoch_data_cage_{cage_number}"
+            for column_name, column_struct, description in epoch_columns:
+                self._ensure_column_and_meta(
+                    table_name=table_name,
+                    column_name=column_name,
+                    column_struct=column_struct,
+                    description=description
+                )
+
+    def _ensure_column_and_meta(self, table_name, column_name, column_struct, description):
+        if not self.sqlite_manager.is_exist_table(table_name):
+            return
+
+        meta_table_name = f"{table_name}_meta"
+        with self.sqlite_manager.execute_transaction() as cursor:
+            quoted_table_name = self.sqlite_manager.quote_ident(table_name)
+            cursor.execute(f"PRAGMA table_info({quoted_table_name})")
+            table_columns = [row[1] for row in cursor.fetchall()]
+
+            if column_name not in table_columns:
+                cursor.execute(
+                    f"ALTER TABLE {quoted_table_name} ADD COLUMN "
+                    f"{self.sqlite_manager.quote_ident(column_name)} {column_struct}"
+                )
+
+            if not self.sqlite_manager.is_exist_table(meta_table_name):
+                return
+
+            quoted_meta_table_name = self.sqlite_manager.quote_ident(meta_table_name)
+            cursor.execute(
+                f"SELECT item_name FROM {quoted_meta_table_name} WHERE item_name = ?",
+                (column_name,)
+            )
+            if cursor.fetchone() is None:
+                cursor.execute(
+                    f"INSERT INTO {quoted_meta_table_name} (item_name, item_struct, description) "
+                    f"VALUES (?, ?, ?)",
+                    (column_name, column_struct, description)
+                )
+            else:
+                cursor.execute(
+                    f"UPDATE {quoted_meta_table_name} SET description = ?, item_struct = ? WHERE item_name = ?",
+                    (description, column_struct, column_name)
+                )
 
     def _map_data_compact_with_none(self,data_list, columns_mapping):
         """
@@ -251,6 +426,112 @@ class Monitor_Datas_Handle():
         result = {column: desc_to_value.fuzzy_get(desc) for desc, column in desc_to_column.items()}
 
         return result
+
+    def _coerce_numeric_value(self, value):
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            numeric_value = float(value)
+            if math.isnan(numeric_value) or math.isinf(numeric_value):
+                return None
+            return numeric_value
+        if isinstance(value, str):
+            value = value.strip()
+            if value == "":
+                return None
+            try:
+                numeric_value = float(value)
+                if math.isnan(numeric_value) or math.isinf(numeric_value):
+                    return None
+                return numeric_value
+            except ValueError:
+                return None
+        return None
+
+    def _query_latest_valid_value(self, table_name, column_name):
+        if not column_name:
+            return None
+
+        quoted_table_name = self.sqlite_manager.quote_ident(table_name)
+        quoted_column_name = self.sqlite_manager.quote_ident(column_name)
+        sql = (
+            f"SELECT {quoted_column_name} FROM {quoted_table_name} "
+            f"WHERE {quoted_column_name} IS NOT NULL "
+            f"ORDER BY time DESC LIMIT 1"
+        )
+
+        with self.sqlite_manager.execute_transaction(auto_commit=True) as cursor:
+            cursor.execute(sql)
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def _query_latest_non_zero_value(self, table_name, column_name):
+        if not column_name:
+            return None
+
+        quoted_table_name = self.sqlite_manager.quote_ident(table_name)
+        quoted_column_name = self.sqlite_manager.quote_ident(column_name)
+        sql = (
+            f"SELECT {quoted_column_name} FROM {quoted_table_name} "
+            f"WHERE {quoted_column_name} IS NOT NULL "
+            f"AND ABS(CAST({quoted_column_name} AS REAL)) > ? "
+            f"ORDER BY time DESC LIMIT 1"
+        )
+
+        with self.sqlite_manager.execute_transaction(auto_commit=True) as cursor:
+            cursor.execute(sql, (1e-12,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def _fill_monitor_zero_values(self, table_name, data_items, columns_all_except_id):
+        for data_item in data_items:
+            desc = data_item.get('desc')
+            if desc not in self.ZERO_FILL_MONITOR_DESCS:
+                continue
+
+            numeric_value = self._coerce_numeric_value(data_item.get('value'))
+            if numeric_value is None:
+                continue
+
+            cache_key = (table_name, desc)
+            if abs(numeric_value) <= 1e-12:
+                previous_value = self.zero_fill_cache.get(cache_key)
+                if previous_value is None:
+                    previous_value = self._query_latest_non_zero_value(
+                        table_name=table_name,
+                        column_name=columns_all_except_id.get(desc)
+                    )
+                    if previous_value is not None:
+                        self.zero_fill_cache[cache_key] = previous_value
+
+                if previous_value is not None:
+                    logger.debug(f"{table_name} | {desc} 检测到零值，回填上一条非零值: {previous_value}")
+                    data_item['value'] = previous_value
+            else:
+                self.zero_fill_cache[cache_key] = data_item.get('value')
+
+    def _fill_enm_invalid_values(self, table_name, data_store):
+        for column_name in self.ENM_CARRY_FORWARD_COLUMNS:
+            if column_name not in data_store:
+                continue
+
+            current_value = data_store.get(column_name)
+            numeric_value = self._coerce_numeric_value(current_value)
+            cache_key = (table_name, column_name)
+
+            if numeric_value is None:
+                previous_value = self.last_valid_value_cache.get(cache_key)
+                if previous_value is None:
+                    previous_value = self._query_latest_valid_value(table_name, column_name)
+                    if previous_value is not None:
+                        self.last_valid_value_cache[cache_key] = previous_value
+
+                if previous_value is not None:
+                    logger.debug(f"{table_name} | {column_name} 检测到无效值，回填上一条有效值: {previous_value}")
+                    data_store[column_name] = previous_value
+            else:
+                self.last_valid_value_cache[cache_key] = current_value
+
     def insert_data(self, data):
         """
 
@@ -275,7 +556,11 @@ class Monitor_Datas_Handle():
                 columns_query = self.sqlite_manager.query(table_name_meta)
                 # 把id列去掉 因为id自增
                 columns_all_except_id = {i[2]:i[0] for i in columns_query if i[0] != 'id' }
+                if data.get('table_name') == 'monitor_data':
+                    self._fill_monitor_zero_values(table_name, data['data'], columns_all_except_id)
                 data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
+                if table_name.startswith("ENM_monitor_data_cage_"):
+                    self._fill_enm_invalid_values(table_name, data_store)
                 data_store['time'] = data['time']
                 # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
                 result = self.sqlite_manager.insert(table_name, **data_store)
@@ -294,7 +579,11 @@ class Monitor_Datas_Handle():
                 columns_query = self.sqlite_manager.query(table_name_meta)
                 # 把id列去掉 因为id自增
                 columns_all_except_id = {i[2]:i[0] for i in columns_query if i[0] != 'id' }
+                if data.get('table_name') == 'monitor_data':
+                    self._fill_monitor_zero_values(table_name, data['data'], columns_all_except_id)
                 data_store = self._map_data_compact_with_none(data['data'], columns_all_except_id)
+                if table_name.startswith("ENM_monitor_data_cage_"):
+                    self._fill_enm_invalid_values(table_name, data_store)
                 data_store['time'] = data['time']
                 # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
                 result = self.sqlite_manager.insert(table_name, **data_store)
@@ -553,6 +842,7 @@ class Monitor_Datas_Handle():
         else:
             table_name = f"Epoch_data_cage_{gid}"
         result = self.sqlite_manager.query_Epoch_datas( table_name, page=page, page_size=page_size, order_asc=True )
+        result = self._reorder_epoch_query_result(result)
         result_title = []
 
         # 找到中文列名
@@ -607,6 +897,7 @@ class Monitor_Datas_Handle():
         else:
             table_name = f"Epoch_data_cage_{gid}"
         result = self.sqlite_manager.query_Epoch_datas( table_name, page=1, page_size=page_size, order_asc=True )
+        result = self._reorder_epoch_query_result(result)
         result_title = []
 
         # 找到中文列名
@@ -633,17 +924,39 @@ class Monitor_Datas_Handle():
         return result
 
         pass
+    def _reorder_epoch_query_result(self, result):
+        if not result or "columns" not in result or "rows" not in result:
+            return result
+
+        desired_columns = [column[0] for column in Others_Tables.Epoch_Data.value["data"]["column"]]
+        current_columns = result.get("columns", [])
+        ordered_columns = [column for column in desired_columns if column in current_columns]
+        ordered_columns.extend(column for column in current_columns if column not in ordered_columns)
+
+        result["columns"] = ordered_columns
+        result["rows"] = [
+            {column: row.get(column) for column in ordered_columns}
+            for row in result.get("rows", [])
+        ]
+        return result
+
     def query_monitor_data_all_tables(self, all_column_datas=[]) -> dict:
         pass
 
 
-    def query_data_in_line_with_epoch_data(self,start_time,end_time):
+    def query_epoch_actual_end_time(self, start_time, end_time=None):
+        if end_time is None:
+            end_time = time.time()
+        tables = self.sqlite_manager.get_tables_with_time(exclude_substr=["meta","Epoch_data"], columns=['time'])
+        return self.sqlite_manager.get_latest_time_across_tables(tables, start_time=start_time, end_time=end_time)
+
+    def query_data_in_line_with_epoch_data(self,start_time,end_time, start_exclusive=False):
         # 找出当前时间段的所有数据表的数据除了meta表
         tables = self.sqlite_manager.get_tables_with_time(exclude_substr=["meta","Epoch_data"],columns=['time'])
         # logger.critical(tables)
         # 执行查询
         results, columns = self.sqlite_manager.get_multi_table_data(tables,
-            start_time, end_time, join_type="separate"
+            start_time, end_time, join_type="separate", start_exclusive=start_exclusive
         )
         # logger.critical(results)
         # logger.critical(columns)
@@ -937,3 +1250,143 @@ class Monitor_Datas_Handle():
     @end
     """
 
+    """
+    @author wangjie
+    @create_time 2026-1-5
+    @start
+    """
+
+    def get_all_cage_ids(self, table_prefix='DetectionResults_data_cage') -> List[int]:
+        """
+        获取指定类型表的笼子编号
+        :param table_prefix: 表前缀，如 'DetectionResults_data_cage', 'MouseInfrared_data_cage' 等
+        """
+        try:
+            with self.execute_transaction(auto_commit=True) as cursor:
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    f"AND name LIKE '{table_prefix}_%' "
+                    "AND name NOT LIKE '%_meta'"
+                )
+                tables = cursor.fetchall()
+
+                cage_ids = []
+                for table_tuple in tables:
+                    table_name = table_tuple[0]
+                    cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+                    count = cursor.fetchone()[0]
+
+                    if count > 0:
+                        import re
+                        match = re.search(r'cage_(\d+)$', table_name)
+                        if match:
+                            cage_id = int(match.group(1))
+                            cage_ids.append(cage_id)
+                            logger.info(f"笼子 {cage_id} 在表 {table_name} 有 {count} 条数据")
+
+                cage_ids = sorted(set(cage_ids))
+                return cage_ids
+
+        except Exception as e:
+            logger.error(f"获取笼子ID失败: {e}")
+            return []
+
+    def get_trajectory_data_by_cage(self, cage_id: int) -> List[Dict[str, Any]]:
+        """
+        获取指定笼子的轨迹数据 (center_x, center_y, center_z)
+        从 DetectionResults_data_cage_* 表中查询
+
+        Args:
+            cage_id: 笼子编号
+
+        Returns:
+            轨迹数据列表，每个元素包含:
+            {
+                'center_x': float,   # X坐标 (水平)
+                'center_y': float,   # Y坐标 (高度)
+                'center_z': float,   # Z坐标 (深度)
+            }
+        """
+        try:
+            # 调用 SQLiteManager 的方法获取轨迹数据
+            trajectory_data = self.sqlite_manager.get_trajectory_data_by_cage(cage_id=cage_id)
+
+            logger.info(f"笼子 {cage_id} 查询到 {len(trajectory_data)} 个轨迹点")
+            return trajectory_data
+
+        except Exception as e:
+            logger.error(f"查询笼子 {cage_id} 的轨迹数据失败: {e}")
+            return []
+
+    def get_cage_data_count(self, cage_id: int) -> int:
+        """
+        获取指定笼子的数据点数量
+
+        Args:
+            cage_id: 笼子编号
+
+        Returns:
+            数据点数量
+        """
+        try:
+            table_name = f"DetectionResults_data_cage_{cage_id}"
+
+            # 检查表是否存在
+            if not self.sqlite_manager.is_exist_table(table_name):
+                logger.warning(f"表 {table_name} 不存在")
+                return 0
+
+            with self.sqlite_manager.execute_transaction(auto_commit=True) as cursor:
+                cursor.execute(
+                    f'SELECT COUNT(*) FROM "{table_name}" '
+                    f'WHERE center_x IS NOT NULL AND center_y IS NOT NULL AND center_z IS NOT NULL'
+                )
+                result = cursor.fetchone()
+                count = result[0] if result else 0
+                logger.debug(f"笼子 {cage_id} 有效数据点数量: {count}")
+                return count
+
+        except Exception as e:
+            logger.error(f"获取笼子 {cage_id} 数据数量失败: {e}")
+            return 0
+
+    """
+    @author wangjie
+    @create_time 2026-1-5
+    @end
+    """
+
+
+def _monitor_datas_handle_migrate_co2_display_tables(self, gids, reference_cage_number):
+    for cage_number in [reference_cage_number] + gids:
+        self._ensure_column_and_meta(
+            table_name=f"UGC_monitor_data_cage_{cage_number}",
+            column_name="flow_num_1",
+            column_struct=" TEXT ",
+            description="传感器状态"
+        )
+
+    epoch_columns = [
+        ("UGC_flow_num_1", " TEXT ", "传感器状态"),
+        ("UGC_air_pressure", " REAL ", "拟合后CO2"),
+        ("UGC_CO2_origin_num", " REAL ", "补偿前CO2"),
+        ("UGC_CO2_num", " REAL ", "气压补偿后CO2"),
+    ]
+
+    for cage_number in [-1, reference_cage_number] + gids:
+        table_name = "Epoch_data_all" if cage_number == -1 else f"Epoch_data_cage_{cage_number}"
+        for column_name, column_struct, description in epoch_columns:
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name=column_name,
+                column_struct=column_struct,
+                description=description
+            )
+
+
+Monitor_Datas_Handle.ZERO_FILL_MONITOR_DESCS.update({
+    "补偿前CO2",
+    "气压补偿后CO2",
+    "拟合后CO2",
+})
+Monitor_Datas_Handle._migrate_co2_display_tables = _monitor_datas_handle_migrate_co2_display_tables

@@ -4,6 +4,7 @@ import multiprocessing
 import sys
 import threading
 import traceback
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -51,8 +52,8 @@ TIP_SEGM_PARAM = {
     # supported: simple, otsu, adaptive
     'threshold_type': 'simple',
     # threshold value for simple thresholding
-    'threshold': 190,
-    'contour_minArea': -5,
+    'threshold': 170,
+    'contour_minArea': -3,
 
     # contour analysis
     # ----------------
@@ -63,9 +64,45 @@ TIP_SEGM_PARAM = {
     'bbox_extension': 10,
 }
 
+THERMAL_DISPLAY_FILTER_PARAM = {
+    'temporal_window': 10,
+    'blur_ks': 3,
+    'd': 7,
+    'sigmaColor': 20,
+    'sigmaSpace': 20,
+}
+
+ROI_EFFECTIVE_MAX_TOP_N = 100
+
 # 总图像帧数量
 frame_nums = 0
 lock = threading.Lock()
+
+
+def load_infrared_ellipse_mask_config(cage_id):
+    config_path = os.path.join(os.getcwd(), "config", "infrared_ellipse_mask_config.json")
+    camera_config = global_setting.get_setting("camera_config")["INFRARED_CAMERA"]
+    fallback = {
+        "enabled": int(camera_config.get("ellipse_mask_enabled", 1)),
+        "center_x_ratio": float(camera_config.get("ellipse_center_x_ratio", 0.50)),
+        "center_y_ratio": float(camera_config.get("ellipse_center_y_ratio", 0.54)),
+        "axis_x_ratio": float(camera_config.get("ellipse_axis_x_ratio", 0.36)),
+        "axis_y_ratio": float(camera_config.get("ellipse_axis_y_ratio", 0.34)),
+        "angle": float(camera_config.get("ellipse_angle", 0.0)),
+    }
+    if not os.path.exists(config_path):
+        return fallback
+
+    try:
+        raw = json_util.read_json_to_dict_list(config_path)
+    except Exception as e:
+        logger.error(f"load infrared ellipse mask config failed: {e}")
+        return fallback
+
+    merged = dict(fallback)
+    merged.update(raw.get("default", {}))
+    merged.update(raw.get("cages", {}).get(str(cage_id), {}))
+    return merged
 
 # 过滤日志
 # logger = logger.bind(category="infrared_camera_logger")
@@ -139,6 +176,20 @@ read_queue_data_thread = read_queue_data_Thread(name="main_infrared_camera_read_
 
 import msvcrt
 import shutil
+
+
+def get_infrared_history_config():
+    camera_config = global_setting.get_setting("camera_config")
+    infrared_config = camera_config.get('INFRARED_CAMERA', {})
+    storage_root = camera_config.get('STORAGE', {}).get('fold_path', './data/')
+    history_root = os.path.normpath(
+        os.path.join(storage_root, infrared_config.get('history_path', 'infrared_camera_history/'))
+    )
+    return {
+        'enabled': bool(int(infrared_config.get('history_enabled', 0))),
+        'root_path': history_root,
+        'keep_days': int(infrared_config.get('history_keep_days', 0)),
+    }
 
 
 
@@ -327,21 +378,68 @@ class TIP:
                            self.image_scale * self.ncol_nrow[1])
         # 伪彩色
         self.colormap = param.get('colormap', 'rainbow2')
+        self.ellipse_mask_enabled = bool(param.get('ellipse_mask_enabled', 1))
+        self.ellipse_center_x_ratio = float(param.get('ellipse_center_x_ratio', 0.50))
+        self.ellipse_center_y_ratio = float(param.get('ellipse_center_y_ratio', 0.54))
+        self.ellipse_axis_x_ratio = float(param.get('ellipse_axis_x_ratio', 0.36))
+        self.ellipse_axis_y_ratio = float(param.get('ellipse_axis_y_ratio', 0.34))
+        self.ellipse_angle = float(param.get('ellipse_angle', 0.0))
 
         # 图像分割器初始化
         self.segment = CVSegment(param)
 
-    def set_mean_temp_to_img(self, origin_image, mean_temp):
+    def _ellipse_geometry(self, image_shape):
+        height, width = image_shape[:2]
+        center = (
+            int(width * self.ellipse_center_x_ratio),
+            int(height * self.ellipse_center_y_ratio),
+        )
+        axes = (
+            max(1, int(width * self.ellipse_axis_x_ratio)),
+            max(1, int(height * self.ellipse_axis_y_ratio)),
+        )
+        return center, axes, self.ellipse_angle
+
+    def _build_ellipse_mask(self, frame_shape):
+        if not self.ellipse_mask_enabled:
+            return None
+
+        mask = np.zeros(frame_shape[:2], dtype=np.uint8)
+        center, axes, angle = self._ellipse_geometry(frame_shape)
+        cv.ellipse(mask, center, axes, angle, 0, 360, 255, -1)
+        return mask
+
+    def _measure_roi_temperature(self, frame):
+        mask = self._build_ellipse_mask(frame.shape)
+        if mask is None:
+            return None, None, None
+
+        roi_pixels = frame[mask > 0]
+        if roi_pixels.size == 0:
+            return mask, None, None
+
+        roi_max = float(np.max(roi_pixels))
+        roi_background = float(np.median(roi_pixels))
+        return mask, roi_max, roi_background
+
+    def _draw_ellipse_overlay(self, origin_image):
+        if not self.ellipse_mask_enabled:
+            return origin_image
+
+        center, axes, angle = self._ellipse_geometry(origin_image.shape)
+        cv.ellipse(origin_image, center, axes, angle, 0, 360, (0, 0, 255), 2)
+        return origin_image
+
+    def set_max_temp_to_img(self, origin_image, max_temp):
         """
-        将平均温度放到图片上
+        将最大温度放到图片上
         :return: image 更改之后的图片
         """
         # 定义文字内容
-        if mean_temp is None:
-            text = f"hs_mean: None degree C"
+        if max_temp is None:
+            text = "roi_max: None degree C"
         else:
-            text = f"hs_mean: {float(mean_temp)} degree C"
-
+            text = f"roi_max: {float(max_temp):.4f} degree C"
         # 定义文字位置（左上角坐标）
         position = (30, 30)
 
@@ -361,21 +459,28 @@ class TIP:
         cv.putText(origin_image, text, position, font, font_scale, color, thickness, cv.LINE_AA)
         return origin_image
 
-    def execute(self, frame):
+    def execute(self, frame, display_frame=None):
         """Thermal data processing pipeline; produces image and stats/metrics"""
+        render_frame = frame if display_frame is None else display_frame
         # 把热图数据转成 8-bit 显示图像（通常是灰度或伪彩色图像）
-        frame_uint8 = remap(frame)
-        self.img_raw = cv_render(frame_uint8, resize=self.image_size,
-                                 colormap=self.colormap,
-                                 interpolation=cv.INTER_NEAREST, display=False)
+        frame_uint8 = remap(render_frame)
 
         # 图像滤波并进行热点分割 对图像做滤波（如中值/双边滤波），然后用分割器提取热图中最热的区域（hotspot）。
-        filtered_ui8 = cv_filter(frame_uint8, parameters={'blur_ks': 5},
-                                 use_median=True, use_bilat=True)
+        filtered_ui8 = cv_filter(
+            frame_uint8,
+            parameters={
+                'blur_ks': THERMAL_DISPLAY_FILTER_PARAM['blur_ks'],
+                'd': THERMAL_DISPLAY_FILTER_PARAM['d'],
+                'sigmaColor': THERMAL_DISPLAY_FILTER_PARAM['sigmaColor'],
+                'sigmaSpace': THERMAL_DISPLAY_FILTER_PARAM['sigmaSpace'],
+            },
+            use_median=True,
+            use_bilat=True,
+            use_nlm=False)
         # 生成滤波图像
-        # self.img_filtered = cv_render(filtered_ui8, resize=self.image_size,
-        #                               colormap=self.colormap,
-        #                               interpolation=cv.INTER_NEAREST, display=False)
+        self.img_filtered = cv_render(filtered_ui8, resize=self.image_size,
+                                      colormap=self.colormap,
+                                      interpolation=cv.INTER_CUBIC, display=False)
         self.segment(frame=frame, frui8=filtered_ui8)
 
         # 渲染热点掩膜图像
@@ -390,22 +495,26 @@ class TIP:
         # self.img_hs_mask = cv_render(hs_mask, resize=self.image_size,
         #                              colormap='parula',
         #                              interpolation=cv.INTER_NEAREST, display=False)
+        _, roi_max, roi_mean = self._measure_roi_temperature(render_frame)
         output_struct = {
-            'hs_max': hs_osd.get('max', None),
-            'hs_mean': hs_osd.get('mean', None),
+            'hs_max': roi_max if roi_max is not None else hs_osd.get('max', None),
+            'hs_mean': roi_mean,
         }
-        self.img_raw = self.set_mean_temp_to_img(self.img_raw, output_struct['hs_mean'])
+        self.img_filtered = self._draw_ellipse_overlay(self.img_filtered)
+        self.img_filtered = self.set_max_temp_to_img(
+            self.img_filtered,
+            output_struct['hs_max'],
+        )
         # 返回处理后图像和温度统计数据。
         images = {
-            'raw': self.img_raw,
-            # 'filtered': self.img_filtered,
+            'display': self.img_filtered,
             # 'hotspot_mask': self.img_hs_mask,
         }
 
         return images, output_struct
 
-    def __call__(self, thermal_data):
-        return self.execute(thermal_data)
+    def __call__(self, thermal_data, display_frame=None):
+        return self.execute(thermal_data, display_frame=display_frame)
 
 
 class Thermal_process(MyQThread):
@@ -431,6 +540,7 @@ class Thermal_process(MyQThread):
         self.vs = None
         self.test_frame = None
         self.init_state = None
+        self.frame_buffer = deque(maxlen=THERMAL_DISPLAY_FILTER_PARAM['temporal_window'])
         # 显示初始化失败的日志的控制变量
         self.init_error_log_show = False
         self.init_state = self.senxor_init()
@@ -500,6 +610,7 @@ class Thermal_process(MyQThread):
             self.mi48.set_emissivity(args.emissivity)
             self.mi48.set_offset_corr(3)
             self.mi48.start(stream=True, with_header=True)
+            self.frame_buffer.clear()
 
             self.RA_Tmin = RollingAverageFilter(N=10)
             self.RA_Tmax = RollingAverageFilter(N=10)
@@ -509,6 +620,17 @@ class Thermal_process(MyQThread):
                 'fpa_ncol_nrow': (self.mi48.cols, self.mi48.rows),
                 'image_scale': args.img_scale,
             }
+            ellipse_mask_config = load_infrared_ellipse_mask_config(self.id)
+            tip_param.update(
+                {
+                    'ellipse_mask_enabled': ellipse_mask_config.get('enabled', 1),
+                    'ellipse_center_x_ratio': ellipse_mask_config.get('center_x_ratio', 0.50),
+                    'ellipse_center_y_ratio': ellipse_mask_config.get('center_y_ratio', 0.54),
+                    'ellipse_axis_x_ratio': ellipse_mask_config.get('axis_x_ratio', 0.36),
+                    'ellipse_axis_y_ratio': ellipse_mask_config.get('axis_y_ratio', 0.34),
+                    'ellipse_angle': ellipse_mask_config.get('angle', 0.0),
+                }
+            )
 
             tip_param.update(TIP_SEGM_PARAM)
             self.tip = TIP(tip_param)
@@ -542,7 +664,11 @@ class Thermal_process(MyQThread):
         return True
 
     def stop(self):
-        self.mi48.stop()
+        if self.mi48 is not None:
+            try:
+                self.mi48.stop()
+            except Exception as e:
+                logger.error(f"红外相机{self.id}停止mi48失败：原因{e}")
         cv.destroyAllWindows()
 
         if self.datasave is not None :
@@ -550,6 +676,12 @@ class Thermal_process(MyQThread):
         if self.vs is not None:
             self.vs.stop()
         super().stop()
+
+    def smooth_frame_temporally(self, frame):
+        self.frame_buffer.append(frame.copy())
+        if len(self.frame_buffer) == 1:
+            return frame
+        return np.mean(self.frame_buffer, axis=0, dtype=np.float32)
 
     def run(self) -> None:
         logger.warning(f"{self.name} thread has been started！")
@@ -599,10 +731,11 @@ class Thermal_process(MyQThread):
                 #
                 Tmin, Tmax = self.RA_Tmin(frame.min()), self.RA_Tmax(frame.max())
                 frame = np.clip(frame, Tmin, Tmax)
-                _imgs, _struct = self.tip(frame)
+                display_frame = self.smooth_frame_temporally(frame)
+                _imgs, _struct = self.tip(frame, display_frame=display_frame)
                 self.images['thermal'].update(_imgs)
                 self.struct['thermal'].update(_struct)
-                self.display.img = self.display.composer([self.images['thermal']['raw']])
+                self.display.img = self.display.composer([self.images['thermal']['display']])
 
                 # self.display(self.display.img)  # 显示，可删除
                 self.display.dir = Path(pic_save_path)
@@ -622,12 +755,12 @@ class Thermal_process(MyQThread):
                 return_data_struct['mouse_cage_number'] = self.id
                 return_data_struct['data'] = [
                     {'desc': '识别时间', 'value': file_base_name},
-                    {'desc': '均值温度(摄氏度)', 'value':  round(float(self.struct['thermal']['hs_mean']),4) if self.struct['thermal']['hs_mean'] is not None else None},
+                    {'desc': '最大值温度(摄氏度)', 'value':  round(float(self.struct['thermal']['hs_max']),4) if self.struct['thermal']['hs_max'] is not None else None},
                 ]
 
                 return_data_struct['slave_id'] = 0
                 return_data_struct['function_code'] = 0
-                # logger.error(f"红外温度{self.struct['thermal']['hs_mean']}，{return_data_struct}")
+                # logger.error(f"红外温度{self.struct['thermal']['hs_max']}，{return_data_struct}")
                 status, msg = self.datasave.insert_data(return_data_struct)
                 if not status:
                     logger.error(f"红外相机{self.id}存储数据错误：{msg}")
@@ -656,12 +789,63 @@ class Delete_file(MyQThread):
         super().__init__(name=f"infrared_camera_delete_file")
         self.path = path
         self.start_time = start_time
+        self.history_config = get_infrared_history_config()
+
+    def _archive_bmp_file(self, file_path):
+        if not self.history_config['enabled']:
+            return False
+        if os.path.splitext(file_path)[1].lower() != '.bmp':
+            return False
+
+        history_root = self.history_config['root_path']
+        source_root = os.path.abspath(self.path)
+        archive_root = os.path.abspath(history_root)
+        if os.path.commonpath([source_root, archive_root]) == source_root:
+            logger.error(f"红外历史归档目录不能放在待清理目录内部: {archive_root}")
+            return False
+
+        relative_path = os.path.relpath(file_path, self.path)
+        archive_dir = os.path.join(history_root, datetime.now().strftime('%Y-%m-%d'))
+        archive_path = os.path.join(archive_dir, relative_path)
+        os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+        if os.path.exists(archive_path):
+            stem, ext = os.path.splitext(archive_path)
+            archive_path = f"{stem}_{int(time.time() * 1000)}{ext}"
+        shutil.move(file_path, archive_path)
+        return True
+
+    def _cleanup_history_files(self):
+        keep_days = self.history_config['keep_days']
+        if not self.history_config['enabled'] or keep_days <= 0:
+            return
+
+        history_root = self.history_config['root_path']
+        if not os.path.exists(history_root):
+            return
+
+        expire_before = time.time() - keep_days * 24 * 60 * 60
+        for root, dirs, files in os.walk(history_root, topdown=False):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    if os.path.getmtime(file_path) < expire_before:
+                        os.remove(file_path)
+                except Exception as e:
+                    logger.error(f"清理红外历史文件失败: {file_path}, reason:{e}")
+            for directory in dirs:
+                dir_path = os.path.join(root, directory)
+                try:
+                    if not os.listdir(dir_path):
+                        os.rmdir(dir_path)
+                except Exception as e:
+                    logger.error(f"清理红外历史目录失败: {dir_path}, reason:{e}")
 
     # 获得删除文件的大小
     def get_and_delete_files(self):
 
         total_size = 0
         total_nums = 0
+        archived_nums = 0
         for root, dirs, files in os.walk(self.path):
             # logger.warning(f"infrared {root} | {dirs} | {files}")
             for file in files:
@@ -674,20 +858,28 @@ class Delete_file(MyQThread):
                     size = float(size / 1204 / 1024 / 1024)  # 将字节B转成GB
                     total_size += size
                     total_nums += 1
-                    os.remove(file_path)  # 删除文件
+                    if self._archive_bmp_file(file_path):
+                        archived_nums += 1
+                    else:
+                        os.remove(file_path)  # 删除文件
                 except Exception as e:
                     logger.error(
                         f"infrared_camera Failed to delete {file_path}: reason:{e} |  异常堆栈跟踪：{traceback.print_exc()}")
         global frame_nums
         with lock:
-            logger.warning(f"红外相机 | 删除文件总大小: {total_size} G-bytes | 删除文件总数量： {total_nums} | 此时相机拍摄的图像数量：{frame_nums}")
+            logger.warning(
+                f"红外相机 | 清理文件总大小: {total_size} G-bytes | 清理文件总数量： {total_nums} | "
+                f"归档bmp数量：{archived_nums} | 此时相机拍摄的图像数量：{frame_nums}"
+            )
             frame_nums = 0
+        self._cleanup_history_files()
         return total_size
 
 
     def dosomething(self) :
         try:
             with delete_process_lock:
+                self.history_config = get_infrared_history_config()
                 # 获取现在时间与上次删除时间之差
                 current_time = time.time()
                 elapsed = current_time - self.start_time

@@ -215,7 +215,7 @@ class MonitorDataWindows(ThemedWidget):
         opera_layout.addStretch(7)
 
 
-        self.opera_layout_widget = DemoDraggableDockWidget(is_showt_tab=False)
+        self.opera_layout_widget = DemoDraggableDockWidget(is_showt_tab=False, enable_detach=False)
         self._docks_widget_calibration.append( opera_layout_widget)
         self.opera_layout_widget.addFrames(self._docks_widget_calibration)
 
@@ -249,7 +249,7 @@ class MonitorDataWindows(ThemedWidget):
         # 表格区域
         self.content_layout_widget = QWidget()
         self.content_layout = QVBoxLayout( self.content_layout_widget)
-        self.content_widget=DemoDraggableDockWidget(is_showt_tab=False)
+        self.content_widget = DemoDraggableDockWidget(is_showt_tab=False, enable_detach=False)
         self.content_layout.addWidget(self.content_widget)
 
         self.main_splitter.addWidget(self.content_layout_widget)
@@ -259,15 +259,22 @@ class MonitorDataWindows(ThemedWidget):
         # 图表区域
         self.charts_layout_widget=QWidget()
         self.charts_layout = QVBoxLayout(self.charts_layout_widget)
-        self.charts_widget = DemoDraggableDockWidget(is_showt_tab=False)
+        self.charts_widget = DemoDraggableDockWidget(is_showt_tab=False, enable_detach=False)
         self.charts_layout.addWidget(self.charts_widget)
 
         self.main_splitter.addWidget(self.charts_layout_widget)
         # self.main_layout.addLayout(self.charts_layout, stretch=8)
         # 设置拉伸因子 (索引, 拉伸因子)
         self.main_splitter.setStretchFactor(0, 2)
-        self.main_splitter.setStretchFactor(1, 8)
-        self.main_splitter.setStretchFactor(2, 8)
+        self.main_splitter.setStretchFactor(1, 10)
+        self.main_splitter.setStretchFactor(2, 6)
+        for i in range(1, self.main_splitter.count()):
+            self.main_splitter.handle(i).setEnabled(False)
+        # # 上面“操作区-表格区”之间仍然不允许拖
+        # self.main_splitter.handle(1).setEnabled(False)
+        #
+        # # 下面“表格区-图表区”之间允许拖
+        # self.main_splitter.handle(2).setEnabled(True)
         self.main_layout.addWidget(self.main_splitter)
 
         self.setLayout(self.main_layout)
@@ -314,11 +321,17 @@ class MonitorDataWindows(ThemedWidget):
                 widget.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid==int(global_setting.get_setting('configer')['mouse_cage']['reference']) else ''}")
                 # ！！！！！！！！！！！！！！！！！！！！！！！！！！临时添加！！！！！！！！！！！！！！！！！！
                 widget.on_replace_headers([1])
+                widget.setWindowTitle(
+                    f"通道/鼠笼 {'参考笼' if gid == int(global_setting.get_setting('configer')['mouse_cage']['reference']) else gid}"
+                )
 
                 self._docks_widget.append(widget)
 
                 widget_charts =AdvancedChartWidget(gid=gid)
                 widget_charts.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid==int(global_setting.get_setting('configer')['mouse_cage']['reference']) else ''}")
+                widget_charts.setWindowTitle(
+                    f"通道/鼠笼 {'参考笼' if gid == int(global_setting.get_setting('configer')['mouse_cage']['reference']) else gid}"
+                )
                 self._docks_widget_charts.append(widget_charts)
             self.content_widget.addFrames(self._docks_widget)
             self.charts_widget.addFrames(self._docks_widget_charts)

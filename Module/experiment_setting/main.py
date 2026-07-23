@@ -34,7 +34,7 @@ class Main_experiment_setting_widget(BaseInterfaceWidget):
 
     def get_type(self):
         """获得类型 """
-        return BaseInterfaceType.WINDOW
+        return BaseInterfaceType.WIDGET
     def create_middle_window(self) -> BaseWindow:
         return Tab_7()
 
@@ -68,7 +68,7 @@ class Main_experiment_setting(BaseModule):
 
 
     def get_app_state(self) -> AppState:
-        return AppState.APPLYING
+        return AppState.MONITORING
     def get_name(self):
         """返回组件名称"""
         return "Main_experiment_setting"
@@ -78,7 +78,7 @@ class Main_experiment_setting(BaseModule):
         return "设备配置（旧版本）"
     def get_menu_name(self):
         """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""
-        return {"id":1,"text":"实验"}
+        return {"id":2,"text":"实验检测"}
         pass
 
     def create_service(self) -> BaseService:

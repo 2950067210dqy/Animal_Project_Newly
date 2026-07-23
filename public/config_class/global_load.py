@@ -10,6 +10,22 @@ from public.entity.enum.Public_Enum import AppState
 from theme.ThemeManager import ThemeManager
 
 
+def _read_test_bool(config: dict, section: str, key: str, default: bool = False) -> bool:
+    section_data = config.get(section, {}) if isinstance(config, dict) else {}
+    value = section_data.get(key, default)
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _init_startup_calibration_mode():
+    mode = global_setting.get_setting("startup_calibration_mode", None)
+    if mode not in {"none", "air", "air_co2", "full"}:
+        mode = "none"
+    global_setting.set_setting("startup_calibration_mode", mode)
+    global_setting.set_setting("is_auto_calibration", mode != "none")
+
+
 def load_global_setting():
     config_path = "/config"
     # 加载配置
@@ -51,6 +67,10 @@ def load_global_setting():
     else:
         logger.error("UFC_UGC_ZOS_config配置文件读取失败。")
     global_setting.set_setting("UFC_UGC_ZOS_config", config)
+    global_setting.set_setting(
+        "allow_test_calibration_without_air_validation",
+        _read_test_bool(config, "PARAM", "allow_calibration_without_air_validation", False)
+    )
     # 风格默认是dark  light
     global_setting.set_setting("style", configer['theme']['default'])
     # 图标风格 white black
@@ -63,6 +83,7 @@ def load_global_setting():
     global_setting.set_setting("thread_pool", thread_pool)
     # 程序状态
     global_setting.set_setting("app_state", AppState.INITIALIZED)
+    _init_startup_calibration_mode()
     pass
 def load_global_setting_without_Qt():
     config_path = "/config"
@@ -105,6 +126,10 @@ def load_global_setting_without_Qt():
     else:
         logger.error("UFC_UGC_ZOS_config配置文件读取失败。")
     global_setting.set_setting("UFC_UGC_ZOS_config", config)
+    global_setting.set_setting(
+        "allow_test_calibration_without_air_validation",
+        _read_test_bool(config, "PARAM", "allow_calibration_without_air_validation", False)
+    )
     # 风格默认是dark  light
     global_setting.set_setting("style", configer['theme']['default'])
     # 图标风格 white black
@@ -115,6 +140,7 @@ def load_global_setting_without_Qt():
 
     # 程序状态
     global_setting.set_setting("app_state", AppState.INITIALIZED)
+    _init_startup_calibration_mode()
     pass
 def load_global_setting_without_Qt_for_subprocess():
     config_path = "/config"
@@ -160,3 +186,4 @@ def load_global_setting_without_Qt_for_subprocess():
 
     # 程序状态
     global_setting.set_setting("app_state", AppState.INITIALIZED)
+    _init_startup_calibration_mode()

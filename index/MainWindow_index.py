@@ -1,8 +1,12 @@
 import importlib
 import json
 import os
+import sqlite3
+import threading
 import time
 from json import JSONDecodeError
+
+from PyQt6.QtGui import QFont
 from PyQt6 import QtCore
 from PyQt6.QtCore import QTimer, QObject, pyqtSignal
 from PyQt6.QtGui import QAction
@@ -10,7 +14,7 @@ from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDia
     QApplication, QCheckBox
 from loguru import logger
 
-
+from PyQt6.QtCore import Qt
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
     UFC_gas_path_system, UGC_gas_path_system
@@ -23,7 +27,6 @@ from public.component.dialog.custom.loading_dialog_seconds import AnimatedLoadin
 from public.component.mask.LoadingMask import LoadingContext
 from public.config_class.App_Setting import AppSettings
 from public.config_class.global_setting import global_setting
-from public.entity.BaseWindow import BaseWindow
 from public.entity.MyQThread import MyQThread
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState, Tutorial_Type
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
@@ -101,10 +104,18 @@ class read_queue_data_Thread(MyQThread):
                             self.window.status_bar.update_tip(message.data)
                             pass
                     case 'close_start_experiment_dialog':
-                        #启动气路完成，关闭开始实验窗口
-                        if self.window is not None and self.window.start_dialog is not None :
-
+                        if self.window is not None and self.window.start_dialog is not None:
                             self.window.start_dialog.update_progress_value(self.window.start_dialog.progress_max)
+                        if self.window is not None:
+                            # ★ 标记成功，取消备用超时计时器
+                            self.window._gas_path_success = True
+                            if self.window._gas_path_timeout_timer is not None:
+                                self.window._gas_path_timeout_timer.stop()
+                                self.window._gas_path_timeout_timer = None
+                            # 显示3秒成功提示，之后恢复"正在监控数据"
+                            self.window.show_temp_status_tip_signal.emit("气路启动成功！", "#00aa00", 3000)
+                            QTimer.singleShot(3100,
+                                              lambda: self.window.status_bar.update_status() if self.window else None)
                     case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_ufc_gap_system_return"|"stop_ugc_gap_system_return"|"stop_zos_gap_system_return"|"stop_monitor_data_return"|"stop_show_info_except_status_counts":
                         if message.data and self.window:
                             #  更新气路运行消息
@@ -137,51 +148,78 @@ class read_queue_data_Thread(MyQThread):
                         """
                         标定的消息
                         """
-                        if self.window is not None and self.window.calibration_details_windows is not None :
-                            self.window.calibration_details_windows.addLog(message.data,has_time=True)
+                        if self.window is not None:
+                            self.window.cache_calibration_detail_log(message.data, has_time=True)
                     case 'set_start_zero_calibration_time':
                         """
                         设置开始校准零点
                         data为time
                         """
-                        if self.window is not None and self.window.calibration_details_windows is not None :
-                            self.window.calibration_details_windows.updateZeroStartTime(message.data)
-                            self.window.calibration_details_windows.updateStatus("零点标定")
+                        if self.window is not None:
+                            self.window.calibration_detail_zero_start_time = message.data
+                            self.window.calibration_detail_status_text = "零点标定"
+                            if self.window.calibration_details_windows is not None:
+                                self.window.calibration_details_windows.updateZeroStartTime(message.data, event_time=message.data)
+                                self.window.calibration_details_windows.updateStatus("零点标定", event_time=message.data)
 
                     case 'set_stop_zero_calibration_time':
                         """
                         设置结束校准零点
                         data为time
                         """
-                        if self.window is not None and self.window.calibration_details_windows is not None :
-                            self.window.calibration_details_windows.updateZeroEndTime(message.data)
-                            self.window.calibration_details_windows.updateStatus("未标定")
+                        if self.window is not None:
+                            self.window.calibration_detail_zero_end_time = message.data
+                            self.window.calibration_detail_status_text = "未标定"
+                            if self.window.calibration_details_windows is not None:
+                                self.window.calibration_details_windows.updateZeroEndTime(message.data, event_time=message.data)
+                                self.window.calibration_details_windows.updateStatus("未标定", event_time=message.data)
                     case 'set_start_span_calibration_time':
                         """
                         设置开始校准span
                         data为time
                         """
-                        if self.window is not None and self.window.calibration_details_windows is not None :
-                            self.window.calibration_details_windows.updateSpanStartTime(message.data)
-                            self.window.calibration_details_windows.updateStatus("量程标定")
+                        if self.window is not None:
+                            self.window.calibration_detail_span_start_time = message.data
+                            self.window.calibration_detail_status_text = "量程标定"
+                            if self.window.calibration_details_windows is not None:
+                                self.window.calibration_details_windows.updateSpanStartTime(message.data, event_time=message.data)
+                                self.window.calibration_details_windows.updateStatus("量程标定", event_time=message.data)
                     case 'set_stop_span_calibration_time':
                         """
                         设置结束校准span
                         data为time
                         """
-                        if self.window is not None and self.window.calibration_details_windows is not None :
-                            self.window.calibration_details_windows.updateSpanEndTime(message.data)
-                            self.window.calibration_details_windows.updateStatus("未标定")
+                        if self.window is not None:
+                            self.window.calibration_detail_span_end_time = message.data
+                            self.window.calibration_detail_status_text = "未标定"
+                            if self.window.calibration_details_windows is not None:
+                                self.window.calibration_details_windows.updateSpanEndTime(message.data, event_time=message.data)
+                                self.window.calibration_details_windows.updateStatus("未标定", event_time=message.data)
+                    case 'set_start_air_calibration_time':
+                        if self.window is not None:
+                            self.window.calibration_detail_zero_start_time = message.data
+                            self.window.calibration_detail_status_text = "Air空气校准"
+                            if self.window.calibration_details_windows is not None:
+                                self.window.calibration_details_windows.updateZeroStartTime(message.data, event_time=message.data)
+                                self.window.calibration_details_windows.updateStatus("Air空气校准", event_time=message.data)
+                    case 'set_stop_air_calibration_time':
+                        if self.window is not None:
+                            self.window.calibration_detail_zero_end_time = message.data
+                            self.window.calibration_detail_status_text = "未标定"
+                            if self.window.calibration_details_windows is not None:
+                                self.window.calibration_details_windows.updateZeroEndTime(message.data, event_time=message.data)
+                                self.window.calibration_details_windows.updateStatus("未标定", event_time=message.data)
                     case 'set_calibration_values':
                         """
                         设置校准窗口显示值
                         data:{"oxygen_value":0,"carbon_value":0,"oxygen_pressure_value":0}
                         """
-                        if self.window is not None and self.window.calibration_details_windows is not None and message.data is not None :
-                            self.window.calibration_details_windows.updateO2Current(message.data.get("oxygen_value",0))
-                            self.window.calibration_details_windows.updateCO2Current(message.data.get("carbon_value",0))
-                            self.window.calibration_details_windows.updatePressureCurrent(message.data.get("oxygen_pressure_value",0))
-
+                        if self.window is not None and self.window.calibration_details_windows is not None and message.data is not None:
+                            self.window.calibration_details_windows.updateO2Current(message.data.get("oxygen_value", 0), event_time=message.time)
+                            self.window.calibration_details_windows.updateCO2Current(
+                                message.data.get("carbon_value", 0), event_time=message.time)
+                            self.window.calibration_details_windows.updatePressureCurrent(
+                                message.data.get("oxygen_pressure_value", 0), event_time=message.time)
                     case _:
                         pass
 
@@ -191,14 +229,77 @@ class read_queue_data_Thread(MyQThread):
     def close_stop_experiment_dialog(self):
         if self.window is not None and self.window.stop_dialog is not None:
             self.window.stop_dialog.update_progress_value(self.window.stop_dialog.progress_max)
+
+
+class PeriodicExcelExportThread(threading.Thread):
+    def __init__(self, db_path, export_file_path, callback=None):
+        super().__init__(name="periodic_excel_export_thread", daemon=True)
+        self.db_path = db_path
+        self.export_file_path = export_file_path
+        self.callback = callback
+
+    @staticmethod
+    def _create_snapshot(source_db_path, snapshot_db_path):
+        source_conn = None
+        snapshot_conn = None
+        try:
+            source_conn = sqlite3.connect(source_db_path, timeout=30.0)
+            snapshot_conn = sqlite3.connect(snapshot_db_path, timeout=30.0)
+            source_conn.backup(snapshot_conn)
+        finally:
+            if snapshot_conn is not None:
+                snapshot_conn.close()
+            if source_conn is not None:
+                source_conn.close()
+
+    def run(self):
+        snapshot_db_path = f"{self.db_path}.{int(time.time() * 1000)}.snapshot.db"
+        success = False
+        message = ""
+        try:
+            if not os.path.exists(self.db_path):
+                raise FileNotFoundError(f"数据库文件不存在: {self.db_path}")
+
+            export_dir = os.path.dirname(self.export_file_path)
+            if export_dir:
+                os.makedirs(export_dir, exist_ok=True)
+
+            self._create_snapshot(self.db_path, snapshot_db_path)
+            success = custom_data_file_util.export_data_to_csv(
+                export_file_path=self.export_file_path,
+                file_path=snapshot_db_path,
+                show_success_message=False,
+                use_atomic_replace=True
+            )
+            message = f"定时导出实验数据{'成功' if success else '失败'}: {os.path.basename(self.export_file_path)}"
+        except Exception as e:
+            message = f"定时导出实验数据失败: {e}"
+            logger.error(message)
+        finally:
+            if os.path.exists(snapshot_db_path):
+                try:
+                    os.remove(snapshot_db_path)
+                except OSError as remove_error:
+                    logger.error(f"删除数据库快照失败: {remove_error}")
+
+            if self.callback is not None:
+                self.callback(success, message)
+
+
 read_queue_data_thread = read_queue_data_Thread(name="MainWindow_index_read_queue_data_thread")
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
     change_enable_component_app_state_signal = QtCore.pyqtSignal()
-    #显示校准详情dialog的信号
+    # 设备配置页校准选择变化信号 (是否已选择, 是否校准)
+    calibration_selection_changed_signal = QtCore.pyqtSignal(bool, str)
+    # 显示校准详情dialog的信号
     show_calibration_window_signal = QtCore.pyqtSignal(dict)
-    #释放校准详情dialog的信号
+    # 释放校准详情dialog的信号
     release_calibration_window_signal = QtCore.pyqtSignal()
+    # 线程安全的状态栏提示信号
+    update_status_tip_signal = QtCore.pyqtSignal(str)
+    # 临时覆盖状态栏中间文字的信号 (message, color, duration_ms)
+    show_temp_status_tip_signal = QtCore.pyqtSignal(str, str, int)
     def close_window_handle(self):
         """
         关闭窗口执行的事件
@@ -250,7 +351,6 @@ class MainWindow_Index(ThemedWindow):
             else:
                 event.ignore()  # 忽略关闭事件
         pass
-
     def setup_tutorial(self):
         #实例化提示引导器 下面式实例化模板
         if self.tutorial:
@@ -285,12 +385,12 @@ class MainWindow_Index(ThemedWindow):
                     self.tutorial.add_step(widget,
                                            f"单击此按钮是{action.text()}\n{menu.toolTip()}")
         for tool_bar_action in self.tool_bar_actions:
-            if isinstance(tool_bar_action['action'],QAction):
+            if isinstance(tool_bar_action['action'], QAction):
                 self.tutorial.add_step(tool_bar_action['action'].associatedObjects()[1],
-                                   f"单击此按钮是{tool_bar_action['name']}\n{tool_bar_action['tip']}")
+                                       f"单击此按钮是{tool_bar_action['text']}\n{tool_bar_action['tip']}")
             else:
                 self.tutorial.add_step(tool_bar_action['action'],
-                                       f"单击此是{tool_bar_action['name']}\n{tool_bar_action['tip']}")
+                                       f"单击此是{tool_bar_action['text']}\n{tool_bar_action['tip']}")
         # 状态栏提示
         self.tutorial.add_step(self.status_bar.time_label,
                                f"显示当前时间。")
@@ -336,6 +436,9 @@ class MainWindow_Index(ThemedWindow):
         self.start_dialog:AnimatedLoadingDialog=None
         # 停止实验dialog
         self.stop_dialog:AnimatedLoadingDialog=None
+        # ★ 新增：气路成功标志 & 备用超时计时器
+        self._gas_path_success = False
+        self._gas_path_timeout_timer = None
         #暂停实验标志位
         self.is_paused = False
         # 点击开始实验 接受数据和存储数据的线程
@@ -356,6 +459,11 @@ class MainWindow_Index(ThemedWindow):
         # tool——bar-action 工具栏的action [{'obj_name':'','name';",'action':QAction,'tip':''}]
         self.tool_bar_actions = []
         self.menu_bar_actions = []
+        # 添加动态工具栏相关属性
+        self.dynamic_tool_bar_actions = []
+        self.dynamic_toolbar_separators = []
+        self.static_toolbar_actions = []
+        self.current_active_menu_id = None
         # 模块
         self.modules =[]
         # 正在显示的Widget
@@ -363,7 +471,13 @@ class MainWindow_Index(ThemedWindow):
         # 打开的窗口
         self.open_windows:[BaseModule]=[]
         # 校准气路的窗口
-        self.calibration_details_windows:CalibrationDialog=None
+        self.calibration_details_windows: CalibrationDialog = None
+        self.calibration_detail_log_buffer = []
+        self.calibration_detail_status_text = None
+        self.calibration_detail_zero_start_time = None
+        self.calibration_detail_zero_end_time = None
+        self.calibration_detail_span_start_time = None
+        self.calibration_detail_span_end_time = None
         # 工具栏
         self.toolbar = None
         #状态栏
@@ -374,6 +488,13 @@ class MainWindow_Index(ThemedWindow):
         self.tab_widget :QTabWidget =None
         # 实例化ui
         self._init_ui()
+        self.periodic_export_lock = threading.Lock()
+        self.periodic_export_in_progress = False
+        self.periodic_export_thread = None
+        self.periodic_export_timer = QTimer(self)
+        self.periodic_export_timer.setSingleShot(False)
+        self.periodic_export_timer.setInterval(self._get_periodic_export_interval_ms())
+        self.periodic_export_timer.timeout.connect(self.trigger_periodic_excel_export)
         # 实例化自定义ui
         self._init_customize_ui()
         # 实例化功能
@@ -426,6 +547,15 @@ class MainWindow_Index(ThemedWindow):
             if self.menu_name is not None:
                 # 创建菜单栏
                 self.create_menu_bar()
+                self.menuBar().setStyleSheet("""
+                    QMenuBar{
+                        font-size:15px;
+                    }
+                    QMenuBar::item {
+                        font-size: 15px;
+                        padding: 4px 10px;
+                    }
+                """)
             pass
         # 创建工具栏
         self.create_tool_bar()
@@ -441,20 +571,35 @@ class MainWindow_Index(ThemedWindow):
         self.change_enable_component_app_state_signal.connect(self.change_enable_component_app_state)
         self.show_calibration_window_signal.connect(self.show_calibration_windows)
         self.release_calibration_window_signal.connect(self.release_calibration_windows)
+        # 新增连接
+        self.update_status_tip_signal.connect(self.status_bar.update_tip)
+        self.show_temp_status_tip_signal.connect(self.status_bar.show_temp_tip)
         pass
     # 创建工具栏
     def create_tool_bar(self):
         # 创建 QToolBar
         self.toolbar = QToolBar("Toolbar")
+
+        # 设置工具栏样式为图标在左，文字在右
+        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toolbar.setIconSize(QtCore.QSize(48, 48))
+        self.toolbar.setMinimumHeight(70)
+
         self.addToolBar(self.toolbar)
 
+        # 初始化动态内容相关列表
+        self.dynamic_tool_bar_actions = []
+        self.dynamic_toolbar_separators = []
+        self.current_active_menu_id = None
+
+        # ==================== 创建通用功能按钮 ====================
         # 定义工具栏按钮数据
-        toolbar_buttons = [
+        static_buttons = [
             {
                 "name": "窗口变换",
                 "short_name": "变换",
                 "obj_name": "window_exchange",
-                "type":"button",
+                "type": "button",
                 "icon": "⇄",  # 或使用图标文件: ":/icons/exchange.png"
                 "callback": self.exchange_widget_and_window,
                 "app_state": AppState.INITIALIZED,
@@ -494,12 +639,12 @@ class MainWindow_Index(ThemedWindow):
                 "name": "开始实验时校准气体",
                 "short_name": "校准",
                 "obj_name": "calibration_gas",
-                "type": "checkbox",
+                "type": "button",
                 "icon": "📏",
                 "callback": self.calibration_gas_state_change,
                 "app_state": AppState.INITIALIZED,
                 "tip": "单击此按钮会将选择开始实验时是否校准气体。",
-                "disabled": False,
+                "disabled": True,
                 "separator_before": False,
                 "separator_after": False
             },
@@ -557,11 +702,11 @@ class MainWindow_Index(ThemedWindow):
             }
         ]
 
-        # 创建动作并添加到工具栏
-        for button_config in toolbar_buttons:
+        # 创建按钮，图标在前，文字在后
+        for i, button_config in enumerate(static_buttons):
             if button_config["separator_before"]:
                 self.toolbar.addSeparator()
-            if button_config["type"]=="button":
+            if button_config["type"] == "button":
                 action = QAction(button_config["short_name"], self)
                 action.setObjectName(button_config["obj_name"])
                 action.setToolTip(button_config["tip"])
@@ -574,7 +719,7 @@ class MainWindow_Index(ThemedWindow):
                     action.setDisabled(True)
 
                 self.tool_bar_actions.append({
-                    "name": button_config["name"],
+                    "text": button_config["name"],
                     "obj_name": button_config["obj_name"],
                     "action": action,
                     "app_state": button_config["app_state"],
@@ -582,7 +727,10 @@ class MainWindow_Index(ThemedWindow):
                 })
 
                 self.toolbar.addAction(action)
-            elif button_config["type"]=="checkbox":
+                # 记录静态按钮（用于插入动态按钮时定位）
+                if i == 0:
+                    self.static_toolbar_actions.append(action)
+            elif button_config["type"] == "checkbox":
                 if button_config["icon"]:
                     checkBox = QCheckBox(button_config["icon"] + " " + button_config["name"])
                 else:
@@ -593,7 +741,7 @@ class MainWindow_Index(ThemedWindow):
                 if button_config["disabled"]:
                     checkBox.setDisabled(True)
                 self.tool_bar_actions.append({
-                    "name": button_config["name"],
+                    "text": button_config["name"],
                     "obj_name": button_config["obj_name"],
                     "action": checkBox,
                     "app_state": button_config["app_state"],
@@ -603,81 +751,381 @@ class MainWindow_Index(ThemedWindow):
                 self.toolbar.addWidget(checkBox)
             if button_config["separator_after"]:
                 self.toolbar.addSeparator()
+
+
+            # # 在某些按钮后添加分隔符
+            # if button_config["obj_name"] in ["window_exchange", "toggle_mode", "stop_experiment",
+            #                                  "export_experiment_datas", "reset_guidance"]:
+            #     self.toolbar.addSeparator()
+
+        self.initialize_toolbar_visibility()
+
+    def initialize_toolbar_visibility(self):
+        """初始化工具栏可见性 - 根据当前菜单配置"""
+        if self.menu_name and len(self.menu_name) > 0:
+            first_menu = self.menu_name[0]
+            hide_common_tools = first_menu.get('hide_common_tools', False)
+
+            if hide_common_tools:
+                self.hide_common_tools()
+            else:
+                self.show_common_tools()
+        else:
+            self.show_common_tools()
+    # 创建文本图标的方法
+    def create_text_icon(self, text, size=18):
+        """创建文本图标"""
+        from PyQt6.QtGui import QPixmap, QPainter, QFont, QIcon, QColor
+        from PyQt6.QtCore import Qt
+
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        # 设置字体
+        font = QFont()
+        font.setPixelSize(size - 2)  # emoji 稍小一点
+        painter.setFont(font)
+
+        # 设置文字颜色
+        painter.setPen(QColor("#333333"))
+
+        # 绘制文本
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, text)
+        painter.end()
+
+        return QIcon(pixmap)
+
     def create_menu_bar(self):
-    # 创建菜单
+        """创建菜单栏 - 触发工具栏切换"""
         for menu_dict in self.menu_name:
-            # 创建文件菜单
-            menu = self.menuBar().addMenu(menu_dict['text'])
-            menu.setToolTip(menu_dict.get('tip',""))
-            # 从module加载组件...
-            for module in self.modules:
-                module:BaseModule
-                module_menu_name = module.menu_name
-                module_title = module.title
-                if module_menu_name is not None and module_menu_name != "" and "id" in module_menu_name and "id" in menu_dict and menu_dict["id"] == module_menu_name["id"]:
-                    # 创建menu action
-                    module.set_main_gui(main_gui=self)
-                    action = QAction(module_title, self)
-                    action.setObjectName(f"{module.name}")
-                    # 创建点击事件
-                    # action.triggered.connect(module.start_service)
-                    action.triggered.connect(module.click_method)
-                    # action.triggered.connect( module.adjustGUIPolicy)
-                    # action.triggered.connect( module.interface_widget.show)
-                    self.menu_bar_actions.append(
-                        {"name": module_title, "obj_name": f"{module.name}", "action": action, "app_state": module.app_state})
-                    # 将操作添加到文件菜单
-                    menu.addAction(action)
-                    menu.addSeparator()  # 添加分隔线
-        pass
+            # 创建菜单动作
+            action = QAction(menu_dict['text'], self)
+            action.setObjectName(f"menu_{menu_dict['id']}")
+            action.setToolTip(menu_dict.get('tip', ""))
+
+            # 连接到工具栏切换方法
+            action.triggered.connect(lambda checked, menu_id=menu_dict['id']: self.switch_toolbar_content(menu_id))
+
+            # 添加到菜单栏
+            self.menuBar().addAction(action)
+
+            # 从菜单配置中获取 required_app_state，转换为枚举
+            required_state_str = menu_dict.get('required_app_state', 'INITIALIZED')
+            try:
+                required_app_state = AppState[required_state_str]
+            except KeyError:
+                required_app_state = AppState.INITIALIZED
+
+            # 存储菜单动作信息
+            self.menu_bar_actions.append({
+                "name": menu_dict['text'],
+                "obj_name": f"menu_{menu_dict['id']}",
+                "action": action,
+                "menu_id": menu_dict['id'],
+                "app_state": required_app_state  # 使用正确的状态
+            })
+
+    def switch_toolbar_content(self, menu_id):
+        """根据菜单ID切换工具栏内容"""
+        # 清除当前工具栏的动态内容
+        self.clear_dynamic_toolbar_content()
+
+        # 记录当前激活的菜单
+        self.current_active_menu_id = menu_id
+
+        # 为所有模块设置 main_gui
+        for module in self.modules:
+            if module.main_gui is None:
+                module.set_main_gui(main_gui=self)
+        # 找到对应的菜单配置
+        current_menu_config = None
+        for menu_dict in self.menu_name:
+            if menu_dict.get('id') == menu_id:
+                current_menu_config = menu_dict
+                break
+
+        # 检查是否需要隐藏通用工具
+        hide_common_tools = current_menu_config.get('hide_common_tools', False) if current_menu_config else False
+
+        # 控制通用工具的显示/隐藏
+        if hide_common_tools:
+            self.hide_common_tools()
+        else:
+            self.show_common_tools()
+
+        if menu_id == 1:
+            global_setting.set_setting("device_config_calibration_selected", False)
+            global_setting.set_setting("startup_calibration_mode", "none")
+            global_setting.set_setting("is_auto_calibration", False)
+            global_setting.set_setting("air_modules_all_valid", False)
+            self.calibration_selection_changed_signal.emit(
+                False,
+                global_setting.get_setting("startup_calibration_mode", "none")
+            )
+
+        # 找到属于这个菜单的所有模块
+        menu_modules = []
+        for module in self.modules:
+            module: BaseModule
+            module_menu_name = module.menu_name
+            if (module_menu_name is not None and
+                    "id" in module_menu_name and
+                    module_menu_name["id"] == menu_id):
+                menu_modules.append(module)
+
+        # 按模块顺序和标题排序
+        menu_modules.sort(key=lambda x: (getattr(x, "toolbar_order", 999), x.title))
+
+        # 确定插入位置
+        insert_position = self.get_dynamic_content_insert_position(hide_common_tools)
+
+        # 为每个模块创建工具栏按钮
+        for module in menu_modules:
+            module.set_main_gui(main_gui=self)
+            if hasattr(module, "refresh_display_text"):
+                module.refresh_display_text()
+            name = module.title
+            obj_name = f"dynamic_{module.name}"
+
+            # 图标映射表
+            MODULE_ICON_MAP = {
+                "新建实验": "🧪",
+                "打开实验文件": "📂",
+                "设置设备": "🔧",
+                "校准": "🎯",
+                "设备配置": "🖥️",
+                "老鼠轨迹监测": "🐭",
+                "相机监控": "📷",
+                "红外相机": "📷",
+                "视频图像": "📹",
+                "深度相机对应鼠笼配置": "🧭",
+                "红外相机对应鼠笼配置": "🌡",
+                "硬件配置": "🗂️",
+                "用户界面": "👤",
+                "数据监控": "📊",
+                "串口调试":"🔌",
+                "坐标标定":"📍"
+            }
+
+            # 根据模块名匹配图标
+            icon_char = None
+            for key, icon in MODULE_ICON_MAP.items():
+                if key in name:
+                    icon_char = icon
+                    break
+
+            # 用 QToolButton 替代 QAction
+            from PyQt6.QtWidgets import QToolButton
+            btn = QToolButton()
+            btn.setObjectName(obj_name)
+            btn.setToolTip(name)
+            btn.clicked.connect(module.click_method)
+            if obj_name == "dynamic_New_main_experiment_calibration":
+                btn.setEnabled(
+                    bool(global_setting.get_setting("air_modules_all_valid", False))
+                    or bool(global_setting.get_setting("allow_test_calibration_without_air_validation", False))
+                )
+
+            # # 文字竖排
+            # btn.setText("\n".join(name))
+            btn.setText(name)
+
+            # 图标在上，文字在下
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+
+            # 图标：优先模块自带，其次映射表，最后首字
+            if hasattr(module, 'icon') and module.icon:
+                from PyQt6.QtGui import QIcon
+                btn.setIcon(QIcon(module.icon))
+            elif icon_char:
+                btn.setIcon(self.create_text_icon(icon_char, size=28))
+            else:
+                btn.setIcon(self.create_text_icon(name[0] if name else "●", size=28))
+            btn.setIconSize(QtCore.QSize(28, 28))
+
+            # 字体
+            font = QFont()
+            font.setPixelSize(12)
+            btn.setFont(font)
+
+            # 固定宽度
+            btn.setFixedWidth(190 if len(name) >= 8 else 150)
+
+            # 样式
+            btn.setStyleSheet("""
+                            QToolButton {
+                                border: none;
+                                padding: 0px 2px;
+                                background: transparent;
+                            }
+                            QToolButton:hover {
+                                background: rgba(128,128,128,0.15);
+                                border-radius: 6px;
+                            }
+                            QToolButton:pressed {
+                                background: rgba(128,128,128,0.3);
+                                border-radius: 6px;
+                            }
+                        """)
+
+            self.dynamic_tool_bar_actions.append({
+                "name": name,
+                "obj_name": obj_name,
+                "action": btn,  # 存btn
+                "app_state": module.app_state,
+                "menu_id": menu_id
+            })
+
+            # 用insertWidget/addWidget
+            if insert_position:
+                self.toolbar.insertWidget(insert_position, btn)
+            else:
+                self.toolbar.addWidget(btn)
+
+        # 添加分隔符（只有在显示通用工具且有动态内容时才添加）
+        if menu_modules and not hide_common_tools and self.static_toolbar_actions:
+            separator = self.toolbar.insertSeparator(self.static_toolbar_actions[0])
+            self.dynamic_toolbar_separators.append(separator)
+
+        # 更新菜单栏按钮的激活状态
+        self.update_menu_bar_active_state(menu_id)
+        self.change_enable_component_app_state()
+
+    def clear_dynamic_toolbar_content(self):
+        """清除工具栏中的动态内容"""
+        from PyQt6.QtWidgets import QToolButton
+        for action_dict in self.dynamic_tool_bar_actions:
+            widget_or_action = action_dict["action"]
+            if isinstance(widget_or_action, QAction):
+                self.toolbar.removeAction(widget_or_action)
+            else:
+                # QToolButton 直接隐藏并销毁
+                widget_or_action.hide()
+                widget_or_action.deleteLater()
+
+        for separator in self.dynamic_toolbar_separators:
+            self.toolbar.removeAction(separator)
+
+        self.dynamic_tool_bar_actions.clear()
+        self.dynamic_toolbar_separators.clear()
+        self.show_common_tools()
+
+    def hide_common_tools(self):
+        """隐藏通用工具按钮"""
+        # 隐藏所有工具栏中的 action
+        for action in self.toolbar.actions():
+            if not action.isSeparator():
+                action.setVisible(False)
+            elif action not in self.dynamic_toolbar_separators:
+                # 隐藏非动态分隔符
+                action.setVisible(False)
+
+        # 同时隐藏通过 addWidget 添加的 checkbox 等 widget
+        for i in range(self.toolbar.layout().count()):
+            widget = self.toolbar.layout().itemAt(i).widget()
+            if widget is not None and isinstance(widget, QCheckBox):
+                widget.setVisible(False)
+
+
+    def show_common_tools(self):
+        """显示通用工具按钮"""
+        # 显示所有 action
+        for action in self.toolbar.actions():
+            if not action.isSeparator():
+                action.setVisible(True)
+            elif action not in self.dynamic_toolbar_separators:
+                action.setVisible(True)
+
+        # 显示通过 addWidget 添加的 checkbox 等 widget
+        for i in range(self.toolbar.layout().count()):
+            widget = self.toolbar.layout().itemAt(i).widget()
+            if widget is not None and isinstance(widget, QCheckBox):
+                widget.setVisible(True)
+
+
+    def get_dynamic_content_insert_position(self, hide_common_tools):
+        """获取动态内容插入位置"""
+        if hide_common_tools:
+            # 如果隐藏通用工具，插入到工具栏开始位置（第一个动作）
+            actions = self.toolbar.actions()
+            return actions[0] if actions else None
+        else:
+            # 如果显示通用工具，插入到第一个静态按钮之前
+            if self.static_toolbar_actions:
+                return self.static_toolbar_actions[0]
+            return None
+
+    def update_menu_bar_active_state(self, active_menu_id):
+        """更新菜单栏按钮的激活状态"""
+        for action_dict in self.menu_bar_actions:
+            action = action_dict["action"]
+            menu_id = action_dict.get("menu_id")
+
+            if menu_id == active_menu_id:
+                # 设置为激活状态（可以通过样式表来显示不同的外观）
+                action.setCheckable(True)
+                action.setChecked(True)
+            else:
+                action.setCheckable(True)
+                action.setChecked(False)
+
     def _retranslateUi(self, **kwargs):
         _translate = QtCore.QCoreApplication.translate
-        self.setWindowTitle(_translate(self.objectName(),global_setting.get_setting("configer")["window"]["title"]))
+        self.setWindowTitle(_translate(self.objectName(), global_setting.get_setting("configer")["window"]["title"]))
     pass
     def load_modules(self):
-        #动态加载模块
+        # 动态加载模块
         modules = []
         module_dir = 'Module'  # 插件目录
         # 递归遍历指定目录
         for dirpath, dirnames, filenames in os.walk(module_dir):
             for filename in filenames:
                 if filename.endswith('.py'):
-                    module_name = filename[:-3]# 去掉 .py 后缀
+                    module_name = filename[:-3]  # 去掉 .py 后缀
                     if module_name.startswith("main"):
                         file_path = os.path.join(dirpath, filename)
                         # 动态加载模块
                         spec = importlib.util.spec_from_file_location(module_name, file_path)
                         module = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(module)#装载module
+                        spec.loader.exec_module(module)  # 装载module
                         # 查找到实现 BasePlugin 的类
                         for name, obj in module.__dict__.items():
-                            if name =="BaseModule":
+                            if name == "BaseModule":
                                 # 抽象类跳过
                                 continue
-                            if isinstance(obj, type) and issubclass(obj, BaseModule):
+                            if (
+                                isinstance(obj, type)
+                                and issubclass(obj, BaseModule)
+                                and not obj.__dict__.get("__module_loader_skip__", False)
+                            ):
                                 modules.append(obj())
         return modules
         pass
+
     def exchange_widget_and_window(self):
         """widget和window相互转换"""
         # 将module的显示方式改变
         for module in self.modules:
             if module.interface_widget.type == BaseInterfaceType.WIDGET or module.interface_widget.type == BaseInterfaceType.FRAME:
-                module.interface_widget.type=BaseInterfaceType.WINDOW
+                module.interface_widget.type = BaseInterfaceType.WINDOW
 
             else:
-                module.interface_widget.type=BaseInterfaceType.WIDGET
+                module.interface_widget.type = BaseInterfaceType.WIDGET
         new_open_windows = []
-        new_active_module_widgets=[]
+        new_active_module_widgets = []
         # 将正在显示的方式进行改变
-        if self.open_windows is not None and len(self.open_windows)!=0:
-            #窗口-》frame
+        if self.open_windows is not None and len(self.open_windows) != 0:
+            # 窗口-》frame
             # 将正在显示的方式进行改变
             index = 0
-            last_module=None
-            while index<len(self.open_windows) or len(self.open_windows)==1:
-                if index>=len(self.open_windows):
-                    index=0
+            last_module = None
+            while index < len(self.open_windows) or len(self.open_windows) == 1:
+                if index >= len(self.open_windows):
+                    index = 0
                 module = self.open_windows[index]
                 if last_module is module:
                     break
@@ -685,15 +1133,15 @@ class MainWindow_Index(ThemedWindow):
                 module.close()
                 if module not in self.active_module_widgets:
                     new_active_module_widgets.append(module)
-                index+=1
-        if self.active_module_widgets is not None and len(self.active_module_widgets)!=0:
+                index += 1
+        if self.active_module_widgets is not None and len(self.active_module_widgets) != 0:
             # 从初始布局中移除 label
             # frame-》窗口
             index = 0
             last_module = None
-            while index<len(self.active_module_widgets) or len(self.active_module_widgets)==1:
-                if index>=len(self.active_module_widgets):
-                    index=0
+            while index < len(self.active_module_widgets) or len(self.active_module_widgets) == 1:
+                if index >= len(self.active_module_widgets):
+                    index = 0
                 module = self.active_module_widgets[index]
                 if last_module is module:
                     break
@@ -702,7 +1150,7 @@ class MainWindow_Index(ThemedWindow):
                 module.hide()
                 if module not in self.open_windows:
                     new_open_windows.append(module)
-                index+=1
+                index += 1
         # 删除所有标签页和widgets
         while self.tab_widget.count() > 0:  # 直到没有标签页
             self.tab_widget.removeTab(0)  # 删除第一个标签页
@@ -710,12 +1158,13 @@ class MainWindow_Index(ThemedWindow):
         self.active_module_widgets.extend(new_active_module_widgets)
         for module in self.open_windows:
             module.adjustGUIPolicy()
-            module.interface_widget.setMinimumSize(0,0)
+            module.interface_widget.setMinimumSize(0, 0)
             module.interface_widget.show()
         for module in self.active_module_widgets:
             module.adjustGUIPolicy()
             module.interface_widget.setMinimumSize()
             module.interface_widget.show()
+
     # 切换白天黑夜主题功能
     def toggle_theme(self):
         # 根据当前主题变换主题
@@ -727,8 +1176,7 @@ class MainWindow_Index(ThemedWindow):
         self.setStyleSheet(global_setting.get_setting("theme_manager").get_style_sheet())
         pass
 
-
-    def start_update_gui(self,resolve,reject):
+    def start_update_gui(self, resolve, reject):
         # 更新main_gui组件显示
         self.change_enable_component_app_state_signal.emit()
         self.status_bar.update_status()
@@ -742,11 +1190,115 @@ class MainWindow_Index(ThemedWindow):
                 action_dict["action"].setDisabled(False)
             if action_dict["obj_name"] == "pause_experiment":
                 action_dict["action"]: QAction
-                # action_dict["action"].setDisabled(False)
+                action_dict["action"].setDisabled(False)
         self.setEnabled(True)
         resolve()
 
+    def _get_experiment_root_path(self):
+        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+        if experiment_setting_file is None or not os.path.exists(experiment_setting_file):
+            return None
+
+        file_name = os.path.basename(experiment_setting_file)
+        file_name_without_extension = os.path.splitext(file_name)[0]
+        return os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE']['fold_path'] + os.path.join(
+            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
+            f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}"
+        )
+
+    def _get_experiment_db_path(self):
+        experiment_root_path = self._get_experiment_root_path()
+        if experiment_root_path is None:
+            return None
+        return os.path.join(experiment_root_path, "data", "data.db")
+
+    def _get_experiment_excel_path(self):
+        experiment_root_path = self._get_experiment_root_path()
+        if experiment_root_path is None:
+            return None
+        return f"{experiment_root_path}.xlsx"
+
+    def _get_periodic_export_interval_ms(self):
+        export_config = global_setting.get_setting("monitor_data", {}).get("EXPORT", {})
+        interval_minutes_raw = export_config.get("periodic_xlsx_interval_minutes", 30)
+        try:
+            interval_minutes = float(interval_minutes_raw)
+        except (TypeError, ValueError):
+            logger.warning(f"定时导出xlsx配置无效，使用默认值30分钟: {interval_minutes_raw}")
+            interval_minutes = 30.0
+
+        if interval_minutes <= 0:
+            return 0
+        return int(interval_minutes * 60 * 1000)
+
+    def _start_periodic_export_timer(self):
+        interval_ms = self._get_periodic_export_interval_ms()
+        if self.periodic_export_timer.isActive():
+            self.periodic_export_timer.stop()
+        if interval_ms <= 0:
+            logger.info("定时导出xlsx已关闭：EXPORT.periodic_xlsx_interval_minutes <= 0")
+            return
+        self.periodic_export_timer.setInterval(interval_ms)
+        self.periodic_export_timer.start()
+        logger.info(f"定时导出xlsx已启动，周期: {interval_ms / 60000:.2f} 分钟")
+
+    def _stop_periodic_export_timer(self):
+        if self.periodic_export_timer.isActive():
+            self.periodic_export_timer.stop()
+            logger.info("定时导出xlsx已停止")
+
+    def _is_periodic_export_running(self):
+        with self.periodic_export_lock:
+            return self.periodic_export_in_progress
+
+    def _on_periodic_export_finished(self, success, message):
+        with self.periodic_export_lock:
+            self.periodic_export_in_progress = False
+            self.periodic_export_thread = None
+
+        if success:
+            logger.info(message)
+        else:
+            logger.error(message)
+            self.update_status_tip_signal.emit(message)
+
+    def trigger_periodic_excel_export(self):
+        if global_setting.get_setting("app_state", AppState.INITIALIZED) != AppState.MONITORING:
+            return
+
+        db_path = self._get_experiment_db_path()
+        export_file_path = self._get_experiment_excel_path()
+        if db_path is None or export_file_path is None:
+            logger.warning("定时导出xlsx跳过：实验路径尚未准备好")
+            return
+        if not os.path.exists(db_path):
+            logger.warning(f"定时导出xlsx跳过：数据库不存在 {db_path}")
+            return
+
+        with self.periodic_export_lock:
+            if self.periodic_export_in_progress:
+                logger.warning("上一次定时导出xlsx尚未完成，跳过本轮导出")
+                return
+            self.periodic_export_in_progress = True
+
+        logger.info(f"开始定时导出xlsx: {export_file_path}")
+        self.periodic_export_thread = PeriodicExcelExportThread(
+            db_path=db_path,
+            export_file_path=export_file_path,
+            callback=self._on_periodic_export_finished
+        )
+        self.periodic_export_thread.start()
+
     def start_experiment(self):
+
+        # ★ 重置上一次实验残留的临时提示状态，确保从绿色开始
+        self.status_bar._temp_tip_active = False
+        self.old_Stop_experiment_status_text_reTurn = None
+        self.old_stop_status_counts = 0
+        self._gas_path_success = False
+        if self._gas_path_timeout_timer is not None:
+            self._gas_path_timeout_timer.stop()
+            self._gas_path_timeout_timer = None
 
         self.setEnabled(False)
         self.status_bar.update_tip(f"正在开启实验监测...")
@@ -773,22 +1325,21 @@ class MainWindow_Index(ThemedWindow):
         global_setting.set_setting("start_experiment_time", time.time())
         global_setting.set_setting("pause_experiment_time", [])
         global_setting.set_setting("relieve_pause_experiment_time", [])
+        self._start_periodic_export_timer()
         # self.start_thread = Start_experiment_thread(name="start_thread",window=self)
         # self.start_thread.start()
 
-
-
         send_message_queue = global_setting.get_setting("send_message_queue")
-
-
-
 
         send_message_queue.put(ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='start',
                                                data={
-                                                   'start_experiment_time':global_setting.get_setting("start_experiment_time"),
-                                                    'pause_experiment_time':global_setting.get_setting("pause_experiment_time"),
-                                                   'relieve_pause_experiment_time':global_setting.get_setting("relieve_pause_experiment_time")
-                                                     },
+                                                   'start_experiment_time': global_setting.get_setting(
+                                                       "start_experiment_time"),
+                                                   'pause_experiment_time': global_setting.get_setting(
+                                                       "pause_experiment_time"),
+                                                   'relieve_pause_experiment_time': global_setting.get_setting(
+                                                       "relieve_pause_experiment_time")
+                                               },
                                                time=time_util.get_format_from_time(time.time())))
         message_structs = [
 
@@ -810,8 +1361,8 @@ class MainWindow_Index(ThemedWindow):
                             time=time_util.get_format_from_time(time.time())),
         ]
         for message_struct in message_structs:
-            queue=global_setting.get_setting("queue")
-            queue.put(           message_struct)
+            queue = global_setting.get_setting("queue")
+            queue.put(message_struct)
         AsyPromise(self.start_update_gui).then(
             lambda _: AsyPromise(self.show_open_dialog).then(
                 lambda _: AsyPromise(self.start_open_window).then(
@@ -821,56 +1372,126 @@ class MainWindow_Index(ThemedWindow):
         ).catch(lambda e: logger.error(f"{e}"))
         # AsyPromise(self.start_open_window).then().catch(lambda e: logger.error(f"{e}"))
         pass
-    def show_open_dialog(self,resolve,reject):
-        # 弹窗最晚持续时间
-        start_wait_times =float(global_setting.get_setting('configer')['dialog_timeout']['timeout'])+ float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time'])/float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay'])*2*8+20
+
+    def show_open_dialog(self, resolve, reject):
+        start_wait_times = float(global_setting.get_setting('configer')['dialog_timeout']['timeout']) + float(
+            global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + float(
+            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time']) / float(
+            global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay']) * 2 * 8 + 20
 
         if self.start_dialog is None:
-            self.start_dialog = AnimatedLoadingDialog(countdown_seconds=start_wait_times,title="开始实验",message="正在启动气路...")
+            self.start_dialog = AnimatedLoadingDialog(countdown_seconds=start_wait_times, title="开始实验",
+                                                      message="正在启动气路...")
         else:
             self.start_dialog.reset_progress()
             self.start_dialog.clear_list_data()
             self.start_dialog.deleteLater()
-            self.start_dialog=None
+            self.start_dialog = None
             self.start_dialog = AnimatedLoadingDialog(
                 countdown_seconds=start_wait_times,
                 title="开始实验", message="正在启动气路...")
 
-        # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
+        startup_calibration_mode = global_setting.get_setting('startup_calibration_mode', None)
+        if startup_calibration_mode == "air_co2":
+            startup_calibration_mode = "air"
+        if startup_calibration_mode not in {"none", "air", "full"}:
+            startup_calibration_mode = "full" if global_setting.get_setting('is_auto_calibration', False) else "none"
 
-        # 如果勾选了自动校准，就添加自动校准界面在弹窗里
-        is_auto_calibration = global_setting.get_setting('is_auto_calibration',True)
-        if is_auto_calibration:
+        if startup_calibration_mode == "air":
+            calibration_config = global_setting.get_setting('UFC_UGC_ZOS_config', {}).get('Calibration', {})
+            try:
+                start_wait_times += max(float(calibration_config.get('startup_air_calibration_wait_time', 1800)), 0)
+            except Exception:
+                start_wait_times += 1800
+            try:
+                start_wait_times += max(float(calibration_config.get('startup_air_calibration_max_timeout', 2700)), 0)
+            except Exception:
+                start_wait_times += 2700
+            if self.start_dialog is not None:
+                self.start_dialog.countdown_seconds = start_wait_times
+                self.start_dialog.current_seconds = start_wait_times
+
+        if startup_calibration_mode in {"air", "full"}:
             self.init__calibration_windows()
             self.start_dialog.insert_calibration_dialog(self.calibration_details_windows)
+
+        self.start_dialog.timeout_signal.connect(self._on_start_experiment_timeout)  # 新增
         result = self.start_dialog.exec()
-        # 关闭校准窗口
         self.release_calibration_windows()
+
         if result == QDialog.DialogCode.Accepted:
+            if self.start_dialog is not None and self.start_dialog.force_entered:
+                self.show_temp_status_tip_signal.emit("后台正在启动气路，请稍候...", "#ff8800", 0)
+                self._gas_path_success = False
+                remaining_ms = int((start_wait_times - 60) * 1000)
+                if self._gas_path_timeout_timer is not None:
+                    self._gas_path_timeout_timer.stop()
+                self._gas_path_timeout_timer = QTimer(self)
+                self._gas_path_timeout_timer.setSingleShot(True)
+                self._gas_path_timeout_timer.timeout.connect(self._on_gas_path_final_timeout)
+                self._gas_path_timeout_timer.start(max(remaining_ms, 1000))
             resolve()
         else:
-            self.stop_experiment()
-            reject()
-
+            # ★ 先 reject 解除当前 Promise 链，再延迟调用 stop_experiment
+            #    避免 reject() 与 stop_experiment 内部的异步链互相干扰
+            logger.warning("start_dialog returned Rejected, skip auto stop_experiment")
+            self.show_temp_status_tip_signal.emit("启动弹窗已关闭，实验保持当前运行状态", "#ff8800", 5000)
+            resolve()
         pass
+
+    def _on_start_experiment_timeout(self):
+        """dialog内部倒计时结束触发（已由force_entered接管，此处留空）"""
+        pass
+
+    def _on_gas_path_final_timeout(self):
+        """备用计时器到期：force_entered后气路仍未成功，仅显示红色提示，不停止"""
+        if not self._gas_path_success:
+            self.show_temp_status_tip_signal.emit("气路初始化失败", "#cc0000", 0)
+    def cache_calibration_detail_log(self, message, has_time=True):
+        self.calibration_detail_log_buffer.append((message, has_time))
+        if len(self.calibration_detail_log_buffer) > 1000:
+            self.calibration_detail_log_buffer = self.calibration_detail_log_buffer[-1000:]
+        if self.calibration_details_windows is not None:
+            self.calibration_details_windows.addLog(message, has_time=has_time)
+
+    def restore_calibration_detail_window_state(self):
+        if self.calibration_details_windows is None:
+            return
+        for message, has_time in self.calibration_detail_log_buffer:
+            self.calibration_details_windows.addLog(message, has_time=has_time)
+        if self.calibration_detail_zero_start_time is not None:
+            self.calibration_details_windows.updateZeroStartTime(self.calibration_detail_zero_start_time, log_event=False)
+        if self.calibration_detail_zero_end_time is not None:
+            self.calibration_details_windows.updateZeroEndTime(self.calibration_detail_zero_end_time, log_event=False)
+        if self.calibration_detail_span_start_time is not None:
+            self.calibration_details_windows.updateSpanStartTime(self.calibration_detail_span_start_time, log_event=False)
+        if self.calibration_detail_span_end_time is not None:
+            self.calibration_details_windows.updateSpanEndTime(self.calibration_detail_span_end_time, log_event=False)
+        if self.calibration_detail_status_text is not None:
+            self.calibration_details_windows.updateStatus(self.calibration_detail_status_text, log_event=False)
+
     def init__calibration_windows(self):
         #初始化标定窗口
         if self.calibration_details_windows is None:
             self.calibration_details_windows = CalibrationDialog(main_gui=self)
-            self.calibration_details_windows.updateO2Span(global_setting.get_setting('span_standard_oxygen_value',0))
-            self.calibration_details_windows.updateCO2Span(global_setting.get_setting('span_standard_carbon_value',0))
-            self.calibration_details_windows.updatePressureSpan(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']))
+            self.calibration_details_windows.log_history = []
+            self.calibration_details_windows.log_sequence = 0
+            self.calibration_details_windows.log_list.clear()
+            self.calibration_details_windows.updateO2Span(global_setting.get_setting('span_standard_oxygen_value',0), log_event=False)
+            self.calibration_details_windows.updateCO2Span(global_setting.get_setting('span_standard_carbon_value',0), log_event=False)
+            self.calibration_details_windows.updatePressureSpan(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['pressure_steady_default']), log_event=False)
+            self.restore_calibration_detail_window_state()
     def show_calibration_windows(self,data):
         self.init__calibration_windows()
         if data:
             match data.get("type",''):
                 case "zero_calibration"|"all_calibration":
-                    self.calibration_details_windows.updateStatus("零点标定")
-                    self.calibration_details_windows.updateZeroStartTime(data.get("time"))
+                    self.calibration_details_windows.updateStatus("零点标定", log_event=False)
+                    self.calibration_details_windows.updateZeroStartTime(data.get("time"), log_event=False)
                     pass
                 case "span_calibration":
-                    self.calibration_details_windows.updateStatus("量程标定")
-                    self.calibration_details_windows.updateSpanStartTime(data.get("time"))
+                    self.calibration_details_windows.updateStatus("量程标定", log_event=False)
+                    self.calibration_details_windows.updateSpanStartTime(data.get("time"), log_event=False)
                     pass
                 case _:
                     pass
@@ -883,10 +1504,12 @@ class MainWindow_Index(ThemedWindow):
             self.calibration_details_windows.close()
             self.calibration_details_windows.deleteLater()
             self.calibration_details_windows = None
+
     #   延遲打開窗口
-    def start_open_window(self,resolve,reject):
+    def start_open_window(self, resolve, reject):
         QTimer.singleShot(1 * 1000, self.open_monitor_data_window)
         resolve()
+
     def open_monitor_data_window(self):
         """
         打開監控數據界面
@@ -898,6 +1521,7 @@ class MainWindow_Index(ThemedWindow):
             if module.name == "Main_New_Monitor_data":
                 module.click_method()
                 return
+
     def pause_experiment(self):
         # 在with语句中自动管理加载遮罩
         with LoadingContext(self, "正在暂停...", "animated") as mask:
@@ -1008,12 +1632,11 @@ class MainWindow_Index(ThemedWindow):
                 self.status_bar.update_tip(f"暂停实验监测错误，原因：{e}")
             pass
 
-
             self.is_paused = not self.is_paused
             if self.is_paused:
-                pause_experiment_time=global_setting.get_setting("pause_experiment_time",[])
+                pause_experiment_time = global_setting.get_setting("pause_experiment_time", [])
                 pause_experiment_time.append(time.time())
-                global_setting.set_setting("pause_experiment_time",pause_experiment_time )
+                global_setting.set_setting("pause_experiment_time", pause_experiment_time)
                 self.status_bar.update_tip(f"暂停实验监测成功！")
             else:
                 relieve_pause_experiment_time = global_setting.get_setting("relieve_pause_experiment_time", [])
@@ -1022,19 +1645,30 @@ class MainWindow_Index(ThemedWindow):
                 self.status_bar.update_tip(f"解除暂停实验监测成功！")
             self.status_bar.update_status(is_paused=self.is_paused)
 
-
             for action_dict in self.tool_bar_actions:
                 if action_dict["obj_name"] == "pause_experiment":
                     action_dict["action"]: QAction
                     if self.is_paused:
-                        action_dict["name"]="解除暂停实验"
+                        action_dict["name"] = "解除暂停实验"
                     else:
                         action_dict["name"] = "暂停实验"
                     action_dict["action"].setToolTip(action_dict["name"])
                     action_dict["action"].setText(action_dict["name"])
             self.setEnabled(True)
         pass
+
     def stop_experiment(self):
+        if global_setting.get_setting("app_state", AppState.INITIALIZED) != AppState.MONITORING:
+            return
+
+            # ★ 停止实验时清掉所有临时提示，状态栏恢复正常
+        self.status_bar._temp_tip_active = False
+        self.old_Stop_experiment_status_text_reTurn = None
+        self.old_stop_status_counts = 0
+        if self._gas_path_timeout_timer is not None:
+            self._gas_path_timeout_timer.stop()
+            self._gas_path_timeout_timer = None
+        self._stop_periodic_export_timer()
 
         self.setEnabled(False)
         self.status_bar.update_tip(f"正在关闭实验监测...")
@@ -1042,19 +1676,20 @@ class MainWindow_Index(ThemedWindow):
         # self.stop_experiment_thread.start()
         global_setting.set_setting("stop_experiment_time", time.time())
         send_message_queue = global_setting.get_setting("send_message_queue")
-        send_message_queue.put( ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='stop',
-                                                data={
-                                                'stop_experiment_time': global_setting.get_setting("stop_experiment_time"),
-                                                },
-                        time=time_util.get_format_from_time(time.time())))
+        send_message_queue.put(ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='stop',
+                                               data={
+                                                   'stop_experiment_time': global_setting.get_setting(
+                                                       "stop_experiment_time"),
+                                               },
+                                               time=time_util.get_format_from_time(time.time())))
         message_structs = [
-            ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='stop',data={
-                                                'stop_experiment_time': global_setting.get_setting("stop_experiment_time"),
-                                                },
+            ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='stop', data={
+                'stop_experiment_time': global_setting.get_setting("stop_experiment_time"),
+            },
                             time=time_util.get_format_from_time(time.time())),
-            ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='stop',data={
-                                                'stop_experiment_time': global_setting.get_setting("stop_experiment_time"),
-                                                },
+            ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='stop', data={
+                'stop_experiment_time': global_setting.get_setting("stop_experiment_time"),
+            },
                             time=time_util.get_format_from_time(time.time())),
 
         ]
@@ -1062,26 +1697,18 @@ class MainWindow_Index(ThemedWindow):
             queue = global_setting.get_setting("queue")
             queue.put(message_struct)
 
+        QTimer.singleShot(0, self.start_stop_cleanup_async)
+        self.show_stop_dialog_sync()
+        self.stop_update_gui_sync()
+
+    def start_stop_cleanup_async(self):
         AsyPromise(self.close_monitor_data_window).then(
-            lambda _:AsyPromise(self.stop_store_info_Qtimer).then(
-                lambda _:AsyPromise(self.show_stop_dialog).then(
+            lambda _: AsyPromise(self.stop_store_info_Qtimer)
+        ).catch(lambda e: logger.error(f"{e}"))
 
-                    lambda _:AsyPromise(self.stop_update_gui).then(
-
-                        ).catch(lambda e: logger.error(f"{e}"))
-
-                ).catch(lambda e: logger.error(f"{e}"))
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}") )
-
-        # self.stop_store_info()
-        pass
-    def stop_update_gui(self,resolve,reject):
+    def stop_update_gui_sync(self):
         logger.error("stop_update_gui")
         global_setting.set_setting("app_state", AppState.CONFIGURING)
-
-
-
 
         # 更新main_gui组件显示
         self.change_enable_component_app_state_signal.emit()
@@ -1096,54 +1723,52 @@ class MainWindow_Index(ThemedWindow):
                 action_dict["action"].setDisabled(True)
 
         self.setEnabled(True)
+
+    def stop_update_gui(self, resolve, reject):
+        self.stop_update_gui_sync()
         resolve()
         pass
 
-    def show_stop_dialog(self,resolve,reject):
-        stop_wait_times = float(global_setting.get_setting('configer')['dialog_timeout']['timeout'])+float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + 30
+    def show_stop_dialog_sync(self):
+        stop_wait_times = float(global_setting.get_setting('configer')['dialog_timeout']['timeout']) + float(
+            global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + 30
         if self.stop_dialog is None:
-            self.stop_dialog = AnimatedLoadingDialog(countdown_seconds=stop_wait_times,title="停止实验",message="正在停止实验...")
+            self.stop_dialog = AnimatedLoadingDialog(countdown_seconds=stop_wait_times, title="停止实验",
+                                                     message="正在停止实验...")
         else:
             self.stop_dialog.reset_progress()
             self.stop_dialog.clear_list_data()
             self.stop_dialog.deleteLater()
             self.stop_dialog = AnimatedLoadingDialog(
                 countdown_seconds=stop_wait_times,
-                title="停止实验",message="正在停止实验...")
+                title="停止实验", message="正在停止实验...")
 
         # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
-        result = self.stop_dialog.exec()
-        if result == QDialog.DialogCode.Accepted:
-            resolve()
-        else:
-            resolve()
-    def stop_store_info_Qtimer(self,resolve,reject):
+        self.stop_dialog.exec()
+
+    def show_stop_dialog(self, resolve, reject):
+        self.show_stop_dialog_sync()
+        resolve()
+
+    def stop_store_info_Qtimer(self, resolve, reject):
         QTimer.singleShot(100, self.stop_store_info)
         resolve()
+
     def stop_store_info(self):
+        if self._is_periodic_export_running():
+            if self.stop_dialog is not None:
+                self.stop_dialog.insert_data_signal.emit("等待定时导出完成.... ")
+            QTimer.singleShot(1000, self.stop_store_info)
+            return
 
         # 停止实验 将文件夹的数据合并成一个数据文件
-        # 读取实验设置文件路径
-        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
-        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
-            # 获取文件所在的文件夹路径
-            folder_path = os.path.dirname(experiment_setting_file)
-            # 获取文件名称
-            file_name = os.path.basename(experiment_setting_file)
-            # 不带扩展名的文件名称
-            file_name_without_extension = os.path.splitext(file_name)[0]
-            # 获取文件的扩展名
-            file_name_extension = os.path.splitext(file_name)[1]
-            # 定义文件夹路径
-            folder_path_data = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE'][
-                'fold_path'] + os.path.join(
-                global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
-                f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
+        folder_path_data = self._get_experiment_root_path()
+        if folder_path_data is not None and os.path.exists(folder_path_data):
             if self.stop_dialog is not None:
                 self.stop_dialog.insert_data_signal.emit(f"正在导出数据.... ")
             custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
 
-    def close_monitor_data_window(self,resolve,reject):
+    def close_monitor_data_window_sync(self):
         """
         关闭監控數據界面
         :return:
@@ -1152,10 +1777,17 @@ class MainWindow_Index(ThemedWindow):
         for module in self.modules:
             module: BaseModule
             if module.name == "Main_New_Monitor_data":
-                module.close()
-                resolve()
+                try:
+                    module.close()
+                except RuntimeError as e:
+                    logger.warning(f"关闭监控数据窗口时窗口对象已销毁，跳过关闭：{e}")
                 return
+        return
+
+    def close_monitor_data_window(self, resolve, reject):
+        self.close_monitor_data_window_sync()
         resolve()
+
     def export_experiment_datas(self):
         """
         导出实验数据按钮函数
@@ -1179,41 +1811,94 @@ class MainWindow_Index(ThemedWindow):
                     'fold_path'] + os.path.join(
                     global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
                     f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
-                custom_data_file_util.export_data_to_csv(export_file_path=None, file_name=os.path.basename(folder_path_data))
+                custom_data_file_util.export_data_to_csv(export_file_path=None,
+                                                         file_name=os.path.basename(folder_path_data))
                 # custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data,is_delete_original_data_file=False)
 
         QTimer.singleShot(1000, stop_store_info_Qtimer)
+
     def close_tab(self, index):
         """关闭标签页"""
         self.tab_widget.widget(index).hide()
         self.tab_widget.removeTab(index)
+
+    def _set_module_interface_enabled(self, module: BaseModule, enabled: bool):
+        if module is None or module.interface_widget is None:
+            return
+
+        widgets = [
+            module.interface_widget.frame_obj,
+            module.interface_widget.left_frame_obj,
+            module.interface_widget.right_frame_obj,
+            module.interface_widget.bottom_frame_obj,
+        ]
+        for widget in widgets:
+            if widget is None:
+                continue
+            try:
+                widget.setEnabled(enabled)
+            except RuntimeError as e:
+                logger.warning(f"同步页面控件可用状态时跳过已销毁窗口：{e}")
+
+    def sync_module_interface_enabled_state(self):
+        current_app_state = global_setting.get_setting("app_state", AppState.INITIALIZED)
+        handled_modules = set()
+
+        for module in list(self.active_module_widgets) + list(self.open_windows):
+            if module is None:
+                continue
+            module_key = id(module)
+            if module_key in handled_modules:
+                continue
+            handled_modules.add(module_key)
+            module_enabled = True if module.app_state is None else module.app_state <= current_app_state
+            self._set_module_interface_enabled(module, module_enabled)
+
     def change_enable_component_app_state(self):
         # 更新程序状态值
         self.status_bar.update_app_state()
-        #根据程序状态来改变是否可以点击的组件'
-        #设置是否可以点击 menu_bar
+        current_app_state = global_setting.get_setting("app_state", AppState.INITIALIZED)
+        # 根据程序状态来改变是否可以点击的组件'
+        # 设置是否可以点击 menu_bar
         for menu_bar_action in self.menu_bar_actions:
-            if menu_bar_action["app_state"] > global_setting.get_setting("app_state",AppState.INITIALIZED):
+            if menu_bar_action["app_state"] > current_app_state:
                 menu_bar_action["action"].setEnabled(False)
             else:
                 menu_bar_action["action"].setEnabled(True)
-                #特殊情况
-                if global_setting.get_setting("app_state",AppState.INITIALIZED) == AppState.MONITORING \
-                    and menu_bar_action['obj_name'] in ["Main_New_experiment", "Main_New_experiment_open"]:
+                # 特殊情况
+                if current_app_state == AppState.MONITORING \
+                        and menu_bar_action['obj_name'] in ["Main_New_experiment", "Main_New_experiment_open"]:
                     menu_bar_action["action"].setEnabled(False)
         # 设置是否可以点击 tool_bar
         for tool_bar_action in self.tool_bar_actions:
-            if tool_bar_action["app_state"] > global_setting.get_setting("app_state",AppState.INITIALIZED):
+            if tool_bar_action["app_state"] > current_app_state:
                 tool_bar_action["action"].setEnabled(False)
             else:
                 tool_bar_action["action"].setEnabled(True)
             # 特殊按钮需要特殊配置
-            if tool_bar_action['obj_name'] in ["stop_experiment", "pause_experiment","toggle_mode","window_exchange"]:
+            obj_name = tool_bar_action["obj_name"]
+            if obj_name in ["stop_experiment", "pause_experiment"]:
+                tool_bar_action["action"].setEnabled(current_app_state == AppState.MONITORING)
+            elif obj_name in ["toggle_mode", "window_exchange"]:
                 tool_bar_action["action"].setEnabled(False)
+
+        # 设置是否可以点击 dynamic tool_bar
+        for dynamic_action in self.dynamic_tool_bar_actions:
+            if dynamic_action["app_state"] > current_app_state:
+                dynamic_action["action"].setEnabled(False)
+            else:
+                dynamic_action["action"].setEnabled(True)
+
+            if dynamic_action["obj_name"] == "dynamic_New_main_experiment_calibration":
+                dynamic_action["action"].setEnabled(
+                    bool(global_setting.get_setting("air_modules_all_valid", False))
+                    or bool(global_setting.get_setting("allow_test_calibration_without_air_validation", False))
+                )
+
+        self.sync_module_interface_enabled_state()
+
         pass
 
-
-        pass
     def reset_guidance(self):
         """重置教程"""
         reply = QMessageBox.question(
@@ -1261,8 +1946,57 @@ class MainWindow_Index(ThemedWindow):
             )
 
             self.status_bar.update_tip("✅ 所有页面的首次访问状态已重置")
-    # 监听是否自动校准气路模块的框选
-    def calibration_gas_state_change(self,state):
+# 监听是否自动校准气路模块的框选
+    def calibration_gas_state_change(self, state=None):
+        current_mode = global_setting.get_setting("startup_calibration_mode", None)
+        if current_mode not in {"none", "air", "full"}:
+            current_mode = "full" if global_setting.get_setting("is_auto_calibration", False) else "none"
+
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        msg_box.setWindowTitle("启动前校准模式")
+        msg_box.setText("请选择开始实验前的校准模式：")
+
+        air_button = msg_box.addButton("Air 空气校准后开启实验", QMessageBox.ButtonRole.ActionRole)
+        full_button = msg_box.addButton("调零+调span后开启实验", QMessageBox.ButtonRole.ActionRole)
+        msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setDefaultButton({
+            "air": air_button,
+            "full": full_button
+        }.get(current_mode, air_button))
+        msg_box.exec()
+
+        clicked_button = msg_box.clickedButton()
+        mode = None
+        if clicked_button == air_button:
+            mode = "air"
+        elif clicked_button == full_button:
+            mode = "full"
+
+        if mode is None:
+            return
+
+        global_setting.set_setting("startup_calibration_mode", mode)
+        global_setting.set_setting("is_auto_calibration", mode == "full")
+        global_setting.set_setting("device_config_calibration_selected", True)
+
+        send_message_queue = global_setting.get_setting("send_message_queue")
+        if send_message_queue is not None:
+            send_message_queue.put(
+                ObjectQueueItem(
+                    origin='MainWindow_Index',
+                    to='main_monitor_data',
+                    title='set_experiment_basic_config',
+                    data={
+                        "startup_calibration_mode": mode,
+                        "is_auto_calibration": mode == "full"
+                    },
+                    time=time_util.get_format_from_time(time.time())
+                )
+            )
+
+        self.calibration_selection_changed_signal.emit(True, mode)
+        return
         is_checked = bool(state)  # 直接转为布尔值
         # 是否自动校准气体给其他进程同步设置
         global_setting.set_setting("is_auto_calibration", is_checked)
@@ -1271,3 +2005,119 @@ class MainWindow_Index(ThemedWindow):
             ObjectQueueItem(origin='MainWindow_Index', to='main_monitor_data', title='set_experiment_basic_config',
                             data={"is_auto_calibration": is_checked},
                             time=time_util.get_format_from_time(time.time())))
+
+
+def _patched_calibration_gas_state_change(self, state=None):
+    current_mode = global_setting.get_setting("startup_calibration_mode", None)
+    if current_mode == "air_co2":
+        current_mode = "air"
+    if current_mode not in {"none", "air", "full"}:
+        current_mode = "full" if global_setting.get_setting("is_auto_calibration", False) else "none"
+
+    msg_box = QMessageBox(self)
+    msg_box.setIcon(QMessageBox.Icon.Question)
+    msg_box.setWindowTitle("启动前校准模式")
+    msg_box.setText("请选择开始实验前的校准模式：")
+
+    air_button = msg_box.addButton("Air空气校准O2后开启实验", QMessageBox.ButtonRole.ActionRole)
+    air_co2_button = msg_box.addButton("Air空气校准CO2后开启实验", QMessageBox.ButtonRole.ActionRole)
+    full_button = msg_box.addButton("调零+调span后开启实验", QMessageBox.ButtonRole.ActionRole)
+    msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+    msg_box.setDefaultButton({
+        "air": air_button,
+        "air_co2": air_co2_button,
+        "full": full_button,
+    }.get(current_mode, air_button))
+    msg_box.exec()
+
+    clicked_button = msg_box.clickedButton()
+    mode = None
+    if clicked_button == air_button:
+        mode = "air"
+    elif clicked_button == air_co2_button:
+        mode = "air_co2"
+    elif clicked_button == full_button:
+        mode = "full"
+
+    if mode is None:
+        return
+
+    global_setting.set_setting("startup_calibration_mode", mode)
+    global_setting.set_setting("is_auto_calibration", mode != "none")
+    global_setting.set_setting("device_config_calibration_selected", True)
+
+    send_message_queue = global_setting.get_setting("send_message_queue")
+    if send_message_queue is not None:
+        send_message_queue.put(
+            ObjectQueueItem(
+                origin='MainWindow_Index',
+                to='main_monitor_data',
+                title='set_experiment_basic_config',
+                data={
+                    "startup_calibration_mode": mode,
+                    "is_auto_calibration": mode != "none",
+                },
+                time=time_util.get_format_from_time(time.time()),
+            )
+        )
+
+    self.calibration_selection_changed_signal.emit(True, mode)
+
+
+MainWindow_Index.calibration_gas_state_change = _patched_calibration_gas_state_change
+
+
+def _patched_calibration_gas_state_change_v2(self, state=None):
+    current_mode = global_setting.get_setting("startup_calibration_mode", None)
+    if current_mode == "air_co2":
+        current_mode = "air"
+    if current_mode not in {"none", "air", "full"}:
+        current_mode = "full" if global_setting.get_setting("is_auto_calibration", False) else "none"
+
+    msg_box = QMessageBox(self)
+    msg_box.setIcon(QMessageBox.Icon.Question)
+    msg_box.setWindowTitle("启动前校准模式")
+    msg_box.setText("请选择开始实验前的校准模式：")
+
+    air_button = msg_box.addButton("Air空气校准后开启实验", QMessageBox.ButtonRole.ActionRole)
+    full_button = msg_box.addButton("调零+调span后开启实验", QMessageBox.ButtonRole.ActionRole)
+    msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+    msg_box.setDefaultButton({
+        "air": air_button,
+        "full": full_button,
+    }.get(current_mode, air_button))
+    msg_box.exec()
+
+    clicked_button = msg_box.clickedButton()
+    mode = None
+    if clicked_button == air_button:
+        mode = "air"
+    elif clicked_button == full_button:
+        mode = "full"
+
+    if mode is None:
+        return
+
+    global_setting.set_setting("startup_calibration_mode", mode)
+    global_setting.set_setting("is_auto_calibration", mode != "none")
+    global_setting.set_setting("device_config_calibration_selected", True)
+
+    send_message_queue = global_setting.get_setting("send_message_queue")
+    if send_message_queue is not None:
+        send_message_queue.put(
+            ObjectQueueItem(
+                origin='MainWindow_Index',
+                to='main_monitor_data',
+                title='set_experiment_basic_config',
+                data={
+                    "startup_calibration_mode": mode,
+                    "is_auto_calibration": mode != "none",
+                },
+                time=time_util.get_format_from_time(time.time()),
+            )
+        )
+
+    self.calibration_selection_changed_signal.emit(True, mode)
+
+
+MainWindow_Index.calibration_gas_state_change = _patched_calibration_gas_state_change_v2

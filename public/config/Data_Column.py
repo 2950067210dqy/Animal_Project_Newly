@@ -210,6 +210,19 @@ class Data_Column(Enum):
         "columns": "oxygen_num"
     }
 
+    Dry_basis_O2_out_concentration = {
+        "id": 63,
+        "column_text": "干基氧浓度",
+        "column_name": "dry_basis_o2_out_concentration",
+        "unit": "%",
+        "desc": "通过补偿算法得到的干基氧浓度",
+        "data_format": "origin_data",
+        "note": "显示到0.0001",
+        "module":Modbus_Slave_Ids.ZOS,
+        "table":"monitor_data",
+        "columns": "dry_basis_oxygen_num"
+    }
+
     CO2_out_concentration = {
         "id": 18,
         "column_text": "CO2out浓度",
@@ -221,6 +234,32 @@ class Data_Column(Enum):
         "module":Modbus_Slave_Ids.UGC,
         "table":"monitor_data",
         "columns": "CO2_num"
+    }
+
+    ZOS_temperature_2 = {
+        "id": 61,
+        "column_text": "ZOS温度2测量值(°C)",
+        "column_name": "zos_temperature_2",
+        "unit": "°C",
+        "desc": "ZOS第二温度测量值",
+        "data_format": "origin_data",
+        "note": "显示到0.1",
+        "module":Modbus_Slave_Ids.ZOS,
+        "table":"monitor_data",
+        "columns": "oxygen_temperature_2_num"
+    }
+
+    ZOS_humidity = {
+        "id": 62,
+        "column_text": "ZOS湿度测量值(%RH)",
+        "column_name": "zos_humidity",
+        "unit": "%RH",
+        "desc": "ZOS湿度测量值",
+        "data_format": "origin_data",
+        "note": "显示到0.1",
+        "module":Modbus_Slave_Ids.ZOS,
+        "table":"monitor_data",
+        "columns": "oxygen_humidity_num"
     }
 
     Delta_O2 = {
@@ -725,7 +764,10 @@ class Data_column_list(Enum):
         Data_Column.O2_in_concentration,
         Data_Column.CO2_in_concentration,
         Data_Column.O2_out_concentration,
+        Data_Column.Dry_basis_O2_out_concentration,
         Data_Column.CO2_out_concentration,
+        Data_Column.ZOS_temperature_2,
+        Data_Column.ZOS_humidity,
         Data_Column.Delta_O2,
         Data_Column.Delta_CO2,
         Data_Column.V_in_flow,

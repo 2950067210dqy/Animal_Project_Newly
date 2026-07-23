@@ -5,6 +5,7 @@
 import base64
 import json
 import os
+import tempfile
 
 import pandas as pd
 from PyQt6.QtCore import Qt
@@ -112,7 +113,8 @@ class custom_data_file_util:
         if is_delete_original_data_file:
             folder_util.remove_non_empty_folder(folder_path)
     @classmethod
-    def export_data_to_csv(cls,export_file_path=None,file_name=None,file_path =None):
+    def export_data_to_csv(cls, export_file_path=None, file_name=None, file_path=None,
+                           show_success_message=True, use_atomic_replace=False):
         # 将数据db文件转成excel文件
         if file_path is None:
             transfer_handle = DbTransferExcel()
@@ -131,34 +133,54 @@ class custom_data_file_util:
                     export_file_path=file_path
                 else:
                     QMessageBox.warning(None, "错误", f"选择保存路径失败")
-                    return
+                    return False
             except Exception as e:
                 QMessageBox.warning(None, "错误", f"选择保存路径失败: {str(e)}")
-                return
+                return False
         used_sheet_names = set()
+        actual_export_file_path = export_file_path
+        temp_export_file_path = None
+        if use_atomic_replace and export_file_path is not None:
+            temp_dir = os.path.dirname(export_file_path) or "."
+            export_extension = os.path.splitext(export_file_path)[1] or ".xlsx"
+            temp_fd, temp_export_file_path = tempfile.mkstemp(
+                prefix=f".{os.path.basename(export_file_path)}.",
+                suffix=export_extension,
+                dir=temp_dir
+            )
+            os.close(temp_fd)
+            actual_export_file_path = temp_export_file_path
         try:
             import openpyxl
-            with pd.ExcelWriter(export_file_path, engine="openpyxl") as writer:
+            with pd.ExcelWriter(actual_export_file_path, engine="openpyxl") as writer:
                 transfer_handle.export_db_to_excel(writer, combine_mode=True, sheet_used=used_sheet_names,
                                                    chunksize=(5000 or None))
-            msg_box = QMessageBox(
-                QMessageBox.Icon.Information,
-                "导出成功",
-                  f"数据已导出到: {export_file_path}\n\n点击'open'按钮可以打开保存的文件以及文件夹。",
-                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Open
-            )
-            msg_box.setDefaultButton(QMessageBox.StandardButton.Open)
-            # msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
-            msg_box.setWindowFlags(msg_box.windowFlags() )
+            if temp_export_file_path is not None:
+                os.replace(temp_export_file_path, export_file_path)
+            if show_success_message:
+                msg_box = QMessageBox(
+                    QMessageBox.Icon.Information,
+                    "导出成功",
+                      f"数据已导出到: {export_file_path}\n\n点击'open'按钮可以打开保存的文件以及文件夹。",
+                    QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Open
+                )
+                msg_box.setDefaultButton(QMessageBox.StandardButton.Open)
+                # msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+                msg_box.setWindowFlags(msg_box.windowFlags() )
 
-            if QMessageBox.StandardButton.Open == msg_box.exec():
-                # 打开保存的文件夹和文件
-
-                folder_util.open_folder(os.path.dirname(export_file_path))
-                folder_util.open_folder(export_file_path)
+                if QMessageBox.StandardButton.Open == msg_box.exec():
+                    # 打开保存的文件夹和文件
+                    folder_util.open_folder(os.path.dirname(export_file_path))
+                    folder_util.open_folder(export_file_path)
+            return True
         except Exception as e:
             logger.error(f"{e}")
-        pass
+            if temp_export_file_path is not None and os.path.exists(temp_export_file_path):
+                try:
+                    os.remove(temp_export_file_path)
+                except OSError as remove_error:
+                    logger.error(f"删除临时导出文件失败: {remove_error}")
+            return False
     @classmethod
     def save_folder_contents_as_custom_file_for_user_choose(cls, folder_path, is_delete_original_data_file=True):
         contents = {}

@@ -149,7 +149,12 @@ class MyQThread(QThread):
         pass
 
     def __del__(self):
-        logger.debug(f"线程{self.name}被销毁!")
+        try:
+            name = self.__dict__.get("name", self.__class__.__name__)
+            logger.debug(f"Thread {name} deleted")
+        except Exception:
+            pass
+
 class MyThread(threading.Thread):
 
     def __init__(self, name):

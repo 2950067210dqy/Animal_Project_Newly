@@ -91,7 +91,7 @@ class Main_load_db_file_to_csv_file_Module(BaseModule):
         return "将数据库db文件导出成excel文件"
     def get_menu_name(self):
         """返回组件所属菜单{id:,text:} 在./config/gui_config.ini文件查看"""
-        return {"id":3,"text":"工具"}
+        # return {"id":3,"text":"工具"}
         pass
 
     def create_service(self) -> BaseService:

@@ -1,7 +1,7 @@
 import time
 from datetime import datetime
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QStatusBar, QLabel, QProgressBar, QPushButton
 
 from public.component.list_view.Custom_List_view import CustomListView
@@ -164,6 +164,72 @@ class CustomStatusBar(QStatusBar):
 
             self.update_experiment_time_main_signal_gui_update.connect(self.update_experiment_time_gui_update)
 
+    def show_temp_tip(self, message, color="#ff8800", duration_ms=0):
+        """
+        只替换状态标签中间的状态描述部分，时间信息保留。
+        若当前不在监测中，则完整替换整个标签。
+        """
+        # 保存原始样式备份（避免二次覆盖）
+        if not getattr(self, '_temp_tip_active', False):
+            self._status_label_style_backup = self.status_label.styleSheet()
+
+        self._temp_tip_active = True
+        self._temp_tip_message = message
+        self._temp_tip_color = color
+
+        # 取当前文字，尝试只替换中间状态描述部分
+        current_text = self.status_label.text()
+        if "-正在监测数据-" in current_text:
+            # 格式：实验开始时间XXX-正在监测数据-已经监测 YYY
+            new_text = current_text.replace("-正在监测数据-", f"-{message}-")
+        elif "-暂停监测数据-" in current_text:
+            new_text = current_text.replace("-暂停监测数据-", f"-{message}-")
+        else:
+            # 不在监测中，完整替换
+            new_text = message
+
+        self.status_label.setText(new_text)
+        self.status_label.setStyleSheet(
+            f"QLabel {{ color: {color}; font-weight: bold; font-size: 13px; }}"
+        )
+
+        if duration_ms > 0:
+            QTimer.singleShot(duration_ms, self.restore_status_label)
+
+    def restore_status_label(self):
+        self._temp_tip_active = False  # 解除阻止，恢复正常更新
+        if hasattr(self, '_status_label_backup'):
+            self.status_label.setText(self._status_label_backup)
+            self.status_label.setStyleSheet(
+                getattr(self, '_status_label_style_backup', "QLabel { color: green; }")
+            )
+
+    def update_experiment_time_gui_update(self, timeDict={"is_paused": False, "text": ""}):
+        if timeDict['is_paused']:
+            status_desc = "暂停监测数据"
+            time_text = f"已经暂停监测 {timeDict['text']}"
+            color = "blue"
+        else:
+            status_desc = "正在监测数据"
+            time_text = f"已经监测 {timeDict['text']}"
+            color = "green"
+
+        start_time_str = time_util.get_format_from_time(
+            global_setting.get_setting('start_experiment_time', time.time())
+        )
+        full_text = f"实验开始时间{start_time_str}-{status_desc}-{time_text}"
+
+        # 如果临时提示激活，只更新时间部分，保留替换后的提示描述
+        if getattr(self, '_temp_tip_active', False):
+            tip_desc = getattr(self, '_temp_tip_message', status_desc)
+            tip_color = getattr(self, '_temp_tip_color', color)
+            self.status_label.setText(f"实验开始时间{start_time_str}-{tip_desc}-{time_text}")
+            self.status_label.setStyleSheet(
+                f"QLabel {{ color: {tip_color}; font-weight: bold; font-size: 13px; }}"
+            )
+        else:
+            self.status_label.setText(full_text)
+            self.status_label.setStyleSheet(f"QLabel {{ color: {color}; }}")
     def update_tip(self, message):
         if self.tip_label is None:
             self.tip_label = CustomListView()
@@ -200,16 +266,16 @@ class CustomStatusBar(QStatusBar):
             self.status_label.setText("未开始监测数据")
             self.status_label.setStyleSheet("QLabel { color: red; }")
 
-     # 更新时间功能 界面更新
-    def update_experiment_time_gui_update(self, timeDict={"is_paused":False, "text":""}):
-        if timeDict['is_paused']:
-            self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-暂停监测数据-已经暂停监测 {timeDict['text']}")
-            self.status_label.setStyleSheet("QLabel { color:blue; }")
-        else:
-            self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-正在监测数据-已经监测 {timeDict['text']}")
-            self.status_label.setStyleSheet("QLabel { color:green; }")
-            pass
-        pass
+    #  # 更新时间功能 界面更新
+    # def update_experiment_time_gui_update(self, timeDict={"is_paused":False, "text":""}):
+    #     if timeDict['is_paused']:
+    #         self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-暂停监测数据-已经暂停监测 {timeDict['text']}")
+    #         self.status_label.setStyleSheet("QLabel { color:blue; }")
+    #     else:
+    #         self.status_label.setText(f"实验开始时间{time_util.get_format_from_time(global_setting.get_setting('start_experiment_time',time.time()))}-正在监测数据-已经监测 {timeDict['text']}")
+    #         self.status_label.setStyleSheet("QLabel { color:green; }")
+    #         pass
+    #     pass
     def update_time_function_start_gui_update(self, timeStr=""):
         #  获取控件
         # time_label: QLabel = self.findChild(QLabel, "time_label")

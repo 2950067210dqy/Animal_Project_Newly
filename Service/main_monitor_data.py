@@ -1,4 +1,5 @@
 import copy
+import math
 
 import multiprocessing
 import os
@@ -16,6 +17,7 @@ from PyQt6.QtCore import QThread, QTimer, QCoreApplication
 from loguru import logger
 
 
+from Service.UFC_UGC_ZOS_Service.function.co2_compensation import CO2RealtimeCompensator
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 
 from public.config_class import global_load
@@ -24,13 +26,16 @@ from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread, MyThread
 from public.entity.barrier.ActionCompleteBarrier import ActionCompleteBarrier
+from public.entity.barrier.DynamicBarrier import DynamicBarrier
 from public.entity.dict.AdvancedFuzzyDict import FuzzyDict
 from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
+from public.entity.send_message import Send_Message
 
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data, Others_Tables
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
+from public.function.promise.AsyPromise import AsyPromise
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.number_util import number_util
 from public.util.string_util import String_util
@@ -47,7 +52,7 @@ wait_UFC_UGC_ZOS_start_event = threading.Event()
 global_setting.set_setting("wait_UFC_UGC_ZOS_start_event",wait_UFC_UGC_ZOS_start_event)
 # 通道
 experiment_settings = global_setting.get_setting("experiment_setting",None)
-gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+gids = [group.id for group in experiment_settings.groups if group.is_selected == 1] if experiment_settings is not None else []
 #气路之间也需要顺序run ufc run->ugc run->zos run
 wait_UFC_run_finish_event = threading.Event()
 wait_UGC_run_finish_event = threading.Event()
@@ -58,6 +63,128 @@ global_setting.set_setting("wait_ZOS_run_finish_event",wait_ZOS_run_finish_event
 
 #使用端口
 port_use=None
+_co2_realtime_compensator = CO2RealtimeCompensator()
+_epoch_carry_forward_handle = None
+_epoch_last_valid_cache = {}
+_epoch_missing_streak_cache = {}
+_epoch_missing_fill_limit = 10
+_epoch_carry_forward_desc_to_column = {
+    "ufc_流量计测量值(sccm)": "UFC_flow_num",
+    "ufc_参考气流量计测量值(sccm)": "reference_flow_num",
+    "拟合后CO2": "UGC_air_pressure",
+    "补偿前CO2": "UGC_CO2_origin_num",
+    "补偿前CO2(%)": "UGC_CO2_origin_num",
+    "气压补偿后CO2": "UGC_CO2_num",
+    "参考气CO2(%)": "reference_CO2_num",
+    "CO2生产量(%)": "CO2_output_num",
+    "氧分压(hPa)": "ZOS_oxygen_partial_pressure",
+    "ZOS温度测量值(°C)": "ZOS_temperature_num",
+    "气体压力(hPa)": "ZOS_gas_pressure",
+    "氧浓度(%)": "ZOS_oxygen_num",
+    "干基氧浓度(%)": "ZOS_dry_basis_oxygen_num",
+    "ZOS故障码": "ZOS_fault_code",
+    "ZOS温度2测量值(°C)": "ZOS_oxygen_temperature_2_num",
+    "ZOS湿度测量值(%RH)": "ZOS_oxygen_humidity_num",
+    "参考气氧浓度(%)": "reference_oxygen_num",
+    "耗氧量(%)": "oxygen_consumption_num",
+    "温度测量值(°C)": "ENM_temperature_num",
+    "湿度测量值(%RH)": "ENM_humidity_num",
+    "噪声测量值(dB)": "ENM_noise_num",
+    "大气压测量值(KPa)": "ENM_barometer_num",
+    "当前计量周期内跑轮圈数测量值": "ENM_running_wheel_num",
+    "饮水重量测量值(g)": "DWM_weight_num",
+    "食物重量测量值(g)": "EM_weight_num",
+    "称重重量测量值(g)": "WM_weight_num",
+}
+
+
+def _channel_number_to_co2_channel_name(mouse_cage_number):
+    reference_cage_number = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+    if int(mouse_cage_number) == reference_cage_number:
+        return "REF"
+    return f"M{int(mouse_cage_number)}"
+
+
+def _is_epoch_missing_value(value):
+    if value is None:
+        return True
+    if isinstance(value, float) and math.isnan(value):
+        return True
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return normalized in {"", "none", "nan"}
+    return False
+
+
+def _get_epoch_payload_cage_number(payload):
+    mouse_cage_number = payload.get("mouse_cage_number")
+    if mouse_cage_number not in (None, -1):
+        return int(mouse_cage_number)
+
+    for item in payload.get("data", []):
+        if item.get("desc") == "鼠笼号":
+            try:
+                return int(item.get("value"))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _get_epoch_previous_row(cage_number):
+    global _epoch_carry_forward_handle
+
+    if cage_number is None:
+        return None
+
+    if _epoch_carry_forward_handle is None:
+        _epoch_carry_forward_handle = Monitor_Datas_Handle()
+
+    return _epoch_carry_forward_handle.query_current_one_data(f"Epoch_data_cage_{int(cage_number)}")
+
+
+def _apply_epoch_carry_forward(payload):
+    if payload.get("module_name") != "Epoch":
+        return payload
+
+    cage_number = _get_epoch_payload_cage_number(payload)
+    if cage_number is None:
+        return payload
+
+    should_update_state = payload.get("mouse_cage_number") != -1
+    previous_row = None
+
+    for item in payload.get("data", []):
+        desc = str(item.get("desc", "")).strip()
+        column_name = _epoch_carry_forward_desc_to_column.get(desc)
+        if not column_name:
+            continue
+
+        cache_key = (int(cage_number), column_name)
+        current_value = item.get("value")
+
+        if _is_epoch_missing_value(current_value):
+            streak = _epoch_missing_streak_cache.get(cache_key, 0)
+            if should_update_state:
+                streak += 1
+                _epoch_missing_streak_cache[cache_key] = streak
+
+            previous_value = _epoch_last_valid_cache.get(cache_key)
+            if previous_value is None:
+                if previous_row is None:
+                    previous_row = _get_epoch_previous_row(cage_number)
+                if previous_row is not None:
+                    previous_value = previous_row.get(column_name)
+                    if not _is_epoch_missing_value(previous_value):
+                        _epoch_last_valid_cache[cache_key] = previous_value
+
+            if not _is_epoch_missing_value(previous_value) and streak < _epoch_missing_fill_limit:
+                item["value"] = previous_value
+        else:
+            if should_update_state:
+                _epoch_last_valid_cache[cache_key] = current_value
+                _epoch_missing_streak_cache[cache_key] = 0
+
+    return payload
 
 # 过滤日志
 #logger = logger.bind(category="deep_camera_logger")
@@ -72,7 +199,10 @@ class read_queue_data_Thread(MyQThread):
         if self.send_thread is not None and self.send_thread.isRunning():
             self.send_thread.stop()
         super().stop()
+
+
     def dosomething(self):
+        global gids
         if not self.queue.empty():
             # logger.error(f"{self.queue.qsize()}")
             try:
@@ -93,7 +223,7 @@ class read_queue_data_Thread(MyQThread):
                             self.send_thread.add_message(message=message.data, urgent=True, origin=message.origin)
                             pass
                     case 'set_port':
-                        global port_use
+                        global port_use,send_thread
                         port_use=message.data
                         global_setting.set_setting("port", port_use)
                         modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
@@ -104,12 +234,14 @@ class read_queue_data_Thread(MyQThread):
                         else:
                             modbus.close()
                             modbus = ModbusRTUMasterNew(port_use, baudrate=115200, timeout=float(
-                                global_setting.get_setting('monitor_data')['Serial']['timeout']), )
+                                 global_setting.get_setting('monitor_data')['Serial']['timeout']), )
                             global_setting.set_setting("modbus", modbus)
+                        if send_thread is not None:
+                            send_thread.set_modbus(modbus)
                     case 'set_experiment_basic_config':
-                        data:dict = message.data
+                        data: dict = message.data
                         if data is not None and isinstance(data, dict):
-                            for key,value in data.items():
+                            for key, value in data.items():
                                 # logger.critical(f"{self.name}<UNK>{key}<UNK>{value}")
                                 global_setting.set_setting(key, value)
                     case 'start':
@@ -169,6 +301,29 @@ class read_queue_data_Thread(MyQThread):
                     case 'stop_modbus':
                         logger.critical(f"{self.name},stop_modbus")
                         stop_modbus()
+                    case "detect_air_modules_only":
+                        port = global_setting.get_setting("port")
+                        detection_session_id = message.data.get("detection_session_id")
+                        all_modules_check_online_state_Not_Each_Mouse_Cage(port, None, detection_session_id)
+                    case "detect_cage_modules_only":
+                        port = global_setting.get_setting("port")
+                        gids_from_message = message.data.get("gids", [])
+                        detection_session_id = message.data.get("detection_session_id")
+
+                        # 使用传入的笼号进行检测
+                        if gids_from_message and len(gids_from_message) > 0:
+                            # 逐个笼子检测
+                            for cage_num in gids_from_message:
+                                cage_num_int = int(cage_num)
+                                logger.info(f"开始检测笼子 {cage_num_int}")
+                                all_modules_check_online_state_Each_Mouse_Cage(port, cage_num_int, detection_session_id)
+                        else:
+                            logger.warning("未收到有效的笼号信息")
+                    case "start_all_modules_detection":
+                        """
+                        开始检测所有模块是否在线
+                        """
+                        all_modules_check_online_state()
                     case _:
                         pass
 
@@ -183,6 +338,219 @@ class read_queue_data_Thread(MyQThread):
 
 
 read_queue_data_thread = read_queue_data_Thread(name="main_monitor_data_read_queue_data_thread")
+
+
+class PeriodicXlsxExportThread(MyQThread):
+    """Periodically exports the current experiment database to xlsx."""
+
+    def __init__(self, name, interval_minutes):
+        super().__init__(name)
+        self.interval_seconds = max(float(interval_minutes) * 60, 1.0)
+        self.next_run_time = time.time() + self.interval_seconds
+
+    def dosomething(self):
+        now = time.time()
+        if now < self.next_run_time:
+            time.sleep(min(1.0, self.next_run_time - now))
+            return
+
+        db_file_path = get_monitor_data_db_file_path()
+        export_file_path = f"{get_monitor_data_export_base_path()}.xlsx"
+
+        if not os.path.exists(db_file_path):
+            logger.warning(f"定时导出xlsx跳过，数据库文件不存在: {db_file_path}")
+            self.next_run_time = time.time() + self.interval_seconds
+            return
+
+        try:
+            success = custom_data_file_util.export_data_to_csv(
+                export_file_path=export_file_path,
+                file_path=db_file_path,
+                show_success_message=False,
+                use_atomic_replace=True
+            )
+            if success:
+                logger.info(f"定时导出xlsx成功: {export_file_path}")
+            else:
+                logger.error(f"定时导出xlsx失败: {export_file_path}")
+        except Exception as e:
+            logger.error(f"定时导出xlsx异常: {e}")
+        finally:
+            self.next_run_time = time.time() + self.interval_seconds
+
+
+def  all_modules_check_online_state():
+    port = global_setting.get_setting("port")
+    global gids,send_thread
+    experiment_settings = global_setting.get_setting("experiment_setting", None)
+    gids = [group.id for group in experiment_settings.groups if
+            group.is_selected == 1] if experiment_settings is not None else []
+    mouse_cage_index =None
+    for i in range(len(gids)+1):
+        # 鼠笼内的模块 参考气路则不运行：
+        if mouse_cage_index is not None:
+            all_modules_check_online_state_Each_Mouse_Cage(port,mouse_cage_index)
+        #气路
+        all_modules_check_online_state_Not_Each_Mouse_Cage(port,mouse_cage_index)
+        # print(f"send_messages:{send_messages}")
+        # 将鼠笼下标循环前移动
+        if mouse_cage_index is not None:
+            if mouse_cage_index == len(gids) - 1:
+                # 最后一个鼠笼 则下一个为参考气路
+                mouse_cage_index = None
+            else:
+                mouse_cage_index = mouse_cage_index + 1
+            pass
+        else:
+            # 当前为参考气 则下一个为第一个鼠笼
+            mouse_cage_index = 0
+            pass
+    pass
+
+
+def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index, detection_session_id=None):
+    """
+    检测单个笼子的笼内模块
+    关键修复：mouse_cage_index 直接代表笼子号（不是数组索引）
+    """
+    global gids, send_thread
+
+    send_messages = []
+
+    # ==================== 获取该笼子对应的从站ID偏移 ====================
+    if mouse_cage_index is None:
+        logger.error("笼子索引不能为None")
+        return
+
+    # 直接使用笼子号作为偏移量计算从站ID
+    slave_id_offset = int(mouse_cage_index)
+
+    for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Module_Info.value:
+        """获取该笼子的所有传感器模块"""
+        for message_struct in data_type.value['send_messages']:
+            message_temp = copy.deepcopy(message_struct.message)
+            message_temp['port'] = port
+
+            # 根据笼子号计算从站ID
+            base_slave_id = int(message_temp['slave_id'], 16)
+            new_slave_id = base_slave_id + 16 * slave_id_offset
+            message_temp['slave_id'] = format(new_slave_id, '02X')
+
+            # 添加笼号信息用于响应时识别
+            message_temp['mouse_cage_number'] = mouse_cage_index
+            message_temp['detection_session_id'] = detection_session_id
+
+            send_messages.append({'message': message_temp})
+
+            # logger.debug(
+            #     f"  准备报文: 模块={data_type}, 从站ID={message_temp['slave_id']}, "
+            #     f"笼子={mouse_cage_index}"
+            # )
+
+    # ==================== 发送所有报文 ====================
+    for msg in send_messages:
+        send_thread.add_message(message=msg, urgent=True, origin="New_main_experiment_setting")
+
+    # logger.critical(
+    #     f"笼子 {mouse_cage_index} 共发送 {len(send_messages)} 条报文\n"
+    #     f"{'=' * 80}\n"
+    # )
+
+
+def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index, detection_session_id=None):
+    """
+    检测气路模块的在线状态
+    """
+    send_messages = []
+    # ==================== 获取鼠笼号 ====================
+    if mouse_cage_index is not None:
+        logger.debug(f"笼子 {mouse_cage_index} 跳过气路检测，仅参考气路需要检测")
+        return
+    else:
+        cage_label = "参考气路"
+
+    # ==================== 只做状态查询 ====================
+    # 查询从站 02 (UFC)
+    status_msg_02 = Send_Message(
+        slave_address='2',
+        slave_desc="02-UFC状态查询",
+        function_code=4,
+        function_desc="读取UFC模块状态",
+        message={
+            'port': port,
+            'data': ['00', '00', '00', '08'],
+            'slave_id': '2',
+            'function_code': '11',
+            'timeout': 1,
+            'module_type': 'status_read',
+            'device_type': 'UFC',
+            'cage_index': mouse_cage_index,
+            'mouse_cage_number': None,
+            'detection_session_id': detection_session_id
+        }
+    )
+    send_messages.append(status_msg_02)
+
+    # 查询从站 03 (UGC)
+    status_msg_03 = Send_Message(
+        slave_address='3',
+        slave_desc="03-UGC状态查询",
+        function_code=2,
+        function_desc="读取UGC模块状态",
+        message={
+            'port': port,
+            'data': ['00', '00', '00', '05'],
+            'slave_id': '3',
+            'function_code': '5',
+            'timeout': 1,
+            'module_type': 'status_read',
+            'device_type': 'UGC',
+            'cage_index': mouse_cage_index,
+            'mouse_cage_number': None,
+            'detection_session_id': detection_session_id
+        }
+    )
+    send_messages.append(status_msg_03)
+
+    # 查询从站 04 (ZOS) - 改用功能码01读传感器状态
+    status_msg_04 = Send_Message(
+        slave_address='4',
+        slave_desc="04-ZOS状态查询",
+        function_code=1,
+        function_desc="读取ZOS传感器状态",
+        message={
+            'port': port,
+            'data': ['00', '08', '00', '01'],  # 读参考气(08)状态
+            'slave_id': '4',
+            'function_code': '1',  # 改为功能码01
+            'timeout': 1,
+            'module_type': 'status_read',
+            'device_type': 'ZOS',
+            'cage_index': mouse_cage_index,
+            'mouse_cage_number': None,
+            'detection_session_id': detection_session_id
+        }
+    )
+    send_messages.append(status_msg_04)
+
+    # ==================== 发送所有报文 ====================
+    for send_msg in send_messages:
+        send_thread.add_message(
+            message={'message': send_msg.message},
+            urgent=True,
+            origin="New_main_experiment_setting"
+        )
+
+    # ==================== 日志记录（只记录状态查询）====================
+    # 只统计状态查询的消息数量，不记录气路切换操作
+    status_count = sum(1 for msg in send_messages if msg.message.get('module_type') == 'status_read')
+
+    # 使用 debug 级别记录日志，只显示状态查询
+    logger.debug(
+        f"气路模块状态检测 | {cage_label} | "
+        f"发送{status_count}条状态查询报文"
+    )
+
 
 """
 数据存储区域 start
@@ -258,29 +626,6 @@ class Store_Thread(MyQThread):
 
         return success, error
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     def _send_storage_result(self, data_item, success, error):
         """发送存储结果到对应的结果队列"""
         if data_item.result_queue is not None:
@@ -344,17 +689,16 @@ class Send_thread(MyQThread):
 
 
     def stop(self):
-        # if self.modbus is not None:
-        #     self.modbus.close()
+        if self.modbus is not None:
+            self.modbus.close()
         super().stop()
 
     def set_modbus(self, modbus):
         self.modbus = modbus
 
     def run(self):
-
-        logger.warning(f"{self.name} thread {threading.get_ident()} has been started！")
-        self._running = True
+        logger.warning(f"{self.name} thread has been started！")
+        self._running=True
         self._stop_requested = False
         self._paused = False  # 启动时重置状态
         global lock, total_messages_processed, store_Q, store_Q_lock
@@ -386,18 +730,20 @@ class Send_thread(MyQThread):
                         try:
                             with self.priority_queue_lock:
                                 message = self.priority_queue.get_nowait()
-                            send_message = message['message']
+                            send_message = message['message']['message']
 
                             logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
-                            response, response_hex, send_state, return_data = self.modbus.send_command(
+                            response, response_hex, send_state, return_data= self.modbus.send_command(
                                 slave_id=send_message['slave_id'],
                                 function_code=send_message['function_code'],
                                 data_hex_list=send_message['data'],
 
                                 is_parse_response=False
                             )
+                            response_return_data =copy.deepcopy(return_data)
+                            final_return_data = response_return_data
                             # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
-
+                            parser_message=""
                             if send_state:
                                 return_data, parser_message = self.modbus.parse_response(response=response,
                                                                                          response_hex=response.hex(),
@@ -405,41 +751,79 @@ class Send_thread(MyQThread):
                                                                                          slave_id=
                                                                                          send_message['slave_id'],
                                                                                          function_code=
-                                                                                         send_message[
-                                                                                             'function_code'], )
-
+                                                                                         send_message['function_code'], )
+                                if return_data is not None:
+                                    final_return_data = {**response_return_data, **return_data}
                                 # 如果为1104 环境模块 存储大气压值
-                                if response.hex()[:4] == "1104" and return_data.get("data") and len(
-                                        return_data.get("data")) > 1:
-                                    datas = return_data.get("data")
+                                if response.hex()[:4] =="1104" and  final_return_data.get("data") and len(final_return_data.get("data"))>1:
+                                    datas = final_return_data.get("data")
                                     for data in datas:
                                         desc = data.get("desc")
                                         if desc and desc == "大气压测量值(KPa)":
                                             global_setting.set_setting("air_pressure_1104", float(data.get("value")))
                                             break
-                                # 把返回数据返回给源头
-                                message_struct = ObjectQueueItem(to=message['origin'],
-                                                                 data=parser_message,
-                                                                 origin='main_monitor_data')
 
+                            if 'detection_session_id' in send_message:
+                                final_return_data['detection_session_id'] = send_message.get('detection_session_id')
+
+                            # 把返回数据返回给源头
+                            message_struct = None
+
+                            # 检查是否需要返回给GUI
+                            should_send_to_gui = not send_message.get('no_response', False)
+                            if should_send_to_gui and message['origin'] == "New_main_experiment_setting":
+                                # ==================== 判断是否为气路模块 ====================
+                                is_air_path_module = final_return_data.get('module_name') in ['UFC', 'UGC', 'ZOS']
+
+                                if is_air_path_module:
+                                    # 气路模块响应
+                                    message_struct = ObjectQueueItem(
+                                        to=message['origin'],
+                                        data=final_return_data,
+                                        title="Not_Each_Mouse_Cage_detect_finished",  # 气路模块标题
+                                        origin='main_monitor_data'
+                                    )
+                                    logger.debug(f"气路模块 {final_return_data.get('module_name')} 检测完成")
+                                else:
+                                    # 鼠笼内模块响应
+                                    message_struct = ObjectQueueItem(
+                                        to=message['origin'],
+                                        data=final_return_data,
+                                        title="Each_Mouse_Cage_detect_finished",  # 鼠笼内模块标题
+                                        origin='main_monitor_data'
+                                    )
+                                    logger.debug(f"鼠笼内模块 {final_return_data.get('module_name')} 检测完成")
+
+
+                            elif should_send_to_gui and send_state:
+                                message_struct = ObjectQueueItem(
+                                    to=message['origin'],
+                                    data=parser_message,
+                                    origin='main_monitor_data'
+                                )
+
+                            if message_struct is not None:
                                 global_setting.get_setting("send_message_queue").put(message_struct)
                                 logger.debug(f"main_monitor_data将响应报文的解析数据返回源头：{message_struct}")
+                            elif not should_send_to_gui:
+                                # logger.debug(
+                                #     f"气路切换操作完成 | 模块: {send_message.get('module_type')} | 操作: {send_message.get('switch_step')}")
                                 pass
                         except queue.Empty:
-                            self.priority_queue_empty = True
+                            self.priority_queue_empty=True
                             pass
-                        send_message = None
+                        send_message=None
                         # 处理普通消息
                         try:
-                            # !
+                            #!
                             with self.normal_queue_lock:
                                 message = self.normal_queue.get(timeout=0.1)
                             send_message = message['message']
                             # logger.critical(f"send_thread:{self.name}<UNK>{message}")
-                            # 消息没带type则当前不为参考气路，则进行鼠笼内传感器值获取 否则不获取
-                            if message and message.get('type', None) is None:
-                                start_time = time.time()
-                                response, response_hex, send_state, return_data = self.modbus.send_command(
+                            # 普通鼠笼消息直接发送；参考分支只放行显式允许的 reference_enm
+                            if message and message.get('type', None) in (None, 'reference_enm'):
+                                start_time=time.time()
+                                response, response_hex, send_state,return_data = self.modbus.send_command(
                                     slave_id=send_message['slave_id'],
                                     function_code=send_message['function_code'],
                                     data_hex_list=send_message['data'],
@@ -449,8 +833,7 @@ class Send_thread(MyQThread):
                                 if response is not None:
                                     logger.critical(f"报文{response.hex()}发收时间：{(end_time - start_time):.3f}秒")
                                 else:
-                                    logger.critical(
-                                        f"报文{send_message['slave_id']}{send_message['function_code']}{send_message['data']},出现问题！：发收时间：{(end_time - start_time):.3f}秒")
+                                    logger.critical(f"报文{send_message['slave_id']}{send_message['function_code']}{send_message['data']},出现问题！：发收时间：{(end_time - start_time):.3f}秒")
                                 # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
                                 if send_state:
                                     # start_time =time.time()
@@ -460,8 +843,7 @@ class Send_thread(MyQThread):
                                                                                              slave_id=
                                                                                              send_message['slave_id'],
                                                                                              function_code=
-                                                                                             send_message[
-                                                                                                 'function_code'], )
+                                                                                             send_message['function_code'], )
 
                                     # end_time = time.time()
                                     # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
@@ -482,41 +864,38 @@ class Send_thread(MyQThread):
                                                 q = global_setting.get_setting("queue", None)
                                                 if q:
                                                     q.put(
-                                                        ObjectQueueItem(origin="main_monitor_data",
-                                                                        to="MainWindow_index",
+                                                        ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
                                                                         title="mouse_cage_inner_module_running_state",
                                                                         data=f"{time_util.get_format_from_time(time.time())} | {data.get('value')}",
-                                                                        time=time_util.get_format_from_time(
-                                                                            time.time())))
+                                                                        time=time_util.get_format_from_time(time.time())))
                                                 break
                                     pass
-                                return_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                                return_data['time']= datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
                                 result = store_data_with_result(return_data, need_result=True, timeout=5)
                                 if result and result.success:
                                     logger.debug(f"数据存储成功{response_hex}，ID: {result.item_id}")
                                 else:
-                                    logger.error(
-                                        f"数据{response_hex}存储失败: {result.error if result else '未知错误'}")
-                                    # logger.info(f"{total_messages_processed}|{return_data}")
+                                    logger.error(f"数据{response_hex}存储失败: {result.error if result else '未知错误'}")
+                                # logger.info(f"{total_messages_processed}|{return_data}")
                                     pass
 
                         except queue.Empty:
-                            self.normal_queue_empty = True
+                            self.normal_queue_empty=True
                             break
                     except Exception as e:
-                        logger.error(f"{e}")
+                        logger.error(f"{AsyPromise._format_error_message('',e)}")
                     finally:
-                        if self.normal_queue_empty:
+                        if self.normal_queue_empty or MESSAGE_BATCH_SIZE ==0:
                             continue
                         if send_message is not None:
                             logger.info(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应结束")
                             with lock:
                                 if total_messages_processed % MESSAGE_BATCH_SIZE == 0:
-                                    barrier: threading.Barrier = global_setting.get_setting("barrier")
-                                    if barrier is not None:
-                                        logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
-                                        barrier.wait()
+                                    # barrier: threading.Barrier = global_setting.get_setting("barrier")
+                                    # if barrier is not None:
+                                    #     logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
+                                    #     barrier.wait()
                                     total_messages_processed = 1
                                     MESSAGE_BATCH_SIZE = 0
 
@@ -525,16 +904,15 @@ class Send_thread(MyQThread):
                                 else:
                                     total_messages_processed += 1
                         else:
-                            # 如果遇到未知错误，则跳过这条报文
-                            logger.error(
-                                f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束")
+                            #如果遇到未知错误，则跳过这条报文
+                            logger.error(f"响应报文{total_messages_processed}/{MESSAGE_BATCH_SIZE}响应遇到未知错误，直接跳过这条报文并结束")
                             with lock:
 
                                 if MESSAGE_BATCH_SIZE == 0 or total_messages_processed % MESSAGE_BATCH_SIZE == 0:
-                                    barrier: threading.Barrier = global_setting.get_setting("barrier")
-                                    if barrier is not None:
-                                        logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
-                                        barrier.wait()
+                                    # barrier: threading.Barrier = global_setting.get_setting("barrier")
+                                    # if barrier is not None:
+                                    #     logger.debug(f"barrier_鼠笼内部传感器 run one batch done ! ")
+                                    #     barrier.wait()
 
                                     total_messages_processed = 1
                                     MESSAGE_BATCH_SIZE = 0
@@ -557,45 +935,6 @@ class Send_thread(MyQThread):
             logger.warning(f"{self.name} thread run() ended")
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class Add_message_thread(MyQThread):
     def __init__(self,name,send_thread, port):
         super().__init__(name=name)
@@ -603,73 +942,177 @@ class Add_message_thread(MyQThread):
         self.port=port
         self.mouse_cage_index=None
         pass
-    def before_Runing_work(self):
+    def run(self):
+        logger.warning(f"{self.name} thread has been started！")
+        self._running=True
+        # 发送消息
+        global MESSAGE_BATCH_SIZE,gids
+
         # 等待气路启动
-        wait_UFC_UGC_ZOS_start_event.wait()
-        pass
-    def dosomething(self):
-        global MESSAGE_BATCH_SIZE
-        send_messages = []
-        # 每个笼子里的传感器的send_messages
-        for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
-            """debugger专用 需要哪个模块的数据监控就放进去"""
-            # logger.critical(f"data type : {data_type}")
-            if data_type in [
-                            Modbus_Slave_Send_Messages_Senior_Data.ENM,
-                              Modbus_Slave_Send_Messages_Senior_Data.EM,
-                              Modbus_Slave_Send_Messages_Senior_Data.DWM,
-                              Modbus_Slave_Send_Messages_Senior_Data.WM
-            ]:
-                # 所有消息
-                for message_struct in data_type.value['send_messages']:
+        # wait_UFC_UGC_ZOS_start_event.wait()
+        while self._running:
+            self.mutex.lock()
+            if self._paused:
+                self.condition.wait(self.mutex)  # 等待条件变量
+            self.mutex.unlock()
 
-                    message_temp = copy.deepcopy(message_struct.message)
-                    message_temp['port'] =  self.port
-
-                    # logger.critical(f"add_message_thread_mouse_cage_index:{self.mouse_cage_index}")
-                    if self.mouse_cage_index is not None:
-
-                        mouse_cage = gids[self.mouse_cage_index] if gids else 1
-                        message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
-                        send_messages.append({'message': message_temp})
-                    else:
-                        #参考气路则没有发送鼠笼内传感器
-                        send_messages.append({'message': message_temp,'type':'reference'})
-                    MESSAGE_BATCH_SIZE += 1
+            barrier = global_setting.get_setting("barrier")
+            #拿到气路启动是否启动的状态
+            sync_with_gas = barrier is not None and getattr(barrier, "parties", 1) > 1
+            #如果气路 启动了就拿全局下标，否则就 拿自己的内部下标
+            # current_mouse_cage_index = global_setting.get_setting("cage_number_list_index", None) if sync_with_gas else self.mouse_cage_index
+            current_mouse_cage_index =copy.deepcopy(self.mouse_cage_index)
+            #如果气路还没启动
+            # if not sync_with_gas:
+            #     global_setting.set_setting("cage_number_list_index", current_mouse_cage_index)
 
 
-            pass
-        for msg in send_messages:
-            self.send_thread.add_message(message=msg, urgent=False)
-        if self.mouse_cage_index is not None:
-            mouse_cage = gids[self.mouse_cage_index] if gids else 1
-        else:
-            mouse_cage = None
-        #     # 等待从线程处理完当前批次
-        logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len([msg for msg in send_messages if msg.get('type') is None])}条报文！"
-        logger.info(logo_text)
-        queue = global_setting.get_setting("queue", None)
-        if queue:
-            queue.put(
-                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="mouse_cage_inner_module_running_state",
-                                data=logo_text,
-                                time=time_util.get_format_from_time(time.time())))
-        # print(f"send_messages:{send_messages}")
-        # 将鼠笼下标循环前移动
-        if self.mouse_cage_index is not None:
-            if self.mouse_cage_index == len(gids) - 1:
-                # 最后一个鼠笼 则下一个为参考气路
-                self.mouse_cage_index = None
+            send_messages = []
+            # # 公共传感器数据的send_messages  现在只发传感器数值查询报文DEBUGGER
+            # for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Senior_Data.value:
+            #     """debugger专用 需要哪个模块的数据监控就放进去"""
+            #     if data_type in [
+            #         Modbus_Slave_Send_Messages_Senior_Data.UFC,
+            #         Modbus_Slave_Send_Messages_Senior_Data.UGC,
+            #         Modbus_Slave_Send_Messages_Senior_Data.ZOS
+            #     ]:
+            #         # 所有消息
+            #         for message_struct in data_type.value['send_messages']:
+            #             message_temp = message_struct.message
+            #             message_temp['port'] =  self.port
+            #             self.send_thread.add_message(message=message_temp, urgent=False)
+            #             send_messages.append(message_temp)
+            #             MESSAGE_BATCH_SIZE += 1
+            # 每个笼子里的传感器的send_messages
+            for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
+                """debugger专用 需要哪个模块的数据监控就放进去"""
+                # logger.critical(f"data type : {data_type}")
+                if data_type in [
+                                Modbus_Slave_Send_Messages_Senior_Data.ENM,
+                                  Modbus_Slave_Send_Messages_Senior_Data.EM,
+                                  Modbus_Slave_Send_Messages_Senior_Data.DWM,
+                                  Modbus_Slave_Send_Messages_Senior_Data.WM
+                ]:
+                    # 所有消息
+                    for message_struct in data_type.value['send_messages']:
+
+                        message_temp = copy.deepcopy(message_struct.message)
+                        message_temp['port'] =  self.port
+
+                        # logger.critical(f"add_message_thread_mouse_cage_index:{self.mouse_cage_index}")
+                        if current_mouse_cage_index is not None:
+
+                            mouse_cage = gids[current_mouse_cage_index] if gids else 1
+                            message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
+                            send_messages.append({'message': message_temp})
+                        else:
+                            # Reference branch only sends ENM to avoid misrouting other cage modules.
+                            if data_type == Modbus_Slave_Send_Messages_Senior_Data.ENM:
+                                send_messages.append({'message': message_temp, 'type': 'reference_enm'})
+                            else:
+                                continue
+                        MESSAGE_BATCH_SIZE += 1
+
+
+                pass
+            for msg in send_messages:
+                self.send_thread.add_message(message=msg, urgent=False)
+            if current_mouse_cage_index is not None:
+                mouse_cage = gids[current_mouse_cage_index] if gids else 1
             else:
-                self.mouse_cage_index = self.mouse_cage_index + 1
-            pass
-        else:
-            # 当前为参考气 则下一个为第一个鼠笼
-            self.mouse_cage_index = 0
-            pass
-        batch_complete_event.wait()
+                mouse_cage = None
+            #     # 等待从线程处理完当前批次
+            logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len(send_messages)}条报文！"
+            logger.info(logo_text)
+            queue = global_setting.get_setting("queue", None)
+            if queue:
+                queue.put(
+                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="mouse_cage_inner_module_running_state",
+                                    data=logo_text,
+                                    time=time_util.get_format_from_time(time.time())))
+            # print(f"send_messages:{send_messages}")
+            # 将鼠笼下标循环前移动
+            # ★ 关键修复：在移动笼子索引之前，先把当前笼子索引同步给 barrier_action ？？？？？
+            # if not sync_with_gas:
+            #     global_setting.set_setting("cage_number_list_index", self.mouse_cage_index)
+            #     if self.mouse_cage_index is not None:
+            #         if self.mouse_cage_index == len(gids) - 1:
+            #         # 最后一个鼠笼 则下一个为参考气路
+            #             self.mouse_cage_index = None
+            #         else:
+            #             self.mouse_cage_index = self.mouse_cage_index + 1
+            #         pass
+            #     else:
+            #     # 当前为参考气 则下一个为第一个鼠笼
+            #         self.mouse_cage_index = 0
+            #         pass
 
-        logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
+            global_setting.set_setting("cage_number_list_index", current_mouse_cage_index)
+            if self.mouse_cage_index is not None:
+                if self.mouse_cage_index == len(gids) - 1:
+                # 最后一个鼠笼 则下一个为参考气路
+                    self.mouse_cage_index = None
+                else:
+                    self.mouse_cage_index = self.mouse_cage_index + 1
+                pass
+            else:
+            # 当前为参考气 则下一个为第一个鼠笼
+                self.mouse_cage_index = 0
+                pass
+            batch_complete_event.wait()
+
+            # 在这里手动触发 barrier（只有自己一个线程，立刻触发 barrier_action）
+            try:
+                barrier = global_setting.get_setting("barrier")
+                if barrier is not None:
+                    barrier.wait()
+            except threading.BrokenBarrierError:
+                logger.error("barrier broken，跳过本轮")
+
+            logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
+
+            # time.sleep(5)
+
+
+
+
+
+
+
+
+
+def _get_monitor_data_experiment_name():
+    experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+    if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+        return os.path.splitext(os.path.basename(experiment_setting_file))[0]
+    return "experiment"
+
+
+def get_monitor_data_experiment_dir():
+    monitor_data_config = global_setting.get_setting('monitor_data')
+    storage_config = monitor_data_config['STORAGE']
+    folder_name = (
+        f"{_get_monitor_data_experiment_name()}_"
+        f"{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}"
+    )
+    return os.path.abspath(
+        os.path.join(
+            os.getcwd(),
+            storage_config['fold_path'],
+            str(storage_config['sub_fold_path']).strip("/\\"),
+            folder_name
+        )
+    )
+
+
+def get_monitor_data_db_file_path():
+    return os.path.join(get_monitor_data_experiment_dir(), "data", "data.db")
+
+
+def get_monitor_data_export_base_path():
+    experiment_dir = get_monitor_data_experiment_dir()
+    return os.path.join(os.path.dirname(experiment_dir), os.path.basename(experiment_dir))
+
 
 def copy_experiment_setting_file():
     #将实验配置存储到该实验的文件夹中去
@@ -685,8 +1128,7 @@ def copy_experiment_setting_file():
         #获取文件的扩展名
         file_name_extension = os.path.splitext(file_name)[1]
         # 定义文件夹路径
-        folder_path_copy = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE']['fold_path'] + os.path.join(
-            global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time',time.time()))}","experiment_setting")
+        folder_path_copy = os.path.join(get_monitor_data_experiment_dir(), "experiment_setting")
 
         # 创建文件夹（如果不存在）
         os.makedirs(folder_path_copy, exist_ok=True)
@@ -702,6 +1144,7 @@ ufc_ugc_zos=None
 ufc_ugc_zos_thread:UFC_UGC_ZOS_index =None
 # 存储线程
 store_thread:Store_Thread = None
+periodic_xlsx_export_thread: PeriodicXlsxExportThread = None
 # 发送报文线程
 send_thread :Send_thread= None
 add_message_thread:Add_message_thread = None
@@ -720,26 +1163,48 @@ add_message_thread:Add_message_thread = None
 
 
 #一轮模块发送报文结束
-def barrier_action():
-    end_time = time.time()
+def get_epoch_mouse_cage_index():
     mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
     mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
-    # logger.critical(f"barrier action run :mouse_cage_index before:{mouse_cage_index}")
+    barrier = global_setting.get_setting("barrier")
+    parties = getattr(barrier, "parties", 1) if barrier is not None else 1
+
+    if not mouse_cages_inc:
+        return mouse_cage_index
+
+    if parties <= 1:
+        return mouse_cage_index
+
+    if mouse_cage_index is None:
+        return len(mouse_cages_inc) - 1
+    if mouse_cage_index == 0:
+        return None
+    return mouse_cage_index - 1
+
+
+def barrier_action():
+    query_end_limit = time.time()
+    mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
+    mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
+    logger.critical(f"barrier action run :mouse_cage_index before:{mouse_cage_index}")
     # 因为在zos运行完之后就更新了mouse_cage_index,所以现在得到的index是比上一轮多1的，所以需要往回退1
-    if mouse_cage_index is  None:
-        mouse_cage_index= len(mouse_cages_inc)-1
-        pass
-    elif mouse_cage_index ==0:
-        mouse_cage_index=None
-        pass
-    else:
-        mouse_cage_index=mouse_cage_index-1
-        pass
+    # if mouse_cage_index is  None:
+    #     mouse_cage_index= len(mouse_cages_inc)-1
+    #     pass
+    # elif mouse_cage_index ==0:
+    #     mouse_cage_index=None
+    #     pass
+    # else:
+    #     mouse_cage_index=mouse_cage_index-1
+    #     pass
     # logger.critical(f"barrier action  run :mouse_cage_index after:{mouse_cage_index}")
     mouse_cage_number = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
 
 
+    handle = Monitor_Datas_Handle()  # # 创建数据库操作器
     start_time = global_setting.get_setting("start_time_messages_sent_epoch_for_running", time.time())
+    actual_end_time = handle.query_epoch_actual_end_time(start_time, query_end_limit)
+    end_time = actual_end_time if actual_end_time is not None else start_time
 
     logo_text =f"{time_util.get_format_from_time(time.time())} | 一轮结束|结束时间：{time_util.get_format_from_time(end_time)}|开始时间：{time_util.get_format_from_time(start_time)}|用时：{time_util.format_timedelta(a= datetime.fromtimestamp(end_time),b= datetime.fromtimestamp(start_time),signed=True,zero_pad=True)}|一轮传感器发送报文结束|期间一共发送{ global_setting.get_setting('messages_sent_epoch_for_running', 0)}条报文。"
     logger.warning(logo_text)
@@ -750,9 +1215,8 @@ def barrier_action():
                             title="epoch_running_state",
                             data=logo_text,
                             time=time_util.get_format_from_time(time.time())))
-    handle = Monitor_Datas_Handle()  # # 创建数据库操作器
     # 去数据库里查询 所有的在这个时间段的数据
-    results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time)
+    results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time, start_exclusive=True)
     # logger.critical(f"{results}")
     store_Datas =[]
     # store_Datas.append({'desc':'序号','value':None})
@@ -776,40 +1240,65 @@ def barrier_action():
                             'SpanCalibration_data__carbon_calibration_span_value') is not None else None})
     store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') if results.get(
                             f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') is not None else None   })
-    store_Datas.append({'desc': 'ugc_流量计1', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
+    store_Datas.append({'desc': '传感器状态', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
                             f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1')  is not None else None })
-    store_Datas.append({'desc': '气压(KPa)',
-                        'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__air_pressure') if results.get(
-                            f'UGC_monitor_data_cage_{mouse_cage_number}__air_pressure') is not None else None})
+    co2_origin_num = results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
+        f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None
+    gas_pressure = results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') if results.get(
+        f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') is not None else None
+    standard_atmospheric_pressure = float(
+        global_setting.get_setting('UFC_UGC_ZOS_config')['PARAM']['standard_atmospheric_pressure'])
+
+    co2_num = co2_origin_num
+    if co2_origin_num is not None and gas_pressure is not None and gas_pressure != 0:
+        co2_num = round(co2_origin_num * standard_atmospheric_pressure / gas_pressure, 4)
+
+    fitted_co2_num = None
+    if co2_num is not None:
+        fitted_co2_ppm = _co2_realtime_compensator.compensate(
+            _channel_number_to_co2_channel_name(mouse_cage_number),
+            float(co2_num) * 10000
+        )
+        fitted_co2_num = round(float(fitted_co2_ppm) / 10000, 4)
+
+    store_Datas.append({'desc': '拟合后CO2', 'value': fitted_co2_num})
     store_Datas.append(
-        {'desc': '补偿前CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_origin_num') if results.get(
-            f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_origin_num') is not None else None})
-    store_Datas.append({'desc': 'CO2(%)', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
-                            f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None })
-    store_Datas.append({'desc': '预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)', 'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_nums') if results.get(
-                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_origin_nums') is not None else None })
-    store_Datas.append({'desc': '氧气传感器测量值(%)',
+        {'desc': '补偿前CO2', 'value': co2_origin_num})
+    store_Datas.append({'desc': '气压补偿后CO2', 'value': co2_num})
+    store_Datas.append({'desc': '氧分压(hPa)',
+                        'value': results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_partial_pressure') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_partial_pressure') is not None else None})
+    store_Datas.append({'desc': 'ZOS温度测量值(°C)',
+                        'value': results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__zos_temperature_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__zos_temperature_num') is not None else None})
+    store_Datas.append({'desc': '气体压力(hPa)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') is not None else None})
+    store_Datas.append({'desc': '氧浓度(%)',
                         'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') if results.get(
                             f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None else None})
+    store_Datas.append({'desc': '干基氧浓度(%)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__dry_basis_oxygen_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__dry_basis_oxygen_num') is not None else None})
+    store_Datas.append({'desc': 'ZOS故障码',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__fault_code') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__fault_code') is not None else None})
+    store_Datas.append({'desc': 'ZOS温度2测量值(°C)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_temperature_2_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_temperature_2_num') is not None else None})
+    store_Datas.append({'desc': 'ZOS湿度测量值(%RH)',
+                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_humidity_num') if results.get(
+                            f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_humidity_num') is not None else None})
 
-    store_Datas.append({'desc': 'ZOS_流量(sccm)',
-                        'value': results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__flow_nums') if results.get(
-                            f'ZOS_monitor_data_cage_{mouse_cage_number}__flow_nums') is not None else None})
 
 
 
-
-
-    # 非参考气
-    remarks_reference=""
     if mouse_cage_number != int(global_setting.get_setting('configer')['mouse_cage']['reference']):
         # 获取参考气轮次的数据：
         reference_data = handle.query_current_one_data(table_name=f"Epoch_data_cage_{int(global_setting.get_setting('configer')['mouse_cage']['reference'])}")
         if reference_data is not None:
-            # 获得所有参考备注
-            remarks_reference = ";"
-            remarks_reference += reference_data.get('remarks')  if reference_data.get('remarks') is not None else ""
-            # logger.critical(f"reference_data:{reference_data}")
             store_Datas.append(
                 {'desc': 'ufc_参考气流量计测量值(sccm)',
                  'value': reference_data.get(f'UFC_flow_num') if reference_data.get(
@@ -819,21 +1308,17 @@ def barrier_action():
                  'value': reference_data.get(f'UGC_CO2_num') if reference_data.get(
                             f'UGC_CO2_num') is not None else None })
 
-
-
-
-
             store_Datas.append(
-                {'desc': '参考气氧气测量值(%)',
+                {'desc': '参考气氧浓度(%)',
                  'value': reference_data.get(f'ZOS_oxygen_num') if reference_data.get(
-                            f'ZOS_oxygen_num') is not None else None })
+                     f'ZOS_oxygen_num') is not None else None})
 
-            if results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None and reference_data.get(f'UGC_CO2_num') is not None:
+            if co2_num is not None and reference_data.get(f'UGC_CO2_num') is not None:
 
 
                 store_Datas.append(
                     {'desc': 'CO2生产量(%)',
-                     'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') -reference_data.get(f'UGC_CO2_num')})
+                     'value': round(co2_num - reference_data.get(f'UGC_CO2_num'), 4)})
             if results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None and reference_data.get(f'ZOS_oxygen_num') is not None:
 
 
@@ -843,45 +1328,48 @@ def barrier_action():
                      'value':reference_data.get(f'ZOS_oxygen_num')-results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num')})
 
 
-            #求红外温度的平均值
-            temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean',None)
-            if temp_values is not None:
-                infrared_temp_average = None
-                # 过滤掉None值
-                if type(temp_values) is list:
-                    filter_temp_values = [x for x in temp_values if x is not None]
-                    if len(filter_temp_values) != 0:
-                        infrared_temp_average = round(sum(filter_temp_values) / len(filter_temp_values), 4)
-                else:
-                    infrared_temp_average = temp_values
-                store_Datas.append({'desc': '鼠笼红外温度(°C)',
-                                    'value': infrared_temp_average})
             pass
 
-        store_Datas.append(
-            {'desc': '温度测量值(°C)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') is not None else None })
-        store_Datas.append(
-            {'desc': '湿度测量值(%RH)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') is not None else None })
-        store_Datas.append(
-            {'desc': '噪声测量值(dB)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num')  if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num') is not None else None})
-        store_Datas.append({'desc': '大气压测量值(KPa)',
-                            'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') is not None else None})
-        store_Datas.append({'desc': '当前计量周期内跑轮圈数测量值',
-                            'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num')  if results.get(
-                            f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num') is not None else None})
-        store_Datas.append(
-            {'desc': '饮水重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
-                            f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None})
-        store_Datas.append(
-            {'desc': '食物重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') if results.get(
-                            f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
-        store_Datas.append(
-            {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
-                            f'WM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
+    # 本笼自己的环境/红外/称重类数据，参考笼和普通笼都应写入总表
+    temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_max', None)
+    if temp_values is None:
+        temp_values = results.get(f'MouseInfrared_data_cage_{mouse_cage_number}__tmp_hs_mean', None)
+    if temp_values is not None:
+        infrared_temp_max = None
+        # 过滤掉None值
+        if type(temp_values) is list:
+            filter_temp_values = [x for x in temp_values if x is not None]
+            if len(filter_temp_values) != 0:
+                infrared_temp_max = round(max(filter_temp_values), 4)
+        else:
+            infrared_temp_max = temp_values
+        store_Datas.append({'desc': '鼠笼红外温度(°C)',
+                            'value': infrared_temp_max})
+
+    store_Datas.append(
+        {'desc': '温度测量值(°C)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__temperature_num') is not None else None })
+    store_Datas.append(
+        {'desc': '湿度测量值(%RH)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__humidity_num') is not None else None })
+    store_Datas.append(
+        {'desc': '噪声测量值(dB)', 'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num')  if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__noise_num') is not None else None})
+    store_Datas.append({'desc': '大气压测量值(KPa)',
+                        'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__barometer_num') is not None else None})
+    store_Datas.append({'desc': '当前计量周期内跑轮圈数测量值',
+                        'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num')  if results.get(
+                        f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num') is not None else None})
+    store_Datas.append(
+        {'desc': '饮水重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
+                        f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None})
+    store_Datas.append(
+        {'desc': '食物重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') if results.get(
+                        f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
+    store_Datas.append(
+        {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
+                        f'WM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
 
     store_Datas.append({'desc':'轮次开始时间','value':datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
     store_Datas.append({'desc':'轮次结束时间','value':datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
@@ -889,7 +1377,7 @@ def barrier_action():
     # logger.critical(f"rs:{results}")
     remarks = "".join(f" {key}: {value}; " for key, value in results.items()
                             if "remarks" in key and value is not None and value != [])
-    store_Datas.append({'desc':'备注','value':remarks+remarks_reference})
+    store_Datas.append({'desc':'备注','value':remarks})
     # logger.critical(f"sd:{store_Datas}")
     # store_Datas.append({'desc':'获取时间','value':datetime.now().fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
     handle.stop()
@@ -919,9 +1407,76 @@ def barrier_action():
         logger.info(f"epoch_result_all数据存储成功，ID: {result_all.item_id}")
     else:
         logger.error(f"epoch_result_all数据存储成功: {result_all.error if result_all else '未知错误'}")
-    global_setting.set_setting("start_time_messages_sent_epoch_for_running", end_time+0.1)
+    global_setting.set_setting("start_time_messages_sent_epoch_for_running", end_time)
     global_setting.set_setting("messages_sent_epoch_for_running",
                                0)
+
+
+_raw_store_data_with_result = store_data_with_result
+
+
+def _patch_epoch_store_payload(return_data_struct):
+    if return_data_struct.get("module_name") != "Epoch":
+        return return_data_struct
+
+    payload = copy.deepcopy(return_data_struct)
+    data = payload.get("data")
+    if not isinstance(data, list) or len(data) < 12:
+        return payload
+
+    ufc_flow_index = None
+    oxygen_partial_index = None
+    for index, item in enumerate(data):
+        desc = str(item.get("desc", ""))
+        if ufc_flow_index is None and "sccm)" in desc and "参考" not in desc:
+            ufc_flow_index = index
+        if ufc_flow_index is not None and index > ufc_flow_index and "hPa)" in desc:
+            oxygen_partial_index = index
+            break
+
+    if ufc_flow_index is None or oxygen_partial_index is None or oxygen_partial_index <= ufc_flow_index:
+        return payload
+
+    ugc_block = data[ufc_flow_index + 1:oxygen_partial_index]
+    status_value = None
+    numeric_values = []
+    for item in ugc_block:
+        value = item.get("value")
+        if isinstance(value, str) and status_value is None:
+            status_value = value
+        elif isinstance(value, (int, float)):
+            numeric_values.append(value)
+
+    raw_co2 = numeric_values[-2] if len(numeric_values) >= 2 else None
+    pressure_compensated_co2 = numeric_values[-1] if len(numeric_values) >= 1 else None
+
+    channel_number = payload.get("mouse_cage_number")
+    if channel_number in (None, -1) and data:
+        channel_number = data[0].get("value")
+
+    fitted_co2 = None
+    if pressure_compensated_co2 is not None and channel_number is not None:
+        fitted_ppm = _co2_realtime_compensator.compensate(
+            _channel_number_to_co2_channel_name(channel_number),
+            float(pressure_compensated_co2) * 10000
+        )
+        fitted_co2 = round(float(fitted_ppm) / 10000, 4)
+
+    rebuilt_data = list(data[:ufc_flow_index + 1])
+    rebuilt_data.extend([
+        {"desc": "传感器状态", "value": status_value},
+        {"desc": "拟合后CO2", "value": fitted_co2},
+        {"desc": "补偿前CO2", "value": raw_co2},
+        {"desc": "气压补偿后CO2", "value": pressure_compensated_co2},
+    ])
+    rebuilt_data.extend(data[oxygen_partial_index:])
+    payload["data"] = rebuilt_data
+    return _apply_epoch_carry_forward(payload)
+
+
+def store_data_with_result(return_data_struct, need_result=False, timeout=None):
+    payload = _patch_epoch_store_payload(return_data_struct)
+    return _raw_store_data_with_result(payload, need_result=need_result, timeout=timeout)
 
 
 # def after_run_of_ufc_ugc_zos_barrier_action():
@@ -948,6 +1503,8 @@ def main(q,send_message_q):
     app = QCoreApplication(sys.argv)
     # 设置全局变量
     global_load.load_global_setting_without_Qt()
+    # 初始化串口锁
+    global_setting.set_setting("serial_lock", threading.Lock())
     # 当前鼠笼号列表的下标 参考气的下标为None 注意区分
     global_setting.set_setting("cage_number_list_index", None)
     global_setting.set_setting("queue", q)
@@ -956,7 +1513,7 @@ def main(q,send_message_q):
     # barrier专门用于多个线程需要在某个点同步等待的场景。每个线程执行完自己的工作后调用
     # barrier.wait()，当所有线程都到达这个同步点时，它们会同时继续执行下一轮循环。
     # barrier = ActionCompleteBarrier(4,action=barrier_action)
-    barrier = threading.Barrier(4,action=barrier_action)
+    barrier = DynamicBarrier(1, action=barrier_action)
     global_setting.set_setting("barrier", barrier)
     #专属于ufc ugc zos 的run的barrier
     # ufc_ugc_zos_barrier =ActionCompleteBarrier(3,action=after_run_of_ufc_ugc_zos_barrier_action)
@@ -965,16 +1522,21 @@ def main(q,send_message_q):
     global_setting.set_setting("messages_sent_epoch_for_running",0)
     #每轮运行开始的时间 在气路启动后和一轮结束后会重新赋值
     global_setting.set_setting("start_time_messages_sent_epoch_for_running",time.time())
-    global read_queue_data_thread
+    global read_queue_data_thread,send_thread
 
     read_queue_data_thread.queue = send_message_q
 
     read_queue_data_thread.start()
+
+    # 发送报文线程
+    send_thread = Send_thread(name="monitor_data_send_message")
+    send_thread.start()
+    read_queue_data_thread.send_thread = send_thread
+
     # return store_thread,send_thread,read_queue_data_thread,add_message_thread,ufc_ugc_zos,ufc_ugc_zos_thread
     # 系统退出
     return app.exec()
 def start():
-
     logger.info(f"{'-' * 30}monitor_data_run{'-' * 30}")
     global MESSAGE_BATCH_SIZE, total_messages_processed,gids
     MESSAGE_BATCH_SIZE = 0
@@ -983,9 +1545,10 @@ def start():
     global_setting.set_setting("cage_number_list_index", None)
     # 通道
     experiment_settings = global_setting.get_setting("experiment_setting", None)
-    gids = [group.id for group in experiment_settings.groups] if experiment_settings is not None else []
+    gids = [group.id for group in experiment_settings.groups if
+            group.is_selected == 1] if experiment_settings is not None else []
     # UFC_UGC_ZOS
-    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
+    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread
     ufc_ugc_zos_thread = None
     ufc_ugc_zos = None
     try:
@@ -1001,10 +1564,23 @@ def start():
     store_thread = Store_Thread(name="monitor_data_store_message")
     store_thread.start()
 
-    # 发送报文线程
-    send_thread = Send_thread(name="monitor_data_send_message")
-    send_thread.start()
-    read_queue_data_thread.send_thread = send_thread
+    export_config = global_setting.get_setting('monitor_data').get('EXPORT', {})
+    periodic_interval = float(export_config.get('periodic_xlsx_interval_minutes', 0) or 0)
+    if periodic_interval > 0:
+        if periodic_xlsx_export_thread is not None and periodic_xlsx_export_thread.isRunning():
+            periodic_xlsx_export_thread.stop()
+            periodic_xlsx_export_thread.deleteLater()
+        periodic_xlsx_export_thread = PeriodicXlsxExportThread(
+            name="monitor_data_periodic_xlsx_export",
+            interval_minutes=periodic_interval
+        )
+        periodic_xlsx_export_thread.start()
+        logger.info(f"已启用定时xlsx快照导出，间隔: {periodic_interval} 分钟")
+    else:
+        periodic_xlsx_export_thread = None
+        logger.info("未启用定时xlsx快照导出")
+
+
 
     global port_use
     add_message_thread = Add_message_thread("monitor_data_add_message", send_thread, port_use)
@@ -1070,8 +1646,23 @@ def pause():
     pass
 
 def stop():
+    if global_setting.get_setting("is_calibrating", False):
+        calibration_type = global_setting.get_setting("current_calibration_type", "校准")
+        logger.warning(f"skip monitor_data_stop while calibration is running: {calibration_type}")
+        queue = global_setting.get_setting("queue", None)
+        if queue:
+            queue.put(
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                                title="stop_show_info_except_status_counts",
+                                data=f"{calibration_type}进行中，已跳过自动停止气路，避免误关闭UFC",
+                                time=time_util.get_format_from_time(time.time())))
+        return
     logger.info(f"{'-' * 30}monitor_data_stop{'-' * 30}")
-    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread
+    # 重置barrier回1，下次实验从1开始
+    barrier = global_setting.get_setting("barrier")
+    if barrier is not None:
+        barrier.reset(parties=1)
+    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread
     try:
         logger.error("stop_ufc_ugc_zos")
 
@@ -1102,6 +1693,15 @@ def stop():
                                 time=time_util.get_format_from_time(time.time())))
 
     try:
+        logger.error("stop_periodic_xlsx_export_thread")
+        if periodic_xlsx_export_thread is not None and periodic_xlsx_export_thread.isRunning():
+            periodic_xlsx_export_thread.stop()
+            periodic_xlsx_export_thread.deleteLater()
+        periodic_xlsx_export_thread = None
+    except Exception as e:
+        logger.error(f"关闭实验监测periodic_xlsx_export_thread错误，原因：{e}")
+
+    try:
         logger.error("stop_store_thread")
         if store_thread is not None and store_thread.isRunning():
             store_thread.stop()
@@ -1110,17 +1710,19 @@ def stop():
             queue = global_setting.get_setting("queue", None)
             if queue:
                 queue.put(
-                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_show_info_except_status_counts",
+                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                                    title="stop_show_info_except_status_counts",
                                     data=" 存储线程 已关闭",
                                     time=time_util.get_format_from_time(time.time())))
-            store_thread=None
+            store_thread = None
     except Exception as e:
         logger.error(f"关闭实验监测store_thread错误，原因：{e}")
         # 返回响应
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_show_info_except_status_counts",
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                                title="stop_show_info_except_status_counts",
                                 data=f"关闭实验监测store_thread错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
     try:
@@ -1128,12 +1730,13 @@ def stop():
         if add_message_thread is not None and add_message_thread.isRunning():
             add_message_thread.stop()
             add_message_thread.deleteLater()
-            add_message_thread=None
+            add_message_thread = None
             # 返回响应
             queue = global_setting.get_setting("queue", None)
             if queue:
                 queue.put(
-                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_show_info_except_status_counts",
+                    ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                                    title="stop_show_info_except_status_counts",
                                     data=" 鼠笼内模块报文装载线程 已关闭",
                                     time=time_util.get_format_from_time(time.time())))
     except Exception as e:
@@ -1142,7 +1745,8 @@ def stop():
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_show_info_except_status_counts",
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index",
+                                title="stop_show_info_except_status_counts",
                                 data=f"关闭鼠笼内模块报文装载线程错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
     try:
@@ -1150,7 +1754,7 @@ def stop():
         if send_thread is not None and send_thread.isRunning():
             send_thread.stop()
             send_thread.deleteLater()
-            send_thread=None
+            send_thread = None
             # 返回响应
             queue = global_setting.get_setting("queue", None)
             if queue:
@@ -1164,7 +1768,7 @@ def stop():
         queue = global_setting.get_setting("queue", None)
         if queue:
             queue.put(
-                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_monitor_data_return",
+                ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_gap_system_return",
                                 data=f"关闭鼠笼内模块报文发送线程错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
 
@@ -1178,5 +1782,5 @@ def stop_modbus():
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     send_message_q = multiprocessing.Queue()
-    main(q,send_message_q)
-    start(q,send_message_q)
+    main(q, send_message_q)
+    start(q, send_message_q)

@@ -46,7 +46,7 @@ class Others_Tables(Enum):
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
                 ("recognize_time", "识别时间", " TIMESTAMP "),
-                ("tmp_hs_mean", "均值温度(摄氏度)", "  REAL "),
+                ("tmp_hs_max", "最大值温度(摄氏度)", "  REAL "),
                 ("time", "获取时间", " TIMESTAMP ")
             ],
         }
@@ -91,17 +91,22 @@ class Others_Tables(Enum):
                 ("mouse_cage_infrared_temp", "鼠笼红外温度(°C)", " REAL "),
                 ("UFC_flow_num", "ufc_流量计测量值(sccm)", " INTEGER "),
                 ("reference_flow_num", "ufc_参考气流量计测量值(sccm)", " INTEGER "),
-                ("UGC_flow_num_1", "ugc_流量计1", " INTEGER "),
-                ("UGC_air_pressure", "气压(KPa)", " REAL "),
-                ("UGC_CO2_origin_num", "补偿前CO2(%)", " REAL "),
-                ("UGC_CO2_num", "CO2(%)", " REAL "),
+                ("UGC_flow_num_1", "传感器状态", " TEXT "),
+                ("UGC_air_pressure", "拟合后CO2", " REAL "),
+                ("UGC_CO2_origin_num", "补偿前CO2", " REAL "),
+                ("UGC_CO2_num", "气压补偿后CO2", " REAL "),
                 ("reference_CO2_num", "参考气CO2(%)", " INTEGER "),
                 ("CO2_output_num", "CO2生产量(%)", " REAL "),
-                ("ZOS_oxygen_num", "氧气传感器测量值(%)", " REAL "),
-                ("reference_oxygen_num", "参考气氧气测量值(%)", " INTEGER "),
+                ("ZOS_oxygen_partial_pressure", "氧分压(hPa)", " REAL "),
+                ("ZOS_temperature_num", "ZOS温度测量值(°C)", " REAL "),
+                ("ZOS_gas_pressure", "气体压力(hPa)", " REAL "),
+                ("ZOS_oxygen_num", "氧浓度(%)", " REAL "),
+                ("ZOS_dry_basis_oxygen_num", "干基氧浓度(%)", " REAL "),
+                ("ZOS_fault_code", "ZOS故障码", " INTEGER "),
+                ("ZOS_oxygen_temperature_2_num", "ZOS温度2测量值(°C)", " REAL "),
+                ("ZOS_oxygen_humidity_num", "ZOS湿度测量值(%RH)", " REAL "),
+                ("reference_oxygen_num", "参考气氧浓度(%)", " INTEGER "),
                 ("oxygen_consumption_num", "耗氧量(%)", " REAL "),
-                ("ZOS_flow_nums", "ZOS_流量(sccm)", " REAL "),
-                ("ZOS_oxygen_origin_nums", "预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", " TEXT "),
                 ("ENM_temperature_num", "温度测量值(°C)", " REAL "),
                 ("ENM_humidity_num", "湿度测量值(%RH)", " REAL "),
                 ("ENM_noise_num", "噪声测量值(dB)", " REAL "),
@@ -206,7 +211,7 @@ class Modbus_Slave_Tables(Enum):
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-                ("flow_num_1", "流量计1(ML/min)", " INTEGER "),
+                ("flow_num_1", "传感器状态", " TEXT "),
                 ('air_pressure','气压(KPa)'," REAL "),
                 ("CO2_num", "CO2(%)", " REAL "),
                 ("CO2_origin_num", "补偿前CO2(%)", " REAL "),
@@ -302,10 +307,14 @@ class Modbus_Slave_Tables(Enum):
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-                ("oxygen_num", "氧气传感器测量值(%)", " REAL "),
-                ("oxygen_origin_nums", "预测前氧气传感器测量值(15秒数值,包括压力)(氧气数值,压力数值)", " TEXT "),
-                ("oxygen_consumption_num", "氧气消耗量(%)", " REAL "),
-                ("flow_nums", "流量(sccm)", " REAL "),
+                ("oxygen_partial_pressure", "氧分压(hPa)", " REAL "),
+                ("zos_temperature_num", "ZOS温度测量值(°C)", " REAL "),
+                ("gas_pressure", "气体压力(hPa)", " REAL "),
+                ("oxygen_num", "氧浓度(%)", " REAL "),
+                ("dry_basis_oxygen_num", "干基氧浓度(%)", " REAL "),
+                ("fault_code", "ZOS故障码", " INTEGER "),
+                ("oxygen_temperature_2_num", "ZOS温度2测量值(°C)", " REAL "),
+                ("oxygen_humidity_num", "ZOS湿度测量值(%RH)", " REAL "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
@@ -863,16 +872,18 @@ class Modbus_Slave_Send_Messages_Senior_State(Enum):
     ZOS = {
         'type': Modbus_Slave_Ids.ZOS,
         'send_messages': [
-
-            Send_Message(slave_address=Modbus_Slave_Ids.ZOS.value['address'],
-                         slave_desc=Modbus_Slave_Ids.ZOS.value['description'], function_code=2,
-                         function_desc="读传感器状态信息", message={
+            Send_Message(
+                slave_address=Modbus_Slave_Ids.ZOS.value['address'],
+                slave_desc=Modbus_Slave_Ids.ZOS.value['description'],
+                function_code=1,
+                function_desc="读ZOS传感器状态",
+                message={
                     'port': None,
-                    'data': number_util.set_int_to_4_bytes_list(2),
+                    'data': number_util.set_int_to_4_bytes_list('00080001'),  # 读参考气(08)状态
                     'slave_id': format(int(Modbus_Slave_Ids.ZOS.value['address']), '02X'),
-                    'function_code': format(int(f"{2}", 16), '02X'),
-                }),
-
+                    'function_code': format(int(f"{1}", 16), '02X'),  # 功能码01
+                }
+            ),
         ]
     }
     ENM = {
@@ -1100,14 +1111,18 @@ class  Modbus_Slave_Send_Messages_Senior_Data(Enum):
     ZOS = {
         'type': Modbus_Slave_Ids.ZOS,
         'send_messages': [
-            Send_Message(slave_address=Modbus_Slave_Ids.ZOS.value['address'],
-                         slave_desc=Modbus_Slave_Ids.ZOS.value['description'], function_code=4,
-                         function_desc="读传感器测量值", message={
+            Send_Message(
+                slave_address=Modbus_Slave_Ids.ZOS.value['address'],
+                slave_desc=Modbus_Slave_Ids.ZOS.value['description'],
+                function_code=1,
+                function_desc="读ZOS传感器状态",
+                message={
                     'port': None,
-                    'data': number_util.set_int_to_4_bytes_list(2),
+                    'data': ['00', '08', '00', '01'],  # 读参考气(08)状态
                     'slave_id': format(int(Modbus_Slave_Ids.ZOS.value['address']), '02X'),
-                    'function_code': format(int(f"{4}", 16), '02X'),
-                }),
+                    'function_code': format(int(f"{1}", 16), '02X'),
+                }
+            ),
         ]
     }
     ENM = {

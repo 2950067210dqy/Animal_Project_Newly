@@ -32,7 +32,7 @@ class communication(threading.Thread):
         self.index = index
         self.category = category
 
-        self.port = "COM3"
+        self.port = "COM5"
         self.ser = None  # 串口类
         self.running = True  # 控制线程运行的标志
         # 串口接收实例化
@@ -1222,24 +1222,49 @@ class communication(threading.Thread):
                                             pass
                                         case 4:
                                             """
-                                          04 04 X
-                                          读传感器测量值
-                                           参数长度：5
-                                          """
-                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
-                                                                            function_code=f"{function_code_int:X}",
-                                                                            return_bytes_nums='4',
-
-                                                                            data_hex_list=[
-                                                                                "0x2D",
-                                                                                "0x1F",
-                                                                                "0x05",
-                                                                                "0x08",
-
-                                                                            ],
-                                                                            struct_type="B"
-                                                                            )
-                                            pass
+                                            04 04 X
+                                            读传感器测量值 - 新协议28字节
+                                            """
+                                            return_bytes = self.build_frame(
+                                                slave_id=f"{slave_id_int:X}",
+                                                function_code=f"{function_code_int:X}",
+                                                return_bytes_nums='1C',  # 28字节 = 0x1C
+                                                data_hex_list=random.choice([
+                                                    [
+                                                        # 氧分压 198 → 19.8
+                                                        "0x00", "0x00", "0x00", "0xC6",
+                                                        # 温度1 264 → 26.4 °C
+                                                        "0x00", "0x00", "0x01", "0x08",
+                                                        # 气体压力 10010 → 100.10
+                                                        "0x00", "0x00", "0x27", "0x1A",
+                                                        # 氧浓度 197700 → 19.7700 %
+                                                        "0x00", "0x03", "0x04", "0x44",
+                                                        # 故障码 0
+                                                        "0x00", "0x00", "0x00", "0x00",
+                                                        # 温度2 252 → 25.2 °C
+                                                        "0x00", "0x00", "0x00", "0xFC",
+                                                        # 湿度 567 → 56.7 %RH
+                                                        "0x00", "0x00", "0x02", "0x37",
+                                                    ],
+                                                    [
+                                                        # 氧分压 205 → 20.5
+                                                        "0x00", "0x00", "0x00", "0xCD",
+                                                        # 温度1 271 → 27.1 °C
+                                                        "0x00", "0x00", "0x01", "0x0F",
+                                                        # 气体压力 10085 → 100.85
+                                                        "0x00", "0x00", "0x27", "0x65",
+                                                        # 氧浓度 205316 → 20.5316 %
+                                                        "0x00", "0x03", "0x21", "0xF4",
+                                                        # 故障码 0
+                                                        "0x00", "0x00", "0x00", "0x00",
+                                                        # 温度2 258 → 25.8 °C
+                                                        "0x00", "0x00", "0x01", "0x02",
+                                                        # 湿度 552 → 55.2 %RH
+                                                        "0x00", "0x00", "0x02", "0x28",
+                                                    ],
+                                                ]),
+                                                struct_type="B"
+                                            )
                                         case 5:
                                             """
                                              04 05 X

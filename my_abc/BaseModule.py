@@ -2,7 +2,8 @@
 import queue
 from abc import abstractmethod, ABC
 
-from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea, QHBoxLayout, QMainWindow
+from PyQt6 import QtWidgets
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QScrollArea, QHBoxLayout, QMainWindow, QApplication
 
 from index import Content_index
 from index.Content_index import content_index
@@ -13,7 +14,7 @@ from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import Frame_state, BaseInterfaceType, AppState
 from public.function.promise.AsyPromise import AsyPromise
 from theme.ThemeQt6 import ThemedWindow
-
+from loguru import logger
 
 class BaseModule(ABC):
 
@@ -78,6 +79,22 @@ class BaseModule(ABC):
         # 获取主界面变量
         self.main_gui=main_gui
         pass
+    def sync_menu_with_module(self):
+        """同步顶部菜单和工具栏到当前模块。"""
+        if self.main_gui is None or self.menu_name is None:
+            return
+
+        menu_id = self.menu_name.get("id")
+        if menu_id is None:
+            return
+
+        current_menu_id = getattr(self.main_gui, "current_active_menu_id", None)
+        if current_menu_id == menu_id:
+            return
+
+        switch_toolbar_content = getattr(self.main_gui, "switch_toolbar_content", None)
+        if callable(switch_toolbar_content):
+            switch_toolbar_content(menu_id)
     def set_main_gui_to_children(self):
         # 设置父界面给所有子界面
         if self.interface_widget.frame_obj is not None:
@@ -95,11 +112,74 @@ class BaseModule(ABC):
         pass
     # 点击的方法
     def click_method(self):
+        """导航到新模块"""
+        self.sync_menu_with_module()
+        # 第一步：安全地清空所有旧内容
+        if self.main_gui and hasattr(self.main_gui, 'tab_widget'):
+            # 获取所有当前的 widgets
+            widgets_to_remove = []
+            for i in range(self.main_gui.tab_widget.count()):
+                widget = self.main_gui.tab_widget.widget(i)
+                if widget:
+                    widgets_to_remove.append(widget)
+
+            # 清理前先断开所有信号
+            for widget in widgets_to_remove:
+                try:
+                    # 递归断开所有子 widget 的信号
+                    self._disconnect_all_signals(widget)
+                except Exception as e:
+                    logger.error(f"断开信号失败: {e}")
+
+            # 然后删除 widgets
+            while self.main_gui.tab_widget.count() > 0:
+                widget = self.main_gui.tab_widget.widget(0)
+                self.main_gui.tab_widget.removeTab(0)
+                if widget:
+                    widget.deleteLater()
+
+            # 清空活动模块列表
+            self.main_gui.active_module_widgets.clear()
+
+            # 强制立即刷新界面
+            QApplication.processEvents()
+
+        # 第二步：重新创建 interface_widget
+        self.interface_widget = None
+        self.interface_widget = self.get_interface_widget()
+
+        # 第三步：执行服务启动和界面调整
         AsyPromise(self.start_service).then(
-            lambda r:AsyPromise(self.adjustGUIPolicy).then()
+            lambda r: AsyPromise(self.adjustGUIPolicy).then()
         )
         # self.start_service()
         # self.adjustGUIPolicy()
+
+    def _disconnect_all_signals(self, widget):
+        """递归断开 widget 及其所有子 widget 的所有信号"""
+        if widget is None:
+            return
+
+        try:
+            # 获取所有子 widgets
+            children = widget.findChildren(QtWidgets.QWidget)
+            for child in children:
+                try:
+                    # 断开该 widget 的所有信号连接
+                    child.blockSignals(True)
+                    # Qt will disconnect signals when the widget is deleted.
+                except:
+                    pass
+
+            # 断开父 widget 的所有信号连接
+            try:
+                widget.blockSignals(True)
+                # Qt will disconnect signals when the widget is deleted.
+            except:
+                pass
+
+        except Exception as e:
+            logger.error(f"清理信号错误: {e}")
     def start_service(self,resolve,reject):
         """开始服务"""
         if self.service is not None:
@@ -118,31 +198,30 @@ class BaseModule(ABC):
         # 根据type来确定相关策略
         if self.interface_widget.type == BaseInterfaceType.WIDGET or self.interface_widget.type == BaseInterfaceType.FRAME:
 
-
+            # 创建新内容容器
             tab_content = QWidget()
-            tab_content.setObjectName(f"tab_content_{self.menu_name['text']}_{self.name}")
+            tab_content.setObjectName(f"content_{self.menu_name['text']}_{self.name}")
             tab_layout = QVBoxLayout(tab_content)
-            tab_layout.setObjectName(f"tab_content_{self.menu_name['text']}_{self.name}_layout")
+            tab_layout.setContentsMargins(0, 0, 0, 0)
 
-            # 创建一个内容小部件并填充内容
-
+            # 创建内容框架
             tab_frame = content_index()
 
 
 
-            left_layout =tab_frame.findChild(QVBoxLayout, "left_layout")
-            right_layout = tab_frame.findChild(QVBoxLayout, "right_layout")
+            # left_layout =tab_frame.findChild(QVBoxLayout, "left_layout")
+            # right_layout = tab_frame.findChild(QVBoxLayout, "right_layout")
             bottom_layout = tab_frame.findChild(QVBoxLayout, "bottom_layout")
             middle_layout =tab_frame.findChild(QVBoxLayout, "middle_layout")
 
-            scroll_left_layout =    BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"left_layout"))
-            scroll_right_layout =   BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"right_layout"))
+            # scroll_left_layout =    BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"left_layout"))
+            # scroll_right_layout =   BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"right_layout"))
             scroll_bottom_layout =  BaseWindow.add_scroll_area_if_not_exists( tab_frame.findChild(QVBoxLayout,"bottom_layout"))
             scroll_middle_layout =   BaseWindow.add_scroll_area_if_not_exists(tab_frame.findChild(QVBoxLayout,"middle_layout"))
 
             scroll_middle_layout.addWidget(self.interface_widget.frame_obj)
-            scroll_left_layout.addWidget(self.interface_widget.left_frame_obj)
-            scroll_right_layout.addWidget(self.interface_widget.right_frame_obj)
+            # scroll_left_layout.addWidget(self.interface_widget.left_frame_obj)
+            # scroll_right_layout.addWidget(self.interface_widget.right_frame_obj)
             scroll_bottom_layout.addWidget(self.interface_widget.bottom_frame_obj)
             self.interface_widget.setMinimumSize()
             # 拉伸系数的layout
@@ -155,22 +234,22 @@ class BaseModule(ABC):
             else:
                 main_layout.setStretchFactor(bottom_layout,2)
                 main_layout.setStretchFactor(top_layout, 4)
-            if self.interface_widget.left_frame_obj is None and self.interface_widget.right_frame_obj is None:
-                top_layout.setStretchFactor(left_layout,0)
-                top_layout.setStretchFactor(middle_layout,6)
-                top_layout.setStretchFactor(right_layout,0)
-            elif self.interface_widget.left_frame_obj is None:
-                top_layout.setStretchFactor(left_layout, 0)
-                top_layout.setStretchFactor(middle_layout, 5)
-                top_layout.setStretchFactor(right_layout, 1)
-            elif self.interface_widget.right_frame_obj is None:
-                top_layout.setStretchFactor(left_layout, 1)
-                top_layout.setStretchFactor(middle_layout, 5)
-                top_layout.setStretchFactor(right_layout, 0)
-            else:
-                top_layout.setStretchFactor(left_layout, 1)
-                top_layout.setStretchFactor(right_layout, 1)
-                top_layout.setStretchFactor(middle_layout, 4)
+            # if self.interface_widget.left_frame_obj is None and self.interface_widget.right_frame_obj is None:
+            #     top_layout.setStretchFactor(left_layout,0)
+            #     top_layout.setStretchFactor(middle_layout,6)
+            #     top_layout.setStretchFactor(right_layout,0)
+            # elif self.interface_widget.left_frame_obj is None:
+            #     top_layout.setStretchFactor(left_layout, 0)
+            #     top_layout.setStretchFactor(middle_layout, 5)
+            #     top_layout.setStretchFactor(right_layout, 1)
+            # elif self.interface_widget.right_frame_obj is None:
+            #     top_layout.setStretchFactor(left_layout, 1)
+            #     top_layout.setStretchFactor(middle_layout, 5)
+            #     top_layout.setStretchFactor(right_layout, 0)
+            # else:
+            #     top_layout.setStretchFactor(left_layout, 1)
+            #     top_layout.setStretchFactor(right_layout, 1)
+            #     top_layout.setStretchFactor(middle_layout, 4)
             size_factor = 0.9
             if self.interface_widget.frame_obj is not None:
                 self.interface_widget.frame_obj.menuBar().hide()
@@ -179,21 +258,21 @@ class BaseModule(ABC):
                                                        int(middle_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
 
 
-            if self.interface_widget.left_frame_obj is not None:
-                self.interface_widget.left_frame_obj.menuBar().hide()
-                self.interface_widget.left_frame_obj.statusBar().hide()
-                self.interface_widget.left_frame_obj.resize(
-                    int(left_layout.geometry().width()),
-                    int(left_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
-
-
-            if self.interface_widget.right_frame_obj is not None:
-                self.interface_widget.right_frame_obj.menuBar().hide()
-                self.interface_widget.right_frame_obj.statusBar().hide()
-                self.interface_widget.right_frame_obj.resize(int(right_layout.geometry().width()),
-                                                             int(right_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
-
-
+            # if self.interface_widget.left_frame_obj is not None:
+            #     self.interface_widget.left_frame_obj.menuBar().hide()
+            #     self.interface_widget.left_frame_obj.statusBar().hide()
+            #     self.interface_widget.left_frame_obj.resize(
+            #         int(left_layout.geometry().width()),
+            #         int(left_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
+            #
+            #
+            # if self.interface_widget.right_frame_obj is not None:
+            #     self.interface_widget.right_frame_obj.menuBar().hide()
+            #     self.interface_widget.right_frame_obj.statusBar().hide()
+            #     self.interface_widget.right_frame_obj.resize(int(right_layout.geometry().width()),
+            #                                                  int(right_layout.geometry().height()*size_factor-self.main_gui.statusBar().height()))
+            #
+            #
             if self.interface_widget.bottom_frame_obj is not None:
                 self.interface_widget.bottom_frame_obj.menuBar().hide()
                 self.interface_widget.bottom_frame_obj.statusBar().hide()
@@ -206,9 +285,12 @@ class BaseModule(ABC):
 
             # 将 scroll_area 添加进去
             tab_layout.addWidget(tab_frame)
-            self.main_gui.tab_widget.addTab(tab_content,self.title)
+            # 添加到主界面
+            self.main_gui.tab_widget.addTab(tab_content, "")
+            self.main_gui.tab_widget.tabBar().hide()  # 隐藏tab栏
+            self.main_gui.tab_widget.setCurrentWidget(tab_content)
 
-            # 将界面放入正在显示界面
+            # 添加到活动模块列表
             if self not in self.main_gui.active_module_widgets:
                 self.main_gui.active_module_widgets.append(self)
             pass
@@ -252,21 +334,28 @@ class BaseModule(ABC):
                 self.interface_widget.frame_obj.menuBar().show()
                 self.interface_widget.frame_obj.statusBar().show()
                 self.interface_widget.frame_obj.setWindowTitle(self.title+'content')
-                self.interface_widget.frame_obj.setGeometry(h_each*(h_stretch['left']),
-                                                            self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + flag,
-                                                            h_each*(h_stretch['middle']),
-                                                            v_each*(v_stretch['top']),
-                                                            )
-            if self.interface_widget.right_frame_obj is not None:
-                self.interface_widget.right_frame_obj.menuBar().show()
-                self.interface_widget.right_frame_obj.statusBar().show()
-                self.interface_widget.right_frame_obj.setWindowTitle(self.title+'right')
-                self.interface_widget.right_frame_obj.setGeometry(
-                    h_each * (h_stretch['middle'] +h_stretch['left']),
-                    self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + flag,
-                    h_each * (h_stretch['right']),
-                    v_each * (v_stretch['top']) ,
+                # 让中间窗口占满整个区域
+                self.interface_widget.frame_obj.setGeometry(
+                    0,
+                    self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + 10,
+                    self.main_gui.centralWidget().width(),
+                    self.main_gui.centralWidget().geometry().height() - self.main_gui.statusBar().height() - self.main_gui.toolbar.geometry().height()
                 )
+                # self.interface_widget.frame_obj.setGeometry(h_each*(h_stretch['left']),
+                #                                             self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + flag,
+                #                                             h_each*(h_stretch['middle']),
+                #                                             v_each*(v_stretch['top']),
+                #                                             )
+            # if self.interface_widget.right_frame_obj is not None:
+            #     self.interface_widget.right_frame_obj.menuBar().show()
+            #     self.interface_widget.right_frame_obj.statusBar().show()
+            #     self.interface_widget.right_frame_obj.setWindowTitle(self.title+'right')
+            #     self.interface_widget.right_frame_obj.setGeometry(
+            #         h_each * (h_stretch['middle'] +h_stretch['left']),
+            #         self.main_gui.centralWidget().geometry().top() + self.main_gui.toolbar.geometry().height() + flag,
+            #         h_each * (h_stretch['right']),
+            #         v_each * (v_stretch['top']) ,
+            #     )
             if self.interface_widget.bottom_frame_obj is not None:
                 self.interface_widget.bottom_frame_obj.menuBar().show()
                 self.interface_widget.bottom_frame_obj.statusBar().show()

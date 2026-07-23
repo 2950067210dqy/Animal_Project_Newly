@@ -48,14 +48,16 @@ class UFC_Gas_State_Check(Gas_State_Check):
     def __init__(self):
         super().__init__()
         pass
-    def state_check(self,resolve,reject):
+
+    def state_check(self, resolve, reject):
         """
         UFC 状态检测
         :return:
         """
-        self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | UFC 状态检测 开始")
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UFC 状态检测 开始")
         # resolve()
-        #1.端口输出状态是否正确，确认与程序逻辑是否一致，否则报错
+        # 1.端口输出状态是否正确，确认与程序逻辑是否一致，否则报错
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
@@ -72,36 +74,30 @@ class UFC_Gas_State_Check(Gas_State_Check):
         self.send_thread.send_message = self.send_message
         self.update_status_main_signal_gui_update.send(
             f"{time_util.get_format_from_time(time.time())} |  UFC 状态检测 1.端口输出状态是否正确，确认与程序逻辑是否一致，否则报错")
-        data,message = self.send_thread.Send_no_promise()
+        data, message = self.send_thread.Send_no_promise()
 
         setting_mouse_cages = global_setting.get_setting("mouse_cages", [0, 1, 2, 3, 4, 5, 6, 7])
         setting_mouse_cages_2byte_str = global_setting.get_setting("mouse_cages_2byte_str", "11111111")
         # print(f"{data},{message}")
         # print(f"原来的设置：{setting_mouse_cages},{setting_mouse_cages_2byte_str}")
-        state_datas = [item for item in data['data'] if '鼠笼' in item['desc']]
-        # 方法1：提取所有整数
-        data_mouse_cages=[]
-        for state_data in state_datas:
-            integers = int(re.findall(r'\d+', state_data['desc'])[0])-1 if re.findall(r'\d+', state_data['desc']) else 0
-            if state_data['value'] == 1:
-                data_mouse_cages.append(integers)
-        data_mouse_cages_2byte_str=""
-        for i in range(8):
-            if i in data_mouse_cages:
-                data_mouse_cages_2byte_str = "1" + data_mouse_cages_2byte_str
-            else:
-                data_mouse_cages_2byte_str = "0" + data_mouse_cages_2byte_str
-        pass
-        # 报错
-        if data_mouse_cages_2byte_str.strip() !=setting_mouse_cages_2byte_str.strip():
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} |  UFC 状态检测 1.1端口输出状态与程序逻辑不一致|端口响应状态：{data_mouse_cages},{data_mouse_cages_2byte_str}|软件设置的端口状态：{setting_mouse_cages},{setting_mouse_cages_2byte_str}")
+        pump_state = None
+        machine_state = None
+        for item in data['data']:
+            if item['desc'] == '气泵':
+                pump_state = item['value']
+            elif item['desc'] == '机器状态':
+                machine_state = item['value']
 
+        if pump_state != 1 or machine_state != 1:
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} |  UFC 状态检测 1.1端口输出状态与程序逻辑不一致|"
+                f"气泵状态：{pump_state}|机器状态：{machine_state}"
+            )
 
         # 2.读取流量控制器状态，判断所运行的鼠笼的是否正常
         self.send_message = {
             'port': port,
-            'data': number_util.set_int_to_4_bytes_list("8"),
+            'data': number_util.set_int_to_4_bytes_list("9"),
             'slave_id': '2',
             'function_code': '2',
             'timeout': 1
@@ -112,7 +108,7 @@ class UFC_Gas_State_Check(Gas_State_Check):
             f"{time_util.get_format_from_time(time.time())} |  UFC 状态检测 2.读取流量控制器状态，判断所运行的鼠笼的是否正常")
         flow_data, flow_message = self.send_thread.Send_no_promise()
         # print(f"flow:{flow_data},{flow_message}")
-        flow_states = [item for item in flow_data['data'] if '流量传感器' in item['desc']]
+        flow_states = [item for item in flow_data['data'] if '流量传感器' in item['desc'] and re.findall(r'\d+', item['desc'])]
         # 方法1：提取所有整数
         data_flow_numbers = []
         for flow_state in flow_states:
@@ -135,4 +131,3 @@ class UFC_Gas_State_Check(Gas_State_Check):
         resolve()
 
         pass
-

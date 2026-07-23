@@ -1,401 +1,1771 @@
 import os
+import re
 import time
 import traceback
 import typing
 from datetime import datetime, timedelta
 
-from PyQt6.QtGui import QPixmap
+import cv2
+import numpy as np
+from PyQt6 import QtGui
+from PyQt6.QtCharts import QChart, QChartView, QDateTimeAxis, QScatterSeries, QValueAxis
+from PyQt6.QtCore import QDateTime, QPointF, QRect, QRectF, Qt, pyqtSignal, QMargins, QTimer
+from PyQt6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QGraphicsScene,
+    QGraphicsView,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 from loguru import logger
 
-
-
+from Module.mouse_trajectory.service import MouseTrajectoryThread
 from Module.monitor_camera.ui.tab4_window import Ui_tab4_window
-from Service import main_deep_camera, main_infrared_camera
-
-from public.component.dialog.index.deep_camera_config_dialog_index import deep_camera_config_dialog
-from public.component.dialog.index.infrared_camera_config_dialog_index import infrared_camera_config_dialog
 from public.component.dialog.index.infrared_camera_read_SN_dialog_index import infrared_camera_read_SN_dialog
 from public.config_class.global_setting import global_setting
+from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
-from theme.ThemeQt6 import ThemedWindow
-from PyQt6 import QtGui
-from PyQt6.QtCore import QRect, Qt, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QPushButton, \
-    QLabel
-
 from public.util.folder_util import folder_util
+from public.util.shared_video_frames import shared_video_frame_store
+from theme.ThemeQt6 import ThemedWindow
 
 
 class ImageLoaderThread(MyQThread):
-    """
-    连续获取早几秒钟的文件路径
-    """
     image_loaded = pyqtSignal(dict)
 
-
-
-    def __init__(self):
+    def __init__(self, display_mode: str = "infrared"):
         super().__init__(name="tab4_image_loader")
-        # 相机数量
-        self.infrared_camera_nums = int(global_setting.get_setting("camera_config")['INFRARED_CAMERA']['nums'])
-        self.deep_camera_nums = int(global_setting.get_setting("camera_config")['DEEP_CAMERA']['nums'])
-        # 每个相机的图片路径
-        infrared_folder_list = folder_util.list_directories(
-            global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
-            global_setting.get_setting("camera_config")['INFRARED_CAMERA'][
-                'path'])
-        deep_folder_list = folder_util.list_directories(
-            global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
-            global_setting.get_setting("camera_config")['DEEP_CAMERA'][
-                'path'])
-        self.infrared_path = [global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
-                              global_setting.get_setting("camera_config")['INFRARED_CAMERA'][
-                                  'path'] + f"{i}/" +
-                              global_setting.get_setting("camera_config")['INFRARED_CAMERA']['pic_dir']
-                              for i in infrared_folder_list
-                              ]
-        self.deep_path = [global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
-                          global_setting.get_setting("camera_config")['DEEP_CAMERA'][
-                              'path'] + f"{i}/" +
-                          global_setting.get_setting("camera_config")['DEEP_CAMERA']['result_dir'] +
-                          global_setting.get_setting("camera_config")['DEEP_CAMERA']['result_img_dir']
-                          for i in deep_folder_list
-                          ]
-        self.images = {"deep_camera": [], "infrared_camera": []}
+        self.display_mode = display_mode
+        self.target_cage_number: int | None = None
+        self.cached_target_cages: set[int] = set()
+        self.last_target_cage_refresh_time = 0.0
+        self.target_cage_refresh_interval = 1.0
+        self.refresh_camera_paths()
+
+    def set_display_mode(self, display_mode: str):
+        self.display_mode = display_mode
+
+    def set_target_cage_number(self, cage_number: int | None):
+        self.target_cage_number = None if cage_number is None else int(cage_number)
+
+    def refresh_camera_paths(self):
+        camera_config = global_setting.get_setting("camera_config")
+        self.infrared_camera_nums = int(camera_config["INFRARED_CAMERA"]["nums"])
+
+        self.infrared_path = []
+        if self.display_mode != "video":
+            infrared_folder_list = folder_util.list_directories(
+                camera_config["STORAGE"]["fold_path"] + camera_config["INFRARED_CAMERA"]["path"]
+            )
+
+            self.infrared_path = [
+                camera_config["STORAGE"]["fold_path"]
+                + camera_config["INFRARED_CAMERA"]["path"]
+                + f"{folder_name}/"
+                + camera_config["INFRARED_CAMERA"]["pic_dir"]
+                for folder_name in infrared_folder_list
+            ]
+        self.images = {"deep_camera_frames": {}, "trajectory_frames": {}, "infrared_camera": []}
         self.running = True
 
-    def parse_filename_datetime(self, filename):
-        """
-        从文件名中解析日期时间，假设格式为 '2025_05_22_14_30_45_123456.ext'
-        """
-        base = os.path.splitext(filename)[0]  # 去掉后缀
+    def _get_sleep_delay(self, configer) -> float:
+        if self.display_mode == "video":
+            return 0.03
+        return float(configer["monitor_camera_pic"]["delay"])
+
+    def _get_target_cages(self) -> set[int]:
+        now = time.time()
+        if self.cached_target_cages and now - self.last_target_cage_refresh_time < self.target_cage_refresh_interval:
+            return set(self.cached_target_cages)
+
+        target_cages = set(int(cage) for cage in (global_setting.get_setting("mouse_cages", []) or []))
+        experiment_setting = global_setting.get_setting("experiment_setting", None)
+        if experiment_setting is not None and getattr(experiment_setting, "groups", None):
+            for group in experiment_setting.groups:
+                if getattr(group, "is_selected", 0) == 1:
+                    target_cages.add(int(group.id))
+
+        self.cached_target_cages = set(target_cages)
+        self.last_target_cage_refresh_time = now
+        return target_cages
+
+    @staticmethod
+    def parse_filename_datetime(filename):
+        base = os.path.splitext(filename)[0]
         try:
-            dt = datetime.strptime(base, "%Y_%m_%d_%H_%M_%S_%f")
-            return dt
+            return datetime.strptime(base, "%Y_%m_%d_%H_%M_%S_%f")
         except ValueError:
-            # 文件名格式不匹配，返回None
             return None
 
     def filter_files_earlier_than(self, folder, delta_seconds=10):
-        """
-        寻找文件夹内比现在时间早几秒的文件
-        :param folder:
-        :param delta_seconds:
-        :return:
-        """
         now = datetime.now()
         threshold = now - timedelta(seconds=delta_seconds)
 
         result_files = []
-        for fn in os.listdir(folder):
-            dt = self.parse_filename_datetime(fn)
+        for file_name in os.listdir(folder):
+            dt = self.parse_filename_datetime(file_name)
             if dt and dt < threshold:
-                result_files.append(fn)
-        if len(result_files) == 0:
+                result_files.append((dt, file_name))
+
+        if not result_files:
             return None
-        else:
-            return result_files[len(result_files) - 1]
+
+        result_files.sort(key=lambda item: item[0])
+        return result_files[-1][1]
 
     def dosomething(self):
-
         try:
-            deep_camera_list = []
+            if self.display_mode != "video":
+                self.refresh_camera_paths()
+            configer = global_setting.get_setting("configer")
             infrared_camera_list = []
-            for path in self.deep_path:
-                if not os.path.exists(path):
-                    os.makedirs(path)
-                file_name_path = self.filter_files_earlier_than(folder=path, delta_seconds=float(
-                    global_setting.get_setting("configer")['monitor_camera_pic']['data_delay']))
-                if file_name_path is None:
-                    deep_camera_list.append("")
-                else:
-                    deep_camera_list.append(path + file_name_path)
-                pass
-            for path in self.infrared_path:
-                if not os.path.exists(path):
-                    os.makedirs(path)
-                file_name_path = self.filter_files_earlier_than(folder=path, delta_seconds=float(
-                    global_setting.get_setting("configer")['monitor_camera_pic']['data_delay']))
-                if file_name_path is None:
-                    infrared_camera_list.append("")
-                else:
-                    infrared_camera_list.append(path + "/" + file_name_path)
-                pass
-            self.images["deep_camera"] = deep_camera_list
+
+            if self.display_mode != "video":
+                for path in self.infrared_path:
+                    if not os.path.exists(path):
+                        os.makedirs(path)
+                    file_name = self.filter_files_earlier_than(
+                        folder=path,
+                        delta_seconds=float(configer["monitor_camera_pic"]["data_delay"]),
+                    )
+                    infrared_camera_list.append("" if file_name is None else os.path.join(path, file_name))
+
+            deep_camera_frames = {}
+            trajectory_frames = {}
+            target_cages = self._get_target_cages()
+
+            display_cages = target_cages
+            if self.display_mode == "video" and self.target_cage_number is not None:
+                display_cages = {self.target_cage_number}
+
+            for cage_number in sorted(display_cages):
+                frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
+                if frame_payload is not None:
+                    deep_camera_frames[cage_number] = frame_payload
+
+            self.images["deep_camera_frames"] = deep_camera_frames
+            self.images["trajectory_frames"] = trajectory_frames
             self.images["infrared_camera"] = infrared_camera_list
             self.image_loaded.emit(self.images)
-            time.sleep(float(global_setting.get_setting("configer")['monitor_camera_pic']['delay']))
+            time.sleep(self._get_sleep_delay(configer))
         except Exception as e:
-            logger.error(f"tab4线程异常，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
+            logger.error(f"tab4线程异常，原因: {e} | 堆栈: {traceback.format_exc()}")
 
+
+class TrajectoryFrameSubmitterThread(MyQThread):
+    def __init__(self, trajectory_thread: MouseTrajectoryThread):
+        super().__init__(name="trajectory_frame_submitter")
+        self.trajectory_thread = trajectory_thread
+        self.last_submitted_frame_ids: dict[int, int] = {}
+        self.cached_target_cages: set[int] = set()
+        self.last_target_cage_refresh_time = 0.0
+        self.target_cage_refresh_interval = 1.0
+        self.sample_frame_step = 2
+        self.poll_interval_seconds = 0.03
+        self._load_runtime_config()
+
+    def _load_runtime_config(self):
+        try:
+            camera_config = global_setting.get_setting("camera_config")
+            trajectory_config = {}
+            if camera_config and "MOUSE_TRAJECTORY" in camera_config:
+                trajectory_config = camera_config["MOUSE_TRAJECTORY"]
+            self.sample_frame_step = max(
+                int(float(trajectory_config.get("yolo_sample_frame_step", self.sample_frame_step) or self.sample_frame_step)),
+                1,
+            )
+            self.poll_interval_seconds = max(
+                float(
+                    trajectory_config.get(
+                        "trajectory_submit_interval_seconds",
+                        self.poll_interval_seconds,
+                    )
+                    or self.poll_interval_seconds
+                ),
+                0.005,
+            )
+        except Exception as error:
+            logger.warning(f"load trajectory submitter config failed, use defaults: {error}")
+
+    def _get_target_cages(self) -> set[int]:
+        now = time.time()
+        if self.cached_target_cages and now - self.last_target_cage_refresh_time < self.target_cage_refresh_interval:
+            return set(self.cached_target_cages)
+
+        target_cages = set(int(cage) for cage in (global_setting.get_setting("mouse_cages", []) or []))
+        experiment_setting = global_setting.get_setting("experiment_setting", None)
+        if experiment_setting is not None and getattr(experiment_setting, "groups", None):
+            for group in experiment_setting.groups:
+                if getattr(group, "is_selected", 0) == 1:
+                    target_cages.add(int(group.id))
+
+        self.cached_target_cages = set(target_cages)
+        self.last_target_cage_refresh_time = now
+        return target_cages
+
+    def _should_submit_frame(self, cage_number: int, frame_id: int) -> bool:
+        if frame_id <= 0:
+            return False
+        if frame_id <= self.last_submitted_frame_ids.get(cage_number, 0):
+            return False
+        if frame_id % self.sample_frame_step != 0:
+            return False
+        return True
+
+    def dosomething(self):
+        if self.trajectory_thread is None or not self.trajectory_thread.isRunning():
+            time.sleep(self.poll_interval_seconds)
+            return
+
+        trajectory_frames = {}
+        for cage_number in sorted(self._get_target_cages()):
+            frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
+            if frame_payload is None:
+                continue
+            frame_id = int(frame_payload.get("frame_id", 0) or 0)
+            if not self._should_submit_frame(cage_number, frame_id):
+                continue
+            frame_payload["trajectory_priority"] = 5
+            trajectory_frames[cage_number] = frame_payload
+            self.last_submitted_frame_ids[cage_number] = frame_id
+
+        if trajectory_frames:
+            self.trajectory_thread.submit_frames(trajectory_frames)
+
+        time.sleep(self.poll_interval_seconds)
+
+
+class AutoFitGraphicsView(QGraphicsView):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fit_scene()
+
+    def fit_scene(self):
+        scene = self.scene()
+        if scene is None:
+            return
+
+        rect = scene.sceneRect()
+        if rect.isNull():
+            rect = scene.itemsBoundingRect()
+        if rect.isNull():
+            return
+
+        self.resetTransform()
+        self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+        self.centerOn(rect.center())
+
+
+class DisplayPanel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 10)
+        layout.setSpacing(8)
+
+        self.group_box = QGroupBox("", self)
+        self.group_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        group_layout = QVBoxLayout(self.group_box)
+        group_layout.setContentsMargins(10, 10, 10, 10)
+        group_layout.setSpacing(8)
+
+        self.title_label = QLabel("", self.group_box)
+        group_layout.addWidget(self.title_label)
+
+        self.content_widget = QWidget(self.group_box)
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.graphics_view = AutoFitGraphicsView(self.content_widget)
+        self.graphics_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.content_layout.addWidget(self.graphics_view)
+        self._scene = QGraphicsScene(self.graphics_view)
+        self.graphics_view.setScene(self._scene)
+        self._pixmap_item = None
+        self._last_pixmap_size: tuple[int, int] | None = None
+
+        self.placeholder_label = QLabel("", self.content_widget)
+        self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder_label.setWordWrap(True)
+        self.placeholder_label.hide()
+        self.content_layout.addWidget(self.placeholder_label)
+
+        self.custom_widget = None
+
+        group_layout.addWidget(self.content_widget, 1)
+        layout.addWidget(self.group_box, 1)
+
+    def set_title(self, text):
+        self.title_label.setText(text)
+
+    def _detach_custom_widget(self):
+        if self.custom_widget is None:
+            return
+
+        widget = self.custom_widget
+        widget.hide()
+        self.content_layout.removeWidget(widget)
+        widget.setParent(None)
+        self.custom_widget = None
+
+    def show_custom_widget(self, widget: QWidget):
+        if widget is None:
+            return
+
+        self.custom_widget = widget
+        if widget.parent() is not self.content_widget:
+            widget.setParent(self.content_widget)
+        if self.content_layout.indexOf(widget) == -1:
+            self.content_layout.insertWidget(0, widget, 1)
+
+        self.graphics_view.hide()
+        self.placeholder_label.hide()
+        widget.show()
+
+    def _set_pixmap(self, pixmap: QPixmap):
+        if self._pixmap_item is None:
+            self._pixmap_item = self._scene.addPixmap(pixmap)
+        else:
+            self._pixmap_item.setPixmap(pixmap)
+
+        pixmap_size = (pixmap.width(), pixmap.height())
+        if pixmap_size != self._last_pixmap_size:
+            self._scene.setSceneRect(QRectF(pixmap.rect()))
+            self.graphics_view.fit_scene()
+            self._last_pixmap_size = pixmap_size
+
+    def _clear_pixmap(self):
+        if self._pixmap_item is not None:
+            self._pixmap_item.setPixmap(QPixmap())
+        self._last_pixmap_size = None
+
+    def _resize_frame_for_view(self, frame):
+        if frame is None:
+            return None
+        viewport = self.graphics_view.viewport()
+        max_width = max(int(viewport.width()), 1)
+        max_height = max(int(viewport.height()), 1)
+        if max_width <= 1 or max_height <= 1:
+            max_width, max_height = 960, 540
+
+        height, width = frame.shape[:2]
+        scale = min(max_width / max(width, 1), max_height / max(height, 1), 1.0)
+        if scale >= 0.98:
+            return frame
+        target_size = (max(int(width * scale), 1), max(int(height * scale), 1))
+        return cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
+
+    def show_image(self, image_path):
+        self._detach_custom_widget()
+        self.placeholder_label.hide()
+        self.graphics_view.show()
+
+        if image_path:
+            pixmap = QPixmap()
+            try:
+                with open(image_path, "rb") as image_file:
+                    image_data = image_file.read()
+                loaded = pixmap.loadFromData(image_data)
+            except OSError:
+                loaded = False
+            if loaded and not pixmap.isNull():
+                self._set_pixmap(pixmap)
+                return
+
+        self._clear_pixmap()
+        self._scene.setSceneRect(
+            0,
+            0,
+            max(self.graphics_view.viewport().width(), 1),
+            max(self.graphics_view.viewport().height(), 1),
+        )
+        self.placeholder_label.setText("暂无画面")
+        self.placeholder_label.show()
+        self.graphics_view.hide()
+
+    def show_frame(self, frame):
+        self._detach_custom_widget()
+        self.placeholder_label.hide()
+        self.graphics_view.show()
+
+        if frame is not None:
+            frame = self._resize_frame_for_view(frame)
+            if len(frame.shape) == 2:
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+            else:
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width = rgb_frame.shape[:2]
+            bytes_per_line = rgb_frame.strides[0]
+            image = QImage(
+                rgb_frame.data,
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format.Format_RGB888,
+            )
+            pixmap = QPixmap.fromImage(image)
+            if not pixmap.isNull():
+                self._set_pixmap(pixmap)
+                return
+
+        self.show_placeholder("暂无画面")
+
+    def show_placeholder(self, text):
+        self._detach_custom_widget()
+        self._clear_pixmap()
+        self._scene.setSceneRect(0, 0, 1, 1)
+        self.graphics_view.hide()
+        self.placeholder_label.setText(text)
+        self.placeholder_label.show()
+
+
+class TemperatureTrendWidget(QWidget):
+    def __init__(self, parent=None, max_points: int = 120):
+        super().__init__(parent)
+        self.max_points = max_points
+        self.handle: Monitor_Datas_Handle | None = None
+        self.all_points: list[QPointF] = []
+        self.view_start_index = 0
+        self.current_cage_number: int | None = None
+        self.auto_save_enabled = True
+        self.last_auto_save_bucket_by_cage: dict[int, str] = {}
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        self.chart = QChart()
+        self.chart.legend().hide()
+        self.chart.setBackgroundRoundness(0)
+        self.chart.setMargins(QMargins(8, 4, 8, 50))
+
+        self.series = QScatterSeries()
+        self.series.setName("红外最大温度")
+        self.series.setMarkerShape(QScatterSeries.MarkerShape.MarkerShapeCircle)
+        self.series.setMarkerSize(8.0)
+        self.series.setColor(QColor("#ff6b35"))
+        self.series.setBorderColor(QColor("#ff6b35"))
+        self.series.setPen(QPen(QColor("#ff6b35"), 1))
+        self.chart.addSeries(self.series)
+
+        self.x_axis = QDateTimeAxis()
+        self.x_axis.setFormat("HH:mm:ss")
+        self.x_axis.setTitleText("时间")
+        self.x_axis.setTickCount(6)
+
+        self.y_axis = QValueAxis()
+        self.y_axis.setLabelFormat("%.2f")
+        self.y_axis.setTitleText("温度 (°C)")
+        self.y_axis.setTickCount(6)
+
+        self.chart.addAxis(self.x_axis, Qt.AlignmentFlag.AlignBottom)
+        self.chart.addAxis(self.y_axis, Qt.AlignmentFlag.AlignLeft)
+        self.series.attachAxis(self.x_axis)
+        self.series.attachAxis(self.y_axis)
+
+        self.chart_view = QChartView(self.chart, self)
+        self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.chart_view.setContentsMargins(0, 0, 0, 0)
+        self.chart_view.setViewportMargins(0, 0, 0, 12)
+        self.chart_view.setMinimumHeight(260)
+
+        self.slider_row = QWidget(self)
+        slider_row_layout = QHBoxLayout(self.slider_row)
+        slider_row_layout.setContentsMargins(0, 0, 0, 0)
+        slider_row_layout.setSpacing(8)
+
+        self.slider_label = QLabel("时间范围", self.slider_row)
+        self.slider_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+
+        self.time_slider = QSlider(Qt.Orientation.Horizontal, self.slider_row)
+        self.time_slider.setObjectName("temperature_time_slider")
+        self.time_slider.setRange(0, 0)
+        self.time_slider.setSingleStep(1)
+        self.time_slider.setPageStep(max(1, self.max_points // 2))
+        self.time_slider.setMinimumHeight(22)
+        self.time_slider.setStyleSheet(
+            """
+            QSlider#temperature_time_slider::groove:horizontal {
+                border: 1px solid #c7c7c7;
+                height: 8px;
+                background: #ececec;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::sub-page:horizontal {
+                background: #ffb08f;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::handle:horizontal {
+                background: #ff6b35;
+                border: 1px solid #d95b2c;
+                width: 18px;
+                margin: -6px 0;
+                border-radius: 9px;
+            }
+            QSlider#temperature_time_slider::handle:horizontal:hover {
+                background: #ff814f;
+            }
+            """
+        )
+        self.time_slider.valueChanged.connect(self._on_slider_changed)
+
+        self.slider_status_label = QLabel("", self.slider_row)
+        self.slider_status_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+
+        slider_row_layout.addWidget(self.slider_label)
+        slider_row_layout.addWidget(self.time_slider, 1)
+        slider_row_layout.addWidget(self.slider_status_label)
+        self.slider_row.hide()
+
+        self.placeholder_label = QLabel("暂无温度数据", self)
+        self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder_label.hide()
+
+        layout.addWidget(self.chart_view, 1)
+        layout.addWidget(self.slider_row)
+        layout.addWidget(self.placeholder_label, 1)
+        self.setLayout(layout)
+        self.clear_chart()
+
+    def stop(self):
+        if self.handle is not None:
+            self.handle.stop()
+            self.handle = None
+
+    def _ensure_handle(self):
+        if self.handle is None:
+            self.handle = Monitor_Datas_Handle()
+
+    @staticmethod
+    def _parse_time(value):
+        if not value:
+            return None
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(str(value), fmt)
+            except ValueError:
+                continue
+        return None
+
+    def clear_chart(self, text: str = "暂无温度数据"):
+        self.series.clear()
+        self.all_points = []
+        self.view_start_index = 0
+        self.current_cage_number = None
+        self.chart.setTitle("")
+        self.chart_view.hide()
+        self.time_slider.setEnabled(False)
+        self.slider_status_label.clear()
+        self.slider_row.hide()
+        self.placeholder_label.setText(text)
+        self.placeholder_label.show()
+
+    def _build_points(self, meta_data, rows):
+        column_names = [item["name"] for item in meta_data]
+        points = []
+        for row in rows:
+            row_data = dict(zip(column_names, row))
+            time_value = self._parse_time(row_data.get("time"))
+            temp_value = row_data.get("tmp_hs_max")
+            if temp_value is None:
+                temp_value = row_data.get("tmp_hs_mean")
+            if time_value is None or temp_value is None:
+                continue
+            try:
+                points.append(QPointF(time_value.timestamp() * 1000, float(temp_value)))
+            except (TypeError, ValueError):
+                continue
+
+        points.sort(key=lambda point: point.x())
+        return points
+
+    def _configure_slider(self, keep_latest: bool):
+        total_points = len(self.all_points)
+        max_start = max(total_points - self.max_points, 0)
+        start_index = max_start if keep_latest else min(self.view_start_index, max_start)
+
+        self.time_slider.blockSignals(True)
+        self.time_slider.setRange(0, max_start)
+        self.time_slider.setPageStep(max(1, min(self.max_points, max_start if max_start > 0 else 1)))
+        self.time_slider.setValue(start_index)
+        self.time_slider.setEnabled(total_points > 0)
+        self.time_slider.blockSignals(False)
+
+        self.view_start_index = start_index
+        self.slider_status_label.setText(
+            f"{min(total_points, start_index + 1)}-{min(total_points, start_index + self.max_points)} / {total_points}"
+        )
+        if max_start > 0:
+            self.time_slider.setToolTip("拖动这里查看完整温度趋势")
+        else:
+            self.time_slider.setToolTip("当前数据量还没有超过单屏展示范围")
+        self.slider_status_label.setToolTip("当前显示区间 / 总数据点数")
+        self.slider_row.setVisible(total_points > 0)
+
+    def _update_axes(self, points):
+        x_min = int(points[0].x())
+        x_max = int(points[-1].x())
+        if x_min == x_max:
+            x_min -= 1000
+            x_max += 1000
+        self.x_axis.setRange(
+            QDateTime.fromMSecsSinceEpoch(x_min),
+            QDateTime.fromMSecsSinceEpoch(x_max),
+        )
+
+        y_values = [point.y() for point in points]
+        y_min = min(y_values)
+        y_max = max(y_values)
+        padding = max((y_max - y_min) * 0.15, 0.5)
+        if y_min == y_max:
+            padding = max(padding, 1.0)
+        self.y_axis.setRange(y_min - padding, y_max + padding)
+
+    def _render_current_window(self):
+        if not self.all_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        end_index = self.view_start_index + self.max_points
+        visible_points = self.all_points[self.view_start_index:end_index]
+        if not visible_points:
+            visible_points = self.all_points[-self.max_points:]
+            self.view_start_index = max(len(self.all_points) - len(visible_points), 0)
+
+        self.series.clear()
+        for point in visible_points:
+            self.series.append(point)
+
+        self._update_axes(visible_points)
+        if self.current_cage_number is not None:
+            self.chart.setTitle(f"鼠笼{self.current_cage_number}红外最大温度趋势")
+        self.placeholder_label.hide()
+        self.chart_view.show()
+        self.slider_row.show()
+
+    def _get_auto_save_dir(self, cage_number: int) -> str:
+        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+        experiment_name = "experiment"
+        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+            experiment_name = os.path.splitext(os.path.basename(experiment_setting_file))[0]
+
+        storage_setting = global_setting.get_setting("monitor_data")["STORAGE"]
+        experiment_start_time = global_setting.get_setting("start_experiment_time", time.time())
+        experiment_folder = (
+            f"{experiment_name}_{datetime.fromtimestamp(experiment_start_time).strftime('%Y_%m_%d_%H_%M_%S_%f')}"
+        )
+        save_dir = os.path.join(
+            os.getcwd() + storage_setting["fold_path"],
+            storage_setting["sub_fold_path"],
+            experiment_folder,
+            "temperature_charts",
+            f"cage_{cage_number}",
+        )
+        os.makedirs(save_dir, exist_ok=True)
+        return save_dir
+
+    def _auto_save_chart(self):
+        if not self.auto_save_enabled or self.current_cage_number is None or not self.all_points:
+            return
+
+        try:
+            save_bucket = datetime.now().strftime("%Y_%m_%d_%H_%M")
+            if self.last_auto_save_bucket_by_cage.get(self.current_cage_number) == save_bucket:
+                return
+
+            save_dir = self._get_auto_save_dir(self.current_cage_number)
+            file_name = (
+                f"temperature_trend_cage_{self.current_cage_number}_"
+                f"{datetime.now().strftime('%Y_%m_%d_%H_%M_%S_%f')}.png"
+            )
+            file_path = os.path.join(save_dir, file_name)
+            if self.chart_view.grab().save(file_path, "PNG"):
+                self.last_auto_save_bucket_by_cage[self.current_cage_number] = save_bucket
+        except Exception as e:
+            logger.debug(f"auto save temperature chart failed for cage {self.current_cage_number}: {e}")
+
+    def _on_slider_changed(self, value: int):
+        self.view_start_index = value
+        self._render_current_window()
+
+    def refresh_data(self, cage_number: int | None):
+        if cage_number is None:
+            self.clear_chart("请选择已开启笼子")
+            return
+
+        keep_latest = (
+            cage_number != self.current_cage_number
+            or not self.all_points
+            or self.time_slider.value() >= self.time_slider.maximum()
+        )
+        self.current_cage_number = cage_number
+
+        table_name = f"MouseInfrared_data_cage_{cage_number}"
+        try:
+            self._ensure_handle()
+            meta_data = self.handle.query_meta_table_data_all(table_name)
+            rows = self.handle.query_data_all(table_name)
+        except Exception as e:
+            logger.debug(f"读取鼠笼{cage_number}红外温度趋势失败: {e}")
+            self.clear_chart("暂无温度数据")
+            return
+
+        if not meta_data or not rows:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self.all_points = self._build_points(meta_data, rows)
+        if not self.all_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self._configure_slider(keep_latest)
+        self._render_current_window()
+        self._auto_save_chart()
+
+
+class TemperatureTrendWidgetV2(QWidget):
+    def __init__(self, parent=None, max_points: int = 120):
+        super().__init__(parent)
+        self.max_points = max_points
+        self.handle: Monitor_Datas_Handle | None = None
+        self.all_points: list[QPointF] = []
+        self.view_start_index = 0
+        self.current_cage_number: int | None = None
+        self.is_following_latest = True
+        self.auto_save_enabled = True
+        self.last_auto_save_bucket_by_cage: dict[int, str] = {}
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self.chart = QChart()
+        self.chart.legend().hide()
+        self.chart.setBackgroundRoundness(0)
+        self.chart.setMargins(QMargins(8, 4, 8, 50))
+
+        self.series = QScatterSeries()
+        self.series.setName("红外最大温度")
+        self.series.setMarkerShape(QScatterSeries.MarkerShape.MarkerShapeCircle)
+        self.series.setMarkerSize(8.0)
+        self.series.setColor(QColor("#ff6b35"))
+        self.series.setBorderColor(QColor("#ff6b35"))
+        self.series.setPen(QPen(QColor("#ff6b35"), 1))
+        self.chart.addSeries(self.series)
+
+        self.x_axis = QDateTimeAxis()
+        self.x_axis.setFormat("HH:mm:ss")
+        self.x_axis.setTitleText("时间")
+        self.x_axis.setTickCount(6)
+
+        self.y_axis = QValueAxis()
+        self.y_axis.setLabelFormat("%.2f")
+        self.y_axis.setTitleText("温度 (°C)")
+        self.y_axis.setTickCount(6)
+
+        self.chart.addAxis(self.x_axis, Qt.AlignmentFlag.AlignBottom)
+        self.chart.addAxis(self.y_axis, Qt.AlignmentFlag.AlignLeft)
+        self.series.attachAxis(self.x_axis)
+        self.series.attachAxis(self.y_axis)
+
+        self.chart_view = QChartView(self.chart, self)
+        self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.chart_view.setContentsMargins(0, 0, 0, 0)
+        self.chart_view.setViewportMargins(0, 0, 0, 24)
+        self.chart_view.setMinimumHeight(260)
+
+        self.slider_row = QWidget(self)
+        self.slider_row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.slider_row.setMinimumHeight(34)
+        slider_row_layout = QHBoxLayout(self.slider_row)
+        slider_row_layout.setContentsMargins(0, 0, 0, 0)
+        slider_row_layout.setSpacing(8)
+
+        self.slider_label = QLabel("历史窗口", self.slider_row)
+        self.slider_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+
+        self.time_slider = QSlider(Qt.Orientation.Horizontal, self.slider_row)
+        self.time_slider.setObjectName("temperature_time_slider")
+        self.time_slider.setRange(0, 0)
+        self.time_slider.setSingleStep(1)
+        self.time_slider.setPageStep(max(1, self.max_points // 2))
+        self.time_slider.setMinimumHeight(22)
+        self.time_slider.setStyleSheet(
+            """
+            QSlider#temperature_time_slider::groove:horizontal {
+                border: 1px solid #c7c7c7;
+                height: 8px;
+                background: #ececec;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::sub-page:horizontal {
+                background: #ffb08f;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::add-page:horizontal {
+                background: #ececec;
+                border-radius: 4px;
+            }
+            QSlider#temperature_time_slider::handle:horizontal {
+                background: #ff6b35;
+                border: 1px solid #d95b2c;
+                width: 18px;
+                margin: -6px 0;
+                border-radius: 9px;
+            }
+            QSlider#temperature_time_slider::handle:horizontal:hover {
+                background: #ff814f;
+            }
+            """
+        )
+        self.time_slider.valueChanged.connect(self._on_slider_changed)
+
+        self.slider_status_label = QLabel("", self.slider_row)
+        self.slider_status_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+
+        slider_row_layout.addWidget(self.slider_label)
+        slider_row_layout.addWidget(self.time_slider, 1)
+        slider_row_layout.addWidget(self.slider_status_label)
+        self.slider_row.hide()
+
+        self.placeholder_label = QLabel("暂无温度数据", self)
+        self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder_label.hide()
+
+        layout.addWidget(self.chart_view, 1)
+        layout.addWidget(self.slider_row)
+        layout.addWidget(self.placeholder_label, 1)
+        self.setLayout(layout)
+        self.clear_chart()
+
+    def stop(self):
+        if self.handle is not None:
+            self.handle.stop()
+            self.handle = None
+
+    def _ensure_handle(self):
+        if self.handle is None:
+            self.handle = Monitor_Datas_Handle()
+
+    @staticmethod
+    def _parse_time(value):
+        if not value:
+            return None
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(str(value), fmt)
+            except ValueError:
+                continue
+        return None
+
+    def clear_chart(self, text: str = "暂无温度数据"):
+        self.series.clear()
+        self.all_points = []
+        self.view_start_index = 0
+        self.current_cage_number = None
+        self.is_following_latest = True
+        self.chart.setTitle("")
+        self.chart_view.hide()
+        self.time_slider.blockSignals(True)
+        self.time_slider.setRange(0, 0)
+        self.time_slider.setValue(0)
+        self.time_slider.blockSignals(False)
+        self.time_slider.setEnabled(False)
+        self.slider_status_label.clear()
+        self.slider_row.hide()
+        self.placeholder_label.setText(text)
+        self.placeholder_label.show()
+
+    def _build_points(self, meta_data, rows):
+        column_names = [item["name"] for item in meta_data]
+        points = []
+        for row in rows:
+            row_data = dict(zip(column_names, row))
+            time_value = self._parse_time(row_data.get("time"))
+            temp_value = row_data.get("tmp_hs_max")
+            if temp_value is None:
+                temp_value = row_data.get("tmp_hs_mean")
+            if time_value is None or temp_value is None:
+                continue
+            try:
+                points.append(QPointF(time_value.timestamp() * 1000, float(temp_value)))
+            except (TypeError, ValueError):
+                continue
+
+        points.sort(key=lambda point: point.x())
+        return points
+
+    def _current_window_bounds(self):
+        total_points = len(self.all_points)
+        if total_points == 0:
+            return 0, 0
+
+        if total_points <= self.max_points:
+            return 0, total_points
+
+        start_index = min(max(self.view_start_index, 0), total_points - self.max_points)
+        end_index = start_index + self.max_points
+        return start_index, end_index
+
+    def _update_slider_status(self):
+        total_points = len(self.all_points)
+        if total_points == 0:
+            self.slider_status_label.clear()
+            return
+
+        start_index, end_index = self._current_window_bounds()
+        self.slider_status_label.setText(f"{start_index + 1}-{end_index} / {total_points}")
+
+    def _configure_slider(self, keep_latest: bool):
+        total_points = len(self.all_points)
+        has_history = total_points > self.max_points
+        max_start = max(total_points - self.max_points, 0)
+
+        if not has_history:
+            self.view_start_index = 0
+            self.is_following_latest = True
+        elif keep_latest:
+            self.view_start_index = max_start
+            self.is_following_latest = True
+        else:
+            self.view_start_index = min(self.view_start_index, max_start)
+            self.is_following_latest = self.view_start_index >= max_start
+
+        self.time_slider.blockSignals(True)
+        self.time_slider.setRange(0, max_start)
+        self.time_slider.setPageStep(max(1, self.max_points // 2))
+        self.time_slider.setValue(self.view_start_index)
+        self.time_slider.blockSignals(False)
+
+        self.time_slider.setEnabled(has_history)
+        self.time_slider.setToolTip("拖动这里查看更早的温度数据" if has_history else "当前数据量未超过 120 个点")
+        self.slider_status_label.setToolTip("当前显示区间 / 总数据点数")
+        self._update_slider_status()
+        self.slider_row.setVisible(has_history)
+
+    def _update_axes(self, points):
+        x_min = int(points[0].x())
+        x_max = int(points[-1].x())
+        if x_min == x_max:
+            x_min -= 1000
+            x_max += 1000
+        self.x_axis.setRange(
+            QDateTime.fromMSecsSinceEpoch(x_min),
+            QDateTime.fromMSecsSinceEpoch(x_max),
+        )
+
+        y_values = [point.y() for point in points]
+        y_min = min(y_values)
+        y_max = max(y_values)
+        padding = max((y_max - y_min) * 0.15, 0.5)
+        if y_min == y_max:
+            padding = max(padding, 1.0)
+        self.y_axis.setRange(y_min - padding, y_max + padding)
+
+    def _render_current_window(self):
+        if not self.all_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        start_index, end_index = self._current_window_bounds()
+        visible_points = self.all_points[start_index:end_index]
+        if not visible_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self.view_start_index = start_index
+        self.series.clear()
+        for point in visible_points:
+            self.series.append(point)
+
+        self._update_axes(visible_points)
+        self._update_slider_status()
+        if self.current_cage_number is not None:
+            self.chart.setTitle(f"鼠笼{self.current_cage_number}红外最大温度趋势")
+        self.placeholder_label.hide()
+        self.chart_view.show()
+        self.slider_row.setVisible(len(self.all_points) > self.max_points)
+
+    def _get_auto_save_dir(self, cage_number: int) -> str:
+        experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
+        experiment_name = "experiment"
+        if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
+            experiment_name = os.path.splitext(os.path.basename(experiment_setting_file))[0]
+
+        storage_setting = global_setting.get_setting("monitor_data")["STORAGE"]
+        experiment_start_time = global_setting.get_setting("start_experiment_time", time.time())
+        experiment_folder = (
+            f"{experiment_name}_{datetime.fromtimestamp(experiment_start_time).strftime('%Y_%m_%d_%H_%M_%S_%f')}"
+        )
+        save_dir = os.path.join(
+            os.getcwd() + storage_setting["fold_path"],
+            storage_setting["sub_fold_path"],
+            experiment_folder,
+            "temperature_charts",
+            f"cage_{cage_number}",
+        )
+        os.makedirs(save_dir, exist_ok=True)
+        return save_dir
+
+    def _auto_save_chart(self):
+        if not self.auto_save_enabled or self.current_cage_number is None or not self.all_points:
+            return
+
+        try:
+            save_bucket = datetime.now().strftime("%Y_%m_%d_%H_%M")
+            if self.last_auto_save_bucket_by_cage.get(self.current_cage_number) == save_bucket:
+                return
+
+            save_dir = self._get_auto_save_dir(self.current_cage_number)
+            file_name = (
+                f"temperature_trend_cage_{self.current_cage_number}_"
+                f"{datetime.now().strftime('%Y_%m_%d_%H_%M_%S_%f')}.png"
+            )
+            file_path = os.path.join(save_dir, file_name)
+            if self.chart_view.grab().save(file_path, "PNG"):
+                self.last_auto_save_bucket_by_cage[self.current_cage_number] = save_bucket
+        except Exception as e:
+            logger.debug(f"auto save temperature chart failed for cage {self.current_cage_number}: {e}")
+
+    def _on_slider_changed(self, value: int):
+        self.view_start_index = value
+        self.is_following_latest = value >= self.time_slider.maximum()
+        self._render_current_window()
+
+    def refresh_data(self, cage_number: int | None):
+        if cage_number is None:
+            self.clear_chart("请选择已开启笼子")
+            return
+
+        keep_latest = cage_number != self.current_cage_number or self.is_following_latest or not self.all_points
+        self.current_cage_number = cage_number
+
+        table_name = f"MouseInfrared_data_cage_{cage_number}"
+        try:
+            self._ensure_handle()
+            meta_data = self.handle.query_meta_table_data_all(table_name)
+            rows = self.handle.query_data_all(table_name)
+        except Exception as e:
+            logger.debug(f"读取鼠笼{cage_number}红外温度趋势失败: {e}")
+            self.clear_chart("暂无温度数据")
+            return
+
+        if not meta_data or not rows:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self.all_points = self._build_points(meta_data, rows)
+        if not self.all_points:
+            self.clear_chart("暂无温度数据")
+            return
+
+        self._configure_slider(keep_latest)
+        self._render_current_window()
+        self._auto_save_chart()
+
+
+TemperatureTrendWidget = TemperatureTrendWidgetV2
 
 
 class Tab_4(ThemedWindow):
+    MODE_INFRARED = "infrared"
+    MODE_VIDEO = "video"
+
+    def __init__(self, parent=None, geometry: QRect = None, title="", display_mode: str = MODE_INFRARED):
+        super().__init__()
+        self.charts_list = []
+        self.loader_thread: ImageLoaderThread | None = None
+        self.trajectory_thread: MouseTrajectoryThread | None = None
+        self.trajectory_submitter_thread: TrajectoryFrameSubmitterThread | None = None
+        self.infrared_camera_read_SN_dialog_frame = None
+        self.current_cage_number: int | None = None
+        self.current_mode = display_mode if display_mode in {self.MODE_INFRARED, self.MODE_VIDEO} else self.MODE_INFRARED
+        self.latest_image_paths = {"infrared_camera": {}}
+        self.latest_video_frames: dict[int, dict[str, typing.Any]] = {}
+        self.last_good_video_frames: dict[int, dict[str, typing.Any]] = {}
+        self.latest_trajectory_plot_paths: dict[int, dict[str, str]] = {}
+        self.last_good_trajectory_plot_paths: dict[int, dict[str, str]] = {}
+        self.latest_trajectory_overlays: dict[int, dict[str, typing.Any]] = {}
+        self.latest_trajectory_status: dict[int, str] = {}
+        self.latest_trajectory_titles: dict[int, str] = {}
+        self.latest_trajectory_progress_text: dict[int, str] = {}
+        self.blank_trajectory_plot_paths: dict[str, str] = {}
+        self.last_good_corners: dict[int, list[dict[str, typing.Any]]] = {}
+        self.last_mouse_boxes: dict[int, tuple[float, float, float, float]] = {}
+        self.mouse_trackers: dict[int, typing.Any] = {}
+        self.tracker_frame_ids: dict[int, int] = {}
+        self.current_trajectory_plot_key = "xy_trajectory"
+        self.temperature_widget: TemperatureTrendWidget | None = None
+        self.last_enabled_cages: list[int] = []
+        self.last_selector_refresh_time = 0.0
+        self.selector_refresh_interval = 1.0
+        self.video_dirty = False
+
+        self._init_ui(parent, geometry, title)
+        self._init_customize_ui()
+        self._init_function()
+        self._init_style_sheet()
+        self.video_render_timer = QTimer(self)
+        self.video_render_timer.setInterval(33)
+        self.video_render_timer.timeout.connect(self.render_video_if_dirty)
+        self.video_render_timer.start()
+        if self.current_mode == self.MODE_VIDEO:
+            QTimer.singleShot(0, self.start_trajectory_thread)
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
-        # 加载qss样式表
-        logger.warning("tab4——show")
-        if self.loader_thread is not None and self.loader_thread.isRunning():
-            self.loader_thread.resume()
+        logger.warning("tab4-show")
+        self.start_loader_thread()
+        self.refresh_cage_selector()
+        self.render_selected_content()
         super().showEvent(a0)
+
     def hideEvent(self, a0: typing.Optional[QtGui.QHideEvent]) -> None:
-        logger.warning("tab4--hide")
+        logger.warning("tab4-hide")
         if self.loader_thread is not None and self.loader_thread.isRunning():
             self.loader_thread.pause()
         super().hideEvent(a0)
+
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
-        logger.warning("tab4--close")
-        if self.loader_thread is not None and self.loader_thread.isRunning():
-            self.loader_thread.stop()
+        logger.warning("tab4-close")
+        self.pause_loader_thread()
+        self.stop_trajectory_thread()
+        if self.temperature_widget is not None:
+            self.temperature_widget.stop()
         super().closeEvent(a0)
-    def __init__(self, parent=None, geometry: QRect = None, title=""):
-        super().__init__()
-
-        # 图像列表
-        self.charts_list = []
-        # 对话框
-        self.deep_camera_config_dialog_frame=None
-        self.infrared_camera_config_dialog_frame=None
-        self.infrared_camera_read_SN_dialog_frame=None
-        # 实例化ui
-        self._init_ui(parent, geometry, title)
-        # 实例化自定义ui
-        self._init_customize_ui()
-        # 获取数据
-        self.get_data()
-        # 实例化功能
-        self._init_function()
-        # 加载qss样式表
-        self._init_style_sheet()
-
-        pass
-
-        # 实例化ui
-
-    def get_data(self):
-        """
-        获取数据
-        :return:
-        """
-        self.loader_thread = ImageLoaderThread()
-        self.loader_thread.image_loaded.connect(self.update_image)
-        self.loader_thread.start()
 
     def _init_ui(self, parent=None, geometry: QRect = None, title=""):
-        # 将ui文件转成py文件后 直接实例化该py文件里的类对象  uic工具转换之后就是这一段代码
-        # 有父窗口添加父窗口
-        if parent != None and geometry != None:
+        if parent is not None and geometry is not None:
             self.setParent(parent)
             self.setGeometry(geometry)
-        else:
-            pass
+
         self.ui = Ui_tab4_window()
         self.ui.setupUi(self)
 
-        self._retranslateUi()
-        pass
-
-        pass
-
-    # 实例化自定义ui
     def _init_customize_ui(self):
-        self.init_btn_label()
+        self.init_auto_connect_ui()
+        self.init_header_selectors()
+        self.init_display_area()
 
-        self.init_graphy()
-
-        pass
-
-    def init_btn_label(self):
-        """
-        初始化按钮和label的初始信息
-        :return:
-        """
+    def init_auto_connect_ui(self):
         start_btn: QPushButton = self.findChild(QPushButton, "start_btn")
         stop_btn: QPushButton = self.findChild(QPushButton, "stop_btn")
         state_label: QLabel = self.findChild(QLabel, "state_label")
-        start_btn.setDisabled(False)
-        stop_btn.setDisabled(True)
-        state_label.setText("未连接")
+        for widget in (state_label, start_btn, stop_btn):
+            if widget is not None:
+                widget.hide()
+        self.update_mode_specific_controls()
 
-        pass
+    def update_mode_specific_controls(self):
+        infrared_camera_setting_btn: QPushButton = self.findChild(QPushButton, "infrared_camera_setting")
+        if infrared_camera_setting_btn is None:
+            return
+
+        infrared_camera_setting_btn.setVisible(self.current_mode == self.MODE_INFRARED)
+        if hasattr(self, "trajectory_plot_selector_label"):
+            is_video_mode = self.current_mode == self.MODE_VIDEO
+            self.trajectory_plot_selector_label.setVisible(is_video_mode)
+            self.trajectory_plot_selector.setVisible(is_video_mode)
+
+    def init_header_selectors(self):
+        self.cage_selector_label = QLabel("已开启笼子:", self.ui.verticalLayoutWidget)
+        self.cage_selector = QComboBox(self.ui.verticalLayoutWidget)
+        self.cage_selector.setObjectName("enabled_cage_selector")
+        self.cage_selector.setMinimumWidth(140)
+        self.cage_selector.currentIndexChanged.connect(self.on_cage_changed)
+
+        self.current_cage_label = QLabel("当前显示: 未选择", self.ui.verticalLayoutWidget)
+
+        insert_index = max(self.ui.horizontalLayout.count() - 1, 0)
+        self.ui.horizontalLayout.insertWidget(insert_index, self.cage_selector_label)
+        self.ui.horizontalLayout.insertWidget(insert_index + 1, self.cage_selector)
+        self.trajectory_plot_selector_label = QLabel("轨迹图", self.ui.verticalLayoutWidget)
+        self.trajectory_plot_selector = QComboBox(self.ui.verticalLayoutWidget)
+        self.trajectory_plot_selector.setObjectName("trajectory_plot_selector")
+        self.trajectory_plot_selector.setMinimumWidth(150)
+        self.trajectory_plot_selector.addItem("X-Y轨迹", "xy_trajectory")
+        self.trajectory_plot_selector.addItem("高度轨迹", "height_trajectory")
+        self.trajectory_plot_selector.addItem("停留热力图", "occupancy_heatmap")
+        self.trajectory_plot_selector.currentIndexChanged.connect(self.on_trajectory_plot_changed)
+
+        self.ui.horizontalLayout.insertWidget(insert_index + 2, self.current_cage_label)
+        self.ui.horizontalLayout.insertWidget(insert_index + 3, self.trajectory_plot_selector_label)
+        self.ui.horizontalLayout.insertWidget(insert_index + 4, self.trajectory_plot_selector)
+        self.update_mode_specific_controls()
+
+    def init_display_area(self):
+        if hasattr(self.ui, "scrollArea"):
+            self.ui.verticalLayout.removeWidget(self.ui.scrollArea)
+            self.ui.scrollArea.setParent(None)
+
+        self.monitor_content_widget = QWidget(self.ui.verticalLayoutWidget)
+        self.monitor_content_widget.setObjectName("single_cage_monitor_content")
+        self.monitor_content_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        content_layout = QHBoxLayout(self.monitor_content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+
+        self.left_panel = DisplayPanel(self.monitor_content_widget)
+        self.right_panel = DisplayPanel(self.monitor_content_widget)
+        self.temperature_widget = TemperatureTrendWidget()
+        self.temperature_widget.hide()
+
+        content_layout.addWidget(self.left_panel, 1)
+        content_layout.addWidget(self.right_panel, 1)
+        self.ui.verticalLayout.addWidget(self.monitor_content_widget, 1)
+
+        self.refresh_cage_selector()
+        self.render_selected_content()
+
+    def start_loader_thread(self):
+        self.refresh_cage_selector()
+        if self.current_mode == self.MODE_VIDEO:
+            self.start_trajectory_thread()
+        if self.loader_thread is not None and self.loader_thread.isRunning():
+            self.loader_thread.set_display_mode(self.current_mode)
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
+            if self.loader_thread.isPaused():
+                self.loader_thread.resume()
+            return
+
+        self.loader_thread = ImageLoaderThread(display_mode=self.current_mode)
+        self.loader_thread.set_target_cage_number(self.current_cage_number)
+        self.loader_thread.image_loaded.connect(self.update_image)
+        self.loader_thread.start()
+
+    def stop_loader_thread(self):
+        if self.loader_thread is None:
+            return
+
+        if self.loader_thread.isRunning():
+            self.loader_thread.stop()
+            self.loader_thread.requestInterruption()
+            self.loader_thread.wait(2000)
+
+        self.loader_thread = None
+
+    def start_trajectory_thread(self):
+        if self.trajectory_thread is not None and self.trajectory_thread.isRunning():
+            is_finishing = (
+                not getattr(self.trajectory_thread, "accepting_frames", True)
+                or getattr(self.trajectory_thread, "finish_after_drain", False)
+                or getattr(self.trajectory_thread, "final_outputs_done", False)
+            )
+            if is_finishing:
+                logger.warning("mouse trajectory thread is finishing, recreate it for new video session")
+                self.stop_trajectory_submitter_thread()
+                self.trajectory_thread.stop()
+                self.trajectory_thread.requestInterruption()
+                self.trajectory_thread.wait(2000)
+                self.trajectory_thread = None
+            else:
+                if self.trajectory_thread.isPaused():
+                    self.trajectory_thread.resume()
+                self.start_trajectory_submitter_thread()
+                return
+
+        self.trajectory_thread = MouseTrajectoryThread()
+        self.trajectory_thread.trajectory_ready.connect(self.update_trajectory_result)
+        self.trajectory_thread.start()
+        self.start_trajectory_submitter_thread()
+
+    def start_trajectory_submitter_thread(self):
+        if self.trajectory_thread is None:
+            return
+        if self.trajectory_submitter_thread is not None and self.trajectory_submitter_thread.isRunning():
+            if self.trajectory_submitter_thread.isPaused():
+                self.trajectory_submitter_thread.resume()
+            return
+
+        self.trajectory_submitter_thread = TrajectoryFrameSubmitterThread(self.trajectory_thread)
+        self.trajectory_submitter_thread.start()
+
+    def stop_trajectory_submitter_thread(self):
+        if self.trajectory_submitter_thread is None:
+            return
+
+        if self.trajectory_submitter_thread.isRunning():
+            self.trajectory_submitter_thread.stop()
+            self.trajectory_submitter_thread.requestInterruption()
+            self.trajectory_submitter_thread.wait(2000)
+
+        self.trajectory_submitter_thread = None
+
+    def stop_trajectory_thread(self):
+        if self.trajectory_thread is None:
+            return
+
+        self.stop_trajectory_submitter_thread()
+        if self.trajectory_thread.isRunning():
+            self.trajectory_thread.request_finish_after_drain()
+            self.trajectory_thread.wait(2000)
+        if self.trajectory_thread.isRunning():
+            logger.warning("mouse trajectory thread is finalizing remaining frames in background")
+            return
+        else:
+            self.trajectory_thread.finalize_outputs()
+
+        self.trajectory_thread = None
+
+    def pause_loader_thread(self):
+        if self.loader_thread is None:
+            return
+
+        if self.loader_thread.isRunning() and not self.loader_thread.isPaused():
+            self.loader_thread.pause()
+
+    @staticmethod
+    def _box_dict_to_xyxy(box_dict: dict[str, typing.Any] | None) -> tuple[float, float, float, float] | None:
+        if not box_dict:
+            return None
+        xyxy = box_dict.get("xyxy")
+        if not xyxy or len(xyxy) != 4:
+            return None
+        try:
+            x1, y1, x2, y2 = (float(value) for value in xyxy)
+        except (TypeError, ValueError):
+            return None
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return x1, y1, x2, y2
+
+    @staticmethod
+    def _create_mouse_tracker():
+        creators = (
+            ("legacy", "TrackerKCF_create"),
+            (None, "TrackerKCF_create"),
+            ("legacy", "TrackerMOSSE_create"),
+            (None, "TrackerMOSSE_create"),
+            ("legacy", "TrackerMIL_create"),
+            (None, "TrackerMIL_create"),
+        )
+        for namespace, creator_name in creators:
+            owner = getattr(cv2, namespace, cv2) if namespace else cv2
+            creator = getattr(owner, creator_name, None)
+            if creator is None:
+                continue
+            try:
+                return creator()
+            except Exception:
+                continue
+        return None
+
+    def _init_mouse_tracker(self, cage_number: int, frame, box_xyxy: tuple[float, float, float, float] | None):
+        if frame is None or box_xyxy is None:
+            return
+        tracker = self._create_mouse_tracker()
+        if tracker is None:
+            self.last_mouse_boxes[cage_number] = box_xyxy
+            return
+        x1, y1, x2, y2 = box_xyxy
+        bbox = (float(x1), float(y1), float(x2 - x1), float(y2 - y1))
+        try:
+            tracker.init(frame, bbox)
+            self.mouse_trackers[cage_number] = tracker
+            self.tracker_frame_ids[cage_number] = int(self.last_good_video_frames.get(cage_number, {}).get("frame_id", 0) or 0)
+            self.last_mouse_boxes[cage_number] = box_xyxy
+        except Exception as error:
+            logger.debug(f"init mouse tracker failed cage={cage_number}: {error}")
+            self.last_mouse_boxes[cage_number] = box_xyxy
+
+    def _update_mouse_tracker(self, cage_number: int, frame, frame_id: int) -> tuple[float, float, float, float] | None:
+        tracker = self.mouse_trackers.get(cage_number)
+        if tracker is None or frame is None:
+            return self.last_mouse_boxes.get(cage_number)
+        if frame_id > 0 and self.tracker_frame_ids.get(cage_number) == frame_id:
+            return self.last_mouse_boxes.get(cage_number)
+        try:
+            ok, bbox = tracker.update(frame)
+            if ok:
+                x, y, w, h = bbox
+                box_xyxy = (float(x), float(y), float(x + w), float(y + h))
+                self.last_mouse_boxes[cage_number] = box_xyxy
+                self.tracker_frame_ids[cage_number] = frame_id
+        except Exception as error:
+            logger.debug(f"update mouse tracker failed cage={cage_number}: {error}")
+        return self.last_mouse_boxes.get(cage_number)
+
+    def _draw_cage_corners(self, frame, corners: list[dict[str, typing.Any]] | None):
+        if frame is None or not corners or len(corners) < 4:
+            return
+        try:
+            points = np.array([[float(point["x"]), float(point["y"])] for point in corners[:4]], dtype=np.int32)
+            cv2.polylines(frame, [points], True, (0, 255, 255), 2)
+        except Exception as error:
+            logger.debug(f"draw cage corners failed: {error}")
+
+    def _draw_mouse_box(
+        self,
+        frame,
+        box_xyxy: tuple[float, float, float, float] | None,
+        overlay: dict[str, typing.Any] | None,
+    ):
+        if frame is None or box_xyxy is None:
+            return
+        try:
+            height, width = frame.shape[:2]
+            x1, y1, x2, y2 = box_xyxy
+            x1 = max(0, min(width - 1, int(round(x1))))
+            y1 = max(0, min(height - 1, int(round(y1))))
+            x2 = max(0, min(width - 1, int(round(x2))))
+            y2 = max(0, min(height - 1, int(round(y2))))
+            if x2 <= x1 or y2 <= y1:
+                return
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            solved = (overlay or {}).get("solved") or {}
+            if solved:
+                z_value = solved.get("Z_total", solved.get("Z", 0))
+                label = f"X:{float(solved.get('X', 0)):.1f} Y:{float(solved.get('Y', 0)):.1f} Z:{float(z_value):.1f}"
+            else:
+                status = (overlay or {}).get("status", "")
+                label = str(status or "mouse")
+            cv2.putText(frame, label, (x1, max(16, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        except Exception as error:
+            logger.debug(f"draw mouse box failed: {error}")
+
+    def _build_video_display_frame(self, cage_number: int, frame_payload: dict[str, typing.Any] | None):
+        if not frame_payload:
+            return None
+        frame = frame_payload.get("frame")
+        if frame is None:
+            return None
+        # UI shows the raw camera frame; YOLO/corner results are still cached for trajectory calculation.
+        return frame.copy()
+
+    def _get_blank_trajectory_plot_path(self, plot_key: str) -> str:
+        expected_keys = ("xy_trajectory", "height_trajectory", "occupancy_heatmap")
+        if (
+            self.blank_trajectory_plot_paths
+            and all(os.path.exists(self.blank_trajectory_plot_paths.get(key, "")) for key in expected_keys)
+        ):
+            return self.blank_trajectory_plot_paths.get(plot_key, "")
+
+        try:
+            from Module.mouse_trajectory.paths import EXPORT_DIR
+            from Module.mouse_trajectory.service.auto_mouse_trajectory import save_plots
+
+            blank_dir = EXPORT_DIR / "_blank"
+            blank_dir.mkdir(parents=True, exist_ok=True)
+            save_plots(blank_dir, [], None)
+            self.blank_trajectory_plot_paths = {
+                "xy_trajectory": str(blank_dir / "xy_trajectory.png"),
+                "height_trajectory": str(blank_dir / "height_trajectory.png"),
+                "occupancy_heatmap": str(blank_dir / "occupancy_heatmap.png"),
+            }
+        except Exception as error:
+            logger.error(f"create blank trajectory plots failed: {error}")
+            self.blank_trajectory_plot_paths = {}
+
+        return self.blank_trajectory_plot_paths.get(plot_key, "")
+
+    def update_trajectory_result(self, result_dict):
+        if not result_dict:
+            return
+
+        cage_number = int(result_dict.get("cage_number", 0) or 0)
+        if cage_number <= 0:
+            return
+
+        plot_paths = result_dict.get("plot_paths", {}) or {}
+        self.latest_trajectory_plot_paths[cage_number] = plot_paths
+        if plot_paths:
+            self.last_good_trajectory_plot_paths[cage_number] = plot_paths
+        plot_title = str(result_dict.get("plot_title", "") or "")
+        if plot_title:
+            self.latest_trajectory_titles[cage_number] = plot_title
+        pending_frames = int(result_dict.get("pending_frames", 0) or 0)
+        processed_frames = int(
+            result_dict.get("processed_frames_for_cage", result_dict.get("processed_frames", 0)) or 0
+        )
+        eta_seconds = result_dict.get("estimated_remaining_seconds")
+        progress_text = plot_title or "轨迹绘制中"
+        if pending_frames > 0:
+            progress_text = f"{progress_text} | 待处理 {pending_frames} 帧 | 已处理 {processed_frames} 张"
+            if eta_seconds is not None:
+                try:
+                    eta_seconds = max(float(eta_seconds), 0.0)
+                    minutes = int(eta_seconds // 60)
+                    seconds = int(eta_seconds % 60)
+                    progress_text = f"{progress_text} | 预计 {minutes}分{seconds}秒"
+                except (TypeError, ValueError):
+                    pass
+        elif processed_frames > 0:
+            progress_text = f"{progress_text} | 已处理 {processed_frames} 张"
+        self.latest_trajectory_progress_text[cage_number] = progress_text
+        corners = result_dict.get("corners")
+        if corners:
+            self.last_good_corners[cage_number] = corners
+        overlay = {
+            "status": result_dict.get("status", ""),
+            "mouse_box": result_dict.get("mouse_box"),
+            "corners": corners or self.last_good_corners.get(cage_number),
+            "solved": result_dict.get("solved"),
+        }
+        self.latest_trajectory_overlays[cage_number] = overlay
+        box_xyxy = self._box_dict_to_xyxy(overlay.get("mouse_box"))
+        if box_xyxy is not None:
+            frame_payload = self.last_good_video_frames.get(cage_number)
+            frame = None if frame_payload is None else frame_payload.get("frame")
+            self._init_mouse_tracker(cage_number, frame, box_xyxy)
+        self.latest_trajectory_status[cage_number] = result_dict.get("status", "")
+
+        if self.current_mode == self.MODE_VIDEO and self.current_cage_number == cage_number:
+            self.video_dirty = True
+
+    def _build_cage_image_map(self, image_paths, prefix):
+        cage_image_map = {}
+        for image_path in image_paths:
+            cage_number = self._extract_cage_number(image_path, prefix)
+            if cage_number is not None:
+                cage_image_map[cage_number] = image_path
+        return cage_image_map
+
+    @staticmethod
+    def _extract_cage_number(image_path, prefix):
+        if not image_path:
+            return None
+
+        match = re.search(rf"{re.escape(prefix)}(\d+)", image_path)
+        if match is None:
+            return None
+
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+
+    def get_enabled_cages(self):
+        mouse_cages = global_setting.get_setting("mouse_cages", None)
+        if mouse_cages:
+            return sorted({int(cage) for cage in mouse_cages})
+
+        experiment_setting = global_setting.get_setting("experiment_setting", None)
+        if experiment_setting is not None and getattr(experiment_setting, "groups", None):
+            enabled_cages = [
+                int(group.id)
+                for group in experiment_setting.groups
+                if getattr(group, "is_selected", 0) == 1
+            ]
+            if enabled_cages:
+                return sorted(set(enabled_cages))
+
+        available_cages = set(self.latest_video_frames.keys())
+        available_cages.update(self.latest_image_paths["infrared_camera"].keys())
+        return sorted(available_cages)
+
+    def _get_selector_cages(self) -> list[int]:
+        cages: list[int] = []
+        for index in range(self.cage_selector.count()):
+            cage_number = self.cage_selector.itemData(index)
+            if cage_number is None:
+                continue
+            cages.append(int(cage_number))
+        return cages
+
+    def refresh_cage_selector(self):
+        enabled_cages = self.get_enabled_cages()
+        previous_cage = self.current_cage_number
+
+        if not enabled_cages:
+            self.current_cage_number = None
+            self.last_enabled_cages = []
+            self.cage_selector.blockSignals(True)
+            self.cage_selector.clear()
+            self.cage_selector.blockSignals(False)
+            self.cage_selector.setEnabled(False)
+            self.current_cage_label.setText("当前显示: 未选择")
+            return
+
+        if self.cage_selector.view().isVisible():
+            return
+
+        current_selector_cages = self._get_selector_cages()
+        if current_selector_cages != enabled_cages:
+            self.cage_selector.blockSignals(True)
+            self.cage_selector.clear()
+            for cage_number in enabled_cages:
+                self.cage_selector.addItem(f"鼠笼{cage_number}", cage_number)
+            self.cage_selector.blockSignals(False)
+            self.last_enabled_cages = list(enabled_cages)
+
+        self.cage_selector.setEnabled(True)
+        target_cage = previous_cage if previous_cage in enabled_cages else enabled_cages[0]
+        index = self.cage_selector.findData(target_cage)
+        if index >= 0 and index != self.cage_selector.currentIndex():
+            self.cage_selector.setCurrentIndex(index)
+        self.current_cage_number = target_cage
+        if self.loader_thread is not None:
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
+
+    def refresh_cage_selector_if_due(self):
+        now = time.time()
+        if now - self.last_selector_refresh_time < self.selector_refresh_interval:
+            return
+        self.last_selector_refresh_time = now
+        self.refresh_cage_selector()
+
+    def render_video_if_dirty(self):
+        if self.current_mode != self.MODE_VIDEO or not self.video_dirty:
+            return
+        self.video_dirty = False
+        self.render_selected_content()
+
+    def on_cage_changed(self, index):
+        if index < 0:
+            return
+
+        self.current_cage_number = self.cage_selector.itemData(index)
+        if self.loader_thread is not None:
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
+        self.render_selected_content()
+
+    def on_trajectory_plot_changed(self, index):
+        if index < 0:
+            return
+
+        self.current_trajectory_plot_key = self.trajectory_plot_selector.itemData(index) or "xy_trajectory"
+        self.render_selected_content()
+
+    def set_display_mode(self, mode: str):
+        if mode not in {self.MODE_INFRARED, self.MODE_VIDEO}:
+            return
+
+        self.current_mode = mode
+        if self.current_mode == self.MODE_VIDEO:
+            self.start_trajectory_thread()
+        if self.loader_thread is not None:
+            self.loader_thread.set_display_mode(mode)
+            self.loader_thread.set_target_cage_number(self.current_cage_number)
+        self.update_mode_specific_controls()
+        self.render_selected_content()
 
     def update_image(self, pixmap_path_dict):
-        if pixmap_path_dict is None or "deep_camera" not in pixmap_path_dict or "infrared_camera" not in pixmap_path_dict:
-            logger.error("未获取到数据")
+        if pixmap_path_dict is None or "infrared_camera" not in pixmap_path_dict:
+            logger.error("未获取到图片数据")
             return
-        for i in range(len(pixmap_path_dict['deep_camera'])):
-            # logger.critical(f"deep_camera | {pixmap_path_dict['deep_camera'][i]}")
-            position = pixmap_path_dict['deep_camera'][i].find(
-                global_setting.get_setting('camera_config')['DEEP_CAMERA']['mouse_cage_prefix']) + len(
-                global_setting.get_setting('camera_config')['DEEP_CAMERA']['mouse_cage_prefix'])
-            if pixmap_path_dict['deep_camera'][i] == "":
-                pixmap = QPixmap()
+
+        video_frames = dict(pixmap_path_dict.get("deep_camera_frames", {}) or {})
+        if video_frames:
+            self.latest_video_frames.update(video_frames)
+            self.last_good_video_frames.update(video_frames)
+        self.latest_image_paths = {
+            "infrared_camera": self._build_cage_image_map(
+                pixmap_path_dict["infrared_camera"],
+                global_setting.get_setting("camera_config")["INFRARED_CAMERA"]["mouse_cage_prefix"],
+            ),
+        }
+
+        self.refresh_cage_selector_if_due()
+        if self.current_mode == self.MODE_VIDEO:
+            self.video_dirty = True
+        else:
+            self.render_selected_content()
+
+    def render_selected_content(self):
+        if self.current_cage_number is None:
+            self.left_panel.set_title("左侧")
+            self.right_panel.set_title("右侧")
+            self.left_panel.show_placeholder("请选择已开启笼子")
+            self.right_panel.show_placeholder("请选择已开启笼子")
+            return
+
+        cage_number = int(self.current_cage_number)
+        self.current_cage_label.setText(f"当前显示: 鼠笼{cage_number}")
+
+        if self.current_mode == self.MODE_VIDEO:
+            self.left_panel.set_title(f"视频检测效果 - 鼠笼{cage_number}")
+            frame_payload = self.latest_video_frames.get(cage_number) or self.last_good_video_frames.get(cage_number)
+            display_frame = self._build_video_display_frame(cage_number, frame_payload)
+            if display_frame is not None:
+                self.left_panel.show_frame(display_frame)
             else:
-                # 按比例缩放到目标宽高内
-                pixmap = QPixmap(pixmap_path_dict['deep_camera'][i]).scaled(200, 200,
-                                                                            Qt.AspectRatioMode.KeepAspectRatio)
-            for graphics_view in self.graphics_view_left:
+                self.left_panel.show_placeholder("暂无画面")
 
-                if position < len(pixmap_path_dict['deep_camera'][i]) and graphics_view.objectName() != "" and \
-                        graphics_view.objectName()[-1] == \
-                        pixmap_path_dict['deep_camera'][i][position]:
-                    if graphics_view.scene() is None:
-                        # 无就创建
-                        scene = QGraphicsScene()
-                        pixmap_item = QGraphicsPixmapItem(pixmap)
-                        scene.addItem(pixmap_item)
-
-                        # 设置场景给视图
-                        graphics_view.setScene(scene)
-                    else:
-                        # 有就更新
-                        graphics_view.scene().clear()
-                        graphics_view.scene().addPixmap(pixmap)
-
+            plot_paths = (
+                self.latest_trajectory_plot_paths.get(cage_number, {})
+                or self.last_good_trajectory_plot_paths.get(cage_number, {})
+            )
+            selected_plot_path = plot_paths.get(self.current_trajectory_plot_key, "")
+            plot_label = self.trajectory_plot_selector.currentText() if hasattr(self, "trajectory_plot_selector") else "X-Y轨迹"
+            trajectory_title = (
+                self.latest_trajectory_progress_text.get(cage_number)
+                or self.latest_trajectory_titles.get(cage_number, "轨迹绘制中")
+            )
+            self.right_panel.set_title(f"{plot_label} - 鼠笼{cage_number} | {trajectory_title}")
+            if selected_plot_path and os.path.exists(selected_plot_path):
+                self.right_panel.show_image(selected_plot_path)
             else:
-                pass
+                blank_plot_path = self._get_blank_trajectory_plot_path(self.current_trajectory_plot_key)
+                if blank_plot_path and os.path.exists(blank_plot_path):
+                    self.right_panel.show_image(blank_plot_path)
+                else:
+                    self.right_panel.show_placeholder(
+                        self.latest_trajectory_progress_text.get(cage_number, "轨迹绘制中")
+                    )
+            return
 
-        for i in range(len(pixmap_path_dict['infrared_camera'])):
-            # logger.critical(f"infrared_camera | {pixmap_path_dict['infrared_camera'][i]}")
-            position = pixmap_path_dict['infrared_camera'][i].find(
-                global_setting.get_setting('camera_config')['INFRARED_CAMERA']['mouse_cage_prefix']) + len(
-                global_setting.get_setting('camera_config')['INFRARED_CAMERA']['mouse_cage_prefix'])
-            if pixmap_path_dict['infrared_camera'][i] == "":
-                pixmap = QPixmap()
-            else:
-                # 按比例缩放到目标宽高内
-                pixmap = QPixmap(pixmap_path_dict['infrared_camera'][i]).scaled(200, 200,
-                                                                                Qt.AspectRatioMode.KeepAspectRatio)
-            for graphics_view in self.graphics_view_right:
+        self.left_panel.set_title(f"红外相机 - 鼠笼{cage_number}")
+        self.left_panel.show_image(self.latest_image_paths["infrared_camera"].get(cage_number, ""))
+        self.right_panel.set_title(f"温度 - 鼠笼{cage_number}")
+        if self.temperature_widget is not None:
+            self.temperature_widget.refresh_data(cage_number)
+            self.right_panel.show_custom_widget(self.temperature_widget)
+        else:
+            self.right_panel.show_placeholder("暂无温度数据")
 
-                if position < len(pixmap_path_dict['infrared_camera'][i]) and graphics_view.objectName() != "" and \
-                        graphics_view.objectName()[-1] == \
-                        pixmap_path_dict['infrared_camera'][i][position]:
-                    if graphics_view.scene() is None:
-                        # 无就创建
-                        scene = QGraphicsScene()
-                        pixmap_item = QGraphicsPixmapItem(pixmap)
-                        scene.addItem(pixmap_item)
-
-                        # 设置场景给视图
-                        graphics_view.setScene(scene)
-                    else:
-                        # 有就更新
-                        graphics_view.scene().clear()
-                        graphics_view.scene().addPixmap(pixmap)
-                        pass
-
-            else:
-                pass
-        pass
-
-
-    def init_graphy(self):
-        """
-        实例化图片组件
-        :return:
-        """
-        self.parent_layout = self.findChild(QHBoxLayout, "tab4_layout")
-        self.graphics_view_list = self.findChildren(QGraphicsView)
-        self.graphics_view_left = []
-        self.graphics_view_right = []
-        for i in range(len(self.graphics_view_list)):
-            # logger.info(self.graphics_view_list[i].objectName())
-            if "left" in self.graphics_view_list[i].objectName():
-                # logger.error(f"left{i}")
-
-                self.graphics_view_left.append(self.graphics_view_list[i])
-                # 自动缩放视图，使图片完全显示，保持宽高比
-                # self.graphics_view_list[i].fitInView(pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
-                pass
-            elif "right" in self.graphics_view_list[i].objectName():
-                # logger.error(f"right{i}")
-
-                self.graphics_view_right.append(self.graphics_view_list[i])
-                # 自动缩放视图，使图片完全显示，保持宽高比
-                # self.graphics_view_list[i].fitInView(pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
-                pass
-            else:
-                pass
-            self.graphics_view_list[i].setDragMode(QGraphicsView.DragMode.ScrollHandDrag)  # 开启拖拽模式
-
-    # 实例化功能
     def _init_function(self):
         self.init_btn_handle()
-        pass
 
     def init_btn_handle(self):
-        """
-        将按钮绑定功能函数
-        """
-        # 找到两个按钮 和状态显示label
         start_btn = self.findChild(QPushButton, "start_btn")
         stop_btn = self.findChild(QPushButton, "stop_btn")
         state_label: QLabel = self.findChild(QLabel, "state_label")
-
-        deep_camera_config_btn = self.findChild(QPushButton, "deep_camera_config")
-        infrared_camera_config_btn = self.findChild(QPushButton, "infrared_camera_config")
         infrared_camera_setting_btn = self.findChild(QPushButton, "infrared_camera_setting")
-        # 绑定功能
+
         start_btn.clicked.connect(lambda: self.start_btn_func(start_btn, stop_btn, state_label))
         stop_btn.clicked.connect(lambda: self.stop_btn_func(start_btn, stop_btn, state_label))
-        deep_camera_config_btn.clicked.connect(lambda: self.deep_camera_config_btn_func(deep_camera_config_btn))
-        infrared_camera_config_btn.clicked.connect(lambda: self.infrared_camera_config_btn_func(infrared_camera_config_btn))
-        infrared_camera_setting_btn.clicked.connect(lambda: self.infrared_camera_setting_btn_func(infrared_camera_setting_btn))
-        pass
+        infrared_camera_setting_btn.clicked.connect(
+            lambda: self.infrared_camera_setting_btn_func(infrared_camera_setting_btn)
+        )
 
     def start_btn_func(self, start_btn: QPushButton, stop_btn: QPushButton, state_label: QLabel):
-        """
-        开始按钮的函数
-        :return:
-        """
-
+        self.start_loader_thread()
         state_label.setText("已连接")
         stop_btn.setDisabled(False)
         start_btn.setDisabled(True)
 
-        pass
-
     def stop_btn_func(self, start_btn: QPushButton, stop_btn: QPushButton, state_label: QLabel):
-        """
-        停止按钮的函数
-        :return:
-        """
+        self.pause_loader_thread()
         state_label.setText("未连接")
         stop_btn.setDisabled(True)
         start_btn.setDisabled(False)
-        pass
 
-    def deep_camera_config_btn_func(self, config_btn):
-        """
-        config按钮函数 打开dialog
-        :param config_btn:
-        :return:
-        """
-        self.deep_camera_config_dialog_frame = deep_camera_config_dialog(title="深度相机配置",tip="\n设置好后要重新启动程序！！！！！！")
-        # self.deep_camera_config_dialog_frame.camera_config_finished_signal.connect(main_deep_camera.init_camera_and_image_handle_thread)
-        self.deep_camera_config_dialog_frame.show_frame()
-
-        pass
-    def infrared_camera_config_btn_func(self, config_btn):
-        """
-        config按钮函数 打开dialog
-        :param config_btn:
-        :return:
-        """
-        self.infrared_camera_config_dialog_frame = infrared_camera_config_dialog(title="红外相机配置",tip="\n设置好后要重新启动程序！！！！！！")
-        # self.infrared_camera_config_dialog_frame.camera_config_finished_signal.connect(main_infrared_camera.init_camera_and_image_handle_thread)
-        self.infrared_camera_config_dialog_frame.show_frame()
-
-        pass
     def infrared_camera_setting_btn_func(self, config_btn):
-        """
-        config按钮函数 打开dialog
-        :param config_btn:
-        :return:
-        """
         self.infrared_camera_read_SN_dialog_frame = infrared_camera_read_SN_dialog(title="红外相机获取SN码")
-
         self.infrared_camera_read_SN_dialog_frame.show_frame()
-
-        pass
