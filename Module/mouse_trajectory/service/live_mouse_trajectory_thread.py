@@ -1,4 +1,5 @@
 import json
+import multiprocessing
 import os
 import queue
 import shutil
@@ -107,6 +108,8 @@ class MouseTrajectoryThread(MyQThread):
         self.shift_logs: dict[int, list[dict[str, Any]]] = {}
         self.latest_plot_paths: dict[int, dict[str, str]] = {}
         self.latest_plot_title_by_cage: dict[int, str] = {}
+        self.plot_state_lock = threading.RLock()
+        self.plot_revision_by_cage: dict[int, int] = {}
         self.last_output_flush_by_cage: dict[int, float] = {}
         self.persisted_row_count_by_cage: dict[int, int] = {}
         self.persisted_csv_row_count_by_cage: dict[int, int] = {}
@@ -163,6 +166,7 @@ class MouseTrajectoryThread(MyQThread):
         self.max_total_plot_points_per_cage = 20000
         self.max_pending_frames_per_cage = 1
         self.max_total_pending_frames = 8
+        self.max_processing_frame_age_seconds = 0.75
         self.inflight_watchdog_seconds = 5.0
         self.yolo_fps_ema = 0.0
         self.processing_fps_ema = 0.0
@@ -177,11 +181,16 @@ class MouseTrajectoryThread(MyQThread):
         self.torch_num_threads = 4
         self.torch_num_interop_threads = 1
         self.opencv_num_threads = 1
-        self.max_pending_plot_jobs = 2
+        self.max_pending_plot_jobs = 8
         self.runtime_stats_log_interval_seconds = 5.0
         self.last_runtime_stats_log_monotonic = time.monotonic()
         self.last_active_cage_count = 0
         self.last_target_submit_fps = 10.0
+        self.stage_timing_lock = threading.Lock()
+        self.stage_timings: dict[str, dict[str, Any]] = {}
+        self.last_batch_debug_log_monotonic = time.monotonic()
+        self.batch_debug_count = 0
+        self.batch_debug_frame_count = 0
         self.async_job_lock = threading.RLock()
         self.async_jobs: dict[tuple[Any, ...], Future] = {}
         self.output_executor = ThreadPoolExecutor(
@@ -211,6 +220,53 @@ class MouseTrajectoryThread(MyQThread):
     @staticmethod
     def _build_model(model_path: Path | str, task: str) -> YOLO:
         return YOLO(str(model_path), task=task)
+
+    def _record_stage_timing(
+        self,
+        stage_name: str,
+        elapsed_ms: float,
+        sample_count: int = 1,
+    ):
+        sample_count = max(int(sample_count), 1)
+        elapsed_ms = max(float(elapsed_ms), 0.0)
+        current_thread_name = threading.current_thread().name
+        if current_thread_name.startswith("Dummy-"):
+            current_thread_name = self.name
+        stage_key = f"{current_thread_name}|{stage_name}"
+        with self.stage_timing_lock:
+            stage = self.stage_timings.setdefault(
+                stage_key,
+                {
+                    "stage_name": str(stage_name),
+                    "thread_name": current_thread_name,
+                    "total_ms": 0.0,
+                    "count": 0.0,
+                    "max_ms": 0.0,
+                },
+            )
+            stage["total_ms"] += elapsed_ms * sample_count
+            stage["count"] += sample_count
+            stage["max_ms"] = max(stage["max_ms"], elapsed_ms)
+
+    def _take_stage_timing_snapshot(self) -> dict[str, dict[str, Any]]:
+        with self.stage_timing_lock:
+            snapshot = self.stage_timings
+            self.stage_timings = {}
+        return snapshot
+
+    def _record_ultralytics_speed(self, results: list[Any]):
+        for result in results:
+            speed = getattr(result, "speed", None)
+            if not isinstance(speed, dict):
+                continue
+            for source_name, stage_name in (
+                ("preprocess", "yolo_preprocess"),
+                ("inference", "yolo_inference"),
+                ("postprocess", "yolo_postprocess"),
+            ):
+                value = speed.get(source_name)
+                if value is not None:
+                    self._record_stage_timing(stage_name, float(value))
 
     @staticmethod
     def _frame_version(frame_payload: dict[str, Any]) -> tuple[int, int]:
@@ -560,9 +616,9 @@ class MouseTrajectoryThread(MyQThread):
 
             self.batch_size_history.append(len(frame_items))
             batch_start = time.perf_counter()
-            self._process_frame_batch(frame_items)
+            completed_frame_count = self._process_frame_batch(frame_items)
             self._record_processing_fps(
-                len(frame_items),
+                completed_frame_count,
                 time.perf_counter() - batch_start,
             )
         except Exception as error:
@@ -651,6 +707,16 @@ class MouseTrajectoryThread(MyQThread):
             )
             self.max_pending_frames_per_cage = 1
             self.max_total_pending_frames = 8
+            self.max_processing_frame_age_seconds = max(
+                float(
+                    trajectory_config.get(
+                        "trajectory_max_age_seconds",
+                        self.max_processing_frame_age_seconds,
+                    )
+                    or self.max_processing_frame_age_seconds
+                ),
+                0.05,
+            )
             self.annotated_save_interval_seconds = max(
                 float(
                     trajectory_config.get(
@@ -842,17 +908,20 @@ class MouseTrajectoryThread(MyQThread):
 
             self.pending_frames = deque(remaining_items)
         if frame_items:
-            frame_ids = [int(frame_payload.get("frame_id", 0) or 0) for _, frame_payload in frame_items]
-            cage_numbers = [int(cage_number) for cage_number, _ in frame_items]
-            timestamps = [
-                float(frame_payload.get("timestamp", 0.0) or 0.0)
-                for _, frame_payload in frame_items
-            ]
-            logger.debug(
-                "mouse trajectory pop ordered batch: "
-                f"count={len(frame_items)}, cages={cage_numbers}, "
-                f"frame_ids={frame_ids}, timestamps={timestamps}, pending={self._pending_count()}"
-            )
+            self.batch_debug_count += 1
+            self.batch_debug_frame_count += len(frame_items)
+            now_monotonic = time.monotonic()
+            if now_monotonic - self.last_batch_debug_log_monotonic >= 5.0:
+                logger.debug(
+                    "mouse trajectory batch summary: "
+                    f"batches={self.batch_debug_count}, "
+                    f"frames={self.batch_debug_frame_count}, "
+                    f"batch_avg={self.batch_debug_frame_count / max(self.batch_debug_count, 1):.2f}, "
+                    f"pending={self._pending_count()}"
+                )
+                self.batch_debug_count = 0
+                self.batch_debug_frame_count = 0
+                self.last_batch_debug_log_monotonic = now_monotonic
         return frame_items
 
     def _pending_count(self, cage_number: int | None = None) -> int:
@@ -1026,14 +1095,17 @@ class MouseTrajectoryThread(MyQThread):
         )
         if not ok:
             return False
+        return self._write_encoded_jpg_atomic(output_path, encoded.tobytes())
 
+    @staticmethod
+    def _write_encoded_jpg_atomic(output_path: Path, encoded_bytes: bytes) -> bool:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = output_path.with_name(
             f"{output_path.name}.{time.time_ns()}_{threading.get_ident()}.tmp"
         )
         with _OUTPUT_WRITE_LOCK:
             try:
-                temp_path.write_bytes(encoded.tobytes())
+                temp_path.write_bytes(encoded_bytes)
                 temp_path.replace(output_path)
             finally:
                 try:
@@ -1121,24 +1193,68 @@ class MouseTrajectoryThread(MyQThread):
             ):
                 return self.latest_annotated_path_by_cage.get(cage_number), None
 
-            image = render_annotation_image(image_source, corners, mouse_box, solved, status)
+            render_start = time.perf_counter()
+            image = render_annotation_image(
+                image_source,
+                corners,
+                mouse_box,
+                solved,
+                status,
+            )
+            self._record_stage_timing(
+                "annotated_render",
+                (time.perf_counter() - render_start) * 1000.0,
+            )
             if image is None:
                 return None, None
             target_w, target_h = self.annotated_output_size
             if image.shape[1] != target_w or image.shape[0] != target_h:
+                resize_start = time.perf_counter()
                 interpolation = cv2.INTER_AREA if image.shape[1] > target_w or image.shape[0] > target_h else cv2.INTER_LINEAR
                 image = cv2.resize(image, (target_w, target_h), interpolation=interpolation)
+                self._record_stage_timing(
+                    "annotated_resize",
+                    (time.perf_counter() - resize_start) * 1000.0,
+                )
+
+            encode_start = time.perf_counter()
+            encoded_ok, encoded = cv2.imencode(
+                ".jpg",
+                image,
+                [
+                    int(cv2.IMWRITE_JPEG_QUALITY),
+                    int(self.mouse_annotated_jpg_quality),
+                ],
+            )
+            self._record_stage_timing(
+                "annotated_jpeg_encode",
+                (time.perf_counter() - encode_start) * 1000.0,
+            )
+            if not encoded_ok:
+                return None, None
+            encoded_bytes = encoded.tobytes()
 
             latest_dir = get_cage_annotated_latest_dir(cage_number)
             latest_path = latest_dir / "mouse_detection_latest.jpg"
-            saved_latest = self._write_jpg_atomic(latest_path, image)
 
             history_dir = get_cage_annotated_history_dir(cage_number)
             timestamp_text = datetime.fromtimestamp(timestamp).strftime("%Y%m%d_%H%M%S_%f")[:-3]
             frame_id_text = f"{int(frame_id):08d}" if int(frame_id) > 0 else str(time.time_ns())
             prefix = "mouse_detected" if mouse_box is not None else "mouse_none"
             history_path = history_dir / f"{prefix}_{timestamp_text}_f{frame_id_text}.jpg"
-            saved_history = self._write_jpg_atomic(history_path, image)
+            write_start = time.perf_counter()
+            saved_latest = self._write_encoded_jpg_atomic(
+                latest_path,
+                encoded_bytes,
+            )
+            saved_history = self._write_encoded_jpg_atomic(
+                history_path,
+                encoded_bytes,
+            )
+            self._record_stage_timing(
+                "annotated_disk_write",
+                (time.perf_counter() - write_start) * 1000.0,
+            )
             if saved_latest:
                 self.latest_annotated_path_by_cage[cage_number] = latest_path
             if saved_latest or saved_history:
@@ -1189,14 +1305,56 @@ class MouseTrajectoryThread(MyQThread):
 
     def _process_frame_batch(self, frame_items: list[tuple[int, dict[str, Any]]]):
         if self.solver is None or self.box_model is None or self.mouse_model is None or self.ref_corners is None:
-            return
+            return 0
 
+        batch_pipeline_start = time.perf_counter()
         prepared_items: list[dict[str, Any]] = []
         mouse_sources: list[Any] = []
         mouse_source_indexes: list[int] = []
 
         for cage_number, frame_payload in frame_items:
+            capture_monotonic_ns = int(
+                frame_payload.get("capture_monotonic_ns", 0) or 0
+            )
+            if capture_monotonic_ns > 0:
+                frame_age_seconds = max(
+                    (time.monotonic_ns() - capture_monotonic_ns)
+                    / 1_000_000_000.0,
+                    0.0,
+                )
+            else:
+                frame_age_seconds = max(
+                    time.time()
+                    - float(frame_payload.get("timestamp", time.time()) or time.time()),
+                    0.0,
+                )
+            if frame_age_seconds > self.max_processing_frame_age_seconds:
+                frame_version = self._frame_version(frame_payload)
+                previous_frame_version = self.last_processed_frame_versions.get(
+                    cage_number
+                )
+                if self._is_stale_frame_version(
+                    frame_version,
+                    previous_frame_version,
+                ):
+                    self.record_duplicate_frame(cage_number)
+                else:
+                    self._record_source_frame_gap(
+                        cage_number,
+                        frame_version,
+                        previous_frame_version,
+                    )
+                    self.last_processed_frame_versions[cage_number] = frame_version
+                self.record_stale_frame(cage_number)
+                self._mark_payload_processed(cage_number, frame_payload)
+                continue
+
+            payload_load_start = time.perf_counter()
             source_frame = self._load_payload_frame(frame_payload)
+            self._record_stage_timing(
+                "payload_load",
+                (time.perf_counter() - payload_load_start) * 1000.0,
+            )
             if source_frame is None:
                 self._mark_payload_processed(cage_number, frame_payload)
                 continue
@@ -1265,17 +1423,28 @@ class MouseTrajectoryThread(MyQThread):
                 "color_source_path": None,
             }
 
+            prepare_start = time.perf_counter()
             try:
                 corners = self.fixed_corners_by_cage.get(cage_number)
                 if corners is None:
+                    corner_load_start = time.perf_counter()
                     corners = self._load_fixed_corners_json(cage_number)
+                    self._record_stage_timing(
+                        "box_corner_json_load",
+                        (time.perf_counter() - corner_load_start) * 1000.0,
+                    )
                 if corners is None:
+                    corner_detect_start = time.perf_counter()
                     corners = self._detect_and_cache_fixed_corners(
                         cage_number=cage_number,
                         image_file=image_file,
                         frame_index=frame_index,
                         shift_log=shift_log,
                         source_frame=source_frame,
+                    )
+                    self._record_stage_timing(
+                        "box_corner_detect",
+                        (time.perf_counter() - corner_detect_start) * 1000.0,
                     )
                     if corners is None:
                         item["status"] = "no_box_corners"
@@ -1286,6 +1455,7 @@ class MouseTrajectoryThread(MyQThread):
                 h_test_to_ref = None
                 registration_source = ""
 
+                registration_start = time.perf_counter()
                 if corners is not None:
                     h_temp = CAL.get_perspective_transform(corners.corners, self.ref_corners.corners)
                     if h_temp:
@@ -1307,10 +1477,19 @@ class MouseTrajectoryThread(MyQThread):
                 else:
                     mouse_source_indexes.append(len(prepared_items))
                     mouse_sources.append(source_frame)
+                self._record_stage_timing(
+                    "registration",
+                    (time.perf_counter() - registration_start) * 1000.0,
+                )
             except Exception as error:
                 logger.error(f"mouse trajectory prepare frame failed cage={cage_number} file={image_file.name}: {error}")
                 item["status"] = "error"
                 item["error"] = str(error)
+            finally:
+                self._record_stage_timing(
+                    "frame_prepare_total",
+                    (time.perf_counter() - prepare_start) * 1000.0,
+                )
 
             prepared_items.append(item)
 
@@ -1330,7 +1509,13 @@ class MouseTrajectoryThread(MyQThread):
                     self.conf_mouse,
                     self.batch_size,
                 )
-                self._record_yolo_fps(len(mouse_sources), time.perf_counter() - predict_start)
+                predict_elapsed = time.perf_counter() - predict_start
+                self._record_yolo_fps(len(mouse_sources), predict_elapsed)
+                self._record_stage_timing(
+                    "yolo_batch_wall",
+                    predict_elapsed * 1000.0,
+                )
+                self._record_ultralytics_speed(mouse_results)
                 for source_index, mouse_result in zip(mouse_source_indexes, mouse_results):
                     prepared_items[source_index]["mouse_result"] = mouse_result
                 if len(mouse_results) < len(mouse_source_indexes):
@@ -1371,6 +1556,11 @@ class MouseTrajectoryThread(MyQThread):
 
         for item in prepared_items:
             self._finish_prepared_frame(item)
+        self._record_stage_timing(
+            "batch_pipeline_total",
+            (time.perf_counter() - batch_pipeline_start) * 1000.0,
+        )
+        return len(prepared_items)
 
     def _record_yolo_fps(self, frame_count: int, elapsed_seconds: float):
         frame_count = int(frame_count)
@@ -1447,8 +1637,12 @@ class MouseTrajectoryThread(MyQThread):
             min(target_fps, self.recommended_submit_fps),
         )
 
-    @staticmethod
-    def _emit_runtime_diagnostic(event: str, message: str):
+    def _emit_runtime_diagnostic(
+        self,
+        event: str,
+        message: str,
+        logical_thread_name: str | None = None,
+    ):
         global _runtime_diagnostics_dropped
         diagnostics_queue = global_setting.get_setting(
             "runtime_diagnostics_queue",
@@ -1465,12 +1659,19 @@ class MouseTrajectoryThread(MyQThread):
                     f"runtime_log_drops_since_last_success={dropped_count}"
                 )
             try:
+                thread_name = (
+                    logical_thread_name or threading.current_thread().name
+                )
+                if thread_name.startswith("Dummy-"):
+                    thread_name = self.name
                 diagnostics_queue.put_nowait(
                     {
                         "timestamp": time.time(),
                         "source": "trajectory",
                         "event": str(event),
                         "pid": os.getpid(),
+                        "process_name": multiprocessing.current_process().name,
+                        "thread_name": thread_name,
                         "message": record_message,
                     }
                 )
@@ -1528,6 +1729,23 @@ class MouseTrajectoryThread(MyQThread):
             f"busy_skips={sum(self.busy_skip_count_by_cage.values())}"
         )
         self._emit_runtime_diagnostic("trajectory_runtime", runtime_message)
+        stage_snapshot = self._take_stage_timing_snapshot()
+        if stage_snapshot:
+            stage_parts = []
+            for stage_key in sorted(stage_snapshot):
+                stage = stage_snapshot[stage_key]
+                sample_count = max(int(stage.get("count", 0) or 0), 1)
+                stage_parts.append(
+                    f"thread={stage.get('thread_name', 'unknown')},"
+                    f"stage={stage.get('stage_name', stage_key)},avg_ms="
+                    f"{float(stage.get('total_ms', 0.0)) / sample_count:.2f},"
+                    f"max_ms={float(stage.get('max_ms', 0.0)):.2f},"
+                    f"count={sample_count}"
+                )
+            self._emit_runtime_diagnostic(
+                "trajectory_stage_runtime",
+                "mouse trajectory stages | " + "; ".join(stage_parts),
+            )
 
         cage_numbers = sorted(
             set(self.processed_frame_count_by_cage)
@@ -1568,6 +1786,7 @@ class MouseTrajectoryThread(MyQThread):
             )
 
     def _finish_prepared_frame(self, item: dict[str, Any]):
+        finish_start = time.perf_counter()
         cage_number = int(item["cage_number"])
         frame_id = int(item["frame_id"])
         timestamp = float(item["timestamp"])
@@ -1595,7 +1814,12 @@ class MouseTrajectoryThread(MyQThread):
             else:
                 mouse_result = item.get("mouse_result")
                 if item.get("h_test_to_ref") is not None and mouse_result is not None:
+                    postprocess_start = time.perf_counter()
                     mouse_box = best_box_from_result(mouse_result)
+                    self._record_stage_timing(
+                        "mouse_result_decode",
+                        (time.perf_counter() - postprocess_start) * 1000.0,
+                    )
                     if mouse_box is None:
                         status = "no_mouse"
                     else:
@@ -1605,7 +1829,12 @@ class MouseTrajectoryThread(MyQThread):
                             "maxError": item.get("registration_max_error"),
                             "source": item.get("registration_source", ""),
                         }
+                        xyz_start = time.perf_counter()
                         solved = solve_mouse_location(self.solver, mouse_box, image_file.name)
+                        self._record_stage_timing(
+                            "xyz_solve",
+                            (time.perf_counter() - xyz_start) * 1000.0,
+                        )
                         if solved is not None:
                             solved["registrationSource"] = item.get("registration_source", "")
                         if solved is None:
@@ -1731,7 +1960,12 @@ class MouseTrajectoryThread(MyQThread):
         self.processed_frame_count += 1
         self.processing_started_at_by_cage.setdefault(cage_number, time.time())
         self.processed_frame_count_by_cage[cage_number] = processed_count_for_cage
+        stabilize_start = time.perf_counter()
         stabilize_trajectory_rows([row])
+        self._record_stage_timing(
+            "trajectory_stabilize",
+            (time.perf_counter() - stabilize_start) * 1000.0,
+        )
         self._append_unflushed_row(cage_number, row)
         if row.get("status") == "ok":
             self.ok_frame_count_by_cage[cage_number] = (
@@ -1760,6 +1994,15 @@ class MouseTrajectoryThread(MyQThread):
             mouse_annotated_history_path,
         )
         async_queue_sizes = self._get_async_queue_sizes()
+        (
+            plot_paths_for_emit,
+            plot_title_for_emit,
+            plot_revision_for_emit,
+            plotted_window_for_emit,
+        ) = self._get_plot_state_snapshot(
+            cage_number,
+            self._build_processing_title(cage_number, window_start, window_end),
+        )
 
         self.trajectory_ready.emit(
             {
@@ -1767,11 +2010,10 @@ class MouseTrajectoryThread(MyQThread):
                 "frame_name": image_file.name,
                 "frame_id": frame_id,
                 "status": status,
-                "plot_paths": plot_paths,
-                "plot_title": self.latest_plot_title_by_cage.get(
-                    cage_number,
-                    self._build_processing_title(cage_number, window_start, window_end),
-                ),
+                "plot_paths": plot_paths_for_emit or plot_paths,
+                "plot_title": plot_title_for_emit,
+                "plot_revision": plot_revision_for_emit,
+                "plot_window_index": plotted_window_for_emit,
                 "pending_frames": self._pending_count(cage_number),
                 "processed_frames": self.processed_frame_count,
                 "processed_frames_for_cage": self.processed_frame_count_by_cage.get(cage_number, 0),
@@ -1789,6 +2031,10 @@ class MouseTrajectoryThread(MyQThread):
                 "mouse_annotated_path": str(mouse_annotated_path) if mouse_annotated_path else "",
                 "mouse_annotated_history_path": str(mouse_annotated_history_path) if mouse_annotated_history_path else "",
             }
+        )
+        self._record_stage_timing(
+            "frame_finish_total",
+            (time.perf_counter() - finish_start) * 1000.0,
         )
 
     @staticmethod
@@ -1815,6 +2061,25 @@ class MouseTrajectoryThread(MyQThread):
             f"轨迹绘制中 | 鼠笼{cage_number} | "
             f"{self._format_timestamp(window_start)} - {self._format_timestamp(window_end)}"
         )
+
+    def _get_plot_state_snapshot(
+        self,
+        cage_number: int,
+        default_title: str,
+    ) -> tuple[dict[str, str], str, int, int | None]:
+        with self.plot_state_lock:
+            return (
+                dict(self.latest_plot_paths.get(cage_number, {})),
+                self.latest_plot_title_by_cage.get(cage_number, default_title),
+                self.plot_revision_by_cage.get(cage_number, -1),
+                self.last_plotted_window_by_cage.get(cage_number),
+            )
+
+    def _next_plot_revision(self, cage_number: int) -> int:
+        with self.plot_state_lock:
+            revision = self.plot_revision_by_cage.get(cage_number, -1) + 1
+            self.plot_revision_by_cage[cage_number] = revision
+            return revision
 
     def _estimate_remaining_seconds(self, cage_number: int | None = None) -> float | None:
         if cage_number is None:
@@ -1957,6 +2222,10 @@ class MouseTrajectoryThread(MyQThread):
             0,
         )
         data_errors: list[str] = []
+        csv_row_count = 0
+        jsonl_row_count = 0
+        csv_write_ms = 0.0
+        jsonl_write_ms = 0.0
 
         if csv_persisted == 0 and jsonl_persisted == 0:
             final_json_path = data_dir / "trajectory.json"
@@ -1979,7 +2248,10 @@ class MouseTrajectoryThread(MyQThread):
                 for row in new_rows
                 if int(row.get("frameIndex", 0) or 0) > jsonl_persisted
             ]
+            csv_row_count = len(csv_rows)
+            jsonl_row_count = len(jsonl_rows)
 
+            csv_write_start = time.perf_counter()
             try:
                 if csv_rows and csv_persisted == 0:
                     self._save_csv_atomic(csv_path, csv_rows)
@@ -1997,7 +2269,16 @@ class MouseTrajectoryThread(MyQThread):
                 logger.exception(
                     f"mouse trajectory CSV append failed cage={cage_number}"
                 )
+            finally:
+                csv_write_ms = (
+                    time.perf_counter() - csv_write_start
+                ) * 1000.0
+                self._record_stage_timing(
+                    "csv_write",
+                    csv_write_ms,
+                )
 
+            jsonl_write_start = time.perf_counter()
             try:
                 if jsonl_rows and jsonl_persisted == 0:
                     self._write_text_atomic(
@@ -2034,6 +2315,14 @@ class MouseTrajectoryThread(MyQThread):
                 logger.exception(
                     f"mouse trajectory JSONL append failed cage={cage_number}"
                 )
+            finally:
+                jsonl_write_ms = (
+                    time.perf_counter() - jsonl_write_start
+                ) * 1000.0
+                self._record_stage_timing(
+                    "jsonl_write",
+                    jsonl_write_ms,
+                )
 
         self.persisted_row_count_by_cage[cage_number] = min(
             csv_persisted,
@@ -2049,6 +2338,7 @@ class MouseTrajectoryThread(MyQThread):
         metadata["runtimeFramesFile"] = "trajectory.jsonl"
         metadata["persistedCsvRows"] = csv_persisted
         metadata["persistedJsonlRows"] = jsonl_persisted
+        status_write_start = time.perf_counter()
         try:
             self._write_text_atomic(
                 data_dir / "trajectory_runtime_status.json",
@@ -2067,6 +2357,11 @@ class MouseTrajectoryThread(MyQThread):
             logger.exception(
                 f"mouse trajectory runtime status save failed cage={cage_number}"
             )
+        finally:
+            self._record_stage_timing(
+                "runtime_status_write",
+                (time.perf_counter() - status_write_start) * 1000.0,
+            )
 
         try:
             self._write_text_atomic(
@@ -2082,6 +2377,17 @@ class MouseTrajectoryThread(MyQThread):
             logger.exception(
                 f"mouse trajectory box shift log save failed cage={cage_number}"
             )
+
+        self._emit_runtime_diagnostic(
+            "trajectory_output_runtime",
+            f"cage={cage_number}, csv_rows={csv_row_count}, "
+            f"csv_write_ms={csv_write_ms:.2f}, csv_path={csv_path}, "
+            f"jsonl_rows={jsonl_row_count}, "
+            f"jsonl_write_ms={jsonl_write_ms:.2f}, jsonl_path={jsonl_path}, "
+            f"persisted_csv_rows={csv_persisted}, "
+            f"persisted_jsonl_rows={jsonl_persisted}, "
+            f"errors={len(data_errors)}",
+        )
 
         if data_errors:
             raise RuntimeError("; ".join(data_errors))
@@ -2137,6 +2443,7 @@ class MouseTrajectoryThread(MyQThread):
         window_rows = self._window_rows(rows, window_index)
         if not window_rows:
             return None
+        plot_start = time.perf_counter()
         first_row = window_rows[0]
         window_start_text = str(first_row.get("windowStart", ""))
         window_end_text = str(first_row.get("windowEnd", ""))
@@ -2149,20 +2456,47 @@ class MouseTrajectoryThread(MyQThread):
         plot_rows = [dict(row, frameIndex=index) for index, row in enumerate(window_rows, 1)]
         save_plots(plots_dir, plot_rows, self.instrument_polygon_phys)
         window_plot_paths = self._build_plot_paths_from_dir(plots_dir)
-        plot_paths = self._publish_latest_plot_paths(cage_number, window_plot_paths)
+        latest_plot_paths = self._publish_latest_plot_paths(
+            cage_number,
+            window_plot_paths,
+        )
+        plot_paths = window_plot_paths
         logger.info(
             f"mouse trajectory window plot saved: cage={cage_number}, "
-            f"window={window_index}, final={mark_final}, dir={plots_dir}, latest={plot_paths}"
+            f"window={window_index}, final={mark_final}, dir={plots_dir}, "
+            f"latest={latest_plot_paths}"
         )
         title_suffix = "轨迹区间" if mark_final else "轨迹区间生成中"
         title = f"{window_start_text} - {window_end_text} | {title_suffix}"
-        self.latest_plot_paths[cage_number] = plot_paths
-        self.latest_plot_title_by_cage[cage_number] = title
-        if mark_final:
-            self.last_plotted_window_by_cage[cage_number] = max(
-                self.last_plotted_window_by_cage.get(cage_number, -1),
-                window_index,
-            )
+        with self.plot_state_lock:
+            self.latest_plot_paths[cage_number] = plot_paths
+            self.latest_plot_title_by_cage[cage_number] = title
+            if mark_final:
+                self.last_plotted_window_by_cage[cage_number] = max(
+                    self.last_plotted_window_by_cage.get(cage_number, -1),
+                    window_index,
+                )
+            plot_revision = self.plot_revision_by_cage.get(cage_number, -1) + 1
+            self.plot_revision_by_cage[cage_number] = plot_revision
+        self.trajectory_ready.emit(
+            {
+                "event_type": "plot_ready",
+                "cage_number": cage_number,
+                "status": "plot_ready",
+                "plot_paths": dict(plot_paths),
+                "plot_title": title,
+                "plot_revision": plot_revision,
+                "plot_window_index": window_index,
+            }
+        )
+        plot_ms = (time.perf_counter() - plot_start) * 1000.0
+        self._record_stage_timing("window_plot", plot_ms)
+        self._emit_runtime_diagnostic(
+            "trajectory_plot_runtime",
+            f"kind=window, cage={cage_number}, window={window_index}, "
+            f"points={len(plot_rows)}, plot_ms={plot_ms:.2f}, "
+            f"final={mark_final}, path={plots_dir}",
+        )
         return plot_paths
 
     @staticmethod
@@ -2445,14 +2779,17 @@ class MouseTrajectoryThread(MyQThread):
         rows: list[dict[str, Any]],
         shift_log: list[dict[str, Any]],
     ) -> dict[str, str]:
+        plot_start = time.perf_counter()
         del image_file, shift_log
         plots_dir = get_cage_plots_dir(cage_number) / "total"
         plots_dir.mkdir(parents=True, exist_ok=True)
         save_plots(plots_dir, rows, self.instrument_polygon_phys)
-        plot_paths = self._publish_latest_plot_paths(
+        total_plot_paths = self._build_plot_paths_from_dir(plots_dir)
+        self._publish_latest_plot_paths(
             cage_number,
-            self._build_plot_paths_from_dir(plots_dir),
+            total_plot_paths,
         )
+        plot_paths = total_plot_paths
         first_time = rows[0].get("datetime", "") if rows else ""
         last_time = rows[-1].get("datetime", "") if rows else ""
         self.latest_plot_paths[cage_number] = plot_paths
@@ -2462,6 +2799,24 @@ class MouseTrajectoryThread(MyQThread):
         )
         self.latest_plot_title_by_cage[cage_number] = (
             f"{first_time} - {last_time} | 完整轨迹"
+        )
+        self.trajectory_ready.emit(
+            {
+                "event_type": "plot_ready",
+                "cage_number": cage_number,
+                "status": "plot_ready",
+                "plot_paths": dict(plot_paths),
+                "plot_title": self.latest_plot_title_by_cage[cage_number],
+                "plot_revision": self._next_plot_revision(cage_number),
+                "plot_window_index": None,
+            }
+        )
+        plot_ms = (time.perf_counter() - plot_start) * 1000.0
+        self._record_stage_timing("total_plot", plot_ms)
+        self._emit_runtime_diagnostic(
+            "trajectory_plot_runtime",
+            f"kind=total, cage={cage_number}, points={len(rows)}, "
+            f"plot_ms={plot_ms:.2f}, path={plots_dir}",
         )
         return plot_paths
 

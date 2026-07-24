@@ -1,6 +1,7 @@
 import json
 import logging as diagnostic_logging
 import multiprocessing
+import atexit
 import queue as queue_module
 import sys
 import tempfile
@@ -27,6 +28,7 @@ monitor=None
 runtime_diagnostics_queue = None
 runtime_diagnostics_drop_lock = threading.Lock()
 runtime_diagnostics_dropped = 0
+single_instance_lock_handle = None
 
 
 def get_main_program_dir():
@@ -79,6 +81,54 @@ def resolve_log_path(*parts):
     return os.path.join(LOG_ROOT_DIR, *parts)
 
 
+def acquire_single_instance_lock():
+    global single_instance_lock_handle
+    lock_path = resolve_log_path("runtime", "animal_project_main.lock")
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    lock_handle = open(lock_path, "a+b")
+    try:
+        lock_handle.seek(0, os.SEEK_END)
+        if lock_handle.tell() == 0:
+            lock_handle.write(b"0")
+            lock_handle.flush()
+        lock_handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, ImportError):
+        lock_handle.close()
+        return False
+    single_instance_lock_handle = lock_handle
+    return True
+
+
+def release_single_instance_lock():
+    global single_instance_lock_handle
+    lock_handle = single_instance_lock_handle
+    single_instance_lock_handle = None
+    if lock_handle is None:
+        return
+    try:
+        lock_handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+    except (OSError, ImportError):
+        pass
+    finally:
+        lock_handle.close()
+
+
 def emit_runtime_diagnostic(source, event, message, pid=None):
     global runtime_diagnostics_dropped
     if runtime_diagnostics_queue is None:
@@ -96,6 +146,8 @@ def emit_runtime_diagnostic(source, event, message, pid=None):
             "source": str(source),
             "event": str(event),
             "pid": int(os.getpid() if pid is None else pid),
+            "process_name": multiprocessing.current_process().name,
+            "thread_name": threading.current_thread().name,
             "message": record_message,
         }
         try:
@@ -134,6 +186,8 @@ def runtime_diagnostics_writer(diagnostics_queue):
     diagnostics_logger.addHandler(file_handler)
     diagnostics_logger.info(
         f"process_monitor | diagnostics_started | pid={os.getpid()} | "
+        f"process={multiprocessing.current_process().name} | "
+        f"thread={threading.current_thread().name} | "
         f"path={log_path}"
     )
 
@@ -146,6 +200,8 @@ def runtime_diagnostics_writer(diagnostics_queue):
                 f"{record.get('source', 'unknown')} | "
                 f"{record.get('event', 'runtime')} | "
                 f"pid={record.get('pid', 0)} | "
+                f"process={record.get('process_name', 'unknown')} | "
+                f"thread={record.get('thread_name', 'unknown')} | "
                 f"{record.get('message', '')}"
             )
     except (EOFError, OSError):
@@ -326,6 +382,11 @@ def kill_process_tree(pid, including_parent=True):
 def test_integrated_monitor():
     freeze_support()
     multiprocessing.set_start_method('spawn', force=True)
+    if not acquire_single_instance_lock():
+        print("Animal Project is already running; duplicate startup was blocked.")
+        return False
+    atexit.register(release_single_instance_lock)
+
     global runtime_diagnostics_queue
     runtime_diagnostics_queue = multiprocessing.Queue(maxsize=2048)
     diagnostics_thread = threading.Thread(
@@ -479,6 +540,72 @@ def test_integrated_monitor():
 
     # 开始监控
     monitor.start_monitoring(interval=5)
+    emit_runtime_diagnostic(
+        "process_monitor",
+        "controller_running",
+        "main controller is keeping child processes and runtime diagnostics alive",
+    )
+
+    try:
+        last_controller_heartbeat = 0.0
+        while True:
+            now_monotonic = time.monotonic()
+            if now_monotonic - last_controller_heartbeat >= 5.0:
+                alive_processes = sum(
+                    1
+                    for process_info in monitor.processes.values()
+                    if process_info.get("process") is not None
+                    and process_info["process"].is_alive()
+                )
+                emit_runtime_diagnostic(
+                    "process_monitor",
+                    "controller_heartbeat",
+                    f"alive_processes={alive_processes}, "
+                    f"registered_processes={len(monitor.processes)}",
+                )
+                last_controller_heartbeat = now_monotonic
+            gui_process_info = monitor.processes.get("p_main_gui", {})
+            gui_process = gui_process_info.get("process")
+            if gui_process is not None and not gui_process.is_alive():
+                emit_runtime_diagnostic(
+                    "process_monitor",
+                    "controller_stopping",
+                    f"p_main_gui exited with code={gui_process.exitcode}",
+                )
+                break
+            monitor_thread = getattr(monitor, "monitor_thread", None)
+            if monitor_thread is not None and not monitor_thread.is_alive():
+                emit_runtime_diagnostic(
+                    "process_monitor",
+                    "controller_stopping",
+                    "process monitor thread stopped",
+                )
+                break
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        emit_runtime_diagnostic(
+            "process_monitor",
+            "controller_stopping",
+            "keyboard interrupt",
+        )
+    finally:
+        try:
+            monitor.stop_monitoring()
+        except Exception:
+            logger.exception("failed to stop integrated process monitor")
+        try:
+            runtime_diagnostics_queue.put(None, timeout=2)
+        except (queue_module.Full, BrokenPipeError, EOFError, OSError):
+            pass
+        diagnostics_thread.join(timeout=5)
+        try:
+            runtime_diagnostics_queue.close()
+            runtime_diagnostics_queue.join_thread()
+        except (AttributeError, OSError, ValueError):
+            pass
+        runtime_diagnostics_queue = None
+        release_single_instance_lock()
+    return True
 
 
 

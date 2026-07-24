@@ -1,11 +1,12 @@
 import os
+import multiprocessing
 import queue
 import re
 import threading
 import time
 import traceback
 import typing
-from typing import Any
+import weakref
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -43,9 +44,17 @@ from theme.ThemeQt6 import ThemedWindow
 
 runtime_diagnostics_drop_lock = threading.Lock()
 runtime_diagnostics_dropped = 0
+trajectory_service_lock = threading.RLock()
+shared_trajectory_thread = None
+shared_trajectory_submitter_thread = None
+trajectory_service_consumers = weakref.WeakSet()
 
 
-def _emit_runtime_diagnostic(event: str, message: str):
+def _emit_runtime_diagnostic(
+    event: str,
+    message: str,
+    logical_thread_name: str | None = None,
+):
     global runtime_diagnostics_dropped
     diagnostics_queue = global_setting.get_setting(
         "runtime_diagnostics_queue",
@@ -68,6 +77,10 @@ def _emit_runtime_diagnostic(event: str, message: str):
                     "source": "video_gui",
                     "event": str(event),
                     "pid": os.getpid(),
+                    "process_name": multiprocessing.current_process().name,
+                    "thread_name": (
+                        logical_thread_name or threading.current_thread().name
+                    ),
                     "message": record_message,
                 }
             )
@@ -224,6 +237,7 @@ class ImageLoaderThread(MyQThread):
             f"read_avg_ms={average_read_ms:.2f}, "
             f"frame_age_ms={self.video_last_frame_age_ms:.1f}, "
             f"frame_id={self.video_last_frame_id}",
+            logical_thread_name=self.name,
         )
         self.video_stats_last_monotonic = now_monotonic
         self.video_read_attempt_count = 0
@@ -303,6 +317,8 @@ class TrajectoryFrameSubmitterThread(MyQThread):
         self.deep_camera_path = "deep_camera"
         self.mouse_cage_prefix = "mouse_cage_"
         self.color_dir = "color"
+        self.submitted_since_debug_log = 0
+        self.last_submit_debug_log_monotonic = time.monotonic()
         self._load_runtime_config()
 
     @staticmethod
@@ -651,11 +667,20 @@ class TrajectoryFrameSubmitterThread(MyQThread):
             else:
                 submitted_count += self._submit_disk_frames(target_cages)
 
-            if submitted_count:
+            self.submitted_since_debug_log += submitted_count
+            now_monotonic = time.monotonic()
+            if (
+                self.submitted_since_debug_log
+                and now_monotonic - self.last_submit_debug_log_monotonic >= 5.0
+            ):
                 logger.debug(
-                    f"submitted trajectory frames: count={submitted_count}, mode={self.input_mode}, "
+                    f"submitted trajectory frames: count={self.submitted_since_debug_log}, "
+                    f"interval_seconds={now_monotonic - self.last_submit_debug_log_monotonic:.1f}, "
+                    f"mode={self.input_mode}, "
                     f"disk_backfill={self.enable_disk_backfill}"
                 )
+                self.submitted_since_debug_log = 0
+                self.last_submit_debug_log_monotonic = now_monotonic
         except Exception as error:
             logger.error(
                 f"trajectory submitter failed: {error} | {traceback.format_exc()}"
@@ -825,13 +850,23 @@ class DisplayPanel(QWidget):
         self.graphics_view.hide()
 
     def show_frame(self, frame):
+        timings = {
+            "resize_ms": 0.0,
+            "convert_ms": 0.0,
+            "display_ms": 0.0,
+        }
         self._detach_custom_widget()
         self.placeholder_label.hide()
         self.graphics_view.show()
 
         if frame is not None:
             try:
+                stage_start = time.perf_counter()
                 frame = self._resize_frame_for_view(frame)
+                timings["resize_ms"] = (
+                    time.perf_counter() - stage_start
+                ) * 1000.0
+                stage_start = time.perf_counter()
                 if not frame.flags["C_CONTIGUOUS"]:
                     frame = np.ascontiguousarray(frame)
 
@@ -866,16 +901,25 @@ class DisplayPanel(QWidget):
                         )
 
                 pixmap = QPixmap.fromImage(image)
+                timings["convert_ms"] = (
+                    time.perf_counter() - stage_start
+                ) * 1000.0
                 if not pixmap.isNull():
+                    stage_start = time.perf_counter()
                     self._set_pixmap(pixmap)
-                    return
+                    timings["display_ms"] = (
+                        time.perf_counter() - stage_start
+                    ) * 1000.0
+                    return timings
             except (MemoryError, SystemError) as error:
                 logger.warning(f"skip video frame display due to memory pressure: {error}")
-                return
+                return timings
             except Exception as error:
                 logger.debug(f"show video frame failed: {error}")
 
         self.show_placeholder("暂无画面")
+
+        return timings
 
     def show_placeholder(self, text):
         self._detach_custom_widget()
@@ -1551,6 +1595,7 @@ class Tab_4(ThemedWindow):
         self.loader_thread: ImageLoaderThread | None = None
         self.trajectory_thread: MouseTrajectoryThread | None = None
         self.trajectory_submitter_thread: TrajectoryFrameSubmitterThread | None = None
+        self.connected_trajectory_signal_thread: MouseTrajectoryThread | None = None
         self.infrared_camera_read_SN_dialog_frame = None
         self.current_cage_number: int | None = None
         self.current_mode = display_mode if display_mode in {self.MODE_INFRARED, self.MODE_VIDEO} else self.MODE_INFRARED
@@ -1559,6 +1604,7 @@ class Tab_4(ThemedWindow):
         self.last_good_video_frames: dict[int, dict[str, typing.Any]] = {}
         self.latest_trajectory_plot_paths: dict[int, dict[str, str]] = {}
         self.last_good_trajectory_plot_paths: dict[int, dict[str, str]] = {}
+        self.latest_trajectory_plot_revision: dict[int, int] = {}
         self.latest_trajectory_overlays: dict[int, dict[str, typing.Any]] = {}
         self.latest_trajectory_status: dict[int, str] = {}
         self.latest_trajectory_titles: dict[int, str] = {}
@@ -1583,6 +1629,10 @@ class Tab_4(ThemedWindow):
         self.video_render_stats_last_monotonic = time.monotonic()
         self.video_render_count = 0
         self.video_render_total_ms = 0.0
+        self.video_build_total_ms = 0.0
+        self.video_resize_total_ms = 0.0
+        self.video_convert_total_ms = 0.0
+        self.video_display_total_ms = 0.0
         self.video_last_render_frame_id = 0
         self.video_last_render_frame_age_ms = 0.0
 
@@ -1729,60 +1779,139 @@ class Tab_4(ThemedWindow):
 
         self.loader_thread = None
 
-    def start_trajectory_thread(self):
-        if self.trajectory_thread is not None and self.trajectory_thread.isRunning():
-            is_finishing = (
-                not getattr(self.trajectory_thread, "accepting_frames", True)
-                or getattr(self.trajectory_thread, "finish_after_drain", False)
-                or getattr(self.trajectory_thread, "final_outputs_done", False)
-            )
-            if is_finishing:
-                logger.warning("mouse trajectory thread is finishing, recreate it for new video session")
-                self.stop_trajectory_submitter_thread()
-                self.trajectory_thread.stop()
-                self.trajectory_thread.requestInterruption()
-                self.trajectory_thread.wait(2000)
-                self.trajectory_thread = None
-            else:
-                if self.trajectory_thread.isPaused():
-                    self.trajectory_thread.resume()
-                self.start_trajectory_submitter_thread()
-                return
+    def _connect_trajectory_signal(self, trajectory_thread: MouseTrajectoryThread):
+        if self.connected_trajectory_signal_thread is trajectory_thread:
+            return
+        if self.connected_trajectory_signal_thread is not None:
+            try:
+                self.connected_trajectory_signal_thread.trajectory_ready.disconnect(
+                    self.update_trajectory_result
+                )
+            except (TypeError, RuntimeError):
+                pass
+        trajectory_thread.trajectory_ready.connect(self.update_trajectory_result)
+        self.connected_trajectory_signal_thread = trajectory_thread
 
-        self.trajectory_thread = MouseTrajectoryThread()
-        self.trajectory_thread.trajectory_ready.connect(self.update_trajectory_result)
-        self.trajectory_thread.start()
-        self.start_trajectory_submitter_thread()
+    def _disconnect_trajectory_signal(self):
+        if self.connected_trajectory_signal_thread is None:
+            return
+        try:
+            self.connected_trajectory_signal_thread.trajectory_ready.disconnect(
+                self.update_trajectory_result
+            )
+        except (TypeError, RuntimeError):
+            pass
+        self.connected_trajectory_signal_thread = None
+
+    def start_trajectory_thread(self):
+        global shared_trajectory_thread
+        global shared_trajectory_submitter_thread
+
+        with trajectory_service_lock:
+            trajectory_thread = shared_trajectory_thread
+            if trajectory_thread is not None and trajectory_thread.isRunning():
+                is_finishing = (
+                    not getattr(trajectory_thread, "accepting_frames", True)
+                    or getattr(trajectory_thread, "finish_after_drain", False)
+                    or getattr(trajectory_thread, "final_outputs_done", False)
+                )
+                if is_finishing:
+                    logger.warning(
+                        "shared mouse trajectory service is finishing; start is deferred"
+                    )
+                    return
+                if trajectory_thread.isPaused():
+                    trajectory_thread.resume()
+            else:
+                stale_submitter = shared_trajectory_submitter_thread
+                if stale_submitter is not None and stale_submitter.isRunning():
+                    stale_submitter.stop()
+                    stale_submitter.requestInterruption()
+                    stale_submitter.wait(2000)
+                shared_trajectory_submitter_thread = None
+                trajectory_thread = MouseTrajectoryThread()
+                shared_trajectory_thread = trajectory_thread
+                trajectory_thread.start()
+                logger.info(
+                    f"shared mouse trajectory service started: object_id={id(trajectory_thread)}"
+                )
+                _emit_runtime_diagnostic(
+                    "trajectory_service",
+                    f"action=start, object_id={id(trajectory_thread)}",
+                    logical_thread_name="gui_main",
+                )
+
+            trajectory_service_consumers.add(self)
+            self.trajectory_thread = trajectory_thread
+            self._connect_trajectory_signal(trajectory_thread)
+
+            submitter = shared_trajectory_submitter_thread
+            if submitter is None or not submitter.isRunning():
+                submitter = TrajectoryFrameSubmitterThread(trajectory_thread)
+                shared_trajectory_submitter_thread = submitter
+                submitter.start()
+            elif submitter.isPaused():
+                submitter.resume()
+            self.trajectory_submitter_thread = submitter
+            _emit_runtime_diagnostic(
+                "trajectory_service",
+                f"action=attach_view, object_id={id(trajectory_thread)}, "
+                f"consumer_count={len(trajectory_service_consumers)}",
+                logical_thread_name="gui_main",
+            )
 
     def start_trajectory_submitter_thread(self):
-        if self.trajectory_thread is None:
-            return
-        if self.trajectory_submitter_thread is not None and self.trajectory_submitter_thread.isRunning():
-            if self.trajectory_submitter_thread.isPaused():
-                self.trajectory_submitter_thread.resume()
-            return
-
-        self.trajectory_submitter_thread = TrajectoryFrameSubmitterThread(self.trajectory_thread)
-        self.trajectory_submitter_thread.start()
+        self.start_trajectory_thread()
 
     def stop_trajectory_submitter_thread(self):
-        if self.trajectory_submitter_thread is None:
-            return
+        global shared_trajectory_submitter_thread
 
-        if self.trajectory_submitter_thread.isRunning():
-            self.trajectory_submitter_thread.stop()
-            self.trajectory_submitter_thread.requestInterruption()
-            self.trajectory_submitter_thread.wait(2000)
+        with trajectory_service_lock:
+            other_consumers = [
+                consumer
+                for consumer in trajectory_service_consumers
+                if consumer is not self
+            ]
+            if other_consumers:
+                self.trajectory_submitter_thread = None
+                return
+            submitter = shared_trajectory_submitter_thread
+            shared_trajectory_submitter_thread = None
 
+        if submitter is not None and submitter.isRunning():
+            submitter.stop()
+            submitter.requestInterruption()
+            submitter.wait(2000)
         self.trajectory_submitter_thread = None
 
     def stop_trajectory_thread(self) -> bool:
-        if self.trajectory_thread is None:
-            return True
+        global shared_trajectory_thread
+        global shared_trajectory_submitter_thread
 
-        self.stop_trajectory_submitter_thread()
-        if self.trajectory_thread.isRunning():
-            self.trajectory_thread.request_finish_after_drain()
+        with trajectory_service_lock:
+            trajectory_thread = self.trajectory_thread
+            trajectory_service_consumers.discard(self)
+            self._disconnect_trajectory_signal()
+            other_consumers = [
+                consumer
+                for consumer in trajectory_service_consumers
+                if getattr(consumer, "trajectory_thread", None) is trajectory_thread
+            ]
+            if trajectory_thread is None or other_consumers:
+                self.trajectory_thread = None
+                self.trajectory_submitter_thread = None
+                return True
+
+            submitter = shared_trajectory_submitter_thread
+            shared_trajectory_submitter_thread = None
+
+        if submitter is not None and submitter.isRunning():
+            submitter.stop()
+            submitter.requestInterruption()
+            submitter.wait(2000)
+
+        if trajectory_thread.isRunning():
+            trajectory_thread.request_finish_after_drain()
             camera_config = global_setting.get_setting("camera_config") or {}
             trajectory_config = (
                 camera_config.get("MOUSE_TRAJECTORY", {})
@@ -1799,16 +1928,27 @@ class Tab_4(ThemedWindow):
                 ),
                 2.0,
             )
-            self.trajectory_thread.wait(int(finalize_timeout_seconds * 1000))
-        if self.trajectory_thread.isRunning():
+            trajectory_thread.wait(int(finalize_timeout_seconds * 1000))
+        if trajectory_thread.isRunning():
             logger.error(
                 "mouse trajectory finalization timed out; final trajectory output may be incomplete"
             )
             return False
-        else:
-            self.trajectory_thread.finalize_outputs()
 
+        trajectory_thread.finalize_outputs()
+        with trajectory_service_lock:
+            if shared_trajectory_thread is trajectory_thread:
+                shared_trajectory_thread = None
         self.trajectory_thread = None
+        self.trajectory_submitter_thread = None
+        logger.info(
+            f"shared mouse trajectory service stopped: object_id={id(trajectory_thread)}"
+        )
+        _emit_runtime_diagnostic(
+            "trajectory_service",
+            f"action=stop, object_id={id(trajectory_thread)}",
+            logical_thread_name="gui_main",
+        )
         return True
 
     def pause_loader_thread(self):
@@ -1960,13 +2100,36 @@ class Tab_4(ThemedWindow):
         if cage_number <= 0:
             return
 
+        try:
+            plot_revision = int(result_dict.get("plot_revision", -1))
+        except (TypeError, ValueError):
+            plot_revision = -1
+        current_plot_revision = self.latest_trajectory_plot_revision.get(
+            cage_number,
+            -1,
+        )
+        accept_plot_state = plot_revision >= current_plot_revision
         plot_paths = result_dict.get("plot_paths", {}) or {}
-        self.latest_trajectory_plot_paths[cage_number] = plot_paths
-        if plot_paths:
-            self.last_good_trajectory_plot_paths[cage_number] = plot_paths
         plot_title = str(result_dict.get("plot_title", "") or "")
-        if plot_title:
-            self.latest_trajectory_titles[cage_number] = plot_title
+        if accept_plot_state:
+            self.latest_trajectory_plot_revision[cage_number] = plot_revision
+            self.latest_trajectory_plot_paths[cage_number] = plot_paths
+            if plot_paths:
+                self.last_good_trajectory_plot_paths[cage_number] = plot_paths
+            if plot_title:
+                self.latest_trajectory_titles[cage_number] = plot_title
+        else:
+            plot_title = self.latest_trajectory_titles.get(cage_number, "")
+        if result_dict.get("event_type") == "plot_ready":
+            if accept_plot_state and plot_title:
+                self.latest_trajectory_progress_text[cage_number] = plot_title
+            self.latest_trajectory_status[cage_number] = "plot_ready"
+            if (
+                self.current_mode == self.MODE_VIDEO
+                and self.current_cage_number == cage_number
+            ):
+                self.video_dirty = True
+            return
         pending_frames = int(result_dict.get("pending_frames", 0) or 0)
         processed_frames = int(
             result_dict.get("processed_frames_for_cage", result_dict.get("processed_frames", 0)) or 0
@@ -2167,9 +2330,25 @@ class Tab_4(ThemedWindow):
         cage_number: int,
         frame_payload: dict[str, typing.Any] | None,
         render_ms: float,
+        build_ms: float = 0.0,
+        display_timings: dict[str, float] | None = None,
     ):
         self.video_render_count += 1
         self.video_render_total_ms += max(float(render_ms), 0.0)
+        self.video_build_total_ms += max(float(build_ms), 0.0)
+        display_timings = display_timings or {}
+        self.video_resize_total_ms += max(
+            float(display_timings.get("resize_ms", 0.0) or 0.0),
+            0.0,
+        )
+        self.video_convert_total_ms += max(
+            float(display_timings.get("convert_ms", 0.0) or 0.0),
+            0.0,
+        )
+        self.video_display_total_ms += max(
+            float(display_timings.get("display_ms", 0.0) or 0.0),
+            0.0,
+        )
         if frame_payload:
             self.video_last_render_frame_id = int(
                 frame_payload.get("frame_sequence", frame_payload.get("frame_id", 0)) or 0
@@ -2188,17 +2367,27 @@ class Tab_4(ThemedWindow):
             if self.video_render_count
             else 0.0
         )
+        sample_count = max(self.video_render_count, 1)
         _emit_runtime_diagnostic(
             "video_render_runtime",
             f"selected_cage={cage_number}, "
             f"render_fps={self.video_render_count / max(stats_elapsed, 0.001):.2f}, "
             f"render_avg_ms={average_render_ms:.2f}, "
+            f"overlay_build_avg_ms={self.video_build_total_ms / sample_count:.2f}, "
+            f"resize_avg_ms={self.video_resize_total_ms / sample_count:.2f}, "
+            f"qimage_convert_avg_ms={self.video_convert_total_ms / sample_count:.2f}, "
+            f"graphics_display_avg_ms={self.video_display_total_ms / sample_count:.2f}, "
             f"frame_age_ms={self.video_last_render_frame_age_ms:.1f}, "
             f"frame_id={self.video_last_render_frame_id}",
+            logical_thread_name="gui_main",
         )
         self.video_render_stats_last_monotonic = now_monotonic
         self.video_render_count = 0
         self.video_render_total_ms = 0.0
+        self.video_build_total_ms = 0.0
+        self.video_resize_total_ms = 0.0
+        self.video_convert_total_ms = 0.0
+        self.video_display_total_ms = 0.0
 
     def render_selected_content(self):
         if self.current_cage_number is None:
@@ -2215,9 +2404,12 @@ class Tab_4(ThemedWindow):
             render_start = time.perf_counter()
             self.left_panel.set_title(f"视频检测效果 - 鼠笼{cage_number}")
             frame_payload = self.latest_video_frames.get(cage_number) or self.last_good_video_frames.get(cage_number)
+            build_start = time.perf_counter()
             display_frame = self._build_video_display_frame(cage_number, frame_payload)
+            build_ms = (time.perf_counter() - build_start) * 1000.0
+            display_timings = {}
             if display_frame is not None:
-                self.left_panel.show_frame(display_frame)
+                display_timings = self.left_panel.show_frame(display_frame) or {}
             else:
                 self.left_panel.show_placeholder("暂无画面")
 
@@ -2225,6 +2417,8 @@ class Tab_4(ThemedWindow):
                 cage_number,
                 frame_payload,
                 (time.perf_counter() - render_start) * 1000.0,
+                build_ms,
+                display_timings,
             )
 
             plot_paths = (

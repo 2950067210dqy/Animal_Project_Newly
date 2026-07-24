@@ -1,4 +1,5 @@
 import os
+import multiprocessing
 import queue
 import secrets
 import sys
@@ -58,6 +59,8 @@ def _emit_runtime_diagnostic(event: str, message: str):
                     "source": "deep_camera",
                     "event": str(event),
                     "pid": os.getpid(),
+                    "process_name": multiprocessing.current_process().name,
+                    "thread_name": threading.current_thread().name,
                     "message": record_message,
                 }
             )
