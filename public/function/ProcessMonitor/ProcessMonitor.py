@@ -1005,7 +1005,8 @@ class IntegratedProcessMonitor:
             'target_func']
 
         # 创建新进程
-        new_process = multiprocessing.Process(
+        ctx = multiprocessing.get_context('spawn')
+        new_process = ctx.Process(
             target=monitored_target,
             args=(restart_func, proc_info['args'], proc_info['health_queue'],
                   process_id, self.exception_queue, asdict(proc_info['log_config'])),

@@ -6,13 +6,15 @@ from typing import Any
 import numpy as np
 
 
-META_STRUCT = struct.Struct("<qqdiiiii")
+# seq, camera_session_id, frame_sequence, capture_monotonic_ns,
+# capture_wall_time, height, width, channels, frame_bytes, valid
+META_STRUCT = struct.Struct("<qqqqdiiiii")
 
 
 class SharedVideoFrameStore:
     def __init__(
         self,
-        prefix: str = "animal_project_video",
+        prefix: str = "animal_project_video_v2",
         *,
         max_width: int = 1280,
         max_height: int = 720,
@@ -47,12 +49,36 @@ class SharedVideoFrameStore:
             frame_shm = shared_memory.SharedMemory(name=frame_name, create=True, size=self.max_frame_bytes)
         except FileExistsError:
             frame_shm = shared_memory.SharedMemory(name=frame_name, create=False)
+            if frame_shm.size < self.max_frame_bytes:
+                frame_shm.close()
+                raise RuntimeError(
+                    f"shared frame segment is too small: name={frame_name}, "
+                    f"size={frame_shm.size}, required={self.max_frame_bytes}"
+                )
 
         try:
             meta_shm = shared_memory.SharedMemory(name=meta_name, create=True, size=META_STRUCT.size)
-            meta_shm.buf[: META_STRUCT.size] = META_STRUCT.pack(0, 0, 0.0, 0, 0, self.channels, 0, 0)
+            meta_shm.buf[: META_STRUCT.size] = META_STRUCT.pack(
+                0,
+                0,
+                0,
+                0,
+                0.0,
+                0,
+                0,
+                self.channels,
+                0,
+                0,
+            )
         except FileExistsError:
             meta_shm = shared_memory.SharedMemory(name=meta_name, create=False)
+            if meta_shm.size < META_STRUCT.size:
+                frame_shm.close()
+                meta_shm.close()
+                raise RuntimeError(
+                    f"shared metadata segment is too small: name={meta_name}, "
+                    f"size={meta_shm.size}, required={META_STRUCT.size}"
+                )
 
         self._writer_shm[key] = (frame_shm, meta_shm)
         return frame_shm, meta_shm
@@ -68,10 +94,13 @@ class SharedVideoFrameStore:
         frame_name = self._frame_name(stream_name, cage_number)
         meta_name = self._meta_name(stream_name, cage_number)
 
+        frame_shm = None
         try:
             frame_shm = shared_memory.SharedMemory(name=frame_name, create=False)
             meta_shm = shared_memory.SharedMemory(name=meta_name, create=False)
         except FileNotFoundError:
+            if frame_shm is not None:
+                frame_shm.close()
             return None
 
         self._reader_shm[key] = (frame_shm, meta_shm)
@@ -85,6 +114,8 @@ class SharedVideoFrameStore:
         *,
         frame_id: int,
         timestamp: float | None = None,
+        camera_session_id: int = 0,
+        capture_monotonic_ns: int | None = None,
     ) -> None:
         if frame is None:
             return
@@ -105,14 +136,32 @@ class SharedVideoFrameStore:
 
         frame_shm, meta_shm = self._get_or_create_writer_pair(stream_name, cage_number)
         timestamp = float(time.time() if timestamp is None else timestamp)
+        capture_monotonic_ns = int(
+            time.monotonic_ns() if capture_monotonic_ns is None else capture_monotonic_ns
+        )
+        camera_session_id = int(camera_session_id)
+        frame_id = int(frame_id)
         current_seq = META_STRUCT.unpack(meta_shm.buf[: META_STRUCT.size])[0]
         start_seq = current_seq + 1 if current_seq % 2 == 0 else current_seq + 2
 
-        meta_shm.buf[: META_STRUCT.size] = META_STRUCT.pack(start_seq, frame_id, timestamp, 0, 0, channels, 0, 0)
+        meta_shm.buf[: META_STRUCT.size] = META_STRUCT.pack(
+            start_seq,
+            camera_session_id,
+            frame_id,
+            capture_monotonic_ns,
+            timestamp,
+            0,
+            0,
+            channels,
+            0,
+            0,
+        )
         frame_shm.buf[:frame_bytes] = array.reshape(-1).tobytes()
         meta_shm.buf[: META_STRUCT.size] = META_STRUCT.pack(
             start_seq + 1,
+            camera_session_id,
             frame_id,
+            capture_monotonic_ns,
             timestamp,
             height,
             width,
@@ -121,17 +170,52 @@ class SharedVideoFrameStore:
             1,
         )
 
-    def read_frame(self, stream_name: str, cage_number: int, *, retries: int = 3) -> dict[str, Any] | None:
+    def read_frame(
+        self,
+        stream_name: str,
+        cage_number: int,
+        *,
+        retries: int = 3,
+        max_age_seconds: float | None = None,
+    ) -> dict[str, Any] | None:
         shm_pair = self._get_or_open_reader_pair(stream_name, cage_number)
         if shm_pair is None:
             return None
 
         frame_shm, meta_shm = shm_pair
         for _ in range(max(retries, 1)):
-            seq_1, frame_id, timestamp, height, width, channels, frame_bytes, valid = META_STRUCT.unpack(
-                meta_shm.buf[: META_STRUCT.size]
-            )
-            if valid != 1 or seq_1 % 2 == 1 or frame_bytes <= 0 or height <= 0 or width <= 0:
+            (
+                seq_1,
+                camera_session_id,
+                frame_sequence,
+                capture_monotonic_ns,
+                capture_wall_time,
+                height,
+                width,
+                channels,
+                frame_bytes,
+                valid,
+            ) = META_STRUCT.unpack(meta_shm.buf[: META_STRUCT.size])
+            if seq_1 % 2 == 1:
+                continue
+            if valid != 1 or frame_bytes <= 0 or height <= 0 or width <= 0:
+                return None
+            expected_frame_bytes = int(height) * int(width) * int(channels)
+            if (
+                channels != self.channels
+                or height > self.max_height
+                or width > self.max_width
+                or frame_bytes != expected_frame_bytes
+                or frame_bytes > self.max_frame_bytes
+            ):
+                return None
+            if (
+                max_age_seconds is not None
+                and max_age_seconds > 0
+                and capture_monotonic_ns > 0
+                and time.monotonic_ns() - capture_monotonic_ns
+                > int(max_age_seconds * 1_000_000_000)
+            ):
                 return None
 
             raw = bytes(frame_shm.buf[:frame_bytes])
@@ -142,8 +226,12 @@ class SharedVideoFrameStore:
             frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, channels))
             return {
                 "cage_number": int(cage_number),
-                "frame_id": int(frame_id),
-                "timestamp": float(timestamp),
+                "camera_session_id": int(camera_session_id),
+                "frame_sequence": int(frame_sequence),
+                "frame_id": int(frame_sequence),
+                "capture_monotonic_ns": int(capture_monotonic_ns),
+                "capture_wall_time": float(capture_wall_time),
+                "timestamp": float(capture_wall_time),
                 "frame": frame,
             }
         return None
@@ -153,7 +241,18 @@ class SharedVideoFrameStore:
         _frame_shm, meta_shm = shm_pair
         current_seq = META_STRUCT.unpack(meta_shm.buf[: META_STRUCT.size])[0]
         start_seq = current_seq + 1 if current_seq % 2 == 0 else current_seq + 2
-        meta_shm.buf[: META_STRUCT.size] = META_STRUCT.pack(start_seq + 1, 0, 0.0, 0, 0, self.channels, 0, 0)
+        meta_shm.buf[: META_STRUCT.size] = META_STRUCT.pack(
+            start_seq + 1,
+            0,
+            0,
+            0,
+            0.0,
+            0,
+            0,
+            self.channels,
+            0,
+            0,
+        )
 
     def close_reader(self) -> None:
         for frame_shm, meta_shm in self._reader_shm.values():

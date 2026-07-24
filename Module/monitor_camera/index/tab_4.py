@@ -4,7 +4,8 @@ import time
 import traceback
 import typing
 from datetime import datetime, timedelta
-
+from pathlib import Path
+from typing import Any
 import cv2
 import numpy as np
 from PyQt6 import QtGui
@@ -146,7 +147,11 @@ class ImageLoaderThread(MyQThread):
                 display_cages = {self.target_cage_number}
 
             for cage_number in sorted(display_cages):
-                frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
+                frame_payload = shared_video_frame_store.read_frame(
+                    "deep_camera",
+                    cage_number,
+                    max_age_seconds=2.0,
+                )
                 if frame_payload is not None:
                     deep_camera_frames[cage_number] = frame_payload
 
@@ -163,24 +168,75 @@ class TrajectoryFrameSubmitterThread(MyQThread):
     def __init__(self, trajectory_thread: MouseTrajectoryThread):
         super().__init__(name="trajectory_frame_submitter")
         self.trajectory_thread = trajectory_thread
+        self.submitted_file_keys: dict[int, set[str]] = {}
         self.last_submitted_frame_ids: dict[int, int] = {}
+        self.last_considered_frame_versions: dict[int, tuple[int, int]] = {}
+        self.next_submit_time_by_cage: dict[int, float] = {}
+        self.round_robin_offset = 0
         self.cached_target_cages: set[int] = set()
         self.last_target_cage_refresh_time = 0.0
         self.target_cage_refresh_interval = 1.0
-        self.sample_frame_step = 2
-        self.poll_interval_seconds = 0.03
+        self.poll_interval_seconds = 0.02
+        self.scan_limit_per_cage = 200
+        self.file_min_age_seconds = 0.2
+        self.input_mode = "memory"
+        self.enable_disk_backfill = False
+        self.target_fps = 10.0
+        self.storage_base_dir = Path.cwd() / "data"
+        self.deep_camera_path = "deep_camera"
+        self.mouse_cage_prefix = "mouse_cage_"
+        self.color_dir = "color"
         self._load_runtime_config()
+
+    @staticmethod
+    def _as_bool(value, default=False) -> bool:
+        if value is None:
+            return bool(default)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        text = str(value).strip().lower()
+        if text in ("1", "true", "yes", "y", "on"):
+            return True
+        if text in ("0", "false", "no", "n", "off"):
+            return False
+        return bool(default)
+
+    @staticmethod
+    def _frame_version(frame_payload: dict[str, Any]) -> tuple[int, int]:
+        frame_sequence = int(
+            frame_payload.get("frame_sequence", frame_payload.get("frame_id", 0)) or 0
+        )
+        camera_session_id = int(frame_payload.get("camera_session_id", 0) or 0)
+        if camera_session_id > 0:
+            return camera_session_id, frame_sequence
+        timestamp = float(frame_payload.get("timestamp", 0.0) or 0.0)
+        return int(timestamp * 1_000_000_000), frame_sequence
+
+    @staticmethod
+    def _is_stale_frame_version(
+        frame_version: tuple[int, int],
+        previous_version: tuple[int, int] | None,
+    ) -> bool:
+        return (
+            previous_version is not None
+            and frame_version[0] == previous_version[0]
+            and frame_version[1] <= previous_version[1]
+        )
 
     def _load_runtime_config(self):
         try:
             camera_config = global_setting.get_setting("camera_config")
             trajectory_config = {}
+            storage_config = {}
+            deep_config = {}
             if camera_config and "MOUSE_TRAJECTORY" in camera_config:
                 trajectory_config = camera_config["MOUSE_TRAJECTORY"]
-            self.sample_frame_step = max(
-                int(float(trajectory_config.get("yolo_sample_frame_step", self.sample_frame_step) or self.sample_frame_step)),
-                1,
-            )
+            if camera_config and "STORAGE" in camera_config:
+                storage_config = camera_config["STORAGE"]
+            if camera_config and "DEEP_CAMERA" in camera_config:
+                deep_config = camera_config["DEEP_CAMERA"]
             self.poll_interval_seconds = max(
                 float(
                     trajectory_config.get(
@@ -191,8 +247,48 @@ class TrajectoryFrameSubmitterThread(MyQThread):
                 ),
                 0.005,
             )
+            self.input_mode = str(
+                trajectory_config.get("trajectory_input_mode", self.input_mode) or self.input_mode
+            ).strip().lower()
+            self.enable_disk_backfill = self._as_bool(
+                trajectory_config.get("enable_disk_backfill", self.input_mode == "disk"),
+                self.input_mode == "disk",
+            )
+            self.target_fps = max(
+                float(trajectory_config.get("trajectory_target_fps", self.target_fps) or self.target_fps),
+                0.1,
+            )
+            self.scan_limit_per_cage = max(
+                int(float(trajectory_config.get("trajectory_scan_limit_per_cage", self.scan_limit_per_cage) or self.scan_limit_per_cage)),
+                1,
+            )
+            self.file_min_age_seconds = max(
+                float(trajectory_config.get("trajectory_file_min_age_seconds", self.file_min_age_seconds) or self.file_min_age_seconds),
+                0.0,
+            )
+            fold_path = str(storage_config.get("fold_path", "./data/") or "./data/")
+            storage_base_dir = Path(fold_path)
+            if not storage_base_dir.is_absolute():
+                storage_base_dir = Path.cwd() / storage_base_dir
+            self.storage_base_dir = storage_base_dir
+            self.deep_camera_path = str(deep_config.get("path", self.deep_camera_path) or self.deep_camera_path).strip("/\\")
+            self.mouse_cage_prefix = str(deep_config.get("mouse_cage_prefix", self.mouse_cage_prefix) or self.mouse_cage_prefix)
+            self.color_dir = str(deep_config.get("color_dir", self.color_dir) or self.color_dir).strip("/\\")
         except Exception as error:
             logger.warning(f"load trajectory submitter config failed, use defaults: {error}")
+
+    def _effective_submit_fps(self, active_cage_count: int) -> float:
+        active_cage_count = max(int(active_cage_count), 1)
+        recommended_fps = self.target_fps
+        getter = getattr(self.trajectory_thread, "get_recommended_submit_fps", None)
+        if callable(getter):
+            try:
+                recommended_fps = float(getter(active_cage_count, self.target_fps))
+            except TypeError:
+                recommended_fps = float(getter(active_cage_count))
+            except Exception as error:
+                logger.debug(f"get recommended trajectory submit fps failed: {error}")
+        return max(0.1, min(float(self.target_fps), float(recommended_fps)))
 
     def _get_target_cages(self) -> set[int]:
         now = time.time()
@@ -210,36 +306,181 @@ class TrajectoryFrameSubmitterThread(MyQThread):
         self.last_target_cage_refresh_time = now
         return target_cages
 
-    def _should_submit_frame(self, cage_number: int, frame_id: int) -> bool:
-        if frame_id <= 0:
-            return False
-        if frame_id <= self.last_submitted_frame_ids.get(cage_number, 0):
-            return False
-        if frame_id % self.sample_frame_step != 0:
-            return False
-        return True
+    def _get_cage_color_dir(self, cage_number: int) -> Path:
+        return (
+            self.storage_base_dir
+            / self.deep_camera_path
+            / f"{self.mouse_cage_prefix}{int(cage_number)}"
+            / self.color_dir
+        )
 
-    def dosomething(self):
-        if self.trajectory_thread is None or not self.trajectory_thread.isRunning():
-            time.sleep(self.poll_interval_seconds)
-            return
+    @staticmethod
+    def _file_key(image_path: Path) -> str:
+        try:
+            return str(image_path.resolve()).lower()
+        except OSError:
+            return str(image_path.absolute()).lower()
 
-        trajectory_frames = {}
-        for cage_number in sorted(self._get_target_cages()):
-            frame_payload = shared_video_frame_store.read_frame("deep_camera", cage_number)
+    def _iter_unsubmitted_images(self, cage_number: int) -> list[Path]:
+        color_dir = self._get_cage_color_dir(cage_number)
+        if not color_dir.exists():
+            return []
+
+        submitted_keys = self.submitted_file_keys.setdefault(int(cage_number), set())
+        now = time.time()
+        candidates: list[Path] = []
+        try:
+            for pattern in ("*.jpg", "*.jpeg"):
+                candidates.extend(color_dir.glob(pattern))
+        except OSError as error:
+            logger.debug(f"scan trajectory color dir failed cage={cage_number}: {error}")
+            return []
+
+        image_stats: list[tuple[float, str, Path]] = []
+        for image_path in candidates:
+            try:
+                image_stats.append((image_path.stat().st_mtime, image_path.name, image_path))
+            except OSError:
+                continue
+
+        ordered_images: list[Path] = []
+        for mtime, _name, image_path in sorted(image_stats, key=lambda item: (item[0], item[1])):
+            file_key = self._file_key(image_path)
+            if file_key in submitted_keys:
+                continue
+            if now - mtime < self.file_min_age_seconds:
+                continue
+            ordered_images.append(image_path)
+            if len(ordered_images) >= self.scan_limit_per_cage:
+                break
+        return ordered_images
+
+    def _submit_disk_frames(self, target_cages: list[int]) -> int:
+        submitted_count = 0
+        for cage_number in target_cages:
+            for image_path in self._iter_unsubmitted_images(cage_number):
+                try:
+                    stat_result = image_path.stat()
+                except OSError:
+                    continue
+                payload = {
+                    "file_path": str(image_path),
+                    "image_path": str(image_path),
+                    "frame_name": image_path.name,
+                    "frame_key": image_path.name,
+                    "frame_id": 0,
+                    "timestamp": float(stat_result.st_mtime),
+                    "submit_timestamp": time.time(),
+                    "submit_monotonic_ns": time.monotonic_ns(),
+                    "trajectory_priority": 5,
+                    "source": "disk",
+                }
+                if self.trajectory_thread.submit_frame(cage_number, payload):
+                    self.submitted_file_keys.setdefault(int(cage_number), set()).add(self._file_key(image_path))
+                    submitted_count += 1
+                break
+        return submitted_count
+
+    def _submit_memory_frames(self, target_cages: list[int]) -> int:
+        if not target_cages:
+            return 0
+
+        submitted_count = 0
+        now = time.time()
+        submit_fps = self._effective_submit_fps(len(target_cages))
+        submit_interval = 1.0 / max(submit_fps, 0.1)
+        start_index = self.round_robin_offset % len(target_cages)
+        ordered_cages = target_cages[start_index:] + target_cages[:start_index]
+        self.round_robin_offset = (start_index + 1) % len(target_cages)
+
+        for cage_number in ordered_cages:
+            if now < self.next_submit_time_by_cage.get(int(cage_number), 0.0):
+                continue
+
+            frame_payload = shared_video_frame_store.read_frame(
+                "deep_camera",
+                cage_number,
+                max_age_seconds=2.0,
+            )
             if frame_payload is None:
                 continue
-            frame_id = int(frame_payload.get("frame_id", 0) or 0)
-            if not self._should_submit_frame(cage_number, frame_id):
+
+            frame = frame_payload.get("frame")
+            if frame is None:
                 continue
-            frame_payload["trajectory_priority"] = 5
-            trajectory_frames[cage_number] = frame_payload
-            self.last_submitted_frame_ids[cage_number] = frame_id
 
-        if trajectory_frames:
-            self.trajectory_thread.submit_frames(trajectory_frames)
+            frame_id = int(frame_payload.get("frame_id", 0) or 0)
+            timestamp = float(frame_payload.get("timestamp", now) or now)
+            frame_version = self._frame_version(frame_payload)
+            if frame_id > 0 and self._is_stale_frame_version(
+                frame_version,
+                self.last_considered_frame_versions.get(int(cage_number)),
+            ):
+                continue
 
-        time.sleep(self.poll_interval_seconds)
+            frame_name = (
+                frame_payload.get("frame_name")
+                or f"cage{int(cage_number)}_{int(timestamp * 1000)}_f{frame_id}.jpg"
+            )
+            payload = dict(frame_payload)
+            try:
+                payload["frame"] = frame.copy()
+            except Exception:
+                payload["frame"] = frame
+            payload.update(
+                {
+                    "frame_name": str(frame_name),
+                    "frame_key": (
+                        f"memory_{int(cage_number)}_"
+                        f"s{int(frame_payload.get('camera_session_id', 0) or 0)}_"
+                        f"f{frame_id}"
+                    ),
+                    "frame_id": frame_id,
+                    "timestamp": timestamp,
+                    "submit_timestamp": time.time(),
+                    "submit_monotonic_ns": time.monotonic_ns(),
+                    "trajectory_priority": 1,
+                    "source": "memory",
+                    "effective_submit_fps": submit_fps,
+                }
+            )
+
+            submitted = self.trajectory_thread.submit_frame(cage_number, payload)
+            if frame_id > 0:
+                self.last_considered_frame_versions[int(cage_number)] = frame_version
+            self.next_submit_time_by_cage[int(cage_number)] = now + submit_interval
+
+            if submitted:
+                if frame_id > 0:
+                    self.last_submitted_frame_ids[int(cage_number)] = frame_id
+                submitted_count += 1
+        return submitted_count
+
+    def dosomething(self):
+        try:
+            if self.trajectory_thread is None or not self.trajectory_thread.isRunning():
+                return
+
+            target_cages = sorted(self._get_target_cages())
+            submitted_count = 0
+            if self.input_mode == "memory":
+                submitted_count += self._submit_memory_frames(target_cages)
+                if self.enable_disk_backfill:
+                    submitted_count += self._submit_disk_frames(target_cages)
+            else:
+                submitted_count += self._submit_disk_frames(target_cages)
+
+            if submitted_count:
+                logger.debug(
+                    f"submitted trajectory frames: count={submitted_count}, mode={self.input_mode}, "
+                    f"disk_backfill={self.enable_disk_backfill}"
+                )
+        except Exception as error:
+            logger.error(
+                f"trajectory submitter failed: {error} | {traceback.format_exc()}"
+            )
+        finally:
+            time.sleep(self.poll_interval_seconds)
 
 
 class AutoFitGraphicsView(QGraphicsView):
@@ -408,24 +649,50 @@ class DisplayPanel(QWidget):
         self.graphics_view.show()
 
         if frame is not None:
-            frame = self._resize_frame_for_view(frame)
-            if len(frame.shape) == 2:
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
-            else:
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            height, width = rgb_frame.shape[:2]
-            bytes_per_line = rgb_frame.strides[0]
-            image = QImage(
-                rgb_frame.data,
-                width,
-                height,
-                bytes_per_line,
-                QImage.Format.Format_RGB888,
-            )
-            pixmap = QPixmap.fromImage(image)
-            if not pixmap.isNull():
-                self._set_pixmap(pixmap)
+            try:
+                frame = self._resize_frame_for_view(frame)
+                if not frame.flags["C_CONTIGUOUS"]:
+                    frame = np.ascontiguousarray(frame)
+
+                height, width = frame.shape[:2]
+                bytes_per_line = frame.strides[0]
+                if len(frame.shape) == 2:
+                    image = QImage(
+                        frame.data,
+                        width,
+                        height,
+                        bytes_per_line,
+                        QImage.Format.Format_Grayscale8,
+                    )
+                else:
+                    bgr_format = getattr(QImage.Format, "Format_BGR888", None)
+                    if bgr_format is not None:
+                        image = QImage(
+                            frame.data,
+                            width,
+                            height,
+                            bytes_per_line,
+                            bgr_format,
+                        )
+                    else:
+                        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        image = QImage(
+                            rgb_frame.data,
+                            width,
+                            height,
+                            rgb_frame.strides[0],
+                            QImage.Format.Format_RGB888,
+                        )
+
+                pixmap = QPixmap.fromImage(image)
+                if not pixmap.isNull():
+                    self._set_pixmap(pixmap)
+                    return
+            except (MemoryError, SystemError) as error:
+                logger.warning(f"skip video frame display due to memory pressure: {error}")
                 return
+            except Exception as error:
+                logger.debug(f"show video frame failed: {error}")
 
         self.show_placeholder("暂无画面")
 
@@ -1116,16 +1383,21 @@ class Tab_4(ThemedWindow):
         self.latest_trajectory_titles: dict[int, str] = {}
         self.latest_trajectory_progress_text: dict[int, str] = {}
         self.blank_trajectory_plot_paths: dict[str, str] = {}
+        self.displayed_trajectory_plot_signatures: dict[tuple[int, str], tuple[str, float]] = {}
+        self.current_right_plot_signature: tuple[str, float] | None = None
         self.last_good_corners: dict[int, list[dict[str, typing.Any]]] = {}
         self.last_mouse_boxes: dict[int, tuple[float, float, float, float]] = {}
-        self.mouse_trackers: dict[int, typing.Any] = {}
-        self.tracker_frame_ids: dict[int, int] = {}
+        self.last_valid_mouse_overlays: dict[int, dict[str, typing.Any]] = {}
+        self.last_valid_mouse_overlay_times: dict[int, float] = {}
+        self.mouse_overlay_hold_seconds = 1.5
         self.current_trajectory_plot_key = "xy_trajectory"
         self.temperature_widget: TemperatureTrendWidget | None = None
         self.last_enabled_cages: list[int] = []
         self.last_selector_refresh_time = 0.0
         self.selector_refresh_interval = 1.0
         self.video_dirty = False
+        self.last_video_render_time = 0.0
+        self.video_render_interval_seconds = 0.05
 
         self._init_ui(parent, geometry, title)
         self._init_customize_ui()
@@ -1153,7 +1425,7 @@ class Tab_4(ThemedWindow):
 
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
         logger.warning("tab4-close")
-        self.pause_loader_thread()
+        self.stop_loader_thread()
         self.stop_trajectory_thread()
         if self.temperature_widget is not None:
             self.temperature_widget.stop()
@@ -1317,21 +1589,40 @@ class Tab_4(ThemedWindow):
 
         self.trajectory_submitter_thread = None
 
-    def stop_trajectory_thread(self):
+    def stop_trajectory_thread(self) -> bool:
         if self.trajectory_thread is None:
-            return
+            return True
 
         self.stop_trajectory_submitter_thread()
         if self.trajectory_thread.isRunning():
             self.trajectory_thread.request_finish_after_drain()
-            self.trajectory_thread.wait(2000)
+            camera_config = global_setting.get_setting("camera_config") or {}
+            trajectory_config = (
+                camera_config.get("MOUSE_TRAJECTORY", {})
+                if isinstance(camera_config, dict)
+                else {}
+            )
+            finalize_timeout_seconds = max(
+                float(
+                    trajectory_config.get(
+                        "trajectory_finalize_timeout_seconds",
+                        60,
+                    )
+                    or 60
+                ),
+                2.0,
+            )
+            self.trajectory_thread.wait(int(finalize_timeout_seconds * 1000))
         if self.trajectory_thread.isRunning():
-            logger.warning("mouse trajectory thread is finalizing remaining frames in background")
-            return
+            logger.error(
+                "mouse trajectory finalization timed out; final trajectory output may be incomplete"
+            )
+            return False
         else:
             self.trajectory_thread.finalize_outputs()
 
         self.trajectory_thread = None
+        return True
 
     def pause_loader_thread(self):
         if self.loader_thread is None:
@@ -1354,62 +1645,6 @@ class Tab_4(ThemedWindow):
         if x2 <= x1 or y2 <= y1:
             return None
         return x1, y1, x2, y2
-
-    @staticmethod
-    def _create_mouse_tracker():
-        creators = (
-            ("legacy", "TrackerKCF_create"),
-            (None, "TrackerKCF_create"),
-            ("legacy", "TrackerMOSSE_create"),
-            (None, "TrackerMOSSE_create"),
-            ("legacy", "TrackerMIL_create"),
-            (None, "TrackerMIL_create"),
-        )
-        for namespace, creator_name in creators:
-            owner = getattr(cv2, namespace, cv2) if namespace else cv2
-            creator = getattr(owner, creator_name, None)
-            if creator is None:
-                continue
-            try:
-                return creator()
-            except Exception:
-                continue
-        return None
-
-    def _init_mouse_tracker(self, cage_number: int, frame, box_xyxy: tuple[float, float, float, float] | None):
-        if frame is None or box_xyxy is None:
-            return
-        tracker = self._create_mouse_tracker()
-        if tracker is None:
-            self.last_mouse_boxes[cage_number] = box_xyxy
-            return
-        x1, y1, x2, y2 = box_xyxy
-        bbox = (float(x1), float(y1), float(x2 - x1), float(y2 - y1))
-        try:
-            tracker.init(frame, bbox)
-            self.mouse_trackers[cage_number] = tracker
-            self.tracker_frame_ids[cage_number] = int(self.last_good_video_frames.get(cage_number, {}).get("frame_id", 0) or 0)
-            self.last_mouse_boxes[cage_number] = box_xyxy
-        except Exception as error:
-            logger.debug(f"init mouse tracker failed cage={cage_number}: {error}")
-            self.last_mouse_boxes[cage_number] = box_xyxy
-
-    def _update_mouse_tracker(self, cage_number: int, frame, frame_id: int) -> tuple[float, float, float, float] | None:
-        tracker = self.mouse_trackers.get(cage_number)
-        if tracker is None or frame is None:
-            return self.last_mouse_boxes.get(cage_number)
-        if frame_id > 0 and self.tracker_frame_ids.get(cage_number) == frame_id:
-            return self.last_mouse_boxes.get(cage_number)
-        try:
-            ok, bbox = tracker.update(frame)
-            if ok:
-                x, y, w, h = bbox
-                box_xyxy = (float(x), float(y), float(x + w), float(y + h))
-                self.last_mouse_boxes[cage_number] = box_xyxy
-                self.tracker_frame_ids[cage_number] = frame_id
-        except Exception as error:
-            logger.debug(f"update mouse tracker failed cage={cage_number}: {error}")
-        return self.last_mouse_boxes.get(cage_number)
 
     def _draw_cage_corners(self, frame, corners: list[dict[str, typing.Any]] | None):
         if frame is None or not corners or len(corners) < 4:
@@ -1443,11 +1678,29 @@ class Tab_4(ThemedWindow):
                 z_value = solved.get("Z_total", solved.get("Z", 0))
                 label = f"X:{float(solved.get('X', 0)):.1f} Y:{float(solved.get('Y', 0)):.1f} Z:{float(z_value):.1f}"
             else:
-                status = (overlay or {}).get("status", "")
-                label = str(status or "mouse")
+                center_x = (x1 + x2) / 2
+                center_y = (y1 + y2) / 2
+                label = f"X:{center_x:.1f} Y:{center_y:.1f}"
             cv2.putText(frame, label, (x1, max(16, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
         except Exception as error:
             logger.debug(f"draw mouse box failed: {error}")
+
+    def _get_display_mouse_overlay(
+        self,
+        cage_number: int,
+        frame,
+        frame_id: int,
+    ) -> tuple[dict[str, typing.Any], tuple[float, float, float, float] | None]:
+        # The trajectory pipeline consumes sampled in-memory camera frames asynchronously.
+        # Do not project an old YOLO result onto the newest live preview frame.
+        overlay = self.latest_trajectory_overlays.get(cage_number, {}) or {}
+        overlay_frame_id = int(overlay.get("frame_id", 0) or 0)
+        if frame_id > 0 and overlay_frame_id == frame_id:
+            box_xyxy = self._box_dict_to_xyxy(overlay.get("mouse_box"))
+            if box_xyxy is not None:
+                return overlay, box_xyxy
+
+        return {}, None
 
     def _build_video_display_frame(self, cage_number: int, frame_payload: dict[str, typing.Any] | None):
         if not frame_payload:
@@ -1455,8 +1708,36 @@ class Tab_4(ThemedWindow):
         frame = frame_payload.get("frame")
         if frame is None:
             return None
-        # UI shows the raw camera frame; YOLO/corner results are still cached for trajectory calculation.
-        return frame.copy()
+        try:
+            display_frame = frame.copy()
+        except (MemoryError, SystemError) as error:
+            logger.warning(f"skip video overlay due to memory pressure: {error}")
+            return frame
+        frame_id = int(frame_payload.get("frame_id", 0) or 0)
+        overlay = self.latest_trajectory_overlays.get(cage_number, {}) or {}
+        corners = overlay.get("corners") or self.last_good_corners.get(cage_number)
+        self._draw_cage_corners(display_frame, corners)
+        mouse_overlay, mouse_box = self._get_display_mouse_overlay(cage_number, display_frame, frame_id)
+        self._draw_mouse_box(display_frame, mouse_box, mouse_overlay)
+        return display_frame
+
+    def _show_trajectory_plot_if_changed(self, cage_number: int, plot_key: str, image_path: str) -> bool:
+        if not image_path or not os.path.exists(image_path):
+            return False
+        try:
+            signature = (image_path, os.path.getmtime(image_path))
+        except OSError:
+            return False
+        cache_key = (int(cage_number), str(plot_key))
+        if (
+            self.displayed_trajectory_plot_signatures.get(cache_key) == signature
+            and self.current_right_plot_signature == signature
+        ):
+            return True
+        self.right_panel.show_image(image_path)
+        self.displayed_trajectory_plot_signatures[cache_key] = signature
+        self.current_right_plot_signature = signature
+        return True
 
     def _get_blank_trajectory_plot_path(self, plot_key: str) -> str:
         expected_keys = ("xy_trajectory", "height_trajectory", "occupancy_heatmap")
@@ -1517,12 +1798,16 @@ class Tab_4(ThemedWindow):
                     pass
         elif processed_frames > 0:
             progress_text = f"{progress_text} | 已处理 {processed_frames} 张"
+        dropped_frames = int(result_dict.get("dropped_frames_for_cage", 0) or 0)
+        if dropped_frames > 0:
+            progress_text = f"{progress_text} | dropped {dropped_frames}"
         self.latest_trajectory_progress_text[cage_number] = progress_text
         corners = result_dict.get("corners")
         if corners:
             self.last_good_corners[cage_number] = corners
         overlay = {
             "status": result_dict.get("status", ""),
+            "frame_id": int(result_dict.get("frame_id", 0) or 0),
             "mouse_box": result_dict.get("mouse_box"),
             "corners": corners or self.last_good_corners.get(cage_number),
             "solved": result_dict.get("solved"),
@@ -1530,9 +1815,8 @@ class Tab_4(ThemedWindow):
         self.latest_trajectory_overlays[cage_number] = overlay
         box_xyxy = self._box_dict_to_xyxy(overlay.get("mouse_box"))
         if box_xyxy is not None:
-            frame_payload = self.last_good_video_frames.get(cage_number)
-            frame = None if frame_payload is None else frame_payload.get("frame")
-            self._init_mouse_tracker(cage_number, frame, box_xyxy)
+            self.last_valid_mouse_overlays[cage_number] = overlay
+            self.last_valid_mouse_overlay_times[cage_number] = time.time()
         self.latest_trajectory_status[cage_number] = result_dict.get("status", "")
 
         if self.current_mode == self.MODE_VIDEO and self.current_cage_number == cage_number:
@@ -1633,6 +1917,10 @@ class Tab_4(ThemedWindow):
     def render_video_if_dirty(self):
         if self.current_mode != self.MODE_VIDEO or not self.video_dirty:
             return
+        now = time.time()
+        if now - self.last_video_render_time < self.video_render_interval_seconds:
+            return
+        self.last_video_render_time = now
         self.video_dirty = False
         self.render_selected_content()
 
@@ -1718,54 +2006,19 @@ class Tab_4(ThemedWindow):
                 or self.latest_trajectory_titles.get(cage_number, "轨迹绘制中")
             )
             self.right_panel.set_title(f"{plot_label} - 鼠笼{cage_number} | {trajectory_title}")
-            if selected_plot_path and os.path.exists(selected_plot_path):
-                self.right_panel.show_image(selected_plot_path)
-            else:
+            if not self._show_trajectory_plot_if_changed(
+                cage_number,
+                self.current_trajectory_plot_key,
+                selected_plot_path,
+            ):
                 blank_plot_path = self._get_blank_trajectory_plot_path(self.current_trajectory_plot_key)
-                if blank_plot_path and os.path.exists(blank_plot_path):
-                    self.right_panel.show_image(blank_plot_path)
-                else:
+                if not self._show_trajectory_plot_if_changed(
+                    cage_number,
+                    f"blank:{self.current_trajectory_plot_key}",
+                    blank_plot_path,
+                ):
                     self.right_panel.show_placeholder(
                         self.latest_trajectory_progress_text.get(cage_number, "轨迹绘制中")
                     )
             return
 
-        self.left_panel.set_title(f"红外相机 - 鼠笼{cage_number}")
-        self.left_panel.show_image(self.latest_image_paths["infrared_camera"].get(cage_number, ""))
-        self.right_panel.set_title(f"温度 - 鼠笼{cage_number}")
-        if self.temperature_widget is not None:
-            self.temperature_widget.refresh_data(cage_number)
-            self.right_panel.show_custom_widget(self.temperature_widget)
-        else:
-            self.right_panel.show_placeholder("暂无温度数据")
-
-    def _init_function(self):
-        self.init_btn_handle()
-
-    def init_btn_handle(self):
-        start_btn = self.findChild(QPushButton, "start_btn")
-        stop_btn = self.findChild(QPushButton, "stop_btn")
-        state_label: QLabel = self.findChild(QLabel, "state_label")
-        infrared_camera_setting_btn = self.findChild(QPushButton, "infrared_camera_setting")
-
-        start_btn.clicked.connect(lambda: self.start_btn_func(start_btn, stop_btn, state_label))
-        stop_btn.clicked.connect(lambda: self.stop_btn_func(start_btn, stop_btn, state_label))
-        infrared_camera_setting_btn.clicked.connect(
-            lambda: self.infrared_camera_setting_btn_func(infrared_camera_setting_btn)
-        )
-
-    def start_btn_func(self, start_btn: QPushButton, stop_btn: QPushButton, state_label: QLabel):
-        self.start_loader_thread()
-        state_label.setText("已连接")
-        stop_btn.setDisabled(False)
-        start_btn.setDisabled(True)
-
-    def stop_btn_func(self, start_btn: QPushButton, stop_btn: QPushButton, state_label: QLabel):
-        self.pause_loader_thread()
-        state_label.setText("未连接")
-        stop_btn.setDisabled(True)
-        start_btn.setDisabled(False)
-
-    def infrared_camera_setting_btn_func(self, config_btn):
-        self.infrared_camera_read_SN_dialog_frame = infrared_camera_read_SN_dialog(title="红外相机获取SN码")
-        self.infrared_camera_read_SN_dialog_frame.show_frame()

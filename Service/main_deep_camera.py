@@ -1,4 +1,5 @@
 import os
+import secrets
 import sys
 import time
 import threading
@@ -39,6 +40,31 @@ def _deep_camera_config():
     return _camera_config()["DEEP_CAMERA"]
 
 
+def _as_bool(value, default=False):
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "y", "on"):
+        return True
+    if text in ("0", "false", "no", "n", "off"):
+        return False
+    return bool(default)
+
+
+def _save_raw_frames():
+    config = _camera_config() or {}
+    deep_config = config.get("DEEP_CAMERA", {}) if isinstance(config, dict) else {}
+    trajectory_config = config.get("MOUSE_TRAJECTORY", {}) if isinstance(config, dict) else {}
+    return _as_bool(
+        deep_config.get("save_raw_frames", trajectory_config.get("save_raw_frames", False)),
+        False,
+    )
+
+
 def _deep_delete_interval_seconds():
     deep_config = _deep_camera_config()
     return float(
@@ -61,6 +87,20 @@ def _deep_delete_delay():
 
 def _raw_save_interval_seconds():
     return float(_deep_camera_config().get("raw_save_interval_seconds", 1.0))
+
+
+def _color_jpg_size():
+    try:
+        return max(int(float(_deep_camera_config().get("color_jpg_size", 640) or 640)), 1)
+    except Exception:
+        return 640
+
+
+def _color_jpg_quality():
+    try:
+        return max(1, min(100, int(float(_deep_camera_config().get("color_jpg_quality", 85) or 85))))
+    except Exception:
+        return 85
 
 
 def _storage_root():
@@ -163,6 +203,13 @@ class Delete_file(MyQThread):
         self.path = path
         self.start_time = start_time
 
+    def _is_raw_color_file(self, file_path):
+        try:
+            color_dir = str(_deep_camera_config().get("color_dir", "color") or "color").strip("/\\").lower()
+            return os.path.basename(os.path.dirname(file_path)).lower() == color_dir
+        except Exception:
+            return False
+
     def get_and_delete_files(self):
         global file_locks, frame_nums
 
@@ -177,15 +224,18 @@ class Delete_file(MyQThread):
                     continue
 
                 file_path = os.path.join(root, file_name)
+                if self._is_raw_color_file(file_path):
+                    continue
+
                 try:
                     total_size_gb += os.path.getsize(file_path) / 1024 / 1024 / 1024
                     total_nums += 1
 
-                    # Guard image deletion with a per-file lock to reduce races with cv2.imwrite.
-                    if ext in [".bmp", ".png"] and file_name in file_locks:
-                        with file_locks[file_name]:
+                    # Color frames are deleted only after YOLO history output has been saved.
+                    if ext in [".bmp", ".png", ".jpg", ".jpeg"] and file_path in file_locks:
+                        with file_locks[file_path]:
                             os.remove(file_path)
-                        del file_locks[file_name]
+                        del file_locks[file_path]
                     else:
                         os.remove(file_path)
                 except Exception as e:
@@ -248,9 +298,20 @@ class SaveRawFrameThread(MyQThread):
         if folder_path and not os.path.exists(folder_path):
             os.makedirs(folder_path, exist_ok=True)
 
-        file_lock = file_locks.setdefault(file_name, threading.Lock())
+        file_lock = file_locks.setdefault(output_path, threading.Lock())
         with file_lock:
-            cv2.imwrite(output_path, frame)
+            target_size = _color_jpg_size()
+            quality = _color_jpg_quality()
+            frame_to_save = cv2.resize(frame, (target_size, target_size), interpolation=cv2.INTER_AREA)
+            ok, encoded = cv2.imencode(".jpg", frame_to_save, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+            if not ok:
+                logger.error(f"deep_camera encode color jpg failed: {output_path}")
+                return
+
+            temp_path = f"{output_path}.tmp"
+            with open(temp_path, "wb") as file:
+                file.write(encoded.tobytes())
+            os.replace(temp_path, output_path)
 
 
 def parse_uvc_device_index(device_identifier):
@@ -283,7 +344,13 @@ class UVCCameraProcessor(MyQThread):
         self.frame_width = 1280
         self.frame_height = 720
         self.frame_id = 0
+        self.camera_session_id = 0
         self.last_raw_save_time = 0.0
+        self.consecutive_read_failures = 0
+        self.last_success_frame_time = 0.0
+        self.last_failure_log_time = 0.0
+        self.last_stats_log_time = time.time()
+        self.frames_since_stats_log = 0
         self.init_state = self.init_camera()
 
     def _open_capture(self, index):
@@ -326,7 +393,17 @@ class UVCCameraProcessor(MyQThread):
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
         self.capture.set(cv2.CAP_PROP_FPS, self.fps)
-        logger.info(f"deep_camera_{self.id} connected to UVC device {self.device_index}")
+        if hasattr(cv2, "CAP_PROP_BUFFERSIZE"):
+            self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
+            self.capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000)
+        self.camera_session_id = secrets.randbits(63)
+        self.frame_id = 0
+        shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
+        logger.info(
+            f"deep_camera_{self.id} connected to UVC device {self.device_index}, "
+            f"camera_session_id={self.camera_session_id}"
+        )
         return True
 
     def _ensure_dir(self, path):
@@ -337,7 +414,7 @@ class UVCCameraProcessor(MyQThread):
         global save_frame_thread
 
         timestrf = time_util.get_format_file_from_time(timestamp)
-        file_name = f"{timestrf}.bmp"
+        file_name = f"{timestrf}.jpg"
         deep_config = _deep_camera_config()
         color_dir = os.path.join(self.path, deep_config["color_dir"].strip("/\\"))
         self._ensure_dir(color_dir)
@@ -358,14 +435,15 @@ class UVCCameraProcessor(MyQThread):
         self._running = True
         global frame_nums
 
-        color_dir = os.path.join(self.path, _deep_camera_config()["color_dir"].strip("/\\"))
-        self._ensure_dir(color_dir)
+        if _save_raw_frames():
+            color_dir = os.path.join(self.path, _deep_camera_config()["color_dir"].strip("/\\"))
+            self._ensure_dir(color_dir)
 
-        with os.scandir(color_dir) as it:
-            for entry in it:
-                if entry.is_file():
-                    with lock:
-                        frame_nums += 1
+            with os.scandir(color_dir) as it:
+                for entry in it:
+                    if entry.is_file():
+                        with lock:
+                            frame_nums += 1
 
         while self._running:
             self.mutex.lock()
@@ -395,31 +473,52 @@ class UVCCameraProcessor(MyQThread):
         start_time = time.time()
         ret, color_image = self.capture.read()
         if not ret or color_image is None:
-            logger.error(f"deep_camera_{self.id} read frame failed from UVC device {self.device_index}")
+            failure_time = time.time()
+            self.consecutive_read_failures += 1
+            if failure_time - self.last_failure_log_time >= 2.0:
+                logger.error(
+                    f"deep_camera_{self.id} read frame failed from UVC device "
+                    f"{self.device_index}, consecutive_failures={self.consecutive_read_failures}"
+                )
+                self.last_failure_log_time = failure_time
+            shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
             self.init_state = False
             time.sleep(float(_deep_camera_config()["delay"]))
             return
 
         timestamp = time.time()
+        capture_monotonic_ns = time.monotonic_ns()
+        self.consecutive_read_failures = 0
+        self.last_success_frame_time = timestamp
         self.frame_id += 1
-        raw_save_interval = _raw_save_interval_seconds()
-        if raw_save_interval <= 0 or timestamp - self.last_raw_save_time >= raw_save_interval:
-            self.img_save(color_image, timestamp=timestamp)
-            self.last_raw_save_time = timestamp
+        if _save_raw_frames():
+            raw_save_interval = _raw_save_interval_seconds()
+            if raw_save_interval <= 0 or timestamp - self.last_raw_save_time >= raw_save_interval:
+                self.img_save(color_image, timestamp=timestamp)
+                self.last_raw_save_time = timestamp
         shared_video_frame_store.write_frame(
             "deep_camera",
             self.cage_number,
             color_image,
             frame_id=self.frame_id,
             timestamp=timestamp,
+            camera_session_id=self.camera_session_id,
+            capture_monotonic_ns=capture_monotonic_ns,
         )
         with lock:
             frame_nums += 1
 
         elapsed = time.time() - start_time
-        logger.debug(
-            f"deep_camera_{self.id} capture frame cost={elapsed:.3f}s total_frames={frame_nums}"
-        )
+        self.frames_since_stats_log += 1
+        stats_elapsed = timestamp - self.last_stats_log_time
+        if stats_elapsed >= 5.0:
+            logger.debug(
+                f"deep_camera_{self.id} capture fps="
+                f"{self.frames_since_stats_log / max(stats_elapsed, 0.001):.2f}, "
+                f"last_frame_cost={elapsed:.3f}s total_frames={frame_nums}"
+            )
+            self.last_stats_log_time = timestamp
+            self.frames_since_stats_log = 0
         time.sleep(float(_deep_camera_config()["delay"]))
 
 
@@ -517,7 +616,7 @@ def init_camera_and_image_handle_thread(serials):
     read_queue_data_thread.camera_list = camera_list
 
 
-def main(q=None):
+def main(q=None, auto_start=False):
     global_setting.set_setting("queue", q)
 
     app = QCoreApplication.instance()
@@ -533,6 +632,9 @@ def main(q=None):
     if read_queue_data_thread.isRunning():
         read_queue_data_thread.stop()
     read_queue_data_thread.start()
+    if auto_start:
+        logger.warning("deep_camera process restarted, resume camera capture automatically")
+        start()
 
     return app.exec()
 
@@ -558,8 +660,12 @@ def start():
         except Exception as e:
             logger.error(f"stop deep_camera_save_raw_frame failed: {e}")
 
-        save_frame_thread = SaveRawFrameThread()
-        save_frame_thread.start()
+        if _save_raw_frames():
+            save_frame_thread = SaveRawFrameThread()
+            save_frame_thread.start()
+        else:
+            save_frame_thread = None
+            logger.info("deep_camera raw frame saving disabled")
 
         delete_file_thread = Delete_file(
             path=path,
@@ -572,8 +678,7 @@ def start():
 
 
 def restart(q):
-    main(q)
-    start()
+    return main(q, auto_start=True)
 
 
 def pause():
@@ -660,6 +765,8 @@ def stop():
         except Exception as e:
             logger.error(f"stop deep_camera_save_raw_frame failed: {e}")
         save_frame_thread = None
+
+    shared_video_frame_store.close_writer()
 
 
 if __name__ == "__main__":

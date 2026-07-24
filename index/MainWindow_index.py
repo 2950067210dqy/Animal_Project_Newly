@@ -1768,12 +1768,46 @@ class MainWindow_Index(ThemedWindow):
                 self.stop_dialog.insert_data_signal.emit(f"正在导出数据.... ")
             custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
 
+    def _finalize_mouse_trajectory_views(self) -> bool:
+        trajectory_views = []
+        seen_widget_ids = set()
+        for widget in QApplication.allWidgets():
+            stop_trajectory = getattr(widget, "stop_trajectory_thread", None)
+            if not callable(stop_trajectory) or id(widget) in seen_widget_ids:
+                continue
+            seen_widget_ids.add(id(widget))
+            trajectory_views.append((widget, stop_trajectory))
+
+        all_finalized = True
+        for widget, stop_trajectory in trajectory_views:
+            try:
+                logger.info(
+                    f"finalizing mouse trajectory before experiment archive: "
+                    f"widget={type(widget).__name__}"
+                )
+                if stop_trajectory() is False:
+                    all_finalized = False
+            except RuntimeError as error:
+                logger.warning(
+                    f"mouse trajectory widget was already destroyed during finalization: {error}"
+                )
+            except Exception as error:
+                all_finalized = False
+                logger.exception(f"mouse trajectory finalization failed: {error}")
+
+        return all_finalized
+
     def close_monitor_data_window_sync(self):
         """
         关闭監控數據界面
         :return:
         """
         # 关闭窗口
+        if not self._finalize_mouse_trajectory_views():
+            raise RuntimeError(
+                "mouse trajectory finalization did not finish; experiment archive was not started"
+            )
+
         for module in self.modules:
             module: BaseModule
             if module.name == "Main_New_Monitor_data":
@@ -1785,7 +1819,11 @@ class MainWindow_Index(ThemedWindow):
         return
 
     def close_monitor_data_window(self, resolve, reject):
-        self.close_monitor_data_window_sync()
+        try:
+            self.close_monitor_data_window_sync()
+        except Exception as error:
+            reject(error)
+            return
         resolve()
 
     def export_experiment_datas(self):

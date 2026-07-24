@@ -19,6 +19,7 @@ from public.entity.enum.Public_Enum import AppState
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Crash_handle.CrashHandle import CrashHandler
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
+from public.util.shared_video_frames import shared_video_frame_store
 from public.util.time_util import time_util
 from theme.ThemeManager import ThemeManager
 # 过滤日志
@@ -99,6 +100,7 @@ def quit_qt_application():
     #
     # 等待5秒系统退出
     time.sleep(5)
+    shared_video_frame_store.close_reader()
     sys.exit(0)
 
 def on_crash( error_msg):

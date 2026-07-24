@@ -393,7 +393,15 @@ def resolve_mouse_weight(explicit: Optional[Path], box_weight: Path) -> Path:
 
 def run_yolo_single(model: YOLO, image_source: Path | np.ndarray, imgsz: int, conf: float) -> Any:
     source = str(image_source) if isinstance(image_source, Path) else image_source
-    results = model.predict(source=source, imgsz=imgsz, conf=conf, verbose=False, save=False, half=False)
+    results = model.predict(
+        source=source,
+        imgsz=imgsz,
+        conf=conf,
+        verbose=False,
+        save=False,
+        device="cpu",
+        half=False,
+    )
     if not results:
         raise RuntimeError(f"YOLO returned no results for {image_source}")
     return results[0]
@@ -415,6 +423,7 @@ def run_yolo_batch(
         conf=conf,
         verbose=False,
         save=False,
+        device="cpu",
         half=False,
         batch=max(int(batch_size), 1),
     )
@@ -458,7 +467,39 @@ def save_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
     fields = [
         "frameIndex",
         "frameName",
+        "frameId",
+        "cameraSessionId",
+        "frameSequence",
+        "timestamp",
+        "datetime",
+        "captureTimestamp",
+        "submitTimestamp",
+        "processingStartTimestamp",
+        "yoloStartTimestamp",
+        "yoloEndTimestamp",
+        "captureMonotonicNs",
+        "submitMonotonicNs",
+        "processingStartMonotonicNs",
+        "yoloStartMonotonicNs",
+        "yoloEndMonotonicNs",
+        "frameAgeMs",
+        "queueWaitMs",
+        "inferenceLatencyMs",
+        "yoloBatchSize",
+        "windowIndex",
+        "windowStart",
+        "windowEnd",
         "status",
+        "effectiveSubmitFps",
+        "effectiveYoloFps",
+        "effectiveProcessingFps",
+        "effectiveCageFps",
+        "droppedFramesForCage",
+        "pendingFramesForCage",
+        "activeFramesForCage",
+        "recordQueueSize",
+        "previewQueueSize",
+        "plotQueueSize",
         "boxCornerSource",
         "boxConf",
         "mouseConf",
