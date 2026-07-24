@@ -27,6 +27,7 @@ class SharedVideoFrameStore:
         self.max_frame_bytes = max_width * max_height * channels
         self._writer_shm: dict[tuple[str, int], tuple[shared_memory.SharedMemory, shared_memory.SharedMemory]] = {}
         self._reader_shm: dict[tuple[str, int], tuple[shared_memory.SharedMemory, shared_memory.SharedMemory]] = {}
+        self._reader_reopen_attempt_monotonic: dict[tuple[str, int], float] = {}
 
     def _frame_name(self, stream_name: str, cage_number: int) -> str:
         return f"{self.prefix}_{stream_name}_frame_{int(cage_number)}"
@@ -106,6 +107,118 @@ class SharedVideoFrameStore:
         self._reader_shm[key] = (frame_shm, meta_shm)
         return frame_shm, meta_shm
 
+    def _discard_reader_pair(self, stream_name: str, cage_number: int) -> None:
+        key = (stream_name, int(cage_number))
+        shm_pair = self._reader_shm.pop(key, None)
+        if shm_pair is None:
+            return
+        for shm in shm_pair:
+            try:
+                shm.close()
+            except Exception:
+                pass
+
+    def peek_metadata(
+        self,
+        stream_name: str,
+        cage_number: int,
+        *,
+        retries: int = 3,
+        max_age_seconds: float | None = None,
+    ) -> dict[str, Any] | None:
+        for open_attempt in range(2):
+            shm_pair = self._get_or_open_reader_pair(stream_name, cage_number)
+            if shm_pair is None:
+                return None
+
+            _frame_shm, meta_shm = shm_pair
+            stale_segment = False
+            try:
+                for _ in range(max(retries, 1)):
+                    values_1 = META_STRUCT.unpack(meta_shm.buf[: META_STRUCT.size])
+                    (
+                        seq_1,
+                        camera_session_id,
+                        frame_sequence,
+                        capture_monotonic_ns,
+                        capture_wall_time,
+                        height,
+                        width,
+                        channels,
+                        frame_bytes,
+                        valid,
+                    ) = values_1
+                    if seq_1 % 2 == 1:
+                        continue
+                    if valid != 1 or frame_bytes <= 0 or height <= 0 or width <= 0:
+                        key = (stream_name, int(cage_number))
+                        now_monotonic = time.monotonic()
+                        last_reopen = self._reader_reopen_attempt_monotonic.get(key, 0.0)
+                        if open_attempt == 0 and now_monotonic - last_reopen >= 1.0:
+                            self._reader_reopen_attempt_monotonic[key] = now_monotonic
+                            stale_segment = True
+                            break
+                        return None
+                    expected_frame_bytes = int(height) * int(width) * int(channels)
+                    if (
+                        channels != self.channels
+                        or height > self.max_height
+                        or width > self.max_width
+                        or frame_bytes != expected_frame_bytes
+                        or frame_bytes > self.max_frame_bytes
+                    ):
+                        return None
+
+                    seq_2 = META_STRUCT.unpack(meta_shm.buf[: META_STRUCT.size])[0]
+                    if seq_1 != seq_2 or seq_2 % 2 == 1:
+                        continue
+
+                    frame_age_seconds = (
+                        max(
+                            (time.monotonic_ns() - int(capture_monotonic_ns))
+                            / 1_000_000_000.0,
+                            0.0,
+                        )
+                        if capture_monotonic_ns > 0
+                        else max(time.time() - float(capture_wall_time), 0.0)
+                    )
+                    if (
+                        max_age_seconds is not None
+                        and max_age_seconds > 0
+                        and frame_age_seconds > max_age_seconds
+                    ):
+                        key = (stream_name, int(cage_number))
+                        now_monotonic = time.monotonic()
+                        last_reopen = self._reader_reopen_attempt_monotonic.get(key, 0.0)
+                        if open_attempt == 0 and now_monotonic - last_reopen >= 1.0:
+                            self._reader_reopen_attempt_monotonic[key] = now_monotonic
+                            stale_segment = True
+                            break
+                        return None
+
+                    return {
+                        "cage_number": int(cage_number),
+                        "camera_session_id": int(camera_session_id),
+                        "frame_sequence": int(frame_sequence),
+                        "frame_id": int(frame_sequence),
+                        "capture_monotonic_ns": int(capture_monotonic_ns),
+                        "capture_wall_time": float(capture_wall_time),
+                        "timestamp": float(capture_wall_time),
+                        "height": int(height),
+                        "width": int(width),
+                        "channels": int(channels),
+                        "frame_bytes": int(frame_bytes),
+                        "frame_age_seconds": float(frame_age_seconds),
+                    }
+            except (BufferError, FileNotFoundError, OSError, ValueError):
+                stale_segment = True
+
+            if not stale_segment or open_attempt > 0:
+                return None
+            self._discard_reader_pair(stream_name, cage_number)
+
+        return None
+
     def write_frame(
         self,
         stream_name: str,
@@ -177,63 +290,96 @@ class SharedVideoFrameStore:
         *,
         retries: int = 3,
         max_age_seconds: float | None = None,
+        expected_frame_key: tuple[int, int] | None = None,
     ) -> dict[str, Any] | None:
-        shm_pair = self._get_or_open_reader_pair(stream_name, cage_number)
-        if shm_pair is None:
+        metadata = self.peek_metadata(
+            stream_name,
+            cage_number,
+            retries=retries,
+            max_age_seconds=max_age_seconds,
+        )
+        if metadata is None:
+            return None
+        metadata_frame_key = (
+            int(metadata["camera_session_id"]),
+            int(metadata["frame_sequence"]),
+        )
+        if expected_frame_key is not None and metadata_frame_key != tuple(expected_frame_key):
             return None
 
-        frame_shm, meta_shm = shm_pair
-        for _ in range(max(retries, 1)):
-            (
-                seq_1,
-                camera_session_id,
-                frame_sequence,
-                capture_monotonic_ns,
-                capture_wall_time,
-                height,
-                width,
-                channels,
-                frame_bytes,
-                valid,
-            ) = META_STRUCT.unpack(meta_shm.buf[: META_STRUCT.size])
-            if seq_1 % 2 == 1:
-                continue
-            if valid != 1 or frame_bytes <= 0 or height <= 0 or width <= 0:
+        for open_attempt in range(2):
+            shm_pair = self._get_or_open_reader_pair(stream_name, cage_number)
+            if shm_pair is None:
                 return None
-            expected_frame_bytes = int(height) * int(width) * int(channels)
-            if (
-                channels != self.channels
-                or height > self.max_height
-                or width > self.max_width
-                or frame_bytes != expected_frame_bytes
-                or frame_bytes > self.max_frame_bytes
-            ):
-                return None
-            if (
-                max_age_seconds is not None
-                and max_age_seconds > 0
-                and capture_monotonic_ns > 0
-                and time.monotonic_ns() - capture_monotonic_ns
-                > int(max_age_seconds * 1_000_000_000)
-            ):
-                return None
+            frame_shm, meta_shm = shm_pair
+            try:
+                for _ in range(max(retries, 1)):
+                    (
+                        seq_1,
+                        camera_session_id,
+                        frame_sequence,
+                        capture_monotonic_ns,
+                        capture_wall_time,
+                        height,
+                        width,
+                        channels,
+                        frame_bytes,
+                        valid,
+                    ) = META_STRUCT.unpack(meta_shm.buf[: META_STRUCT.size])
+                    if seq_1 % 2 == 1:
+                        continue
+                    frame_key = (int(camera_session_id), int(frame_sequence))
+                    if expected_frame_key is not None and frame_key != tuple(expected_frame_key):
+                        return None
+                    if valid != 1 or frame_bytes <= 0 or height <= 0 or width <= 0:
+                        return None
+                    expected_frame_bytes = int(height) * int(width) * int(channels)
+                    if (
+                        channels != self.channels
+                        or height > self.max_height
+                        or width > self.max_width
+                        or frame_bytes != expected_frame_bytes
+                        or frame_bytes > self.max_frame_bytes
+                    ):
+                        return None
+                    if (
+                        max_age_seconds is not None
+                        and max_age_seconds > 0
+                        and capture_monotonic_ns > 0
+                        and time.monotonic_ns() - capture_monotonic_ns
+                        > int(max_age_seconds * 1_000_000_000)
+                    ):
+                        return None
 
-            raw = bytes(frame_shm.buf[:frame_bytes])
-            seq_2 = META_STRUCT.unpack(meta_shm.buf[: META_STRUCT.size])[0]
-            if seq_1 != seq_2 or seq_2 % 2 == 1:
-                continue
+                    raw = bytes(frame_shm.buf[:frame_bytes])
+                    seq_2 = META_STRUCT.unpack(meta_shm.buf[: META_STRUCT.size])[0]
+                    if seq_1 != seq_2 or seq_2 % 2 == 1:
+                        continue
 
-            frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, channels))
-            return {
-                "cage_number": int(cage_number),
-                "camera_session_id": int(camera_session_id),
-                "frame_sequence": int(frame_sequence),
-                "frame_id": int(frame_sequence),
-                "capture_monotonic_ns": int(capture_monotonic_ns),
-                "capture_wall_time": float(capture_wall_time),
-                "timestamp": float(capture_wall_time),
-                "frame": frame,
-            }
+                    frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, channels))
+                    return {
+                        "cage_number": int(cage_number),
+                        "camera_session_id": int(camera_session_id),
+                        "frame_sequence": int(frame_sequence),
+                        "frame_id": int(frame_sequence),
+                        "capture_monotonic_ns": int(capture_monotonic_ns),
+                        "capture_wall_time": float(capture_wall_time),
+                        "timestamp": float(capture_wall_time),
+                        "frame_age_seconds": float(
+                            max(
+                                (time.monotonic_ns() - int(capture_monotonic_ns))
+                                / 1_000_000_000.0,
+                                0.0,
+                            )
+                            if capture_monotonic_ns > 0
+                            else max(time.time() - float(capture_wall_time), 0.0)
+                        ),
+                        "frame": frame,
+                    }
+            except (BufferError, FileNotFoundError, OSError, ValueError):
+                if open_attempt > 0:
+                    return None
+                self._discard_reader_pair(stream_name, cage_number)
         return None
 
     def clear_frame(self, stream_name: str, cage_number: int) -> None:
@@ -265,6 +411,7 @@ class SharedVideoFrameStore:
             except Exception:
                 pass
         self._reader_shm.clear()
+        self._reader_reopen_attempt_monotonic.clear()
 
     def close_writer(self) -> None:
         for frame_shm, meta_shm in self._writer_shm.values():

@@ -463,8 +463,7 @@ def matrix_inverse_homography(H: Matrix) -> Optional[Matrix]:
     return inv.tolist()
 
 
-def save_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
-    fields = [
+TRAJECTORY_CSV_FIELDS = [
         "frameIndex",
         "frameName",
         "frameId",
@@ -484,6 +483,7 @@ def save_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
         "yoloEndMonotonicNs",
         "frameAgeMs",
         "queueWaitMs",
+        "sharedFrameReadMs",
         "inferenceLatencyMs",
         "yoloBatchSize",
         "windowIndex",
@@ -495,6 +495,11 @@ def save_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
         "effectiveProcessingFps",
         "effectiveCageFps",
         "droppedFramesForCage",
+        "busySkipCount",
+        "sourceFrameDropCount",
+        "staleFrameCount",
+        "duplicateFrameCount",
+        "queueDropCount",
         "pendingFramesForCage",
         "activeFramesForCage",
         "recordQueueSize",
@@ -536,12 +541,31 @@ def save_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
         "cornerShiftPx",
         "registrationMeanError",
         "centerMatchError",
-    ]
+]
+
+
+def save_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
     with path.open("w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=fields)
+        writer = csv.DictWriter(f, fieldnames=TRAJECTORY_CSV_FIELDS)
         writer.writeheader()
         for row in rows:
-            writer.writerow({field: row.get(field, "") for field in fields})
+            writer.writerow(
+                {field: row.get(field, "") for field in TRAJECTORY_CSV_FIELDS}
+            )
+
+
+def append_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
+    if not rows:
+        return
+    write_header = not path.exists() or path.stat().st_size == 0
+    with path.open("a", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=TRAJECTORY_CSV_FIELDS)
+        if write_header:
+            writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {field: row.get(field, "") for field in TRAJECTORY_CSV_FIELDS}
+            )
 
 
 def polygon_centroid(polygon: Sequence[Point]) -> Point:

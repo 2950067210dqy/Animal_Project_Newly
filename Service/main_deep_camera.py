@@ -1,4 +1,5 @@
 import os
+import queue
 import secrets
 import sys
 import time
@@ -28,8 +29,43 @@ camera_list = []
 frame_nums = 0
 lock = threading.Lock()
 delete_process_lock = threading.Lock()
+runtime_diagnostics_drop_lock = threading.Lock()
+runtime_diagnostics_dropped = 0
 # Image files may be deleted by the cleanup thread while capture is still writing.
 file_locks = {}
+
+
+def _emit_runtime_diagnostic(event: str, message: str):
+    global runtime_diagnostics_dropped
+    diagnostics_queue = global_setting.get_setting(
+        "runtime_diagnostics_queue",
+        None,
+    )
+    if diagnostics_queue is None:
+        return
+    with runtime_diagnostics_drop_lock:
+        dropped_count = runtime_diagnostics_dropped
+        record_message = str(message)
+        if dropped_count:
+            record_message = (
+                f"{record_message}, "
+                f"runtime_log_drops_since_last_success={dropped_count}"
+            )
+        try:
+            diagnostics_queue.put_nowait(
+                {
+                    "timestamp": time.time(),
+                    "source": "deep_camera",
+                    "event": str(event),
+                    "pid": os.getpid(),
+                    "message": record_message,
+                }
+            )
+            runtime_diagnostics_dropped = 0
+        except queue.Full:
+            runtime_diagnostics_dropped = dropped_count + 1
+        except (BrokenPipeError, EOFError, OSError):
+            runtime_diagnostics_dropped = dropped_count + 1
 
 
 def _camera_config():
@@ -379,6 +415,11 @@ class UVCCameraProcessor(MyQThread):
             error_message = f"UVC camera config is invalid, serial={self.serial_number}"
             if error_message not in logged_errors:
                 logger.error(error_message)
+                _emit_runtime_diagnostic(
+                    "camera_config_invalid",
+                    f"cage={self.cage_number}, camera_id={self.id}, "
+                    f"serial={self.serial_number}",
+                )
                 logged_errors.add(error_message)
             return False
 
@@ -387,6 +428,11 @@ class UVCCameraProcessor(MyQThread):
             error_message = f"UVC camera open failed, index={self.device_index}"
             if error_message not in logged_errors:
                 logger.error(error_message)
+                _emit_runtime_diagnostic(
+                    "camera_open_failed",
+                    f"cage={self.cage_number}, camera_id={self.id}, "
+                    f"device={self.device_index}",
+                )
                 logged_errors.add(error_message)
             return False
 
@@ -403,6 +449,12 @@ class UVCCameraProcessor(MyQThread):
         logger.info(
             f"deep_camera_{self.id} connected to UVC device {self.device_index}, "
             f"camera_session_id={self.camera_session_id}"
+        )
+        _emit_runtime_diagnostic(
+            "camera_connected",
+            f"cage={self.cage_number}, camera_id={self.id}, "
+            f"device={self.device_index}, session={self.camera_session_id}, "
+            f"configured_fps={self.fps}, size={self.frame_width}x{self.frame_height}",
         )
         return True
 
@@ -480,6 +532,12 @@ class UVCCameraProcessor(MyQThread):
                     f"deep_camera_{self.id} read frame failed from UVC device "
                     f"{self.device_index}, consecutive_failures={self.consecutive_read_failures}"
                 )
+                _emit_runtime_diagnostic(
+                    "camera_read_failed",
+                    f"cage={self.cage_number}, camera_id={self.id}, "
+                    f"device={self.device_index}, "
+                    f"consecutive_failures={self.consecutive_read_failures}",
+                )
                 self.last_failure_log_time = failure_time
             shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
             self.init_state = False
@@ -512,10 +570,20 @@ class UVCCameraProcessor(MyQThread):
         self.frames_since_stats_log += 1
         stats_elapsed = timestamp - self.last_stats_log_time
         if stats_elapsed >= 5.0:
+            capture_fps = self.frames_since_stats_log / max(stats_elapsed, 0.001)
             logger.debug(
                 f"deep_camera_{self.id} capture fps="
-                f"{self.frames_since_stats_log / max(stats_elapsed, 0.001):.2f}, "
+                f"{capture_fps:.2f}, "
                 f"last_frame_cost={elapsed:.3f}s total_frames={frame_nums}"
+            )
+            _emit_runtime_diagnostic(
+                "capture_runtime",
+                f"cage={self.cage_number}, camera_id={self.id}, "
+                f"device={self.device_index}, session={self.camera_session_id}, "
+                f"capture_fps={capture_fps:.2f}, frame_sequence={self.frame_id}, "
+                f"frame_cost_ms={elapsed * 1000.0:.2f}, "
+                f"shape={color_image.shape[1]}x{color_image.shape[0]}, "
+                f"consecutive_failures={self.consecutive_read_failures}",
             )
             self.last_stats_log_time = timestamp
             self.frames_since_stats_log = 0
@@ -616,8 +684,12 @@ def init_camera_and_image_handle_thread(serials):
     read_queue_data_thread.camera_list = camera_list
 
 
-def main(q=None, auto_start=False):
+def main(q=None, runtime_diagnostics_queue=None, auto_start=False):
     global_setting.set_setting("queue", q)
+    global_setting.set_setting(
+        "runtime_diagnostics_queue",
+        runtime_diagnostics_queue,
+    )
 
     app = QCoreApplication.instance()
     if app is None:
@@ -677,8 +749,12 @@ def start():
         logger.error(f"deep_camera start failed: {e}")
 
 
-def restart(q):
-    return main(q, auto_start=True)
+def restart(q, runtime_diagnostics_queue=None):
+    return main(
+        q,
+        runtime_diagnostics_queue,
+        auto_start=True,
+    )
 
 
 def pause():

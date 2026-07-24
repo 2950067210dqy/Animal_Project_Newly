@@ -1,11 +1,14 @@
 import os
+import queue
 import re
+import threading
 import time
 import traceback
 import typing
+from typing import Any
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+
 import cv2
 import numpy as np
 from PyQt6 import QtGui
@@ -38,6 +41,43 @@ from public.util.shared_video_frames import shared_video_frame_store
 from theme.ThemeQt6 import ThemedWindow
 
 
+runtime_diagnostics_drop_lock = threading.Lock()
+runtime_diagnostics_dropped = 0
+
+
+def _emit_runtime_diagnostic(event: str, message: str):
+    global runtime_diagnostics_dropped
+    diagnostics_queue = global_setting.get_setting(
+        "runtime_diagnostics_queue",
+        None,
+    )
+    if diagnostics_queue is None:
+        return
+    with runtime_diagnostics_drop_lock:
+        dropped_count = runtime_diagnostics_dropped
+        record_message = str(message)
+        if dropped_count:
+            record_message = (
+                f"{record_message}, "
+                f"runtime_log_drops_since_last_success={dropped_count}"
+            )
+        try:
+            diagnostics_queue.put_nowait(
+                {
+                    "timestamp": time.time(),
+                    "source": "video_gui",
+                    "event": str(event),
+                    "pid": os.getpid(),
+                    "message": record_message,
+                }
+            )
+            runtime_diagnostics_dropped = 0
+        except queue.Full:
+            runtime_diagnostics_dropped = dropped_count + 1
+        except (BrokenPipeError, EOFError, OSError):
+            runtime_diagnostics_dropped = dropped_count + 1
+
+
 class ImageLoaderThread(MyQThread):
     image_loaded = pyqtSignal(dict)
 
@@ -48,6 +88,16 @@ class ImageLoaderThread(MyQThread):
         self.cached_target_cages: set[int] = set()
         self.last_target_cage_refresh_time = 0.0
         self.target_cage_refresh_interval = 1.0
+        self.display_max_age_seconds = 2.0
+        self.video_stats_interval_seconds = 5.0
+        self.video_stats_last_monotonic = time.monotonic()
+        self.video_read_attempt_count = 0
+        self.video_read_success_count = 0
+        self.video_fresh_frame_count = 0
+        self.video_read_total_ms = 0.0
+        self.video_last_frame_id = 0
+        self.video_last_frame_age_ms = 0.0
+        self.video_last_seen_key_by_cage: dict[int, tuple[int, int]] = {}
         self.refresh_camera_paths()
 
     def set_display_mode(self, display_mode: str):
@@ -59,6 +109,17 @@ class ImageLoaderThread(MyQThread):
     def refresh_camera_paths(self):
         camera_config = global_setting.get_setting("camera_config")
         self.infrared_camera_nums = int(camera_config["INFRARED_CAMERA"]["nums"])
+        trajectory_config = camera_config.get("MOUSE_TRAJECTORY", {})
+        self.display_max_age_seconds = max(
+            float(
+                trajectory_config.get(
+                    "display_max_age_seconds",
+                    self.display_max_age_seconds,
+                )
+                or self.display_max_age_seconds
+            ),
+            0.1,
+        )
 
         self.infrared_path = []
         if self.display_mode != "video":
@@ -121,6 +182,55 @@ class ImageLoaderThread(MyQThread):
         result_files.sort(key=lambda item: item[0])
         return result_files[-1][1]
 
+    def _record_video_read(
+        self,
+        cage_number: int,
+        frame_payload: dict[str, typing.Any] | None,
+        read_ms: float,
+    ):
+        self.video_read_attempt_count += 1
+        self.video_read_total_ms += max(float(read_ms), 0.0)
+        if frame_payload is not None:
+            self.video_read_success_count += 1
+            frame_key = (
+                int(frame_payload.get("camera_session_id", 0) or 0),
+                int(frame_payload.get("frame_sequence", frame_payload.get("frame_id", 0)) or 0),
+            )
+            if self.video_last_seen_key_by_cage.get(int(cage_number)) != frame_key:
+                self.video_fresh_frame_count += 1
+                self.video_last_seen_key_by_cage[int(cage_number)] = frame_key
+            self.video_last_frame_id = frame_key[1]
+            self.video_last_frame_age_ms = (
+                float(frame_payload.get("frame_age_seconds", 0.0) or 0.0) * 1000.0
+            )
+
+        now_monotonic = time.monotonic()
+        stats_elapsed = now_monotonic - self.video_stats_last_monotonic
+        if stats_elapsed < self.video_stats_interval_seconds:
+            return
+
+        average_read_ms = (
+            self.video_read_total_ms / self.video_read_attempt_count
+            if self.video_read_attempt_count
+            else 0.0
+        )
+        _emit_runtime_diagnostic(
+            "video_read_runtime",
+            f"selected_cage={self.target_cage_number}, "
+            f"poll_fps={self.video_read_attempt_count / max(stats_elapsed, 0.001):.2f}, "
+            f"fresh_frame_fps={self.video_fresh_frame_count / max(stats_elapsed, 0.001):.2f}, "
+            f"read_success={self.video_read_success_count}/"
+            f"{self.video_read_attempt_count}, "
+            f"read_avg_ms={average_read_ms:.2f}, "
+            f"frame_age_ms={self.video_last_frame_age_ms:.1f}, "
+            f"frame_id={self.video_last_frame_id}",
+        )
+        self.video_stats_last_monotonic = now_monotonic
+        self.video_read_attempt_count = 0
+        self.video_read_success_count = 0
+        self.video_fresh_frame_count = 0
+        self.video_read_total_ms = 0.0
+
     def dosomething(self):
         try:
             if self.display_mode != "video":
@@ -147,11 +257,15 @@ class ImageLoaderThread(MyQThread):
                 display_cages = {self.target_cage_number}
 
             for cage_number in sorted(display_cages):
+                read_start = time.perf_counter()
                 frame_payload = shared_video_frame_store.read_frame(
                     "deep_camera",
                     cage_number,
-                    max_age_seconds=2.0,
+                    max_age_seconds=self.display_max_age_seconds,
                 )
+                read_ms = (time.perf_counter() - read_start) * 1000.0
+                if self.display_mode == "video":
+                    self._record_video_read(cage_number, frame_payload, read_ms)
                 if frame_payload is not None:
                     deep_camera_frames[cage_number] = frame_payload
 
@@ -176,12 +290,15 @@ class TrajectoryFrameSubmitterThread(MyQThread):
         self.cached_target_cages: set[int] = set()
         self.last_target_cage_refresh_time = 0.0
         self.target_cage_refresh_interval = 1.0
-        self.poll_interval_seconds = 0.02
+        self.poll_interval_seconds = 0.05
         self.scan_limit_per_cage = 200
         self.file_min_age_seconds = 0.2
         self.input_mode = "memory"
         self.enable_disk_backfill = False
         self.target_fps = 10.0
+        self.trajectory_max_age_seconds = 0.75
+        self.online_timeout_seconds = 2.0
+        self.last_online_seen_by_cage: dict[int, float] = {}
         self.storage_base_dir = Path.cwd() / "data"
         self.deep_camera_path = "deep_camera"
         self.mouse_cage_prefix = "mouse_cage_"
@@ -258,6 +375,26 @@ class TrajectoryFrameSubmitterThread(MyQThread):
                 float(trajectory_config.get("trajectory_target_fps", self.target_fps) or self.target_fps),
                 0.1,
             )
+            self.trajectory_max_age_seconds = max(
+                float(
+                    trajectory_config.get(
+                        "trajectory_max_age_seconds",
+                        self.trajectory_max_age_seconds,
+                    )
+                    or self.trajectory_max_age_seconds
+                ),
+                0.1,
+            )
+            self.online_timeout_seconds = max(
+                float(
+                    trajectory_config.get(
+                        "trajectory_online_timeout_seconds",
+                        self.online_timeout_seconds,
+                    )
+                    or self.online_timeout_seconds
+                ),
+                self.trajectory_max_age_seconds,
+            )
             self.scan_limit_per_cage = max(
                 int(float(trajectory_config.get("trajectory_scan_limit_per_cage", self.scan_limit_per_cage) or self.scan_limit_per_cage)),
                 1,
@@ -289,6 +426,15 @@ class TrajectoryFrameSubmitterThread(MyQThread):
             except Exception as error:
                 logger.debug(f"get recommended trajectory submit fps failed: {error}")
         return max(0.1, min(float(self.target_fps), float(recommended_fps)))
+
+    def _active_online_cage_count(self, target_cages: list[int], now: float) -> int:
+        active_count = sum(
+            1
+            for cage_number in target_cages
+            if now - self.last_online_seen_by_cage.get(int(cage_number), 0.0)
+            <= self.online_timeout_seconds
+        )
+        return active_count if active_count > 0 else max(len(target_cages), 1)
 
     def _get_target_cages(self) -> set[int]:
         now = time.time()
@@ -387,7 +533,9 @@ class TrajectoryFrameSubmitterThread(MyQThread):
 
         submitted_count = 0
         now = time.time()
-        submit_fps = self._effective_submit_fps(len(target_cages))
+        submit_fps = self._effective_submit_fps(
+            self._active_online_cage_count(target_cages, now)
+        )
         submit_interval = 1.0 / max(submit_fps, 0.1)
         start_index = self.round_robin_offset % len(target_cages)
         ordered_cages = target_cages[start_index:] + target_cages[:start_index]
@@ -397,63 +545,96 @@ class TrajectoryFrameSubmitterThread(MyQThread):
             if now < self.next_submit_time_by_cage.get(int(cage_number), 0.0):
                 continue
 
-            frame_payload = shared_video_frame_store.read_frame(
+            metadata = shared_video_frame_store.peek_metadata(
                 "deep_camera",
                 cage_number,
-                max_age_seconds=2.0,
             )
-            if frame_payload is None:
+            if metadata is None:
                 continue
+            self.last_online_seen_by_cage[int(cage_number)] = now
 
-            frame = frame_payload.get("frame")
-            if frame is None:
-                continue
-
-            frame_id = int(frame_payload.get("frame_id", 0) or 0)
-            timestamp = float(frame_payload.get("timestamp", now) or now)
-            frame_version = self._frame_version(frame_payload)
+            frame_id = int(metadata.get("frame_id", 0) or 0)
+            timestamp = float(metadata.get("timestamp", now) or now)
+            frame_version = self._frame_version(metadata)
             if frame_id > 0 and self._is_stale_frame_version(
                 frame_version,
                 self.last_considered_frame_versions.get(int(cage_number)),
             ):
+                self.trajectory_thread.record_duplicate_frame(cage_number)
+                self.next_submit_time_by_cage[int(cage_number)] = now + submit_interval
+                continue
+            if float(metadata.get("frame_age_seconds", 0.0) or 0.0) > self.trajectory_max_age_seconds:
+                self.trajectory_thread.record_stale_frame(cage_number)
+                self.last_considered_frame_versions[int(cage_number)] = frame_version
+                self.next_submit_time_by_cage[int(cage_number)] = now + submit_interval
                 continue
 
-            frame_name = (
-                frame_payload.get("frame_name")
-                or f"cage{int(cage_number)}_{int(timestamp * 1000)}_f{frame_id}.jpg"
-            )
-            payload = dict(frame_payload)
-            try:
-                payload["frame"] = frame.copy()
-            except Exception:
-                payload["frame"] = frame
-            payload.update(
-                {
-                    "frame_name": str(frame_name),
-                    "frame_key": (
-                        f"memory_{int(cage_number)}_"
-                        f"s{int(frame_payload.get('camera_session_id', 0) or 0)}_"
-                        f"f{frame_id}"
-                    ),
-                    "frame_id": frame_id,
-                    "timestamp": timestamp,
-                    "submit_timestamp": time.time(),
-                    "submit_monotonic_ns": time.monotonic_ns(),
-                    "trajectory_priority": 1,
-                    "source": "memory",
-                    "effective_submit_fps": submit_fps,
-                }
-            )
-
-            submitted = self.trajectory_thread.submit_frame(cage_number, payload)
-            if frame_id > 0:
+            if not self.trajectory_thread.try_reserve_cage_slot(cage_number):
                 self.last_considered_frame_versions[int(cage_number)] = frame_version
-            self.next_submit_time_by_cage[int(cage_number)] = now + submit_interval
+                self.next_submit_time_by_cage[int(cage_number)] = now + submit_interval
+                continue
 
-            if submitted:
+            slot_reserved = True
+            submitted = False
+            try:
+                read_start = time.perf_counter()
+                frame_payload = shared_video_frame_store.read_frame(
+                    "deep_camera",
+                    cage_number,
+                    max_age_seconds=self.trajectory_max_age_seconds,
+                    expected_frame_key=(
+                        int(metadata.get("camera_session_id", 0) or 0),
+                        frame_id,
+                    ),
+                )
+                shared_frame_read_ms = (time.perf_counter() - read_start) * 1000.0
+                if frame_payload is None:
+                    continue
+
+                frame = frame_payload.get("frame")
+                if frame is None:
+                    continue
+
+                frame_name = (
+                    frame_payload.get("frame_name")
+                    or f"cage{int(cage_number)}_{int(timestamp * 1000)}_f{frame_id}.jpg"
+                )
+                payload = dict(frame_payload)
+                payload.update(
+                    {
+                        "frame": frame,
+                        "frame_name": str(frame_name),
+                        "frame_key": (
+                            f"memory_{int(cage_number)}_"
+                            f"s{int(frame_payload.get('camera_session_id', 0) or 0)}_"
+                            f"f{frame_id}"
+                        ),
+                        "frame_id": frame_id,
+                        "timestamp": timestamp,
+                        "submit_timestamp": time.time(),
+                        "submit_monotonic_ns": time.monotonic_ns(),
+                        "trajectory_priority": 1,
+                        "source": "memory",
+                        "effective_submit_fps": submit_fps,
+                        "shared_frame_read_ms": shared_frame_read_ms,
+                    }
+                )
+
+                submitted = self.trajectory_thread.submit_reserved_frame(
+                    cage_number,
+                    payload,
+                )
+                slot_reserved = False
+                if submitted:
+                    if frame_id > 0:
+                        self.last_submitted_frame_ids[int(cage_number)] = frame_id
+                    submitted_count += 1
+            finally:
+                if slot_reserved:
+                    self.trajectory_thread.cancel_reserved_cage_slot(cage_number)
                 if frame_id > 0:
-                    self.last_submitted_frame_ids[int(cage_number)] = frame_id
-                submitted_count += 1
+                    self.last_considered_frame_versions[int(cage_number)] = frame_version
+                self.next_submit_time_by_cage[int(cage_number)] = now + submit_interval
         return submitted_count
 
     def dosomething(self):
@@ -1398,6 +1579,12 @@ class Tab_4(ThemedWindow):
         self.video_dirty = False
         self.last_video_render_time = 0.0
         self.video_render_interval_seconds = 0.05
+        self.video_render_stats_interval_seconds = 5.0
+        self.video_render_stats_last_monotonic = time.monotonic()
+        self.video_render_count = 0
+        self.video_render_total_ms = 0.0
+        self.video_last_render_frame_id = 0
+        self.video_last_render_frame_age_ms = 0.0
 
         self._init_ui(parent, geometry, title)
         self._init_customize_ui()
@@ -1975,6 +2162,44 @@ class Tab_4(ThemedWindow):
         else:
             self.render_selected_content()
 
+    def _record_video_render_runtime(
+        self,
+        cage_number: int,
+        frame_payload: dict[str, typing.Any] | None,
+        render_ms: float,
+    ):
+        self.video_render_count += 1
+        self.video_render_total_ms += max(float(render_ms), 0.0)
+        if frame_payload:
+            self.video_last_render_frame_id = int(
+                frame_payload.get("frame_sequence", frame_payload.get("frame_id", 0)) or 0
+            )
+            self.video_last_render_frame_age_ms = (
+                float(frame_payload.get("frame_age_seconds", 0.0) or 0.0) * 1000.0
+            )
+
+        now_monotonic = time.monotonic()
+        stats_elapsed = now_monotonic - self.video_render_stats_last_monotonic
+        if stats_elapsed < self.video_render_stats_interval_seconds:
+            return
+
+        average_render_ms = (
+            self.video_render_total_ms / self.video_render_count
+            if self.video_render_count
+            else 0.0
+        )
+        _emit_runtime_diagnostic(
+            "video_render_runtime",
+            f"selected_cage={cage_number}, "
+            f"render_fps={self.video_render_count / max(stats_elapsed, 0.001):.2f}, "
+            f"render_avg_ms={average_render_ms:.2f}, "
+            f"frame_age_ms={self.video_last_render_frame_age_ms:.1f}, "
+            f"frame_id={self.video_last_render_frame_id}",
+        )
+        self.video_render_stats_last_monotonic = now_monotonic
+        self.video_render_count = 0
+        self.video_render_total_ms = 0.0
+
     def render_selected_content(self):
         if self.current_cage_number is None:
             self.left_panel.set_title("左侧")
@@ -1987,6 +2212,7 @@ class Tab_4(ThemedWindow):
         self.current_cage_label.setText(f"当前显示: 鼠笼{cage_number}")
 
         if self.current_mode == self.MODE_VIDEO:
+            render_start = time.perf_counter()
             self.left_panel.set_title(f"视频检测效果 - 鼠笼{cage_number}")
             frame_payload = self.latest_video_frames.get(cage_number) or self.last_good_video_frames.get(cage_number)
             display_frame = self._build_video_display_frame(cage_number, frame_payload)
@@ -1994,6 +2220,12 @@ class Tab_4(ThemedWindow):
                 self.left_panel.show_frame(display_frame)
             else:
                 self.left_panel.show_placeholder("暂无画面")
+
+            self._record_video_render_runtime(
+                cage_number,
+                frame_payload,
+                (time.perf_counter() - render_start) * 1000.0,
+            )
 
             plot_paths = (
                 self.latest_trajectory_plot_paths.get(cage_number, {})

@@ -465,6 +465,7 @@ class IntegratedProcessMonitor:
             'on_unresponsive': [],
             'on_high_cpu': [],
             'on_high_memory': [],
+            'on_metrics': [],
             'on_critical_failure': [],
             'on_shutdown_triggered': [],
             'on_exception': [],  # 新增异常回调
@@ -594,6 +595,7 @@ class IntegratedProcessMonitor:
 
     def create_process_log_config(self,
                                   process_id: str,
+                                  log_dir: str = None,
                                   log_level: str = "INFO",
                                   custom_format: str = None,
                                   enable_console: bool = False,
@@ -601,7 +603,7 @@ class IntegratedProcessMonitor:
         """为指定进程创建日志配置"""
         return self.logger_manager.create_logger_config(
             process_id=process_id,
-            log_dir=f"./log/processes/{process_id}",
+            log_dir=log_dir or f"./log/processes/{process_id}",
             log_level=log_level,
             custom_format=custom_format,
             enable_console=enable_console,
@@ -1146,6 +1148,17 @@ class IntegratedProcessMonitor:
 
             # 检查阈值告警
             self.check_thresholds(metrics)
+            self.trigger_callbacks(
+                'on_metrics',
+                process_id,
+                pid=metrics.pid,
+                status=metrics.status,
+                cpu_percent_raw=metrics.cpu_percent,
+                cpu_percent_normalized=metrics.cpu_percent_normalized,
+                memory_mb=metrics.memory_mb,
+                uptime_seconds=metrics.uptime.total_seconds(),
+                restart_count=metrics.restart_count,
+            )
 
             return metrics
 

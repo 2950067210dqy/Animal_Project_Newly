@@ -173,7 +173,7 @@ def start_qt_application():
     pass
 
 
-def main(q, send_message_q):
+def main(q, send_message_q, runtime_diagnostics_queue=None):
     freeze_support()
 
     # logger.remove(0)
@@ -190,6 +190,10 @@ def main(q, send_message_q):
     global_load.load_global_setting()
     global_setting.set_setting("queue", q)
     global_setting.set_setting("send_message_queue", send_message_q)
+    global_setting.set_setting(
+        "runtime_diagnostics_queue",
+        runtime_diagnostics_queue,
+    )
     global read_queue_data_thread
     read_queue_data_thread.queue = q
     read_queue_data_thread.start()
