@@ -4,6 +4,7 @@ import math
 import multiprocessing
 import os
 import queue
+import re
 import shutil
 import sys
 import threading
@@ -32,7 +33,7 @@ from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.entity.send_message import Send_Message
 
-from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data, Others_Tables
+from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Send_Messages_Senior_Data, Others_Tables, Modbus_Slave_Ids
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
 from public.function.promise.AsyPromise import AsyPromise
@@ -1645,6 +1646,88 @@ def pause():
     logger.info(f"{'-' * 30}monitor_data_pause{'-' * 30}")
     pass
 
+def _parse_mouse_cage_numbers(raw_cages):
+    if raw_cages is None:
+        return []
+    if isinstance(raw_cages, dict):
+        iterable = raw_cages.values()
+    elif isinstance(raw_cages, (list, tuple, set)):
+        iterable = raw_cages
+    else:
+        iterable = [raw_cages]
+
+    cages = []
+    for cage in iterable:
+        if isinstance(cage, str):
+            match = re.search(r"\d+", cage)
+            if not match:
+                continue
+            cage = match.group(0)
+        try:
+            cage_number = int(cage)
+        except (TypeError, ValueError):
+            continue
+        if cage_number > 0 and cage_number not in cages:
+            cages.append(cage_number)
+    return cages
+
+def _get_reference_mouse_cage_number():
+    configer = global_setting.get_setting("configer", None) or {}
+    if not isinstance(configer, dict):
+        return None
+    mouse_cage_config = configer.get("mouse_cage", {}) or {}
+    if not isinstance(mouse_cage_config, dict):
+        return None
+    try:
+        return int(mouse_cage_config.get("reference"))
+    except (TypeError, ValueError):
+        return None
+
+def _get_opened_mouse_cages_for_light_off():
+    cages = _parse_mouse_cage_numbers(global_setting.get_setting("mouse_cages", None))
+    reference_cage = _get_reference_mouse_cage_number()
+    if reference_cage is not None and len(cages) > 1:
+        cages = [cage for cage in cages if cage != reference_cage]
+    return cages
+
+def _build_light_off_message(mouse_cage_number):
+    base_slave_id = int(Modbus_Slave_Ids.DWM.value['address'])
+    return {
+        'port': global_setting.get_setting("port", None),
+        'data': ['00', '70', '00', '00'],
+        'slave_id': format(base_slave_id + 16 * int(mouse_cage_number), '02X'),
+        'function_code': format(int("5", 16), '02X'),
+        'timeout': 0,
+        'no_response': True,
+        'module_type': 'DWM',
+        'switch_step': 'shutdown_light_off',
+    }
+
+def _send_opened_mouse_cages_light_off(wait_seconds=None):
+    global send_thread
+    cages = _get_opened_mouse_cages_for_light_off()
+    if not cages:
+        logger.warning("shutdown light off skipped: no opened mouse cages found")
+        return
+    if send_thread is None or not send_thread.isRunning():
+        logger.warning(f"shutdown light off skipped: send_thread unavailable, cages={cages}")
+        return
+
+    for cage in cages:
+        command = _build_light_off_message(cage)
+        send_thread.add_message(
+            message={'message': command},
+            urgent=True,
+            origin="monitor_data_stop"
+        )
+        logger.info(
+            f"shutdown light off queued: cage={cage}, slave_id={command['slave_id']}, data={command['data']}"
+        )
+
+    if wait_seconds is None:
+        wait_seconds = min(3.0, 0.25 * len(cages) + 0.5)
+    time.sleep(wait_seconds)
+
 def stop():
     if global_setting.get_setting("is_calibrating", False):
         calibration_type = global_setting.get_setting("current_calibration_type", "校准")
@@ -1658,6 +1741,10 @@ def stop():
                                 time=time_util.get_format_from_time(time.time())))
         return
     logger.info(f"{'-' * 30}monitor_data_stop{'-' * 30}")
+    try:
+        _send_opened_mouse_cages_light_off()
+    except Exception as e:
+        logger.error(f"shutdown light off failed: {e}")
     # 重置barrier回1，下次实验从1开始
     barrier = global_setting.get_setting("barrier")
     if barrier is not None:
