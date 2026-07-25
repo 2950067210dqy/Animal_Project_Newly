@@ -37,6 +37,7 @@ from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_S
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
 from public.function.promise.AsyPromise import AsyPromise
+from public.util.cage_light_state_util import force_save_cage_lights_off
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.number_util import number_util
 from public.util.string_util import String_util
@@ -1149,6 +1150,7 @@ periodic_xlsx_export_thread: PeriodicXlsxExportThread = None
 # 发送报文线程
 send_thread :Send_thread= None
 add_message_thread:Add_message_thread = None
+_shutdown_lights_off_done = False
 
 
 
@@ -1523,7 +1525,8 @@ def main(q,send_message_q):
     global_setting.set_setting("messages_sent_epoch_for_running",0)
     #每轮运行开始的时间 在气路启动后和一轮结束后会重新赋值
     global_setting.set_setting("start_time_messages_sent_epoch_for_running",time.time())
-    global read_queue_data_thread,send_thread
+    global read_queue_data_thread,send_thread, _shutdown_lights_off_done
+    _shutdown_lights_off_done = False
 
     read_queue_data_thread.queue = send_message_q
 
@@ -1549,7 +1552,8 @@ def start():
     gids = [group.id for group in experiment_settings.groups if
             group.is_selected == 1] if experiment_settings is not None else []
     # UFC_UGC_ZOS
-    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread
+    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread, _shutdown_lights_off_done
+    _shutdown_lights_off_done = False
     ufc_ugc_zos_thread = None
     ufc_ugc_zos = None
     try:
@@ -1684,11 +1688,7 @@ def _get_reference_mouse_cage_number():
         return None
 
 def _get_opened_mouse_cages_for_light_off():
-    cages = _parse_mouse_cage_numbers(global_setting.get_setting("mouse_cages", None))
-    reference_cage = _get_reference_mouse_cage_number()
-    if reference_cage is not None and len(cages) > 1:
-        cages = [cage for cage in cages if cage != reference_cage]
-    return cages
+    return _parse_mouse_cage_numbers(global_setting.get_setting("mouse_cages", None))
 
 def _build_light_off_message(mouse_cage_number):
     base_slave_id = int(Modbus_Slave_Ids.DWM.value['address'])
@@ -1703,16 +1703,20 @@ def _build_light_off_message(mouse_cage_number):
         'switch_step': 'shutdown_light_off',
     }
 
-def _send_opened_mouse_cages_light_off(wait_seconds=None):
+def _send_opened_mouse_cages_light_off(wait_seconds=None, cages=None):
     global send_thread
-    cages = _get_opened_mouse_cages_for_light_off()
+    if cages is None:
+        cages = _get_opened_mouse_cages_for_light_off()
+    else:
+        cages = _parse_mouse_cage_numbers(cages)
     if not cages:
         logger.warning("shutdown light off skipped: no opened mouse cages found")
-        return
+        return []
     if send_thread is None or not send_thread.isRunning():
         logger.warning(f"shutdown light off skipped: send_thread unavailable, cages={cages}")
-        return
+        return []
 
+    queued_cages = []
     for cage in cages:
         command = _build_light_off_message(cage)
         send_thread.add_message(
@@ -1720,6 +1724,7 @@ def _send_opened_mouse_cages_light_off(wait_seconds=None):
             urgent=True,
             origin="monitor_data_stop"
         )
+        queued_cages.append(cage)
         logger.info(
             f"shutdown light off queued: cage={cage}, slave_id={command['slave_id']}, data={command['data']}"
         )
@@ -1727,8 +1732,41 @@ def _send_opened_mouse_cages_light_off(wait_seconds=None):
     if wait_seconds is None:
         wait_seconds = min(3.0, 0.25 * len(cages) + 0.5)
     time.sleep(wait_seconds)
+    return queued_cages
+
+
+def _force_shutdown_lights_off_and_sync_state():
+    global _shutdown_lights_off_done
+    cages = _get_opened_mouse_cages_for_light_off()
+    if not cages:
+        logger.warning("shutdown light off skipped: no opened mouse cages found")
+        return
+    if _shutdown_lights_off_done:
+        logger.info(f"shutdown light off skipped: already completed for this experiment, cages={cages}")
+        return
+    _shutdown_lights_off_done = True
+
+    queued_cages = []
+    try:
+        queued_cages = _send_opened_mouse_cages_light_off(cages=cages)
+    except Exception as e:
+        logger.error(f"shutdown light off send failed: {e}")
+
+    try:
+        saved_cages = force_save_cage_lights_off(cages)
+        logger.info(
+            f"shutdown light off completed: cages={cages}, queued={queued_cages}, saved={saved_cages}"
+        )
+    except Exception as e:
+        logger.error(f"shutdown light state sync failed: {e}")
 
 def stop():
+    logger.info(f"{'-' * 30}monitor_data_stop{'-' * 30}")
+    try:
+        _force_shutdown_lights_off_and_sync_state()
+    except Exception as e:
+        logger.error(f"shutdown light off failed: {e}")
+
     if global_setting.get_setting("is_calibrating", False):
         calibration_type = global_setting.get_setting("current_calibration_type", "校准")
         logger.warning(f"skip monitor_data_stop while calibration is running: {calibration_type}")
@@ -1740,11 +1778,6 @@ def stop():
                                 data=f"{calibration_type}进行中，已跳过自动停止气路，避免误关闭UFC",
                                 time=time_util.get_format_from_time(time.time())))
         return
-    logger.info(f"{'-' * 30}monitor_data_stop{'-' * 30}")
-    try:
-        _send_opened_mouse_cages_light_off()
-    except Exception as e:
-        logger.error(f"shutdown light off failed: {e}")
     # 重置barrier回1，下次实验从1开始
     barrier = global_setting.get_setting("barrier")
     if barrier is not None:

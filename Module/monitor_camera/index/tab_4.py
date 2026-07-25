@@ -9,7 +9,7 @@ import typing
 import weakref
 from datetime import datetime, timedelta
 from pathlib import Path
-
+from typing import Any
 import cv2
 import numpy as np
 from PyQt6 import QtGui
