@@ -760,7 +760,34 @@ class MouseTrajectoryThread(MyQThread):
                 ),
                 0.0,
             )
-            self.annotated_output_size = (64, 24)
+            annotated_output_width = max(
+                int(
+                    float(
+                        trajectory_config.get(
+                            "annotated_output_width",
+                            self.annotated_output_size[0],
+                        )
+                        or self.annotated_output_size[0]
+                    )
+                ),
+                1,
+            )
+            annotated_output_height = max(
+                int(
+                    float(
+                        trajectory_config.get(
+                            "annotated_output_height",
+                            self.annotated_output_size[1],
+                        )
+                        or self.annotated_output_size[1]
+                    )
+                ),
+                1,
+            )
+            self.annotated_output_size = (
+                annotated_output_width,
+                annotated_output_height,
+            )
             self.mouse_annotated_jpg_quality = max(
                 1,
                 min(
@@ -1207,6 +1234,90 @@ class MouseTrajectoryThread(MyQThread):
         # Keep them here so unfinished windows can be processed later in order.
         return
 
+    def _save_saved_color_frame_annotation(
+        self,
+        cage_number: int,
+        image_source: Path | Any,
+        color_source_path: Path | str | None,
+        corners: BoxCorners | None,
+        mouse_box: DetectionBox | None,
+        solved: dict[str, Any] | None,
+        status: str,
+    ) -> Path | None:
+        if color_source_path is None:
+            return None
+        try:
+            output_path = Path(color_source_path)
+            if not output_path.exists():
+                time.sleep(0.03)
+            if not output_path.exists():
+                return None
+
+            image = render_annotation_image(
+                image_source,
+                corners,
+                mouse_box,
+                solved,
+                status,
+            )
+            if image is None:
+                return None
+
+            saved_image = cv2.imread(str(output_path))
+            if saved_image is not None and saved_image.shape[:2] != image.shape[:2]:
+                target_h, target_w = saved_image.shape[:2]
+                interpolation = (
+                    cv2.INTER_AREA
+                    if image.shape[1] > target_w or image.shape[0] > target_h
+                    else cv2.INTER_LINEAR
+                )
+                image = cv2.resize(image, (target_w, target_h), interpolation=interpolation)
+
+            encoded_ok, encoded = cv2.imencode(
+                ".jpg",
+                image,
+                [
+                    int(cv2.IMWRITE_JPEG_QUALITY),
+                    int(self.mouse_annotated_jpg_quality),
+                ],
+            )
+            if not encoded_ok:
+                return None
+
+            if self._write_encoded_jpg_atomic(output_path, encoded.tobytes()):
+                return output_path
+        except Exception as error:
+            logger.debug(
+                f"save saved color frame annotation failed cage={cage_number}, "
+                f"path={color_source_path}: {error}"
+            )
+        return None
+
+    def _schedule_saved_color_frame_annotation(
+        self,
+        cage_number: int,
+        image_source: Path | Any,
+        color_source_path: Path | str | None,
+        corners: BoxCorners | None,
+        mouse_box: DetectionBox | None,
+        solved: dict[str, Any] | None,
+        status: str,
+    ) -> bool:
+        if color_source_path is None:
+            return False
+        return self._submit_async_job(
+            ("saved_color_annotation", int(cage_number)),
+            self.preview_executor,
+            self._save_saved_color_frame_annotation,
+            cage_number,
+            image_source,
+            color_source_path,
+            corners,
+            mouse_box,
+            solved,
+            status,
+        )
+
     def _save_mouse_detection_images(
         self,
         cage_number: int,
@@ -1453,7 +1564,10 @@ class MouseTrajectoryThread(MyQThread):
                 "mouse_result": None,
                 "frame_payload": dict(frame_payload),
                 "source_file_path": str(source_file_path or ""),
-                "color_source_path": None,
+                "color_source_path": self._build_processed_color_source_path(
+                    cage_number,
+                    timestamp,
+                ),
             }
 
             prepare_start = time.perf_counter()
@@ -2017,6 +2131,15 @@ class MouseTrajectoryThread(MyQThread):
             frame_id=frame_id,
             timestamp=timestamp,
             image_source=item.get("source_frame"),
+            corners=corners,
+            mouse_box=mouse_box,
+            solved=solved,
+            status=status,
+        )
+        self._schedule_saved_color_frame_annotation(
+            cage_number=cage_number,
+            image_source=item.get("source_frame"),
+            color_source_path=item.get("color_source_path"),
             corners=corners,
             mouse_box=mouse_box,
             solved=solved,
