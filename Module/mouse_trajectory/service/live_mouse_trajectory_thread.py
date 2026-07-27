@@ -26,6 +26,7 @@ from Module.mouse_trajectory.paths import (
     DEFAULT_MOUSE_MODEL_PATH,
     DEFAULT_REFERENCE_IMAGE_PATH,
     EXPORT_DIR,
+    create_experiment_export_dir,
     get_cage_annotated_history_dir,
     get_cage_annotated_latest_dir,
     get_cage_data_dir,
@@ -85,6 +86,7 @@ class MouseTrajectoryThread(MyQThread):
 
     def __init__(self):
         super().__init__(name="mouse_trajectory_thread")
+        self.export_root: Path | None = None
         self.pending_frames: deque[tuple[int, dict[str, Any]]] = deque()
         self.pending_frame_keys: set[tuple[int, int]] = set()
         self.pending_file_keys: set[tuple[int, str]] = set()
@@ -292,7 +294,38 @@ class MouseTrajectoryThread(MyQThread):
 
     def before_Runing_work(self):
         self._load_runtime_config()
+        self._start_new_export_root()
         self._prepare_runtime()
+
+    def _start_new_export_root(self):
+        self.export_root = create_experiment_export_dir()
+        logger.info(f"mouse trajectory experiment export root: {self.export_root}")
+
+    def _require_export_root(self) -> Path:
+        if self.export_root is None:
+            self._start_new_export_root()
+        return self.export_root
+
+    def _get_cage_export_dir(self, cage_number: int) -> Path:
+        return get_cage_export_dir(cage_number, export_root=self._require_export_root())
+
+    def _get_cage_data_dir(self, cage_number: int) -> Path:
+        return get_cage_data_dir(cage_number, export_root=self._require_export_root())
+
+    def _get_cage_plots_dir(self, cage_number: int) -> Path:
+        return get_cage_plots_dir(cage_number, export_root=self._require_export_root())
+
+    def _get_cage_annotated_latest_dir(self, cage_number: int) -> Path:
+        return get_cage_annotated_latest_dir(
+            cage_number,
+            export_root=self._require_export_root(),
+        )
+
+    def _get_cage_annotated_history_dir(self, cage_number: int) -> Path:
+        return get_cage_annotated_history_dir(
+            cage_number,
+            export_root=self._require_export_root(),
+        )
 
     def _active_count_locked(self, cage_number: int | None = None) -> int:
         pending_count = self._pending_count_locked(cage_number)
@@ -1234,10 +1267,10 @@ class MouseTrajectoryThread(MyQThread):
                 return None, None
             encoded_bytes = encoded.tobytes()
 
-            latest_dir = get_cage_annotated_latest_dir(cage_number)
+            latest_dir = self._get_cage_annotated_latest_dir(cage_number)
             latest_path = latest_dir / "mouse_detection_latest.jpg"
 
-            history_dir = get_cage_annotated_history_dir(cage_number)
+            history_dir = self._get_cage_annotated_history_dir(cage_number)
             timestamp_text = datetime.fromtimestamp(timestamp).strftime("%Y%m%d_%H%M%S_%f")[:-3]
             frame_id_text = f"{int(frame_id):08d}" if int(frame_id) > 0 else str(time.time_ns())
             prefix = "mouse_detected" if mouse_box is not None else "mouse_none"
@@ -2101,9 +2134,8 @@ class MouseTrajectoryThread(MyQThread):
             "occupancy_heatmap": str(plots_dir / "occupancy_heatmap.png"),
         }
 
-    @staticmethod
-    def _build_latest_plot_paths(cage_number: int) -> dict[str, str]:
-        plots_dir = get_cage_plots_dir(cage_number)
+    def _build_latest_plot_paths(self, cage_number: int) -> dict[str, str]:
+        plots_dir = self._get_cage_plots_dir(cage_number)
         return {
             "xy_trajectory": str(plots_dir / "latest_xy_trajectory.png"),
             "height_trajectory": str(plots_dir / "latest_height_trajectory.png"),
@@ -2207,7 +2239,7 @@ class MouseTrajectoryThread(MyQThread):
     ):
         del image_file
         export_dir.mkdir(parents=True, exist_ok=True)
-        data_dir = get_cage_data_dir(cage_number)
+        data_dir = self._get_cage_data_dir(cage_number)
         data_dir.mkdir(parents=True, exist_ok=True)
         self._cleanup_legacy_flat_files(export_dir)
 
@@ -2417,13 +2449,13 @@ class MouseTrajectoryThread(MyQThread):
             raise
 
     def _build_plot_paths(self, cage_number: int) -> dict[str, str]:
-        plots_dir = get_cage_plots_dir(cage_number)
+        plots_dir = self._get_cage_plots_dir(cage_number)
         return self._build_plot_paths_from_dir(plots_dir)
 
     def _get_window_plots_dir(self, cage_number: int, window_index: int, window_start: float, window_end: float) -> Path:
         start_text = datetime.fromtimestamp(window_start).strftime("%Y%m%d_%H%M%S")
         end_text = datetime.fromtimestamp(window_end).strftime("%H%M%S")
-        plots_dir = get_cage_plots_dir(cage_number) / "windows" / f"window_{window_index:05d}_{start_text}_{end_text}"
+        plots_dir = self._get_cage_plots_dir(cage_number) / "windows" / f"window_{window_index:05d}_{start_text}_{end_text}"
         plots_dir.mkdir(parents=True, exist_ok=True)
         return plots_dir
 
@@ -2723,7 +2755,7 @@ class MouseTrajectoryThread(MyQThread):
         cage_number: int,
         shift_log: list[dict[str, Any]],
     ) -> bool:
-        data_dir = get_cage_data_dir(cage_number)
+        data_dir = self._get_cage_data_dir(cage_number)
         data_dir.mkdir(parents=True, exist_ok=True)
         final_json_ok = False
         try:
@@ -2781,7 +2813,7 @@ class MouseTrajectoryThread(MyQThread):
     ) -> dict[str, str]:
         plot_start = time.perf_counter()
         del image_file, shift_log
-        plots_dir = get_cage_plots_dir(cage_number) / "total"
+        plots_dir = self._get_cage_plots_dir(cage_number) / "total"
         plots_dir.mkdir(parents=True, exist_ok=True)
         save_plots(plots_dir, rows, self.instrument_polygon_phys)
         total_plot_paths = self._build_plot_paths_from_dir(plots_dir)
@@ -2872,7 +2904,7 @@ class MouseTrajectoryThread(MyQThread):
                 self._append_runtime_outputs_job,
                 cage_number,
                 image_file,
-                get_cage_export_dir(cage_number),
+                self._get_cage_export_dir(cage_number),
                 rows_snapshot,
                 self.processed_frame_count_by_cage.get(cage_number, 0),
                 self.ok_frame_count_by_cage.get(cage_number, 0),
@@ -2904,7 +2936,7 @@ class MouseTrajectoryThread(MyQThread):
                         self._append_runtime_outputs(
                             cage_number,
                             image_file,
-                            get_cage_export_dir(cage_number),
+                            self._get_cage_export_dir(cage_number),
                             rows_snapshot,
                             self.processed_frame_count_by_cage.get(cage_number, 0),
                             self.ok_frame_count_by_cage.get(cage_number, 0),

@@ -1,5 +1,8 @@
 from configparser import ConfigParser
+from datetime import datetime
+import os
 from pathlib import Path
+import re
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -43,6 +46,37 @@ def _resolve_export_dir() -> Path:
 
 
 EXPORT_DIR = _resolve_export_dir()
+
+
+def _resolve_export_root(export_root: Path | str | None = None) -> Path:
+    if export_root is None:
+        root = EXPORT_DIR
+    else:
+        root = Path(export_root)
+        if not root.is_absolute():
+            root = (EXPORT_DIR / root).resolve()
+
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _sanitize_path_component(value: str) -> str:
+    text = re.sub(r"[^0-9A-Za-z_.-]+", "_", str(value).strip())
+    return text.strip("._") or "experiment"
+
+
+def create_experiment_export_dir(prefix: str = "experiment") -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+    base_name = f"{_sanitize_path_component(prefix)}_{timestamp}_pid{os.getpid()}"
+    candidate = EXPORT_DIR / base_name
+    suffix = 1
+
+    while candidate.exists():
+        suffix += 1
+        candidate = EXPORT_DIR / f"{base_name}_{suffix}"
+
+    candidate.mkdir(parents=True, exist_ok=False)
+    return candidate
 
 
 def first_existing_path(*paths: Path) -> Path | None:
@@ -104,37 +138,37 @@ DEFAULT_MOUSE_MODEL_PATH = first_existing_path(
 )
 
 
-def get_cage_export_dir(cage_number: int) -> Path:
-    cage_dir = EXPORT_DIR / f"cage_{int(cage_number)}"
+def get_cage_export_dir(cage_number: int, export_root: Path | str | None = None) -> Path:
+    cage_dir = _resolve_export_root(export_root) / f"cage_{int(cage_number)}"
     cage_dir.mkdir(parents=True, exist_ok=True)
     return cage_dir
 
 
-def get_cage_plots_dir(cage_number: int) -> Path:
-    plots_dir = get_cage_export_dir(cage_number) / "plots"
+def get_cage_plots_dir(cage_number: int, export_root: Path | str | None = None) -> Path:
+    plots_dir = get_cage_export_dir(cage_number, export_root=export_root) / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     return plots_dir
 
 
-def get_cage_data_dir(cage_number: int) -> Path:
-    data_dir = get_cage_export_dir(cage_number) / "data"
+def get_cage_data_dir(cage_number: int, export_root: Path | str | None = None) -> Path:
+    data_dir = get_cage_export_dir(cage_number, export_root=export_root) / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
 
-def get_cage_annotated_dir(cage_number: int) -> Path:
-    annotated_dir = get_cage_export_dir(cage_number) / "annotated"
+def get_cage_annotated_dir(cage_number: int, export_root: Path | str | None = None) -> Path:
+    annotated_dir = get_cage_export_dir(cage_number, export_root=export_root) / "annotated"
     annotated_dir.mkdir(parents=True, exist_ok=True)
     return annotated_dir
 
 
-def get_cage_annotated_latest_dir(cage_number: int) -> Path:
-    latest_dir = get_cage_annotated_dir(cage_number) / "latest"
+def get_cage_annotated_latest_dir(cage_number: int, export_root: Path | str | None = None) -> Path:
+    latest_dir = get_cage_annotated_dir(cage_number, export_root=export_root) / "latest"
     latest_dir.mkdir(parents=True, exist_ok=True)
     return latest_dir
 
 
-def get_cage_annotated_history_dir(cage_number: int) -> Path:
-    history_dir = get_cage_annotated_dir(cage_number) / "history"
+def get_cage_annotated_history_dir(cage_number: int, export_root: Path | str | None = None) -> Path:
+    history_dir = get_cage_annotated_dir(cage_number, export_root=export_root) / "history"
     history_dir.mkdir(parents=True, exist_ok=True)
     return history_dir
