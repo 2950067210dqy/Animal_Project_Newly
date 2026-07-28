@@ -36,7 +36,7 @@ def calc_dry_o2(moist_o2, gas_pressure, temp_value, rh_value):
 
 
 class CalibrationHandler:
-    def __init__(self, target_points=30, config_path=None):
+    def __init__(self, target_points=60, config_path=None):
         self.channels = VALID_CHANNELS.copy()
         self.target_points = int(target_points)
         self.config_path = Path(config_path or get_default_config_path())
