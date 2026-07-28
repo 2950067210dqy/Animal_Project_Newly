@@ -17,7 +17,7 @@ def get_default_config_path():
 
 
 class CO2CalibrationHandler:
-    def __init__(self, target_points=120, config_path=None):
+    def __init__(self, target_points=60, config_path=None):
         self.channels = VALID_CHANNELS.copy()
         self.target_points = int(target_points)
         self.config_path = Path(config_path or get_default_config_path())

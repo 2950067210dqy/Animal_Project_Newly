@@ -237,7 +237,7 @@ def get_o2_calibration_handler(target_points=None):
         return _CALIBRATION_HANDLER
 
 
-def start_new_o2_calibration(target_points=120):
+def start_new_o2_calibration(target_points=60):
     handler = get_o2_calibration_handler(target_points=target_points)
     return handler.start_new_calibration()
 
