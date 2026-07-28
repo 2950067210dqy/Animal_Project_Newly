@@ -82,8 +82,27 @@ class custom_data_file_util:
     """自定义数据文件"""
     encoding = "utf-8-sig"
     extension_name = "Mdata"
+
     @classmethod
-    def save_folder_contents_as_custom_file(cls,folder_path,is_delete_original_data_file=True):
+    def show_export_success_message(cls, export_file_path):
+        msg_box = QMessageBox(
+            QMessageBox.Icon.Information,
+            "导出成功",
+            f"数据已导出到: {export_file_path}\n\n点击'open'按钮可以打开保存的文件以及文件夹。",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Open
+        )
+        msg_box.setDefaultButton(QMessageBox.StandardButton.Open)
+        msg_box.setWindowFlags(msg_box.windowFlags())
+        if QMessageBox.StandardButton.Open == msg_box.exec():
+            folder_util.open_folder(os.path.dirname(export_file_path))
+            folder_util.open_folder(export_file_path)
+
+    @classmethod
+    def save_folder_contents_as_custom_file(
+            cls,
+            folder_path,
+            is_delete_original_data_file=True,
+            show_success_message=True):
         contents = {}
 
         # 遍历文件夹
@@ -106,12 +125,17 @@ class custom_data_file_util:
             json.dump(contents, custom_file, ensure_ascii=False, indent=4)
         # 将数据db文件转成excel文件
         excel_file_path=os.path.join(parent_directory, f'{folder_name}.xlsx')
-        cls.export_data_to_csv(excel_file_path,folder_name)
+        export_success = cls.export_data_to_csv(
+            excel_file_path,
+            folder_name,
+            show_success_message=show_success_message,
+        )
 
 
         #删除该文件夹
         if is_delete_original_data_file:
             folder_util.remove_non_empty_folder(folder_path)
+        return excel_file_path if export_success else False
     @classmethod
     def export_data_to_csv(cls, export_file_path=None, file_name=None, file_path=None,
                            show_success_message=True, use_atomic_replace=False):

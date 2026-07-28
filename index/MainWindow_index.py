@@ -8,7 +8,7 @@ from json import JSONDecodeError
 
 from PyQt6.QtGui import QFont
 from PyQt6 import QtCore
-from PyQt6.QtCore import QTimer, QObject, pyqtSignal
+from PyQt6.QtCore import QTimer, QObject, QThread, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog, QMenu, QMenuBar, QWidget, \
     QApplication, QCheckBox
@@ -53,6 +53,30 @@ class Stop_experiment_thread(MyQThread):
     def dosomething(self):
         self.window.stop_experiment_handle()
         self.stop()
+
+
+class StopExperimentExportThread(QThread):
+    export_finished = pyqtSignal(bool, str)
+
+    def __init__(self, folder_path, parent=None):
+        super().__init__(parent)
+        self.folder_path = folder_path
+
+    def run(self):
+        try:
+            export_path = custom_data_file_util.save_folder_contents_as_custom_file(
+                self.folder_path,
+                show_success_message=False,
+            )
+            if export_path:
+                self.export_finished.emit(True, str(export_path))
+            else:
+                self.export_finished.emit(False, "data export failed")
+        except Exception as error:
+            logger.exception(f"stop experiment export failed: {error}")
+            self.export_finished.emit(False, str(error))
+
+
 class read_queue_data_Thread(MyQThread):
     def __init__(self, name,window=None):
         super().__init__(name)
@@ -227,7 +251,14 @@ class read_queue_data_Thread(MyQThread):
                 # 把消息放回去
                 self.queue.put(message)
     def close_stop_experiment_dialog(self):
-        if self.window is not None and self.window.stop_dialog is not None:
+        if self.window is None:
+            return
+        if not self.window.stop_export_finished:
+            self.window.stop_dialog_close_pending = True
+            if self.window.stop_dialog is not None:
+                self.window.stop_dialog.insert_data_signal.emit("等待实验数据导出完成...")
+            return
+        if self.window.stop_dialog is not None:
             self.window.stop_dialog.update_progress_value(self.window.stop_dialog.progress_max)
 
 
@@ -491,6 +522,10 @@ class MainWindow_Index(ThemedWindow):
         self.periodic_export_lock = threading.Lock()
         self.periodic_export_in_progress = False
         self.periodic_export_thread = None
+        self.stop_export_thread = None
+        self.stop_export_finished = True
+        self.stop_dialog_close_pending = False
+        self.pending_stop_export_success_path = None
         self.periodic_export_timer = QTimer(self)
         self.periodic_export_timer.setSingleShot(False)
         self.periodic_export_timer.setInterval(self._get_periodic_export_interval_ms())
@@ -1404,9 +1439,9 @@ class MainWindow_Index(ThemedWindow):
             except Exception:
                 start_wait_times += 1800
             try:
-                start_wait_times += max(float(calibration_config.get('startup_air_calibration_max_timeout', 2700)), 0)
+                start_wait_times += max(float(calibration_config.get('startup_air_calibration_max_timeout', 1500)), 0)
             except Exception:
-                start_wait_times += 2700
+                start_wait_times += 1500
             if self.start_dialog is not None:
                 self.start_dialog.countdown_seconds = start_wait_times
                 self.start_dialog.current_seconds = start_wait_times
@@ -1665,6 +1700,9 @@ class MainWindow_Index(ThemedWindow):
         self.status_bar._temp_tip_active = False
         self.old_Stop_experiment_status_text_reTurn = None
         self.old_stop_status_counts = 0
+        self.stop_export_finished = False
+        self.stop_dialog_close_pending = False
+        self.pending_stop_export_success_path = None
         if self._gas_path_timeout_timer is not None:
             self._gas_path_timeout_timer.stop()
             self._gas_path_timeout_timer = None
@@ -1700,11 +1738,18 @@ class MainWindow_Index(ThemedWindow):
         QTimer.singleShot(0, self.start_stop_cleanup_async)
         self.show_stop_dialog_sync()
         self.stop_update_gui_sync()
+        self._show_pending_stop_export_success_message()
 
     def start_stop_cleanup_async(self):
         AsyPromise(self.close_monitor_data_window).then(
             lambda _: AsyPromise(self.stop_store_info_Qtimer)
-        ).catch(lambda e: logger.error(f"{e}"))
+        ).catch(self._on_stop_cleanup_failed)
+
+    def _on_stop_cleanup_failed(self, error):
+        logger.error(f"{error}")
+        self.stop_export_finished = True
+        if self.stop_dialog_close_pending and self.stop_dialog is not None:
+            self.stop_dialog.update_progress_value(self.stop_dialog.progress_max)
 
     def stop_update_gui_sync(self):
         logger.error("stop_update_gui")
@@ -1766,7 +1811,47 @@ class MainWindow_Index(ThemedWindow):
         if folder_path_data is not None and os.path.exists(folder_path_data):
             if self.stop_dialog is not None:
                 self.stop_dialog.insert_data_signal.emit(f"正在导出数据.... ")
-            custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data)
+            self._start_stop_export_thread(folder_path_data)
+            return
+
+        self.stop_export_finished = True
+        if self.stop_dialog_close_pending and self.stop_dialog is not None:
+            self.stop_dialog.update_progress_value(self.stop_dialog.progress_max)
+
+    def _start_stop_export_thread(self, folder_path):
+        if self.stop_export_thread is not None:
+            return
+        self.stop_export_thread = StopExperimentExportThread(folder_path, self)
+        self.stop_export_thread.export_finished.connect(self._on_stop_export_finished)
+        self.stop_export_thread.finished.connect(self._on_stop_export_thread_ended)
+        self.stop_export_thread.start()
+
+    def _on_stop_export_finished(self, success, message):
+        self.stop_export_finished = True
+        if success:
+            logger.info(f"stop experiment data export succeeded: {message}")
+            self.pending_stop_export_success_path = message
+            if self.stop_dialog is not None:
+                self.stop_dialog.insert_data_signal.emit(f"数据导出成功: {message}")
+        else:
+            logger.error(f"stop experiment data export failed: {message}")
+            if self.stop_dialog is not None:
+                self.stop_dialog.insert_data_signal.emit(f"数据导出失败: {message}")
+
+        if self.stop_dialog_close_pending and self.stop_dialog is not None:
+            self.stop_dialog.update_progress_value(self.stop_dialog.progress_max)
+
+    def _on_stop_export_thread_ended(self):
+        export_thread = self.stop_export_thread
+        self.stop_export_thread = None
+        if export_thread is not None:
+            export_thread.deleteLater()
+
+    def _show_pending_stop_export_success_message(self):
+        export_path = self.pending_stop_export_success_path
+        self.pending_stop_export_success_path = None
+        if export_path:
+            custom_data_file_util.show_export_success_message(export_path)
 
     def _finalize_mouse_trajectory_views(self) -> bool:
         trajectory_views = []

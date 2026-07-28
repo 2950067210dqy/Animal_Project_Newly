@@ -14,9 +14,21 @@ import cv2
 import numpy as np
 from PyQt6 import QtGui
 from PyQt6.QtCharts import QChart, QChartView, QDateTimeAxis, QScatterSeries, QValueAxis
-from PyQt6.QtCore import QDateTime, QPointF, QRect, QRectF, Qt, pyqtSignal, QMargins, QTimer
+from PyQt6.QtCore import (
+    QDateTime,
+    QEventLoop,
+    QMargins,
+    QPointF,
+    QRect,
+    QRectF,
+    QThread,
+    QTimer,
+    Qt,
+    pyqtSignal,
+)
 from PyQt6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
+    QApplication,
     QComboBox,
     QGraphicsScene,
     QGraphicsView,
@@ -1881,8 +1893,40 @@ class Tab_4(ThemedWindow):
         if submitter is not None and submitter.isRunning():
             submitter.stop()
             submitter.requestInterruption()
-            submitter.wait(2000)
+            self._wait_for_thread_responsive(submitter, 2000)
         self.trajectory_submitter_thread = None
+
+    @staticmethod
+    def _wait_for_thread_responsive(thread, timeout_ms: int) -> bool:
+        if thread is None or not thread.isRunning():
+            return True
+
+        app = QApplication.instance()
+        if app is None or QThread.currentThread() != app.thread():
+            return thread.wait(timeout_ms)
+
+        wait_loop = QEventLoop()
+        poll_timer = QTimer()
+        timeout_timer = QTimer()
+        timeout_timer.setSingleShot(True)
+
+        def stop_wait_if_finished():
+            if not thread.isRunning():
+                wait_loop.quit()
+
+        poll_timer.timeout.connect(stop_wait_if_finished)
+        timeout_timer.timeout.connect(wait_loop.quit)
+        thread.finished.connect(wait_loop.quit)
+        poll_timer.start(20)
+        timeout_timer.start(max(int(timeout_ms), 0))
+        wait_loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        poll_timer.stop()
+        timeout_timer.stop()
+        try:
+            thread.finished.disconnect(wait_loop.quit)
+        except (TypeError, RuntimeError):
+            pass
+        return not thread.isRunning()
 
     def stop_trajectory_thread(self) -> bool:
         global shared_trajectory_thread
@@ -1908,7 +1952,7 @@ class Tab_4(ThemedWindow):
         if submitter is not None and submitter.isRunning():
             submitter.stop()
             submitter.requestInterruption()
-            submitter.wait(2000)
+            self._wait_for_thread_responsive(submitter, 2000)
 
         if trajectory_thread.isRunning():
             trajectory_thread.request_finish_after_drain()
@@ -1928,7 +1972,10 @@ class Tab_4(ThemedWindow):
                 ),
                 2.0,
             )
-            trajectory_thread.wait(int(finalize_timeout_seconds * 1000))
+            self._wait_for_thread_responsive(
+                trajectory_thread,
+                int(finalize_timeout_seconds * 1000),
+            )
         if trajectory_thread.isRunning():
             logger.error(
                 "mouse trajectory finalization timed out; final trajectory output may be incomplete"
