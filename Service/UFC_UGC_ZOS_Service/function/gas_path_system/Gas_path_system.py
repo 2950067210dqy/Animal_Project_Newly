@@ -990,30 +990,27 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
         data_items = result_data.get("data", [])
         o2_partial_press = self._get_data_value(data_items, "氧分压(hPa)")
-        temp_sensor = self._get_data_value(data_items, "ZOS温度测量值(°C)")
         gas_total_press = self._get_data_value(data_items, "气体压力(hPa)")
         o2_raw_pct = self._get_data_value(data_items, "氧浓度(%)")
 
-        if None in (o2_partial_press, temp_sensor, gas_total_press, o2_raw_pct):
-            return result_data
-
-        # 干基氧浓度改为使用 ZOS 自身返回的温湿度数据计算：
-        # 优先取 ZOS温度2 + ZOS湿度，温度2 缺失时回退到 ZOS温度1。
-        temp_cage = self._get_data_value(data_items, "ZOS温度2测量值(°C)")
-        if temp_cage is None:
-            temp_cage = temp_sensor
-        rh_cage = self._get_data_value(data_items, "ZOS湿度测量值(%RH)")
-        if None in (temp_cage, rh_cage):
+        zos_temp = self._get_data_value(data_items, "ZOS温度2测量值(°C)")
+        zos_rh = self._get_data_value(data_items, "ZOS湿度测量值(%RH)")
+        if None in (
+            o2_partial_press,
+            zos_temp,
+            gas_total_press,
+            o2_raw_pct,
+            zos_rh,
+        ):
             return result_data
 
         compensation_value = calculate_o2_compensated(
             channel_id,
             o2_partial_press,
-            temp_sensor,
+            zos_temp,
             gas_total_press,
             o2_raw_pct,
-            temp_cage,
-            rh_cage
+            zos_rh,
         )
         if compensation_value == -1:
             return result_data

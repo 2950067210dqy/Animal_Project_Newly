@@ -6,7 +6,6 @@ from loguru import logger
 
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
 from public.config_class.global_setting import global_setting
-from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.enum.Public_Enum import GapSystem_Running_Type
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.number_util import number_util
@@ -38,7 +37,6 @@ class Startup_Air_Calibration:
         self.o2_calibration_handler = None
         self.co2_calibration_handler = None
         self.previous_valid_snapshots = {}
-        self.data_handle = None
         self.calculation_started_logged = False
 
     def update(self):
@@ -89,10 +87,9 @@ class Startup_Air_Calibration:
         fields = (
             "o2_partial",
             "zos_temp",
+            "zos_rh",
             "gas_pressure",
             "o2_percent",
-            "env_temp",
-            "env_rh",
         )
         previous_snapshot = self.previous_valid_snapshots.get(channel)
         normalized_snapshot = dict(snapshot)
@@ -196,27 +193,6 @@ class Startup_Air_Calibration:
     def _get_active_channels(self):
         return list(range(9))
 
-    def _channel_to_cage_number(self, channel):
-        if int(channel) == 8:
-            return int(global_setting.get_setting("configer")["mouse_cage"]["reference"])
-        return int(channel) + 1
-
-    def _read_environment_snapshot(self, channel):
-        cage_number = self._channel_to_cage_number(channel)
-        if self.data_handle is None:
-            self.data_handle = Monitor_Datas_Handle()
-
-        env_data = self.data_handle.query_current_one_data(
-            f"ENM_monitor_data_cage_{int(cage_number)}"
-        )
-        if not env_data:
-            return None
-
-        return {
-            "env_temp": env_data.get("temperature_num"),
-            "env_rh": env_data.get("humidity_num"),
-        }
-
     def _build_calibration_handlers(self, sample_interval=None, active_channel_count=None):
         try:
             from Service.UFC_UGC_ZOS_Service.function.o2_compensation.calibration_handler import CalibrationHandler
@@ -298,34 +274,21 @@ class Startup_Air_Calibration:
 
         data_items = result_data.get("data", [])
         o2_partial = self._extract_data_value(data_items, "氧分压")
-        zos_temp = self._extract_data_value(data_items, "ZOS温度测量值")
         gas_pressure = self._extract_data_value(data_items, "气体压力")
         o2_percent = self._extract_data_value(data_items, "氧浓度")
-        zos_temp_2 = self._extract_data_value(data_items, "ZOS温度2测量值")
+        zos_temp = self._extract_data_value(data_items, "ZOS温度2测量值")
         zos_rh = self._extract_data_value(data_items, "ZOS湿度测量值")
 
-        env_snapshot = self._read_environment_snapshot(channel)
-        env_temp = None if env_snapshot is None else env_snapshot.get("env_temp")
-        env_rh = None if env_snapshot is None else env_snapshot.get("env_rh")
-
-        if env_temp is None:
-            env_temp = zos_temp_2 if zos_temp_2 is not None else zos_temp
-        if env_rh is None:
-            env_rh = zos_rh
-        if zos_temp is None:
-            zos_temp = env_temp
-
-        if None in [o2_partial, gas_pressure, o2_percent, env_temp, env_rh]:
+        if None in [o2_partial, gas_pressure, o2_percent, zos_temp, zos_rh]:
             return None
 
         o2_percent = self._normalize_oxygen_percent(o2_percent)
         return {
             "o2_partial": float(o2_partial),
             "zos_temp": float(zos_temp),
+            "zos_rh": float(zos_rh),
             "gas_pressure": float(gas_pressure),
             "o2_percent": float(o2_percent),
-            "env_temp": float(env_temp),
-            "env_rh": float(env_rh),
         }
 
     def start(self, resolve, reject):
@@ -423,8 +386,7 @@ class Startup_Air_Calibration:
                             snapshot["zos_temp"],
                             snapshot["gas_pressure"],
                             snapshot["o2_percent"],
-                            snapshot["env_temp"],
-                            snapshot["env_rh"],
+                            snapshot["zos_rh"],
                         )
                     except Exception as exc:
                         reject(f"{self.name}执行 O2 CalibrationHandler 失败: {exc}")
@@ -515,9 +477,6 @@ class Startup_Air_Calibration:
         ).catch(lambda e: reject(e))
 
     def _finish_stop(self, resolve):
-        if self.data_handle is not None:
-            self.data_handle.stop()
-            self.data_handle = None
         stop_time_text = time_util.get_format_from_time(time.time())
         self._send_state("set_stop_air_calibration_time", stop_time_text)
         resolve()

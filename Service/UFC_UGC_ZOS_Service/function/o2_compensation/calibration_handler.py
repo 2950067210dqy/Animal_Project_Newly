@@ -57,8 +57,8 @@ class CalibrationHandler:
             self.is_active = True
         return True
 
-    def add_data(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, env_temp, env_rh):
-        del o2_partial, env_temp
+    def add_data(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, zos_rh):
+        del o2_partial
 
         with self.lock:
             if channel not in self.channels:
@@ -72,7 +72,7 @@ class CalibrationHandler:
                 "gas_pressure": float(gas_pressure),
                 "o2_percent": float(o2_percent),
                 "zos_temp": float(zos_temp),
-                "sht_rh": float(env_rh),
+                "zos_rh": float(zos_rh),
             })
 
             all_ready = all(len(self.data[item]) >= self.target_points for item in self.channels)
@@ -99,7 +99,7 @@ class CalibrationHandler:
             "o2_percent": 0.15,
             "gas_pressure": 2.0,
             "zos_temp": 1.0,
-            "sht_rh": 4.0,
+            "zos_rh": 4.0,
         }
 
         try:
@@ -128,7 +128,7 @@ class CalibrationHandler:
                 row["o2_percent"],
                 row["gas_pressure"],
                 row["zos_temp"],
-                row["sht_rh"],
+                row["zos_rh"],
             ),
             axis=1,
         )
@@ -141,12 +141,12 @@ class CalibrationHandler:
 
         mask = (
             frame["dry_sg"].notna()
-            & frame["sht_rh"].notna()
+            & frame["zos_rh"].notna()
             & frame["zos_temp"].notna()
         )
         if mask.sum() > 50:
             features = np.column_stack((
-                frame.loc[mask, "sht_rh"].values,
+                frame.loc[mask, "zos_rh"].values,
                 frame.loc[mask, "zos_temp"].values,
             ))
             labels = frame.loc[mask, "dry_sg"].values
@@ -161,7 +161,7 @@ class CalibrationHandler:
             }
 
             full_features = np.column_stack((
-                frame["sht_rh"].ffill().bfill(),
+                frame["zos_rh"].ffill().bfill(),
                 frame["zos_temp"].ffill().bfill(),
             ))
             full_features_poly = poly.transform(full_features)
@@ -175,7 +175,9 @@ class CalibrationHandler:
 
     def _save_config(self):
         config = {
-            "version": "2.0",
+            "version": "2.1",
+            "temperature_source": "ZOS_temperature_2",
+            "humidity_source": "ZOS_humidity",
             "calibration_time": datetime.now().isoformat(),
             "target_o2": 20.93,
             "target_points": self.target_points,
