@@ -605,8 +605,11 @@ class ContentWindow(ThemedWindow):
             self.setting_data.groups = self.setting_data.groups
             # 修改：只保存启用的通道
             enabled_setting_data = copy.deepcopy(self.setting_data)
-            enabled_setting_data.groups = enabled_groups
             enabled_group_ids = [g.id for g in enabled_groups]
+            enabled_setting_data.groups = [
+                group for group in enabled_setting_data.groups
+                if group.id in enabled_group_ids
+            ]
             enabled_setting_data.animalGroupRecords = [
                 record for record in self.setting_data.animalGroupRecords
                 if record.gid in enabled_group_ids
@@ -614,13 +617,13 @@ class ContentWindow(ThemedWindow):
             global_setting.set_setting("experiment_setting", enabled_setting_data)
             global_setting.set_setting("experiment_setting_file", self.setting_file_path)
             send_message_queue = global_setting.get_setting("send_message_queue")
-            send_message_queue.put(ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_monitor_data', title='experiment_setting',data={'experiment_setting':self.setting_data,"experiment_setting_file":self.setting_file_path},
+            send_message_queue.put(ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_monitor_data', title='experiment_setting',data={'experiment_setting':enabled_setting_data,"experiment_setting_file":self.setting_file_path},
                                                    time=time_util.get_format_from_time(time.time())))
             message_structs = [
 
-                ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_infrared_camera', title='experiment_setting',data={'experiment_setting':self.setting_data,"experiment_setting_file":self.setting_file_path},
+                ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_infrared_camera', title='experiment_setting',data={'experiment_setting':enabled_setting_data,"experiment_setting_file":self.setting_file_path},
                                 time=time_util.get_format_from_time(time.time())),
-                ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_deep_camera', title='experiment_setting',data={'experiment_setting':self.setting_data,"experiment_setting_file":self.setting_file_path},
+                ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_deep_camera', title='experiment_setting',data={'experiment_setting':enabled_setting_data,"experiment_setting_file":self.setting_file_path},
                                 time=time_util.get_format_from_time(time.time())),
             ]
             for message_struct in message_structs:

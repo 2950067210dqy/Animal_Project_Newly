@@ -286,18 +286,32 @@ class read_queue_data_Thread(MyQThread):
                         data = message.data
                         if data is not None:
                             # 将实验设置存入全局变量
-                            global_setting.set_setting("experiment_setting", data.get("experiment_setting", None))
+                            received_setting = data.get("experiment_setting", None)
+                            enabled_setting = copy.deepcopy(received_setting)
+                            enabled_groups = [
+                                group for group in getattr(received_setting, "groups", [])
+                                if bool(getattr(group, "is_selected", False))
+                            ]
+                            gids = [int(group.id) for group in enabled_groups]
+                            if enabled_setting is not None:
+                                enabled_setting.groups = [
+                                    group for group in enabled_setting.groups
+                                    if int(group.id) in gids
+                                ]
+                                enabled_setting.animalGroupRecords = [
+                                    record
+                                    for record in getattr(enabled_setting, "animalGroupRecords", [])
+                                    if int(record.gid) in gids
+                                ]
+                            global_setting.set_setting("experiment_setting", enabled_setting)
                             global_setting.set_setting("experiment_setting_file",
                                                        data.get("experiment_setting_file", ""))
 
                             # 将鼠笼号存进全局变量来使用
-                            experiment_settings = global_setting.get_setting("experiment_setting", None)
-
-                            gids = [group.id for group in
-                                    experiment_settings.groups] if experiment_settings is not None else []
                             global_setting.set_setting("mouse_cages", gids)
                             global_setting.set_setting("mouse_cages_2byte_str",
                                                        String_util.array_to_binary_string(gids))
+                            logger.info(f"experiment setting applied: enabled mouse cages={gids}")
 
                         pass
                     case 'stop_modbus':
