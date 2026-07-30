@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import traceback
 from multiprocessing import freeze_support
 from PyQt6.QtCore import QThreadPool, QRect, QTimer
 from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
@@ -84,7 +85,10 @@ def quit_qt_application():
     退出QT程序
     :return:
     """
-    logger.error(f"{'-' * 40}quit Qt application{'-' * 40}")
+    logger.critical(
+        f"{'-' * 40}quit Qt application{'-' * 40}\n"
+        f"Qt quit callback stack:\n{''.join(traceback.format_stack())}"
+    )
     # modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
     # if modbus is not None:
     #     logger.error("stop_modbus_crash_application")
@@ -150,10 +154,11 @@ def start_qt_application():
     screen_rect.setHeight(screen_rect.height()-30)
     global_setting.set_setting("screen", screen_rect)
     # 绑定突出事件
-    app.aboutToQuit.connect(quit_qt_application)
     # 程序崩溃闪退监听
     crash_handler = CrashHandler()
     crash_handler.crash_signal.connect(on_crash)
+    crash_handler.start_gui_watchdog(app, timeout_seconds=3.0)
+    app.aboutToQuit.connect(quit_qt_application)
 
     program_self_check_index_dialog = Program_self_check_index()
     program_self_check_index_dialog.activateWindow()
@@ -169,7 +174,9 @@ def start_qt_application():
 
         main_window.show_frame()
     # 系统退出
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    logger.critical(f"Qt event loop returned | exit_code={exit_code}")
+    sys.exit(exit_code)
     pass
 
 

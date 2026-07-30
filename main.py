@@ -19,6 +19,7 @@ from public.config_class.Log_Config import LogConfig
 from public.entity.queue.ObjectQueue import ObjectQueue
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.ProcessMonitor.ProcessMonitor import IntegratedProcessMonitor
+from public.function.Crash_handle.CrashHandle import setup_crash_logging
 from public.util.time_util import time_util
 
 
@@ -245,7 +246,14 @@ def on_process_complete(process_id, **kwargs):
         f"process={process_id}, runtime={kwargs.get('runtime', 0)}",
     )
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
-    logger.info(f"✅ 进程完成: {process_id} {critical_info} (运行时间: {kwargs.get('runtime', 0)})")
+    completion_message = (
+        f"进程完成: {process_id} {critical_info} "
+        f"(运行时间: {kwargs.get('runtime', 0)})"
+    )
+    if kwargs.get('is_critical'):
+        logger.critical(f"[SHUTDOWN_DIAGNOSTIC] {completion_message}")
+    else:
+        logger.info(completion_message)
 
 def on_process_restart(process_id, **kwargs):
     emit_runtime_diagnostic(
@@ -281,7 +289,7 @@ def on_process_unresponsive(process_id, **kwargs):
     critical_info = "【关键进程】" if kwargs.get('is_critical') else "【普通进程】"
     error_msg = f"""😵 进程无响应: {process_id} {critical_info}
        心跳超时: {kwargs.get('heartbeat_age', 0)}"""
-    logger.warning(
+    logger.error(
         error_msg
     )
     # main_gui.on_crash(error_msg)
@@ -381,6 +389,7 @@ def kill_process_tree(pid, including_parent=True):
 
 def test_integrated_monitor():
     freeze_support()
+    setup_crash_logging()
     multiprocessing.set_start_method('spawn', force=True)
     if not acquire_single_instance_lock():
         print("Animal Project is already running; duplicate startup was blocked.")

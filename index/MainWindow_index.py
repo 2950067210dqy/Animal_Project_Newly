@@ -4,6 +4,7 @@ import os
 import sqlite3
 import threading
 import time
+import traceback
 from json import JSONDecodeError
 
 from PyQt6.QtGui import QFont
@@ -345,6 +346,12 @@ class MainWindow_Index(ThemedWindow):
 
     def closeEvent(self, event):
         app_state = global_setting.get_setting("app_state", AppState.INITIALIZED)
+        logger.critical(
+            "[SHUTDOWN_DIAGNOSTIC] Main window closeEvent received "
+            f"| app_state={app_state} | open_windows={len(self.open_windows)} "
+            f"| spontaneous={event.spontaneous()}\n"
+            f"Close event stack:\n{''.join(traceback.format_stack())}"
+        )
         if len(self.open_windows)!=0:
             # 可选择使用 QMessageBox 来确认是否关闭
             if app_state == AppState.MONITORING:
