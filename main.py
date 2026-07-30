@@ -468,20 +468,20 @@ def test_integrated_monitor():
     monitor.register_exception_callback(on_any_exception)
 
     # 创建工作进程的日志配置 调试专用 记得注释
-    p_response_comm_config = monitor.create_process_log_config(
-        "p_response_comm",
-        log_dir=resolve_log_path("processes", "p_response_comm"),
-        log_level="DEBUG",
-        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_response_comm | {module}:{function}:{line} | {message} </level>",
-        enable_console=True
-    )
-    monitor.start_worker(
-        target_func=main_response_Modbus.main,
-        args=(),
-        name="p_response_comm",
-        auto_restart=False,
-        log_config=p_response_comm_config
-    )
+    # p_response_comm_config = monitor.create_process_log_config(
+    #     "p_response_comm",
+    #     log_dir=resolve_log_path("processes", "p_response_comm"),
+    #     log_level="DEBUG",
+    #     custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_response_comm | {module}:{function}:{line} | {message} </level>",
+    #     enable_console=True
+    # )
+    # monitor.start_worker(
+    #     target_func=main_response_Modbus.main,
+    #     args=(),
+    #     name="p_response_comm",
+    #     auto_restart=False,
+    #     log_config=p_response_comm_config
+    # )
 
     p_monitor_data_config = monitor.create_process_log_config(
         "p_monitor_data",
