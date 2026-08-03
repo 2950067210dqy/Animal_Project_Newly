@@ -48,6 +48,7 @@ class Monitor_Datas_Handle():
         self.sqlite_manager: SQLiteManager = None
         self.zero_fill_cache = {}
         self.last_valid_value_cache = {}
+        self._meta_cache = {}
         self.init_construct(db_name)
 
         self.conn = None  # 为检测结果处理准备连接
@@ -68,6 +69,57 @@ class Monitor_Datas_Handle():
         self.sqlite_manager.close()
         if self.conn:
             self.conn.close()
+
+    def _get_table_meta(self, table_name):
+        """一次读取并缓存表字段描述，避免每条数据和每次刷新重复查询。"""
+        cached = self._meta_cache.get(table_name)
+        if cached is not None:
+            return cached
+
+        rows = self.sqlite_manager.query(f"{table_name}_meta")
+        meta = {
+            "rows": rows,
+            "description_by_name": {row[0]: row[2] for row in rows},
+            "name_by_description": {row[2]: row[0] for row in rows},
+        }
+        self._meta_cache[table_name] = meta
+        return meta
+
+    def _get_epoch_projection(self, table_name, all_column_datas):
+        """仅在选择项能直接映射到 Epoch 字段时缩减查询列。"""
+        if not all_column_datas:
+            return None
+
+        available = [row[1] for row in self.sqlite_manager.get_table_info(table_name)]
+        requested = []
+        for column in all_column_datas:
+            value = getattr(column, "value", column)
+            if isinstance(value, dict):
+                column_name = value.get("column_name")
+                if column_name in available:
+                    requested.append(column_name)
+
+        # 旧界面的部分选择项是计算项，无法直接映射到 Epoch 字段。
+        # 此时保持原有的全列行为，避免改变业务显示结果。
+        if not requested:
+            return None
+
+        required = {"id", "mouse_cage_number", "remarks", "time"}
+        return [name for name in available if name in required or name in requested]
+
+    def _get_epoch_chart_projection(self, table_name):
+        """图表只读取数值字段及转换所需的标识字段。"""
+        required = {
+            "id", "mouse_cage_number", "epoch_start_time",
+            "epoch_end_time", "remarks", "time"
+        }
+        projection = []
+        for row in self.sqlite_manager.get_table_info(table_name):
+            column_name = row[1]
+            column_type = (row[2] or "").upper()
+            if column_name in required or "TEXT" not in column_type:
+                projection.append(column_name)
+        return projection
     def create_db_not_time(self):
         """创建数据库 不按时间分库，直接一个实验一个库"""
         # 获取实验配置文件名称
@@ -452,6 +504,7 @@ class Monitor_Datas_Handle():
         if not column_name:
             return None
 
+        self.sqlite_manager.ensure_time_index(table_name)
         quoted_table_name = self.sqlite_manager.quote_ident(table_name)
         quoted_column_name = self.sqlite_manager.quote_ident(column_name)
         sql = (
@@ -469,6 +522,7 @@ class Monitor_Datas_Handle():
         if not column_name:
             return None
 
+        self.sqlite_manager.ensure_time_index(table_name)
         quoted_table_name = self.sqlite_manager.quote_ident(table_name)
         quoted_column_name = self.sqlite_manager.quote_ident(column_name)
         sql = (
@@ -552,8 +606,7 @@ class Monitor_Datas_Handle():
                 # 获取该表名称
                 table_name = f"{data['module_name']}_{data['table_name']}"
                 # # 获取该表的column项
-                table_name_meta = f"{table_name}_meta"
-                columns_query = self.sqlite_manager.query(table_name_meta)
+                columns_query = self._get_table_meta(table_name)["rows"]
                 # 把id列去掉 因为id自增
                 columns_all_except_id = {i[2]:i[0] for i in columns_query if i[0] != 'id' }
                 if data.get('table_name') == 'monitor_data':
@@ -575,8 +628,7 @@ class Monitor_Datas_Handle():
                 # 获取该表名称
                 table_name = f"{data['module_name']}_{data['table_name']}_cage_{data['mouse_cage_number']}"
                 # # 获取该表的column项
-                table_name_meta = f"{table_name}_meta"
-                columns_query = self.sqlite_manager.query(table_name_meta)
+                columns_query = self._get_table_meta(table_name)["rows"]
                 # 把id列去掉 因为id自增
                 columns_all_except_id = {i[2]:i[0] for i in columns_query if i[0] != 'id' }
                 if data.get('table_name') == 'monitor_data':
@@ -807,8 +859,8 @@ class Monitor_Datas_Handle():
 
         return result
         pass
-    def query_epoch_data_all_tables_paging(self,gid:int=0, page: int = 1,
-            page_size: int = 100,all_column_datas=[])-> dict:
+    def query_epoch_data_all_tables_paging(self, gid: int = 0, page: int = 1,
+            page_size: int = 100, all_column_datas=None) -> dict:
         """
         :param gid 鼠笼/通道几的数据  如果为-1 则获取总表Epoch_data_all的数据
         :param page 第几页
@@ -833,7 +885,7 @@ class Monitor_Datas_Handle():
             LIMIT / OFFSET 用于分页（page 从 1 开始）。如果数据量很大，COUNT 与 UNION 可能较慢，建议为 time 列建索引或在后端分片
 
         """
-        if len(all_column_datas) == 0:
+        if not all_column_datas:
             return {}
         # 如果为-1 则获取总表Epoch_data_all的数据
         if gid == -1:
@@ -841,17 +893,19 @@ class Monitor_Datas_Handle():
             pass
         else:
             table_name = f"Epoch_data_cage_{gid}"
-        result = self.sqlite_manager.query_Epoch_datas( table_name, page=page, page_size=page_size, order_asc=True )
+        projection = self._get_epoch_projection(table_name, all_column_datas)
+        result = self.sqlite_manager.query_Epoch_datas(
+            table_name,
+            page=page,
+            page_size=page_size,
+            order_asc=True,
+            columns=projection
+        )
         result = self._reorder_epoch_query_result(result)
-        result_title = []
-
-        # 找到中文列名
-        for columns in result["columns"]:
-
-            columns_query =self.sqlite_manager.query_conditions(table_name=f"{table_name}_meta", conditions=f" where item_name='{columns}'")
-            if columns_query and len(columns_query) > 0:
-                result_title.append(columns_query[0][2])
-        result["columns_title"]=result_title
+        descriptions = self._get_table_meta(table_name)["description_by_name"]
+        result["columns_title"] = [
+            descriptions.get(column, column) for column in result["columns"]
+        ]
         # print("参与联立的表:", tables)
         # print(
         #     f"总条数: {result['total_items']}, 总页数: {result['total_pages']}, 当前页: {result['page']}, 每页: {result['page_size']}")
@@ -896,17 +950,20 @@ class Monitor_Datas_Handle():
             pass
         else:
             table_name = f"Epoch_data_cage_{gid}"
-        result = self.sqlite_manager.query_Epoch_datas( table_name, page=1, page_size=page_size, order_asc=True )
+        result = self.sqlite_manager.query_Epoch_datas(
+            table_name,
+            page=1,
+            page_size=page_size,
+            order_asc=True,
+            columns=self._get_epoch_chart_projection(table_name)
+        )
         result = self._reorder_epoch_query_result(result)
-        result_title = []
-
-        # 找到中文列名
-        for columns in result["columns"]:
-
-            columns_query =self.sqlite_manager.query_conditions(table_name=f"{table_name}_meta", conditions=f" where item_name='{columns}'")
-            if columns_query and len(columns_query) > 0:
-                result_title.append(columns_query[0][2])
-        result["columns_title"]=result_title
+        # 数据库取最新 N 条时使用倒序，图表内部按时间正序追加。
+        result["rows"].reverse()
+        descriptions = self._get_table_meta(table_name)["description_by_name"]
+        result["columns_title"] = [
+            descriptions.get(column, column) for column in result["columns"]
+        ]
         # print("参与联立的表:", tables)
         # print(
         #     f"总条数: {result['total_items']}, 总页数: {result['total_pages']}, 当前页: {result['page']}, 每页: {result['page_size']}")

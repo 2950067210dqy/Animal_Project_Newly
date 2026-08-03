@@ -1,7 +1,7 @@
 # advanced_chart_widget.py
 import numpy as np
 import sys
-import time
+import threading
 from typing import Dict, List, Tuple, Optional
 from collections import deque
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
@@ -52,39 +52,60 @@ class DataFetcher(MyQThread):
         super().__init__(name=name)
         self.gid = gid
         self.page_size = page_size
-
-
+        self.refresh_interval_ms = 3000
+        self._state_lock = threading.Lock()
+        self._last_signature = None
         # 数据库操作类
         self.handle: Monitor_Datas_Handle = None
 
     def stop(self):
-        if self.handle is not None:
-            self.handle.stop()
-            self.handle=None
         super().stop()
-        # if self.handle is not None:
-        #     self.handle.stop()
 
-    def pause(self):
-        super().pause()
-        # if self.handle is not None:
-        #     self.handle.stop()
+    def run(self):
+        try:
+            super().run()
+        finally:
+            if self.handle is not None:
+                self.handle.stop()
+                self.handle = None
+
+    def request_refresh(self):
+        self.mutex.lock()
+        self.condition.wakeAll()
+        self.mutex.unlock()
 
     def dosomething(self):
-        # if self.handle is not None:
-        #     self.handle.stop()
         if self.handle is None:
-            self.handle = Monitor_Datas_Handle()  # # 创建数据库
-        data =[]
-
-
-        datas = self.handle.query_epoch_data_all_tables_expect_text_column(gid=self.gid,page_size=self.page_size)
+            self.handle = Monitor_Datas_Handle()
+        try:
+            datas = self.handle.query_epoch_data_all_tables_expect_text_column(
+                gid=self.gid,
+                page_size=self.page_size
+            )
+        except Exception as exc:
+            logger.error(f"{self.name}图表数据加载失败: {exc}")
+            self.mutex.lock()
+            self.condition.wait(self.mutex, self.refresh_interval_ms)
+            self.mutex.unlock()
+            return
         if datas is None:
-            datas = []
+            datas = {}
 
-        self.data_fetched.emit(datas)
+        rows = datas.get("rows", [])
+        signature = (
+            datas.get("total_items", 0),
+            tuple(row.get("id") for row in rows),
+            tuple(datas.get("columns", [])),
+        )
+        with self._state_lock:
+            changed = signature != self._last_signature
+            self._last_signature = signature
+        if changed:
+            self.data_fetched.emit(datas)
 
-        time.sleep(3)  # 每秒获取一次数据
+        self.mutex.lock()
+        self.condition.wait(self.mutex, self.refresh_interval_ms)
+        self.mutex.unlock()
 
 class AdvancedChartWidget(BaseWidget):
     """
@@ -118,9 +139,6 @@ class AdvancedChartWidget(BaseWidget):
         }
     }
 
-    def hide(self):
-        if self.data_fetcher_thread is not None:
-            self.data_fetcher_thread.stop()
     def __init__(self, parent=None, max_points: int = 100,gid=-1):
         super().__init__(parent)
         self.gid=gid
@@ -130,7 +148,8 @@ class AdvancedChartWidget(BaseWidget):
         self.chart_type = "折线图"
         self.current_theme = "默认"
         # 添加已处理的X轴值集合（用于去重）
-        self.processed_x_values = set()  # 跟踪所有已处理过的X轴值
+        self.processed_x_values = set()  # 跟踪当前窗口内已处理过的X轴值
+        self.processed_x_order = deque()
         # 配置文件路径
         self.config_dir = os.path.expanduser(f"~/.{global_setting.get_setting('configer').get('basic').get('name')}/chart_configs")
         #self.config_dir = os.path.expanduser(f"~/.animal_box_app/chart_configs")
@@ -159,6 +178,10 @@ class AdvancedChartWidget(BaseWidget):
         self.setMinimumWidth(1100)
         self.setMinimumHeight(300)
         self.init_ui()
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.setInterval(50)
+        self._refresh_timer.timeout.connect(self.refresh_chart)
         self.apply_theme(self.current_theme)
         if self.data_fetcher_thread is None:
             self.data_fetcher_thread = DataFetcher(name=f"new_monitor_data_charts_mouse_cage_{self.gid}_data_fetch_thread", gid=self.gid,
@@ -238,6 +261,7 @@ class AdvancedChartWidget(BaseWidget):
 
         # 创建Matplotlib图表
         self.figure = Figure(figsize=(10, 6), dpi=100)
+        self.figure.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.14)
         self.ax = self.figure.add_subplot(111)
         self._setup_chart()
         self.canvas = ChartCanvas(self.figure, ax=self.ax,parent=self)
@@ -363,7 +387,12 @@ class AdvancedChartWidget(BaseWidget):
         self.ax.set_title('实时数据图表', fontsize=12, fontweight='bold')
         self.ax.grid(True, alpha=0.3)
 
-    def add_batch_data_with_deduplication(self, data_dict: Dict):
+    def add_batch_data_with_deduplication(
+            self,
+            data_dict: Dict,
+            refresh: bool = True,
+            update_combo: bool = True
+    ):
         """批量添加数据，自动去除重复部分，使用内部追踪"""
 
         # 检查是否为完整格式
@@ -379,10 +408,14 @@ class AdvancedChartWidget(BaseWidget):
         if x_value is not None:
             if x_value in self.processed_x_values:
                 # logger.debug(f"批次数据已处理过，跳过此批次: x_value={x_value}")
-                return
+                return False
 
             # 标记此X值已处理
             self.processed_x_values.add(x_value)
+            self.processed_x_order.append(x_value)
+            while len(self.processed_x_order) > self.max_points:
+                expired = self.processed_x_order.popleft()
+                self.processed_x_values.discard(expired)
 
         # 添加所有鼠笼的数据
         for cage_name, cage_data_dict in cage_dict.items():
@@ -408,8 +441,14 @@ class AdvancedChartWidget(BaseWidget):
                 self.x_data.append(self.data_counter)
                 self.data_counter += 1
 
-        self._update_data_type_combo()
-        self.refresh_chart()
+        if update_combo:
+            self._update_data_type_combo()
+        if refresh:
+            self._schedule_refresh()
+        return True
+
+    def _schedule_refresh(self):
+        self._refresh_timer.start()
     def add_cage(self, cage_name: str) -> str:
         """添加鼠笼
 
@@ -1383,7 +1422,7 @@ class AdvancedChartWidget(BaseWidget):
             self._setup_chart()
 
             if not self.cage_data or len(self.x_data) == 0 or not self.current_data_type:
-                self.canvas.draw()
+                self.canvas.draw_idle()
                 return
 
             self._setup_ticks(self.ax, self.x_axis_config, list(self.x_data), False)
@@ -1512,8 +1551,7 @@ class AdvancedChartWidget(BaseWidget):
                 for text in legend.get_texts():
                     text.set_color(theme["text_color"])
 
-            self.figure.tight_layout()
-            self.canvas.draw()
+            self.canvas.draw_idle()
         except Exception as e:
             logger.error(f"刷新图表出错: {e}")
             import traceback
@@ -1526,6 +1564,8 @@ class AdvancedChartWidget(BaseWidget):
             for data_deque in cage_data.values():
                 data_deque.clear()
         self.x_data.clear()
+        self.processed_x_values.clear()
+        self.processed_x_order.clear()
         self.data_counter = 0
         self.refresh_chart()
     def update_page(self,result:dict):
@@ -1539,10 +1579,45 @@ class AdvancedChartWidget(BaseWidget):
 
 
 
-        # logger.error(result)
+        if not result or not result.get("columns"):
+            return
         new_result = convert_data_to_cage_format(result)
+        changed = False
         for data in new_result:
-            self.add_batch_data_with_deduplication(data)
+            changed = self.add_batch_data_with_deduplication(
+                data,
+                refresh=False,
+                update_combo=False
+            ) or changed
+        if changed:
+            self._update_data_type_combo()
+            self._schedule_refresh()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.data_fetcher_thread is not None:
+            if self.data_fetcher_thread.isRunning():
+                self.data_fetcher_thread.resume()
+                self.data_fetcher_thread.request_refresh()
+            else:
+                self.data_fetcher_thread.start()
+
+    def hideEvent(self, event):
+        if self.data_fetcher_thread is not None and self.data_fetcher_thread.isRunning():
+            self.data_fetcher_thread.pause()
+        super().hideEvent(event)
+
+    def shutdown(self, wait_ms=1000):
+        thread = self.data_fetcher_thread
+        if thread is None:
+            return
+        thread.stop()
+        if wait_ms and thread.isRunning():
+            thread.wait(wait_ms)
+
+    def closeEvent(self, event):
+        self.shutdown(wait_ms=0)
+        super().closeEvent(event)
 
 
 # 演示程序

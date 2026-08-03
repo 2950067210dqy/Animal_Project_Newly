@@ -1,20 +1,18 @@
 """
-表头初始为空，通过信号（按钮点击）置换表头并分页加载数据（每页 10 条），
-当垂直滚动条滑到底部时自动加载下一页。
+监控数据分页视图。
+数据库查询在后台线程执行，界面使用虚拟化模型按需绘制可见单元格。
 """
 import sys
-import time
+import threading
 
-from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
-    QScrollArea, QTableWidget, QTableWidgetItem, QMessageBox, QLabel, QSpinBox, QHBoxLayout
+    QScrollArea, QMessageBox, QLabel, QSpinBox, QHBoxLayout
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 
-from Module.new_monitor_data.ui.custom.table.Custom_table import CustomTableWidget
+from Module.new_monitor_data.ui.custom.table.Virtualized_table import VirtualizedFrozenTable
 from public.config.Data_Column import Data_column_list
-from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
 from theme.ThemeQt6 import ThemedWindow
@@ -22,49 +20,111 @@ from theme.ThemeQt6 import ThemedWindow
 
 class DataFetcher(MyQThread):
     data_fetched = pyqtSignal(dict)  # 信号传递值
+    fetch_failed = pyqtSignal(int, str)
 
-    def __init__(self, name,gid,page_size,page,all_column_datas=[]):
+    def __init__(self, name, gid, page_size, page, all_column_datas=None):
         super().__init__(name=name)
         self.gid = gid
         self.page_size = page_size
         self.page = page
-        self.all_column_datas = all_column_datas
+        self.all_column_datas = list(all_column_datas or [])
+        self.refresh_interval_ms = 3000
+        self._state_lock = threading.Lock()
+        self._request_id = 0
+        self._force_refresh = True
+        self._last_signature = None
 
         # 数据库操作类
         self.handle: Monitor_Datas_Handle = None
 
-    def stop(self):
-        if self.handle is not None:
-            self.handle.stop()
-            self.handle=None
-        super().stop()
-        # if self.handle is not None:
-        #     self.handle.stop()
+    @property
+    def request_id(self):
+        with self._state_lock:
+            return self._request_id
 
-    def pause(self):
-        super().pause()
-        # if self.handle is not None:
-        #     self.handle.stop()
+    def request_refresh(self, page=None, page_size=None, all_column_datas=None):
+        with self._state_lock:
+            if page is not None:
+                self.page = page
+            if page_size is not None:
+                self.page_size = page_size
+            if all_column_datas is not None:
+                self.all_column_datas = list(all_column_datas)
+            self._request_id += 1
+            self._force_refresh = True
+            request_id = self._request_id
+
+        self.mutex.lock()
+        self.condition.wakeAll()
+        self.mutex.unlock()
+        return request_id
+
+    def stop(self):
+        super().stop()
+
+    def run(self):
+        try:
+            super().run()
+        finally:
+            if self.handle is not None:
+                self.handle.stop()
+                self.handle = None
 
     def dosomething(self):
-        # if self.handle is not None:
-        #     self.handle.stop()
         if self.handle is None:
-            self.handle = Monitor_Datas_Handle()  # # 创建数据库
-        data =[]
+            self.handle = Monitor_Datas_Handle()
 
+        with self._state_lock:
+            request_id = self._request_id
+            page = self.page
+            page_size = self.page_size
+            all_column_datas = list(self.all_column_datas)
+            force_refresh = self._force_refresh
 
-        datas = self.handle.query_epoch_data_all_tables_paging(gid=self.gid,page=self.page,page_size=self.page_size,all_column_datas=self.all_column_datas)
+        try:
+            datas = self.handle.query_epoch_data_all_tables_paging(
+                gid=self.gid,
+                page=page,
+                page_size=page_size,
+                all_column_datas=all_column_datas
+            )
+        except Exception as exc:
+            self.fetch_failed.emit(request_id, str(exc))
+            self.mutex.lock()
+            self.condition.wait(self.mutex, self.refresh_interval_ms)
+            self.mutex.unlock()
+            return
         if datas is None:
-            datas = []
+            datas = {}
 
-        self.data_fetched.emit(datas)
+        rows = datas.get("rows", [])
+        signature = (
+            page,
+            page_size,
+            datas.get("total_items", 0),
+            tuple(row.get("id") for row in rows),
+            tuple(datas.get("columns", [])),
+        )
+        with self._state_lock:
+            is_current = request_id == self._request_id
+            should_emit = is_current and (force_refresh or signature != self._last_signature)
+            if is_current:
+                self._force_refresh = False
+                self._last_signature = signature
 
-        time.sleep(3)  # 每秒获取一次数据
+        if should_emit:
+            datas["_request_id"] = request_id
+            self.data_fetched.emit(datas)
+
+        with self._state_lock:
+            request_changed = request_id != self._request_id
+        if not request_changed:
+            self.mutex.lock()
+            self.condition.wait(self.mutex, self.refresh_interval_ms)
+            self.mutex.unlock()
+
+
 class Table_select_columns_paging_bottom(ThemedWindow):
-    def hide(self):
-        if self.data_fetcher_thread is not None:
-            self.data_fetcher_thread.stop()
     def __init__(self,gid):
         super().__init__()
         self.gid = gid
@@ -86,8 +146,9 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         self.data = []
 
         # 分页参数（默认）
-        self.page_size = 500
+        self.page_size = 200
         self.current_page = 1  # 1-based page index
+        self._latest_request_id = 0
 
         # ---- 主界面布局 ----
         central = QWidget()
@@ -95,10 +156,7 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         main_vbox = QVBoxLayout(central)
 
         self.setMinimumWidth(1100)
-        # self.setMinimumHeight(500)
 
-        # 分页器区域（放在表格上方）
-        # Scroll area 包含 QTableWidget
         self.page_scroll_area = QScrollArea()
         self.page_scroll_area.setWidgetResizable(True)
         pager_widget = QWidget()
@@ -153,28 +211,13 @@ class Table_select_columns_paging_bottom(ThemedWindow):
 
         main_vbox.addWidget(self.page_scroll_area)
 
-        # Scroll area 包含 QTableWidget
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        main_vbox.addWidget(self.scroll_area, stretch=7)
-
-        # QTableWidget 初始无列
-        self.table =CustomTableWidget()
-
-
-        self.table.setMouseTracking(True)# 启用鼠标跟踪
-        self.table.setColumnCount(0)
-        self.table.setRowCount(0)
-        self.table.setAlternatingRowColors(True)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table = VirtualizedFrozenTable()
         # 动态改变冻结列
         self.table.set_frozen_columns_by_headers(
             left_headers=["序号","鼠笼号"],  # 左侧冻结
             right_headers=["获取时间"]  # 右侧冻结
         )
-        # 将表格放入滚动区域
-        self.scroll_area.setWidget(self.table)
+        main_vbox.addWidget(self.table, stretch=7)
 
 
 
@@ -234,12 +277,6 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         self.find_columns_by_id(ids)
 
 
-        # 置换列
-        cols = self.all_columns
-        self.table.setColumnCount(len(cols))
-        self.table.setHorizontalHeaderLabels(cols)
-
-
         # 重置分页状态到第一页
         self.current_page = 1
         self.page_size = self.page_size_spin.value()
@@ -254,9 +291,20 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         # self.update_page()
 
         if self.data_fetcher_thread is None :
-            self.data_fetcher_thread = DataFetcher(name=f"new_monitor_data_table_mouse_cage_{self.gid}_data_fetch_thread",gid = self.gid,page=self.current_page,page_size=self.page_size)
+            self.data_fetcher_thread = DataFetcher(
+                name=f"new_monitor_data_table_mouse_cage_{self.gid}_data_fetch_thread",
+                gid=self.gid,
+                page=self.current_page,
+                page_size=self.page_size,
+                all_column_datas=self.all_column_datas
+            )
             self.data_fetcher_thread.data_fetched.connect(self.update_page)
-        self.data_fetcher_thread.all_column_datas = self.all_column_datas
+            self.data_fetcher_thread.fetch_failed.connect(self.on_fetch_failed)
+        self._latest_request_id = self.data_fetcher_thread.request_refresh(
+            page=self.current_page,
+            page_size=self.page_size,
+            all_column_datas=self.all_column_datas
+        )
         if not self.data_fetcher_thread.isRunning():
             self.data_fetcher_thread.start()
     def on_page_size_changed(self, new_page_size: int):
@@ -267,8 +315,6 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         old_first_item_index = (self.current_page - 1) * old_page_size  # 0-based index of first item on current page
 
         self.page_size = new_page_size
-        if self.data_fetcher_thread is not None :
-            self.data_fetcher_thread.page_size = self.page_size
         # 计算新的页数并更新 page_spin 的范围
         new_total_pages = self.total_pages
         self.page_spin.setMaximum(max(1, new_total_pages))
@@ -277,12 +323,10 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         new_current_page = (old_first_item_index // self.page_size) + 1
         new_current_page = max(1, min(new_current_page, new_total_pages))
         self.current_page = new_current_page
-        if self.data_fetcher_thread is not None :
-            self.data_fetcher_thread.page = self.current_page
         self.page_spin.setValue(self.current_page)
 
         self.info_label.setText(self._info_text())
-        # self.update_page()
+        self._request_page()
 
     def go_to_page(self, page: int):
         """跳转到指定页（1-based），并刷新表格"""
@@ -290,12 +334,23 @@ class Table_select_columns_paging_bottom(ThemedWindow):
             QMessageBox.warning(self, "页码错误", f"请输入有效页码：1 到 {max(1, self.total_pages)}")
             return
         self.current_page = page
-        if self.data_fetcher_thread is not None :
-            self.data_fetcher_thread.page = self.current_page
         # 保证 page_spin 与 info_label 同步
         self.page_spin.setValue(self.current_page)
         self.info_label.setText(self._info_text())
-        # self.update_page()
+        self._request_page()
+
+    def _request_page(self):
+        if self.data_fetcher_thread is None:
+            return
+        self.set_pager_enabled(False)
+        self.info_label.setText(f"正在加载第 {self.current_page} 页...")
+        self._latest_request_id = self.data_fetcher_thread.request_refresh(
+            page=self.current_page,
+            page_size=self.page_size,
+            all_column_datas=self.all_column_datas
+        )
+        if not self.data_fetcher_thread.isRunning():
+            self.data_fetcher_thread.start()
 
     def update_page(self,result:dict):
         """
@@ -303,66 +358,33 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         :param result: [{表名:数据}....]
         :return:
         """
-        # 置换列
-
-        self.all_columns=result['columns_title']
-        cols = result['columns_title']
-        self.table.setColumnCount(len(cols))
-        self.table.setHorizontalHeaderLabels(cols)
-        # print(result)
-        # 如果表头还没置换，不加载任何数据
-        if self.table.columnCount() == 0:
+        if not result or result.get("_request_id", -1) < self._latest_request_id:
             return
 
-
-
-        page_records = result['rows']
-        n_rows = len(page_records)
-
-        # 设置行数与列数
-        self.table.setRowCount(n_rows)
-        self.table.setColumnCount(len(self.all_columns))
-
-        # 填充当前页的行
-        for row_idx, record in enumerate(page_records):
-            record: dict
-            # logger.error(f"{record}")
-            index = 0
-            # 检查是否需要将整行设置为红色 remarks 存在则标红
-            should_highlight_row = False
-            if record.get("remarks") is not None and len(str(record.get("remarks")).strip()) > 3:
-                should_highlight_row = True
-            for col_key, col_record in record.items():
-                if col_key == "mouse_cage_number":
-                    reference_cage = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
-                    if col_record == reference_cage:
-                        col_record = "参考笼"
-                # 将二氧化碳的值和氧气的值小数点后4位。
-                if "oxygen" in col_key or "CO2" in col_key:
-                    # 区分校0和校span的氧气 因为他们的值有可能是字符串
-                    if isinstance(col_record, str):
-                        # 校0和校span的氧气
-                        item = QTableWidgetItem(str(col_record) if not isinstance(col_record, str) else col_record)
-                    else:
-                        item = QTableWidgetItem(f"{col_record:.04f}" if col_record is not None else str(None))
-                else:
-                    item = QTableWidgetItem(str(col_record) if not isinstance(col_record, str) else col_record)
-                if should_highlight_row:
-                    item.setForeground(QColor(255, 0, 0))  # 红色
-                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-                self.table.setItem(row_idx, index, item)
-                index += 1
-        self.table.resizeColumnsToContents()
-        # self.current_page=result['page']
-        self.total_items=result['total_items']
+        self.all_columns = result.get("columns_title", [])
+        self.table.set_result(
+            result.get("columns", []),
+            self.all_columns,
+            result.get("rows", [])
+        )
+        self.current_page = result.get("page", self.current_page)
+        self.total_items = result.get("total_items", 0)
         # 更新分页信息与按钮状态
+        self.page_spin.setValue(self.current_page)
         self.info_label.setText(self._info_text())
         self.page_spin.setMaximum(max(1, self.total_pages))
-        # self.page_spin.setValue(self.current_page)
+        self.set_pager_enabled(True)
         self._update_nav_buttons()
 
         # 如果页内行较少导致表格高度不足以出现滚动，可以选择调整最低高度或不做处理（这里不强制加载更多）
         # 若需要自动扩展以填满视图，可以在这里考虑加载更多或调整策略。
+
+    def on_fetch_failed(self, request_id, error_message):
+        if request_id < self._latest_request_id:
+            return
+        self.set_pager_enabled(True)
+        self._update_nav_buttons()
+        self.info_label.setText(f"数据加载失败：{error_message}")
 
 
 
@@ -373,6 +395,30 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         self.prev_btn.setEnabled(self.current_page > 1)
         self.next_btn.setEnabled(self.current_page < tp)
         self.last_btn.setEnabled(self.current_page < tp)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.data_fetcher_thread is not None:
+            if self.data_fetcher_thread.isRunning():
+                self.data_fetcher_thread.resume()
+            self._request_page()
+
+    def hideEvent(self, event):
+        if self.data_fetcher_thread is not None and self.data_fetcher_thread.isRunning():
+            self.data_fetcher_thread.pause()
+        super().hideEvent(event)
+
+    def shutdown(self, wait_ms=1000):
+        thread = self.data_fetcher_thread
+        if thread is None:
+            return
+        thread.stop()
+        if wait_ms and thread.isRunning():
+            thread.wait(wait_ms)
+
+    def closeEvent(self, event):
+        self.shutdown(wait_ms=0)
+        super().closeEvent(event)
 
     # 如果需要对外提供刷新数据的接口，可以添加方法从数据源重新加载 self.data / self.total_items
     # 并在替换表头后或数据变化时调用 self.go_to_page(1) 或 self.update_page() 来刷新界面。

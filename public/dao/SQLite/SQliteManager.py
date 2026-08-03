@@ -1,6 +1,7 @@
 import datetime
 import math
 import sqlite3
+import threading
 import time
 from typing import List, Dict, Any, Optional, Generator
 from contextlib import contextmanager
@@ -12,41 +13,69 @@ class SQLiteManager:
     TIME_COLUMN_NAME = 'time'
 
     def __init__(self, db_name: str, timeout: float = 30.0):
-        """初始化数据库管理器（不立即连接）"""
+        """初始化数据库管理器，每个调用线程复用自己的 SQLite 连接。"""
         self.db_name = db_name
         self.timeout = timeout
+        self._connections = {}
+        self._active_connection_counts = {}
+        self._connections_lock = threading.RLock()
+        self._closed = False
+        self._thread_state = threading.local()
+        self._schema_cache = {}
+        self._schema_cache_lock = threading.RLock()
+        self._ensured_time_indexes = set()
+
+    def _create_connection(self, isolation_level=None):
+        conn = sqlite3.connect(
+            self.db_name,
+            timeout=self.timeout,
+            check_same_thread=False,
+            isolation_level=isolation_level
+        )
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute(f"PRAGMA busy_timeout={max(1000, int(self.timeout * 1000))}")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA cache_size=-32768")
+        return conn
 
     @contextmanager
     def get_connection(self,
                        row_factory: Optional[callable] = None,
                        isolation_level: Optional[str] = None) -> Generator[sqlite3.Connection, None, None]:
-        """获取数据库连接的上下文管理器"""
-        conn = None
-        try:
-            conn = sqlite3.connect(
-                self.db_name,
-                timeout=self.timeout,
-                check_same_thread=False,
-                isolation_level=isolation_level
+        """获取当前线程复用的数据库连接。"""
+        thread_id = threading.get_ident()
+        with self._connections_lock:
+            if self._closed:
+                raise RuntimeError("SQLiteManager is closed")
+            conn = self._connections.get(thread_id)
+            if conn is None:
+                conn = self._create_connection(isolation_level=isolation_level)
+                self._connections[thread_id] = conn
+            self._active_connection_counts[thread_id] = (
+                self._active_connection_counts.get(thread_id, 0) + 1
             )
-
-            if row_factory:
-                conn.row_factory = row_factory
-
-            # WAL模式提供更好的并发性
-            conn.execute('PRAGMA journal_mode=WAL')
-            conn.execute('PRAGMA foreign_keys = ON')
-
+        try:
+            conn.row_factory = row_factory
             yield conn
-
         except Exception as e:
-            if conn:
+            if not getattr(self._thread_state, "in_batch_transaction", False):
                 conn.rollback()
             logger.error(f"Database error: {e}")
             raise
         finally:
-            if conn:
-                conn.close()
+            connection_to_close = None
+            with self._connections_lock:
+                active_count = self._active_connection_counts.get(thread_id, 1) - 1
+                if active_count <= 0:
+                    self._active_connection_counts.pop(thread_id, None)
+                    if self._closed:
+                        connection_to_close = self._connections.pop(thread_id, None)
+                else:
+                    self._active_connection_counts[thread_id] = active_count
+            if connection_to_close is not None:
+                connection_to_close.close()
 
     @contextmanager
     def execute_transaction(self, auto_commit: bool = True) -> Generator[sqlite3.Cursor, None, None]:
@@ -55,20 +84,90 @@ class SQLiteManager:
             cursor = conn.cursor()
             try:
                 yield cursor
-                if auto_commit:
+                if auto_commit and not getattr(self._thread_state, "in_batch_transaction", False):
                     conn.commit()
             except Exception as e:
-                conn.rollback()
+                if not getattr(self._thread_state, "in_batch_transaction", False):
+                    conn.rollback()
                 logger.error(f"Database error: {e}")
+                raise
             finally:
                 cursor.close()
+
+    @contextmanager
+    def batch_transaction(self):
+        """将同一线程中的多次写操作合并为一个事务。"""
+        if getattr(self._thread_state, "in_batch_transaction", False):
+            yield
+            return
+
+        with self.get_connection() as conn:
+            self._thread_state.in_batch_transaction = True
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                yield
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                self._thread_state.in_batch_transaction = False
 
     def quote_ident(self, name: str) -> str:
         """用双引号安全引用 SQLite 标识符（表名或列名）。"""
         return '"' + name.replace('"', '""') + '"'
+
+    def invalidate_schema_cache(self, table_name: str = None):
+        with self._schema_cache_lock:
+            if table_name is None:
+                self._schema_cache.clear()
+                self._ensured_time_indexes.clear()
+            else:
+                self._schema_cache.pop(table_name, None)
+                self._ensured_time_indexes.discard(table_name)
+
+    def get_table_info(self, table_name: str) -> List[tuple]:
+        """返回并缓存 PRAGMA table_info 结果。"""
+        with self._schema_cache_lock:
+            cached = self._schema_cache.get(table_name)
+            if cached is not None:
+                return list(cached)
+
+        with self.execute_transaction(auto_commit=False) as cursor:
+            cursor.execute(f"PRAGMA table_info({self.quote_ident(table_name)})")
+            info = cursor.fetchall()
+
+        with self._schema_cache_lock:
+            self._schema_cache[table_name] = tuple(info)
+        return list(info)
+
+    def ensure_time_index(self, table_name: str):
+        """确保按时间分页的表使用复合索引，旧实验数据库也会自动补齐。"""
+        with self._schema_cache_lock:
+            if table_name in self._ensured_time_indexes:
+                return
+
+        column_names = {row[1] for row in self.get_table_info(table_name)}
+        if self.TIME_COLUMN_NAME not in column_names:
+            return
+
+        index_name = f"idx_{table_name}_time_id"
+        indexed_columns = [self.TIME_COLUMN_NAME]
+        if "id" in column_names:
+            indexed_columns.append("id")
+        columns_sql = ", ".join(f"{self.quote_ident(name)} DESC" for name in indexed_columns)
+        sql = (
+            f"CREATE INDEX IF NOT EXISTS {self.quote_ident(index_name)} "
+            f"ON {self.quote_ident(table_name)} ({columns_sql})"
+        )
+        with self.execute_transaction() as cursor:
+            cursor.execute(sql)
+
+        with self._schema_cache_lock:
+            self._ensured_time_indexes.add(table_name)
     def get_tables_with_time_sql_results(self,select_column_name:list=None, exclude_substr: list = None, columns: list = None):
         """
-                返回数据库中不包含 exclude_substr（不区分大小写）的数据库返回结果，并且该表具有 columns列。
+                返回数据库中不包含 exclude_substr（不区分大小写）的真实数据表。
 
                 Args:
                     select_column_name:要查找该表的字段默认为['name']
@@ -87,24 +186,22 @@ class SQLiteManager:
             columns = ['time']
 
         with self.execute_transaction(auto_commit=True) as cursor:
+            allowed_columns = {"name", "type", "tbl_name", "rootpage", "sql"}
+            if any(column not in allowed_columns for column in select_column_name):
+                raise ValueError("Unsupported sqlite_master column")
             select_column_name_sql = " , ".join(select_column_name)
-            # 构建排除条件的SQL查询
+            conditions = ["type = 'table'"]
+            params = []
             if exclude_substr:
-                exclude_conditions = []
                 for substr in exclude_substr:
-                    # 使用参数化查询防止SQL注入
-                    exclude_conditions.append("lower(name) NOT LIKE ?")
+                    conditions.append("lower(name) NOT LIKE ?")
+                    params.append(f"%{substr.lower()}%")
 
-                exclude_clause = " AND ".join(exclude_conditions)
-                query = f"SELECT {select_column_name_sql} FROM sqlite_master WHERE  {exclude_clause}"
-
-                # 准备参数
-                params = [f'%{substr.lower()}%' for substr in exclude_substr]
-                cursor.execute(query, params)
-            else:
-                # 如果没有排除条件，获取所有表
-                cursor.execute("SELECT {select_column_name_sql} FROM sqlite_master ")
-
+            query = (
+                f"SELECT {select_column_name_sql} FROM sqlite_master "
+                f"WHERE {' AND '.join(conditions)}"
+            )
+            cursor.execute(query, params)
             rows = cursor.fetchall()
             return rows
     def get_tables_with_time(self,select_column_name:list=None, exclude_substr: list = None, columns: list = None) -> List[str]:
@@ -224,9 +321,16 @@ class SQLiteManager:
             cursor.execute(sql)
             return cursor.fetchone()[0]
 
-    def query_Epoch_datas(self, table: str, page: int = 1, page_size: int = 100, order_asc: bool = True) -> Dict[
-        str, Any]:
+    def query_Epoch_datas(
+            self,
+            table: str,
+            page: int = 1,
+            page_size: int = 100,
+            order_asc: bool = True,
+            columns: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """查询 Epoch 数据分页"""
+        query_started_at = time.perf_counter()
         if page_size <= 0:
             raise ValueError("page_size must be > 0")
         if not table:
@@ -239,32 +343,40 @@ class SQLiteManager:
                 "rows": []
             }
 
-        total_items = self.query_counts_conditions(table)
-        total_pages = max(1, math.ceil(total_items / page_size)) if total_items > 0 else 0
-
-        if total_pages == 0:
-            page = 1
+        self.ensure_time_index(table)
+        table_info = self.get_table_info(table)
+        available_columns = [row[1] for row in table_info]
+        if columns:
+            requested = set(columns)
+            selected_columns = [name for name in available_columns if name in requested]
         else:
-            page = max(1, min(page, total_pages))
+            selected_columns = available_columns
+        if not selected_columns:
+            selected_columns = available_columns
 
-        offset = (page - 1) * page_size
+        selected_sql = ", ".join(self.quote_ident(name) for name in selected_columns)
         order = "DESC" if order_asc else "ASC"
-
+        secondary_order = f", {self.quote_ident('id')} {order}" if "id" in available_columns else ""
         final_sql = f"""
-           SELECT *
-           FROM {table}
-           ORDER BY time {order}
+           SELECT {selected_sql}
+           FROM {self.quote_ident(table)}
+           ORDER BY {self.quote_ident(self.TIME_COLUMN_NAME)} {order}{secondary_order}
            LIMIT ? OFFSET ?
         """
 
-        with self.execute_transaction(auto_commit=True) as cursor:
+        with self.execute_transaction(auto_commit=False) as cursor:
+            cursor.execute(f"SELECT COUNT(*) FROM {self.quote_ident(table)}")
+            total_items = cursor.fetchone()[0] or 0
+            total_pages = max(1, math.ceil(total_items / page_size)) if total_items > 0 else 0
+            page = 1 if total_pages == 0 else max(1, min(page, total_pages))
+            offset = (page - 1) * page_size
             cursor.execute(final_sql, (page_size, offset))
             rows = cursor.fetchall()
             colnames = [desc[0] for desc in cursor.description]
 
         result_rows = [dict(zip(colnames, r)) for r in rows]
 
-        return {
+        result = {
             "total_items": total_items,
             "total_pages": total_pages,
             "page": page,
@@ -272,6 +384,13 @@ class SQLiteManager:
             "columns": colnames,
             "rows": result_rows
         }
+        elapsed_ms = (time.perf_counter() - query_started_at) * 1000
+        if elapsed_ms >= 200:
+            logger.warning(
+                f"Slow Epoch query: table={table}, page={page}, "
+                f"page_size={page_size}, rows={len(result_rows)}, elapsed_ms={elapsed_ms:.1f}"
+            )
+        return result
 
     def query_joined_by_time(self, tables: List[str], page: int = 1, page_size: int = 100, order_asc: bool = True) -> \
     Dict[str, Any]:
@@ -287,6 +406,13 @@ class SQLiteManager:
                 "columns": [],
                 "rows": []
             }
+
+        table_columns = {}
+        for table_name in tables:
+            self.ensure_time_index(table_name)
+            table_columns[table_name] = [
+                row[1] for row in self.get_table_info(table_name)
+            ]
 
         all_times_sql = self.build_all_times_sql(tables)
         total_items = self.count_all_times(all_times_sql)
@@ -306,9 +432,7 @@ class SQLiteManager:
 
             for t in tables:
                 q_t = self.quote_ident(t)
-                cursor.execute(f"PRAGMA table_info({q_t})")
-                col_rows = cursor.fetchall()
-                col_names = [r[1] for r in col_rows]
+                col_names = table_columns[t]
 
                 for col in col_names:
                     if col == "time":
@@ -552,6 +676,19 @@ class SQLiteManager:
 
         with self.execute_transaction() as cursor:
             cursor.execute(sql)
+            if self.TIME_COLUMN_NAME in columns:
+                index_name = f"idx_{table_name}_time_id"
+                indexed_columns = [self.TIME_COLUMN_NAME]
+                if "id" in columns:
+                    indexed_columns.append("id")
+                columns_sql = ", ".join(
+                    f"{self.quote_ident(name)} DESC" for name in indexed_columns
+                )
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS {self.quote_ident(index_name)} "
+                    f"ON {self.quote_ident(table_name)} ({columns_sql})"
+                )
+        self.invalidate_schema_cache(table_name)
 
     def create_meta_table(self, table_name: str):
         """创建描述表"""
@@ -630,6 +767,7 @@ class SQLiteManager:
 
     def query_current_Data(self, table_name: str, **kwargs) -> List[tuple]:
         """查询最新数据"""
+        self.ensure_time_index(table_name)
         sql = f"""SELECT * FROM "{table_name}" """
         if kwargs:
             conditions = ' AND '.join(f"{key} = ?" for key in kwargs.keys())
@@ -646,7 +784,8 @@ class SQLiteManager:
 
     def query_current_Data_columns(self, table_name: str, columns: List[str], **kwargs) -> List[tuple]:
         """查询最新数据的指定列"""
-        columns_sql = ', '.join(columns)
+        self.ensure_time_index(table_name)
+        columns_sql = ', '.join(self.quote_ident(column) for column in columns)
         sql = f"""SELECT {columns_sql} FROM "{table_name}" """
         if kwargs:
             conditions = ' AND '.join(f"{key} = ?" for key in kwargs.keys())
@@ -693,8 +832,22 @@ class SQLiteManager:
             return cursor.rowcount
 
     def close(self):
-        """关闭数据库连接（在上下文管理模式下，这个方法主要用于兼容性）"""
-        logger.info("使用上下文管理器模式，连接会自动关闭")
+        """关闭该管理器创建的全部线程连接。"""
+        with self._connections_lock:
+            self._closed = True
+            idle_thread_ids = [
+                thread_id
+                for thread_id in self._connections
+                if self._active_connection_counts.get(thread_id, 0) == 0
+            ]
+            connections = [
+                self._connections.pop(thread_id) for thread_id in idle_thread_ids
+            ]
+        for conn in connections:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
     """
     @author wangjie
     @create_time 2025-11-27

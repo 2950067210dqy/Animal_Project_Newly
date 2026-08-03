@@ -593,29 +593,43 @@ class Store_Thread(MyQThread):
         self.handle = None
         super().__init__(name)
 
+    def run(self):
+        try:
+            super().run()
+        finally:
+            if self.handle is not None:
+                self.handle.stop()
+                self.handle = None
+
     def dosomething(self):
-        global store_Q, store_Q_lock
-        # 队列中有数据在存储 且接收数据线程存活 才存数据
-        if not store_Q.empty():
-            data_item:DataItem = None
+        global store_Q
+        try:
+            first_item = store_Q.get(timeout=0.2)
+        except queue.Empty:
+            return
+
+        # 合并当前已经排队的数据，降低高频单条事务对读写线程的影响。
+        batch = [first_item]
+        while len(batch) < 100:
             try:
-                # 加锁
-                with store_Q_lock:
-                    data_item:DataItem  = store_Q.get()  # 获取DataItem对象
-                # 解锁会在with块结束后自动处理
+                batch.append(store_Q.get_nowait())
             except queue.Empty:
-                logger.error(f"数据队列Q为空，获取数据失败！")
-                return
+                break
 
-            # logger.info(f"存储数据线程开始存储数据: {data_item.data}")
+        if self.handle is None:
+            self.handle = Monitor_Datas_Handle()
 
-            # 存储到文件里并获取结果
-            success, error = self.store_to_data_base(data_item.data)
+        outcomes = []
+        try:
+            with self.handle.sqlite_manager.batch_transaction():
+                for data_item in batch:
+                    outcomes.append((data_item, *self.store_to_data_base(data_item.data)))
+        except Exception as exc:
+            logger.exception(f"{self.name}批量存储事务失败: {exc}")
+            outcomes = [(data_item, False, str(exc)) for data_item in batch]
 
-            # 发送存储结果
+        for data_item, success, error in outcomes:
             self._send_storage_result(data_item, success, error)
-
-        time.sleep(float(global_setting.get_setting('monitor_data')['STORAGE']['delay']))
 
     def store_to_data_base(self, data):
         """
@@ -665,9 +679,6 @@ class Store_Thread(MyQThread):
                 logger.error(f"发送存储结果失败: {e}")
 
     def stop(self):
-        if self.handle is not None:
-            self.handle.stop()
-            self.handle = None
         super().stop()
 """
 数据存储区域 end

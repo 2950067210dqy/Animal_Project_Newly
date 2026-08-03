@@ -96,15 +96,34 @@ class DbTransferExcel():
                     pass
 
                 # 读取 'xxx_meta' 表，它包含字段名称和中文描述
-                meta_query = f"SELECT item_name, description FROM {name}_meta"
+                col_mapping = {}
+                meta_table_name = f"{name}_meta"
+                if self.handler.sqlite_manager.check_table_exists(meta_table_name):
+                    quoted_meta_table = self.handler.sqlite_manager.quote_ident(
+                        meta_table_name
+                    )
+                    meta_query = (
+                        f"SELECT item_name, description FROM {quoted_meta_table}"
+                    )
+                else:
+                    logger.warning(
+                        f"数据表{name}缺少元数据表{meta_table_name}，"
+                        "将使用原字段名导出"
+                    )
+                    meta_query = None
                 # 正确的调用方式
-                with self.handler.sqlite_manager.get_connection() as conn:
-                    meta_df = pd.read_sql_query(meta_query, conn)
+                if meta_query is not None:
+                    with self.handler.sqlite_manager.get_connection() as conn:
+                        meta_df = pd.read_sql_query(meta_query, conn)
                 # logger.critical(f"meta_df: {meta_df}")
                 # 创建列名到中文描述的映射字典
-                col_mapping = dict(zip(meta_df['item_name'], meta_df['description']))
+                if meta_query is not None:
+                    col_mapping = dict(
+                        zip(meta_df['item_name'], meta_df['description'])
+                    )
 
-                sql = f"SELECT * FROM {name}"
+                quoted_table = self.handler.sqlite_manager.quote_ident(name)
+                sql = f"SELECT * FROM {quoted_table}"
                 logger.info(f"[INFO] 从 db 的 {typ} {name} 导出到 sheet '{sheet_name}|{sheet_name_CN}' ...")
 
                 if chunksize and chunksize > 0:

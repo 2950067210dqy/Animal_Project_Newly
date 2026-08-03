@@ -1,3 +1,4 @@
+import queue
 import time
 import typing
 
@@ -35,7 +36,9 @@ class read_queue_data_Thread(MyQThread):
         if not self.queue.empty():
             # logger.error(f"{self.queue.qsize()}")
             try:
-                message: ObjectQueueItem = self.queue.get()
+                message: ObjectQueueItem = self.queue.get(timeout=0.1)
+            except queue.Empty:
+                return
             except Exception as e:
                 logger.error(f"{self.name}发生错误{e}")
                 return
@@ -98,7 +101,10 @@ class read_queue_data_Thread(MyQThread):
             else:
                 # 把消息放回去
                 self.queue.put(message)
+                time.sleep(0.01)
 
+        else:
+            time.sleep(0.1)
         pass
     def close_calibration_window(self):
         """
@@ -126,11 +132,6 @@ class User_monitor_data_new_index(ThemedWindow):
                 widget.data_fetcher_thread.pause()
         pass
 
-    def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]):
-        global read_queue_data_thread
-        if read_queue_data_thread is not None:
-            read_queue_data_thread.stop()
-
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         for widget in self.left_top_widget_content._docks_widget:
             widget: User_table_select_columns_paging_bottom
@@ -150,7 +151,18 @@ class User_monitor_data_new_index(ThemedWindow):
                 widget.data_fetcher_thread.start()
 
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
-        pass
+        global read_queue_data_thread
+        if read_queue_data_thread is not None:
+            read_queue_data_thread.stop()
+        if hasattr(self, "left_top_widget_content"):
+            widgets = (
+                list(self.left_top_widget_content._docks_widget)
+                + list(self.left_top_widget_content._docks_widget_charts)
+            )
+            for widget in widgets:
+                if hasattr(widget, "shutdown"):
+                    widget.shutdown(wait_ms=0)
+        super().closeEvent(a0)
 
     def resizeEvent(self, a0: typing.Optional[QtGui.QResizeEvent]):
         new_size: QSize = a0.size()

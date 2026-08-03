@@ -4,7 +4,6 @@ import os
 import sqlite3
 import threading
 import time
-import traceback
 from json import JSONDecodeError
 
 from PyQt6.QtGui import QFont
@@ -72,7 +71,11 @@ class StopExperimentExportThread(QThread):
             if export_path:
                 self.export_finished.emit(True, str(export_path))
             else:
-                self.export_finished.emit(False, "data export failed")
+                detail = custom_data_file_util.get_last_export_error()
+                self.export_finished.emit(
+                    False,
+                    detail or "data export failed"
+                )
         except Exception as error:
             logger.exception(f"stop experiment export failed: {error}")
             self.export_finished.emit(False, str(error))
@@ -346,11 +349,10 @@ class MainWindow_Index(ThemedWindow):
 
     def closeEvent(self, event):
         app_state = global_setting.get_setting("app_state", AppState.INITIALIZED)
-        logger.critical(
+        logger.info(
             "[SHUTDOWN_DIAGNOSTIC] Main window closeEvent received "
             f"| app_state={app_state} | open_windows={len(self.open_windows)} "
-            f"| spontaneous={event.spontaneous()}\n"
-            f"Close event stack:\n{''.join(traceback.format_stack())}"
+            f"| spontaneous={event.spontaneous()}"
         )
         if len(self.open_windows)!=0:
             # 可选择使用 QMessageBox 来确认是否关闭
@@ -1121,6 +1123,8 @@ class MainWindow_Index(ThemedWindow):
     pass
     def load_modules(self):
         # 动态加载模块
+        load_started = time.perf_counter()
+        loaded_file_count = 0
         modules = []
         module_dir = 'Module'  # 插件目录
         # 递归遍历指定目录
@@ -1130,10 +1134,12 @@ class MainWindow_Index(ThemedWindow):
                     module_name = filename[:-3]  # 去掉 .py 后缀
                     if module_name.startswith("main"):
                         file_path = os.path.join(dirpath, filename)
+                        module_started = time.perf_counter()
                         # 动态加载模块
                         spec = importlib.util.spec_from_file_location(module_name, file_path)
                         module = importlib.util.module_from_spec(spec)
                         spec.loader.exec_module(module)  # 装载module
+                        loaded_file_count += 1
                         # 查找到实现 BasePlugin 的类
                         for name, obj in module.__dict__.items():
                             if name == "BaseModule":
@@ -1145,6 +1151,17 @@ class MainWindow_Index(ThemedWindow):
                                 and not obj.__dict__.get("__module_loader_skip__", False)
                             ):
                                 modules.append(obj())
+                        module_elapsed = time.perf_counter() - module_started
+                        if module_elapsed >= 0.5:
+                            logger.warning(
+                                f"slow startup module: path={file_path}, "
+                                f"elapsed={module_elapsed:.2f}s"
+                            )
+        logger.info(
+            f"startup modules loaded: files={loaded_file_count}, "
+            f"instances={len(modules)}, "
+            f"elapsed={time.perf_counter() - load_started:.2f}s"
+        )
         return modules
         pass
 

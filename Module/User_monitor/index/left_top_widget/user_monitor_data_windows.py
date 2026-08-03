@@ -107,6 +107,7 @@ class UserMonitorDataWindows(ThemedWidget):
         self._docks_widget = []
         self._docks_widget_charts = []
         self._docks_widget_calibration = []
+        self._retired_data_widgets = []
         # 是否正在零点标定 和量程标定
         self.is_all_calibration = False
         # 正在零点标定
@@ -281,36 +282,44 @@ class UserMonitorDataWindows(ThemedWidget):
         self.setLayout(self.main_layout)
 
     def clear_existing_docks(self):
+        all_data_widgets = list(self._docks_widget) + list(self._docks_widget_charts)
+        for widget in all_data_widgets:
+            if hasattr(widget, "shutdown"):
+                widget.shutdown(wait_ms=0)
+
+        for widget in all_data_widgets:
+            widget: BaseWindow | BaseWidget | BaseFrame
+            widget.get_ancestor()
+            if hasattr(widget.ancestor, "detached_window"):
+                if widget.ancestor.detached_window is not None:
+                    widget.ancestor.detached_window.close()
+            widget.hide()
+            widget.setParent(None)
+            self._retire_data_widget(widget)
+
         self.content_widget.remove_all()
-        for d in self._docks_widget:
-            d:BaseWindow|BaseWidget|BaseFrame
-            # 把悬浮出去的窗口也关闭
-            d.get_ancestor()
-            if hasattr(d.ancestor,"detached_window"):
-                if d.ancestor.detached_window is not None:
-                    d.ancestor.detached_window.close()
-            d.ancestor.hide()
-            d.ancestor.deleteLater()
-            if d is not None:
-                d.hide()
-                d.deleteLater()
-        self._docks_widget = []
-        # 关闭图表窗口
         self.charts_widget.remove_all()
-        for d in self._docks_widget_charts:
-            d: BaseWindow | BaseWidget | BaseFrame
-            # 把悬浮出去的窗口也关闭
-            d.get_ancestor()
-            if hasattr(d.ancestor, "detached_window"):
-                if d.ancestor.detached_window is not None:
-                    d.ancestor.detached_window.close()
-            d.ancestor.hide()
-            d.ancestor.deleteLater()
-            if d is not None:
-                d.hide()
-                d.deleteLater()
+        self._docks_widget = []
         self._docks_widget_charts = []
-    def create_tiled_docks(self, n=8, gids=[]):
+
+    def _retire_data_widget(self, widget):
+        thread = getattr(widget, "data_fetcher_thread", None)
+        if thread is None or not thread.isRunning():
+            widget.deleteLater()
+            return
+
+        self._retired_data_widgets.append(widget)
+        thread.finished.connect(
+            lambda retired_widget=widget: self._finalize_retired_widget(retired_widget)
+        )
+
+    def _finalize_retired_widget(self, widget):
+        if widget in self._retired_data_widgets:
+            self._retired_data_widgets.remove(widget)
+        widget.deleteLater()
+
+    def create_tiled_docks(self, n=8, gids=None):
+        gids = list(gids or [])
         if n !=0:
             self.n=n
         if len(gids)>0:
@@ -358,7 +367,7 @@ class UserMonitorDataWindows(ThemedWidget):
                 self.create_tiled_docks(n=self.n, gids=self.gids)
             else:
                 self.create_tiled_docks()
-        QTimer.singleShot(3000, lambda: self.setRadiosEnable(enable=True))
+        QTimer.singleShot(300, lambda: self.setRadiosEnable(enable=True))
     def setRadiosEnable(self,enable = True):
         for radios in self.show_radios:
             radios.setEnabled(enable)

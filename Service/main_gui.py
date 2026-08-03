@@ -85,10 +85,7 @@ def quit_qt_application():
     退出QT程序
     :return:
     """
-    logger.critical(
-        f"{'-' * 40}quit Qt application{'-' * 40}\n"
-        f"Qt quit callback stack:\n{''.join(traceback.format_stack())}"
-    )
+    logger.info("Qt application is shutting down normally")
     # modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
     # if modbus is not None:
     #     logger.error("stop_modbus_crash_application")
@@ -157,8 +154,6 @@ def start_qt_application():
     # 程序崩溃闪退监听
     crash_handler = CrashHandler()
     crash_handler.crash_signal.connect(on_crash)
-    crash_handler.start_gui_watchdog(app, timeout_seconds=3.0)
-    app.aboutToQuit.connect(quit_qt_application)
 
     program_self_check_index_dialog = Program_self_check_index()
     program_self_check_index_dialog.activateWindow()
@@ -173,6 +168,12 @@ def start_qt_application():
         logger.info("Appliacation start")
 
         main_window.show_frame()
+    # Startup dialogs and MainWindow construction run before app.exec() and may
+    # legitimately spend several seconds importing modules. Monitor only the
+    # live GUI event loop so startup work is not reported as a runtime freeze.
+    crash_handler.start_gui_watchdog(app, timeout_seconds=3.0)
+    # Stop the watchdog before the slower device cleanup callback runs.
+    app.aboutToQuit.connect(quit_qt_application)
     # 系统退出
     exit_code = app.exec()
     logger.critical(f"Qt event loop returned | exit_code={exit_code}")

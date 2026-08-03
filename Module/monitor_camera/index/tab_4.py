@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import multiprocessing
 import queue
@@ -43,7 +45,6 @@ from PyQt6.QtWidgets import (
 )
 from loguru import logger
 
-from Module.mouse_trajectory.service import MouseTrajectoryThread
 from Module.monitor_camera.ui.tab4_window import Ui_tab4_window
 from public.component.dialog.index.infrared_camera_read_SN_dialog_index import infrared_camera_read_SN_dialog
 from public.config_class.global_setting import global_setting
@@ -60,6 +61,30 @@ trajectory_service_lock = threading.RLock()
 shared_trajectory_thread = None
 shared_trajectory_submitter_thread = None
 trajectory_service_consumers = weakref.WeakSet()
+trajectory_module_loader_lock = threading.RLock()
+trajectory_module_loader = None
+mouse_trajectory_thread_class = None
+
+if typing.TYPE_CHECKING:
+    from Module.mouse_trajectory.service import MouseTrajectoryThread
+
+
+class TrajectoryModuleLoaderThread(QThread):
+    loaded = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def run(self):
+        global mouse_trajectory_thread_class
+        try:
+            from Module.mouse_trajectory.service import MouseTrajectoryThread
+
+            with trajectory_module_loader_lock:
+                mouse_trajectory_thread_class = MouseTrajectoryThread
+            self.loaded.emit(MouseTrajectoryThread)
+        except Exception:
+            error_message = traceback.format_exc()
+            logger.error(f"mouse trajectory module load failed: {error_message}")
+            self.failed.emit(error_message)
 
 
 def _emit_runtime_diagnostic(
@@ -1608,6 +1633,7 @@ class Tab_4(ThemedWindow):
         self.trajectory_thread: MouseTrajectoryThread | None = None
         self.trajectory_submitter_thread: TrajectoryFrameSubmitterThread | None = None
         self.connected_trajectory_signal_thread: MouseTrajectoryThread | None = None
+        self.trajectory_module_loader: TrajectoryModuleLoaderThread | None = None
         self.infrared_camera_read_SN_dialog_frame = None
         self.current_cage_number: int | None = None
         self.current_mode = display_mode if display_mode in {self.MODE_INFRARED, self.MODE_VIDEO} else self.MODE_INFRARED
@@ -1621,7 +1647,6 @@ class Tab_4(ThemedWindow):
         self.latest_trajectory_status: dict[int, str] = {}
         self.latest_trajectory_titles: dict[int, str] = {}
         self.latest_trajectory_progress_text: dict[int, str] = {}
-        self.blank_trajectory_plot_paths: dict[str, str] = {}
         self.displayed_trajectory_plot_signatures: dict[tuple[int, str], tuple[str, float]] = {}
         self.current_right_plot_signature: tuple[str, float] | None = None
         self.last_good_corners: dict[int, list[dict[str, typing.Any]]] = {}
@@ -1791,6 +1816,59 @@ class Tab_4(ThemedWindow):
 
         self.loader_thread = None
 
+    def _request_trajectory_module_load(self):
+        global trajectory_module_loader
+
+        should_start = False
+        with trajectory_module_loader_lock:
+            trajectory_class = mouse_trajectory_thread_class
+            if trajectory_class is None:
+                loader = trajectory_module_loader
+                if loader is None or loader.isFinished():
+                    loader = TrajectoryModuleLoaderThread()
+                    trajectory_module_loader = loader
+                    should_start = True
+
+                if self.trajectory_module_loader is not loader:
+                    loader.loaded.connect(self._on_trajectory_module_loaded)
+                    loader.failed.connect(self._on_trajectory_module_load_failed)
+                    self.trajectory_module_loader = loader
+            else:
+                loader = None
+
+        if trajectory_class is not None:
+            self.start_trajectory_thread()
+            return
+
+        if should_start:
+            logger.info("loading mouse trajectory module in background")
+            _emit_runtime_diagnostic(
+                "trajectory_module_load",
+                "action=start",
+                logical_thread_name="gui_main",
+            )
+            loader.start()
+
+    def _on_trajectory_module_loaded(self, _trajectory_class):
+        self.trajectory_module_loader = None
+        logger.info("mouse trajectory module loaded in background")
+        _emit_runtime_diagnostic(
+            "trajectory_module_load",
+            "action=ready",
+            logical_thread_name="gui_main",
+        )
+        if self.current_mode == self.MODE_VIDEO:
+            self.start_trajectory_thread()
+
+    def _on_trajectory_module_load_failed(self, error_message: str):
+        self.trajectory_module_loader = None
+        logger.error(f"mouse trajectory module unavailable: {error_message}")
+        _emit_runtime_diagnostic(
+            "trajectory_module_load",
+            f"action=failed, error={error_message}",
+            logical_thread_name="gui_main",
+        )
+
     def _connect_trajectory_signal(self, trajectory_thread: MouseTrajectoryThread):
         if self.connected_trajectory_signal_thread is trajectory_thread:
             return
@@ -1819,6 +1897,18 @@ class Tab_4(ThemedWindow):
         global shared_trajectory_thread
         global shared_trajectory_submitter_thread
 
+        with trajectory_module_loader_lock:
+            trajectory_class = mouse_trajectory_thread_class
+        with trajectory_service_lock:
+            existing_thread = shared_trajectory_thread
+            needs_new_service = (
+                existing_thread is None or not existing_thread.isRunning()
+            )
+
+        if needs_new_service and trajectory_class is None:
+            self._request_trajectory_module_load()
+            return
+
         with trajectory_service_lock:
             trajectory_thread = shared_trajectory_thread
             if trajectory_thread is not None and trajectory_thread.isRunning():
@@ -1841,7 +1931,10 @@ class Tab_4(ThemedWindow):
                     stale_submitter.requestInterruption()
                     stale_submitter.wait(2000)
                 shared_trajectory_submitter_thread = None
-                trajectory_thread = MouseTrajectoryThread()
+                if trajectory_class is None:
+                    QTimer.singleShot(0, self._request_trajectory_module_load)
+                    return
+                trajectory_thread = trajectory_class()
                 shared_trajectory_thread = trajectory_thread
                 trajectory_thread.start()
                 logger.info(
@@ -2112,32 +2205,6 @@ class Tab_4(ThemedWindow):
         self.displayed_trajectory_plot_signatures[cache_key] = signature
         self.current_right_plot_signature = signature
         return True
-
-    def _get_blank_trajectory_plot_path(self, plot_key: str) -> str:
-        expected_keys = ("xy_trajectory", "height_trajectory", "occupancy_heatmap")
-        if (
-            self.blank_trajectory_plot_paths
-            and all(os.path.exists(self.blank_trajectory_plot_paths.get(key, "")) for key in expected_keys)
-        ):
-            return self.blank_trajectory_plot_paths.get(plot_key, "")
-
-        try:
-            from Module.mouse_trajectory.paths import EXPORT_DIR
-            from Module.mouse_trajectory.service.auto_mouse_trajectory import save_plots
-
-            blank_dir = EXPORT_DIR / "_blank"
-            blank_dir.mkdir(parents=True, exist_ok=True)
-            save_plots(blank_dir, [], None)
-            self.blank_trajectory_plot_paths = {
-                "xy_trajectory": str(blank_dir / "xy_trajectory.png"),
-                "height_trajectory": str(blank_dir / "height_trajectory.png"),
-                "occupancy_heatmap": str(blank_dir / "occupancy_heatmap.png"),
-            }
-        except Exception as error:
-            logger.error(f"create blank trajectory plots failed: {error}")
-            self.blank_trajectory_plot_paths = {}
-
-        return self.blank_trajectory_plot_paths.get(plot_key, "")
 
     def update_trajectory_result(self, result_dict):
         if not result_dict:
@@ -2484,14 +2551,8 @@ class Tab_4(ThemedWindow):
                 self.current_trajectory_plot_key,
                 selected_plot_path,
             ):
-                blank_plot_path = self._get_blank_trajectory_plot_path(self.current_trajectory_plot_key)
-                if not self._show_trajectory_plot_if_changed(
-                    cage_number,
-                    f"blank:{self.current_trajectory_plot_key}",
-                    blank_plot_path,
-                ):
-                    self.right_panel.show_placeholder(
-                        self.latest_trajectory_progress_text.get(cage_number, "轨迹绘制中")
-                    )
+                self.right_panel.show_placeholder(
+                    self.latest_trajectory_progress_text.get(cage_number, "轨迹绘制中")
+                )
             return
 

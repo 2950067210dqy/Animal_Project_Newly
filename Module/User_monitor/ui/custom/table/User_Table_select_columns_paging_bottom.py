@@ -1,76 +1,30 @@
 """
-表头初始为空，通过信号（按钮点击）置换表头并分页加载数据（每页 10 条），
-当垂直滚动条滑到底部时自动加载下一页。
+用户监控数据分页视图。
+保留用户端的数据补偿规则，使用虚拟化模型绘制表格。
 """
 import sys
-import time
 
-from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
-    QScrollArea, QTableWidget, QTableWidgetItem, QMessageBox, QLabel, QHBoxLayout, QListWidget, QFileDialog
+    QScrollArea, QMessageBox, QLabel, QHBoxLayout, QListWidget, QFileDialog
 )
 from loguru import logger
 
-from Module.User_monitor.ui.custom.table.User_Custom_table import CustomTableWidget
-from Module.new_monitor_data.ui.custom.table.Table_select_columns_paging_bottom import \
-    Table_select_columns_paging_bottom
+from Module.new_monitor_data.ui.custom.table.Table_select_columns_paging_bottom import (
+    DataFetcher as OptimizedDataFetcher,
+    Table_select_columns_paging_bottom,
+)
+from Module.new_monitor_data.ui.custom.table.Virtualized_table import VirtualizedFrozenTable
 from public.config.Data_Column import Data_column_list
 from public.config_class.global_setting import global_setting
-from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
-from public.entity.MyQThread import MyQThread
 from theme.ThemeQt6 import ThemedWindow
 
 
-class DataFetcher(MyQThread):
-    data_fetched = pyqtSignal(dict)  # 信号传递值
-
-    def __init__(self, name,gid,page_size,page,all_column_datas=[]):
-        super().__init__(name=name)
-        self.gid = gid
-        self.page_size = page_size
-        self.page = page
-        self.all_column_datas = all_column_datas
-
-        # 数据库操作类
-        self.handle: Monitor_Datas_Handle = None
-
-    def stop(self):
-        if self.handle is not None:
-            self.handle.stop()
-            self.handle=None
-        super().stop()
-        # if self.handle is not None:
-        #     self.handle.stop()
-
-    def pause(self):
-        super().pause()
-        # if self.handle is not None:
-        #     self.handle.stop()
-
-    def dosomething(self):
-        # if self.handle is not None:
-        #     self.handle.stop()
-        if self.handle is None:
-            self.handle = Monitor_Datas_Handle()  # # 创建数据库
-        data =[]
-
-
-        datas = self.handle.query_epoch_data_all_tables_paging(gid=self.gid,page=self.page,page_size=self.page_size,all_column_datas=self.all_column_datas)
-        if datas is None:
-            datas = []
-
-        self.data_fetched.emit(datas)
-
-        time.sleep(3)  # 每秒获取一次数据
+class DataFetcher(OptimizedDataFetcher):
+    pass
 
 
 class User_table_select_columns_paging_bottom(ThemedWindow):
-    def hide(self):
-        # 窗口隐藏时停止数据线程
-        if self.data_fetcher_thread is not None:
-            self.data_fetcher_thread.stop()
-
     def __init__(self, gid):
         super().__init__()
         self.gid = gid
@@ -90,8 +44,9 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         self.data = []
 
         # 分页参数（默认）
-        self.page_size = 500
+        self.page_size = 200
         self.current_page = 1  # 1-based page index
+        self._latest_request_id = 0
 
         # ---- 主界面布局 ----
         central = QWidget()
@@ -100,8 +55,6 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
 
         self.setMinimumWidth(1100)
 
-        # 分页器区域（放在表格上方）
-        # Scroll area 包含 QTableWidget
         self.page_scroll_area = QScrollArea()
         self.page_scroll_area.setWidgetResizable(True)
         pager_widget = QWidget()
@@ -131,27 +84,13 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
 
         main_vbox.addWidget(self.page_scroll_area)
 
-        # ---- 表格区域 ----
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        main_vbox.addWidget(self.scroll_area, stretch=7)
-
-        # 初始化表格（无初始列）
-        self.table = CustomTableWidget()
-        self.table.setMouseTracking(True)
-        self.table.setColumnCount(0)
-        self.table.setRowCount(0)
-        self.table.setAlternatingRowColors(True)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-
+        self.table = VirtualizedFrozenTable(highlight_remarks=False)
         # 动态改变冻结列
         self.table.set_frozen_columns_by_headers(
             left_headers=["序号", "鼠笼号"],  # 左侧冻结
             right_headers=["获取时间"]  # 右侧冻结
         )
-
-        self.scroll_area.setWidget(self.table)
+        main_vbox.addWidget(self.table, stretch=7)
 
         # 初始时分页器禁用（需先置换表头）
         self.set_pager_enabled(False)
@@ -218,11 +157,7 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         self.set_init_value()
         self.find_columns_by_id(ids)
 
-        # 1. 更新表格列名
-        self.table.setColumnCount(len(self.all_columns))
-        self.table.setHorizontalHeaderLabels(self.all_columns)
-
-        # 2. 初始化并启动数据线程
+        # 初始化并启动数据线程
         if self.data_fetcher_thread is None:
             self.data_fetcher_thread = DataFetcher(
                 name="tab_2_tab_0_table_data_fetch_thread",
@@ -232,13 +167,16 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                 all_column_datas=self.all_column_datas
             )
             self.data_fetcher_thread.data_fetched.connect(self.update_page)
-        # 更新线程的列配置（防止表头切换后数据不匹配）
-        self.data_fetcher_thread.all_column_datas = self.all_column_datas
-        self.data_fetcher_thread.page = self.current_page  # 确保加载第一页
+            self.data_fetcher_thread.fetch_failed.connect(self.on_fetch_failed)
+        self._latest_request_id = self.data_fetcher_thread.request_refresh(
+            page=self.current_page,
+            page_size=self.page_size,
+            all_column_datas=self.all_column_datas
+        )
         if not self.data_fetcher_thread.isRunning():
             self.data_fetcher_thread.start()
 
-        # 3. 启用分页器
+        # 启用分页器
         self.set_pager_enabled(True)
 
     def go_to_page(self, page: int):
@@ -251,24 +189,30 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         # 更新当前页并加载数据
         self.current_page = valid_page
         if self.data_fetcher_thread is not None:
-            self.data_fetcher_thread.page = self.current_page
-            # 若线程未运行，启动线程；若已运行，等待下一次数据刷新（通过线程循环）
+            self.set_pager_enabled(False)
+            self.info_label.setText(f"正在加载第 {self.current_page} 页...")
+            self._latest_request_id = self.data_fetcher_thread.request_refresh(
+                page=self.current_page,
+                page_size=self.page_size,
+                all_column_datas=self.all_column_datas
+            )
             if not self.data_fetcher_thread.isRunning():
                 self.data_fetcher_thread.start()
-        # 更新分页信息显示
-        self.info_label.setText(self._info_text())
-        self._update_nav_buttons()  # 同步按钮状态
 
     def update_page(self, result: dict):
         """接收线程数据，更新表格内容（修改：预处理None值，使其参与后续计算，并过滤掉指定列）"""
+        if not result or result.get("_request_id", -1) < self._latest_request_id:
+            return
         # 1. 提取结果中的列名与数据（兼容数据库返回格式）
         if "columns_title" not in result or "rows" not in result:
             logger.warning("数据格式错误：缺少 columns_title 或 rows 字段")
             return
 
         original_columns = result["columns_title"]
+        original_column_keys = result.get("columns", [])
         page_records = result["rows"]
         self.total_items = result.get("total_items", 0)  # 更新总条数
+        self.current_page = result.get("page", self.current_page)
 
         # 过滤掉第25、26、27列（索引24、25、26）
         columns_to_remove = [24, 25, 26]  # 对应第25、26、27列
@@ -277,73 +221,75 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         safe_columns_to_remove = [i for i in columns_to_remove if i < len(original_columns)]
 
         filtered_columns = []
+        filtered_column_keys = []
         for i, col in enumerate(original_columns):
             if i not in safe_columns_to_remove:
                 filtered_columns.append(col)
+                if i < len(original_column_keys):
+                    filtered_column_keys.append(original_column_keys[i])
 
         self.all_columns = filtered_columns
 
         # 2. 预处理数据：处理None值和空行，并过滤掉指定列
         processed_records = self._preprocess_data(page_records, safe_columns_to_remove)
 
-        # 3. 清空并重置表格
-        self.table.setRowCount(0)
-        self.table.setColumnCount(len(self.all_columns))
-        self.table.setHorizontalHeaderLabels(self.all_columns)
+        formatted_records = self._format_records_for_display(
+            processed_records,
+            filtered_column_keys
+        )
+        self.table.set_result(
+            filtered_column_keys,
+            self.all_columns,
+            formatted_records
+        )
 
-        # 4. 填充表格数据（使用预处理后的数据）
-        for row_idx, record in enumerate(processed_records):
-            self.table.insertRow(row_idx)
-            col_idx = 0
-
-            for col_key, col_val in record.items():
-                # 安全检查：确保col_idx不超出范围
-                if col_idx >= len(self.all_columns):
-                    break
-
-                final_val = ""  # 最终显示值
-
-                # -------------------------- 格式化显示值 --------------------------
-                # 情况1：当前是时间列（col_idx=0）
-                if col_idx == 0:
-                    final_val = str(col_val) if col_val is not None else ""
-
-                # 情况2：数据列（col_idx>0）
-                else:
-                    current_col_title = self.all_columns[col_idx]
-                    is_cage_column = "鼠笼号" in current_col_title
-
-                    if col_val is not None:
-                        if is_cage_column:
-                            # 鼠笼号列：强制转为整数
-                            try:
-                                num_val = float(col_val) if not isinstance(col_val, (int, float)) else col_val
-                                reference_cage = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
-                                final_val = "参考笼" if int(num_val) == reference_cage else str(int(num_val))
-                            except (ValueError, TypeError):
-                                final_val = str(col_val).strip()
-                        else:
-                            # 非鼠笼号列：按原有逻辑格式化
-                            if isinstance(col_val, (int, float)):
-                                if "oxygen" in col_key or "CO2" in col_key:
-                                    final_val = f"{col_val:.04f}"  # 氧气/CO2保留4位小数
-                                else:
-                                    final_val = f"{col_val:.2f}"  # 其他数字保留2位小数
-                            else:
-                                final_val = str(col_val).strip()
-                    else:
-                        final_val = ""  # None值显示为空
-
-                # -------------------------- 设置单元格值与对齐 --------------------------
-                item = QTableWidgetItem(final_val)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-                self.table.setItem(row_idx, col_idx, item)
-                col_idx += 1
-
-        # 5. 调整列宽与同步分页状态
-        self.table.resizeColumnsToContents()
+        self.set_pager_enabled(True)
         self.info_label.setText(self._info_text())
         self._update_nav_buttons()
+
+    def _format_records_for_display(self, records, column_keys):
+        formatted_records = []
+        configer = global_setting.get_setting("configer", {}) or {}
+        reference_cage = int(configer.get("mouse_cage", {}).get("reference", -1))
+
+        for record in records:
+            formatted = {}
+            for col_idx, col_key in enumerate(column_keys):
+                col_val = record.get(col_key)
+                if col_idx == 0:
+                    final_val = str(col_val) if col_val is not None else ""
+                else:
+                    title = self.all_columns[col_idx]
+                    if col_val is None:
+                        final_val = ""
+                    elif "鼠笼号" in title:
+                        try:
+                            numeric_value = float(col_val)
+                            final_val = (
+                                "参考笼"
+                                if int(numeric_value) == reference_cage
+                                else str(int(numeric_value))
+                            )
+                        except (TypeError, ValueError):
+                            final_val = str(col_val).strip()
+                    elif isinstance(col_val, (int, float)):
+                        final_val = (
+                            f"{col_val:.04f}"
+                            if "oxygen" in col_key or "CO2" in col_key
+                            else f"{col_val:.2f}"
+                        )
+                    else:
+                        final_val = str(col_val).strip()
+                formatted[col_key] = final_val
+            formatted_records.append(formatted)
+        return formatted_records
+
+    def on_fetch_failed(self, request_id, error_message):
+        if request_id < self._latest_request_id:
+            return
+        self.set_pager_enabled(True)
+        self._update_nav_buttons()
+        self.info_label.setText(f"数据加载失败：{error_message}")
 
     def _preprocess_data(self, page_records: list, columns_to_remove: list = None) -> list:
         """预处理数据：处理None值和空行，并过滤掉指定列，返回处理后的数据列表"""
@@ -460,6 +406,36 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         # 下一页/尾页：当前页为最后一页时禁用
         self.next_btn.setEnabled(self.current_page < total_p)
         self.last_btn.setEnabled(self.current_page < total_p)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.data_fetcher_thread is not None:
+            if self.data_fetcher_thread.isRunning():
+                self.data_fetcher_thread.resume()
+            self._latest_request_id = self.data_fetcher_thread.request_refresh(
+                page=self.current_page,
+                page_size=self.page_size,
+                all_column_datas=self.all_column_datas
+            )
+            if not self.data_fetcher_thread.isRunning():
+                self.data_fetcher_thread.start()
+
+    def hideEvent(self, event):
+        if self.data_fetcher_thread is not None and self.data_fetcher_thread.isRunning():
+            self.data_fetcher_thread.pause()
+        super().hideEvent(event)
+
+    def shutdown(self, wait_ms=1000):
+        thread = self.data_fetcher_thread
+        if thread is None:
+            return
+        thread.stop()
+        if wait_ms and thread.isRunning():
+            thread.wait(wait_ms)
+
+    def closeEvent(self, event):
+        self.shutdown(wait_ms=0)
+        super().closeEvent(event)
 
 
 def main():

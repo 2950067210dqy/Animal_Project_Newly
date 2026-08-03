@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import tempfile
+import threading
 
 import pandas as pd
 from PyQt6.QtCore import Qt
@@ -82,6 +83,15 @@ class custom_data_file_util:
     """自定义数据文件"""
     encoding = "utf-8-sig"
     extension_name = "Mdata"
+    _export_state = threading.local()
+
+    @classmethod
+    def _set_last_export_error(cls, message=""):
+        cls._export_state.last_error = str(message or "")
+
+    @classmethod
+    def get_last_export_error(cls):
+        return getattr(cls._export_state, "last_error", "")
 
     @classmethod
     def show_export_success_message(cls, export_file_path):
@@ -133,12 +143,17 @@ class custom_data_file_util:
 
 
         #删除该文件夹
-        if is_delete_original_data_file:
+        if is_delete_original_data_file and export_success:
             folder_util.remove_non_empty_folder(folder_path)
+        elif is_delete_original_data_file:
+            logger.warning(
+                f"数据导出失败，保留原始实验数据目录：{folder_path}"
+            )
         return excel_file_path if export_success else False
     @classmethod
     def export_data_to_csv(cls, export_file_path=None, file_name=None, file_path=None,
                            show_success_message=True, use_atomic_replace=False):
+        cls._set_last_export_error()
         # 将数据db文件转成excel文件
         if file_path is None:
             transfer_handle = DbTransferExcel()
@@ -198,7 +213,8 @@ class custom_data_file_util:
                     folder_util.open_folder(export_file_path)
             return True
         except Exception as e:
-            logger.error(f"{e}")
+            cls._set_last_export_error(e)
+            logger.exception("数据导出失败")
             if temp_export_file_path is not None and os.path.exists(temp_export_file_path):
                 try:
                     os.remove(temp_export_file_path)
