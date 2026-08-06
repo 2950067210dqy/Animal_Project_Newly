@@ -2556,3 +2556,14 @@ class Tab_4(ThemedWindow):
                 )
             return
 
+        self.left_panel.set_title(f"红外相机 - 鼠笼{cage_number}")
+        self.left_panel.show_image(
+            self.latest_image_paths["infrared_camera"].get(cage_number, "")
+        )
+        self.right_panel.set_title(f"温度 - 鼠笼{cage_number}")
+        if self.temperature_widget is not None:
+            self.temperature_widget.refresh_data(cage_number)
+            self.right_panel.show_custom_widget(self.temperature_widget)
+        else:
+            self.right_panel.show_placeholder("暂无温度数据")
+

@@ -41,6 +41,8 @@ delete_file_thread = None
 camera_list = []
 # 被其他红外相机已经使用的串口
 is_used_ports = []
+infrared_connect_lock = threading.Lock()
+experiment_running = False
 np.set_printoptions(precision=1)
 
 # global constants
@@ -114,6 +116,7 @@ class read_queue_data_Thread(MyQThread):
         pass
 
     def dosomething(self):
+        global experiment_running, camera_list
         if not self.queue.empty():
             try:
                 message: ObjectQueueItem = self.queue.get()
@@ -126,18 +129,32 @@ class read_queue_data_Thread(MyQThread):
                 logger.error(f"{self.name}_get_message:{message}")
                 match message.title:
                     case 'stop_running_cameras':
-                        if self.camera_list is not None:
-                            for camera_struct_l in self.camera_list:
-                                if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                                    camera_struct_l['camera'].stop()
-
-                        pass
+                        _stop_infrared_camera_threads(self.camera_list or [])
+                    case 'prepare_camera_scan':
+                        request_data = message.data if isinstance(message.data, dict) else {}
+                        released = _stop_infrared_camera_threads(self.camera_list or [])
+                        if released:
+                            self.camera_list = []
+                            camera_list = []
+                        self.queue.put(
+                            ObjectQueueItem(
+                                origin="main_infrared_camera",
+                                to="main_gui",
+                                title="infrared_camera_scan_ready",
+                                data={
+                                    "request_id": str(request_data.get("request_id", "")),
+                                    "released": released,
+                                },
+                                time=time_util.get_format_from_time(time.time()),
+                            )
+                        )
                     case 'start':
                         data = message.data
                         if data is not None:
                             global_setting.set_setting("start_experiment_time", data.get("start_experiment_time",time.time()))
                             global_setting.set_setting("pause_experiment_time", data.get("pause_experiment_time",[]))
                             global_setting.set_setting("relieve_pause_experiment_time", data.get("relieve_pause_experiment_time",[]))
+                        experiment_running = True
                         start()
                     case 'pause':
                         pause()
@@ -146,6 +163,7 @@ class read_queue_data_Thread(MyQThread):
                         if data is not None:
                             global_setting.set_setting("stop_experiment_time",
                                                        data.get("stop_experiment_time", time.time()))
+                        experiment_running = False
                         stop()
                     case 'experiment_setting':
                         data = message.data
@@ -158,9 +176,10 @@ class read_queue_data_Thread(MyQThread):
                         pass
                     case 'camera_config':
                         data = message.data
-                        if data is not None:
+                        if experiment_running and data:
                             init_camera_and_image_handle_thread(data)
-                        pass
+                        else:
+                            logger.info("infrared camera config saved; camera startup deferred until experiment start")
                     case _:
                         pass
 
@@ -539,11 +558,14 @@ class Thermal_process(MyQThread):
         self.display = None
         self.vs = None
         self.test_frame = None
-        self.init_state = None
+        self.init_state = False
+        self.connected_port = None
+        self.reconnect_delay_seconds = 1.0
+        self.next_reconnect_time = 0.0
+        self.consecutive_read_failures = 0
         self.frame_buffer = deque(maxlen=THERMAL_DISPLAY_FILTER_PARAM['temporal_window'])
         # 显示初始化失败的日志的控制变量
         self.init_error_log_show = False
-        self.init_state = self.senxor_init()
 
     def parse_args(self):
         """
@@ -583,14 +605,37 @@ class Thermal_process(MyQThread):
         :return:True or False
         """
         global is_used_ports
+        self._release_camera_connection()
         args = self.parse_args()
         save_dir = args.save_dir if hasattr(args, 'save_dir') else './data'
         os.makedirs(save_dir, exist_ok=True)
 
-        self.mi48, connected_port, port_names = connect_senxor(src=args.tis_id, name=f"infrared_camera_{self.id}",
-                                                               is_used_ports=is_used_ports,
-                                                               serial_number=self.serial_number)
-        is_used_ports.append(connected_port)
+        with infrared_connect_lock:
+            self.mi48, connected_port, port_names = connect_senxor(
+                src=args.tis_id,
+                name=f"infrared_camera_{self.id}",
+                is_used_ports=is_used_ports,
+                serial_number=self.serial_number,
+            )
+            if (
+                self.mi48 is not None
+                and self.serial_number
+                and self.mi48.camera_id != self.serial_number
+            ):
+                logger.error(
+                    f"infrared camera {self.id} serial mismatch: "
+                    f"expected={self.serial_number}, actual={self.mi48.camera_id}"
+                )
+                try:
+                    self.mi48.stop()
+                except Exception:
+                    pass
+                self.mi48 = None
+                connected_port = None
+            if self.mi48 is not None and connected_port is not None:
+                self.connected_port = connected_port
+                if connected_port not in is_used_ports:
+                    is_used_ports.append(connected_port)
         if self.mi48 is None:
             if not self.init_error_log_show:
                 logger.error(
@@ -600,8 +645,17 @@ class Thermal_process(MyQThread):
             # sys.exit(1)
         else:
             logger.info(f'infrared camera_{self.id} | {self.mi48.sn} connected to {connected_port}')
+            self.init_error_log_show = False
         logger.info(f'infrared camera_{self.id} | camera_info: {self.mi48.camera_info}')
         try:
+            configured_ports = set()
+            for interface in self.mi48.interfaces:
+                serial_port = getattr(interface, 'port', None)
+                if serial_port is None or id(serial_port) in configured_ports:
+                    continue
+                configured_ports.add(id(serial_port))
+                serial_port.timeout = 0.5
+                serial_port.write_timeout = 0.5
             self.mi48.set_fps(args.fps)
             self.mi48.regwrite(0xD0, 0x00)
             self.mi48.disable_filter(f1=True, f2=True, f3=True)
@@ -659,23 +713,51 @@ class Thermal_process(MyQThread):
             if self.datasave is None:
                 self.datasave = Monitor_Datas_Handle()  # 创建数据库
         except Exception as e:
-            logger.error(f"红外相机{self.id}初始化错误！：原因：{e}")
+            logger.error(f"infrared camera {self.id} initialization failed: {e}")
+            self._release_camera_connection()
             return False
+        self.reconnect_delay_seconds = 1.0
+        self.next_reconnect_time = 0.0
+        self.consecutive_read_failures = 0
         return True
 
-    def stop(self):
-        if self.mi48 is not None:
+    def _release_camera_connection(self):
+        global is_used_ports
+        camera = self.mi48
+        self.mi48 = None
+        if camera is not None:
             try:
-                self.mi48.stop()
-            except Exception as e:
-                logger.error(f"红外相机{self.id}停止mi48失败：原因{e}")
-        cv.destroyAllWindows()
+                camera.stop()
+            except Exception as error:
+                logger.error(f"infrared camera {self.id} release failed: {error}")
 
-        if self.datasave is not None :
-            self.datasave.stop()
-        if self.vs is not None:
-            self.vs.stop()
+        with infrared_connect_lock:
+            if self.connected_port in is_used_ports:
+                is_used_ports.remove(self.connected_port)
+        self.connected_port = None
+        self.init_state = False
+
+    def _schedule_reconnect(self):
+        self.next_reconnect_time = time.monotonic() + self.reconnect_delay_seconds
+        self.reconnect_delay_seconds = min(self.reconnect_delay_seconds * 2.0, 10.0)
+
+    def stop(self):
         super().stop()
+        camera = self.mi48
+        if camera is None:
+            return
+        cancelled_ports = set()
+        for interface in camera.interfaces:
+            serial_port = getattr(interface, 'port', None)
+            if serial_port is None or id(serial_port) in cancelled_ports:
+                continue
+            cancelled_ports.add(id(serial_port))
+            cancel_read = getattr(serial_port, 'cancel_read', None)
+            if callable(cancel_read):
+                try:
+                    cancel_read()
+                except Exception as error:
+                    logger.debug(f"infrared camera {self.id} cancel read failed: {error}")
 
     def smooth_frame_temporally(self, frame):
         self.frame_buffer.append(frame.copy())
@@ -697,85 +779,136 @@ class Thermal_process(MyQThread):
                 if entry.is_file():
                     with lock:
                         frame_nums += 1
-        while self._running:
-            self.mutex.lock()
-            if self._paused:
-                self.condition.wait(self.mutex)  # 等待条件变量
-            self.mutex.unlock()
+        try:
+            self.msleep(max(int(self.id) - 1, 0) * 150)
+            while self._running:
+                self.mutex.lock()
+                if self._paused:
+                    self.condition.wait(self.mutex)
+                self.mutex.unlock()
 
-            # 执行一些工作（替代为你需要的任务）
-            self.dosomething(pic_save_path)
-    def dosomething(self,pic_save_path):
+                if not self._running or self.isInterruptionRequested():
+                    break
+                self.dosomething(pic_save_path)
+        finally:
+            self._release_camera_connection()
+            if self.datasave is not None:
+                try:
+                    self.datasave.stop()
+                except Exception as error:
+                    logger.error(f"infrared camera {self.id} data writer stop failed: {error}")
+                self.datasave = None
+            if self.vs is not None:
+                try:
+                    self.vs.stop()
+                except Exception as error:
+                    logger.error(f"infrared camera {self.id} video stream stop failed: {error}")
+                self.vs = None
+            cv.destroyAllWindows()
+            self._running = False
+            logger.info(f"infrared camera {self.id} capture thread released")
+
+    def dosomething(self, pic_save_path):
         global frame_nums
-        # 如果初始化相机失败，则一直尝试初始化相机
         if not self.init_state:
+            now = time.monotonic()
+            if now < self.next_reconnect_time:
+                self.msleep(100)
+                return
             self.init_state = self.senxor_init()
             if not self.init_state:
+                self._schedule_reconnect()
                 return
-        with delete_process_lock:
-            start_time = time.time()
-            try:
-                raw_data, header = self.mi48.read()
-            except Exception as e:
-                logger.error(f"红外相机_{self.id} | 异常，原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
-                self.init_state = False
+
+        start_time = time.time()
+        try:
+            raw_data, header = self.mi48.read()
+        except Exception as error:
+            if self._running:
+                logger.error(
+                    f"infrared camera {self.id} read failed: {error} | {traceback.format_exc()}"
+                )
                 self.init_error_log_show = False
-                return
-            if raw_data is None:
-                logger.error(f"红外相机_{self.id} | raw_data is None")
-                return
-            try:
-                frame = data_to_frame(raw_data, (self.mi48.cols, self.mi48.rows),
-                                      hflip=False)  # hflip与USB正反有关，朝上要翻转为true
+                self._schedule_reconnect()
+            self._release_camera_connection()
+            return
 
-                #
-                Tmin, Tmax = self.RA_Tmin(frame.min()), self.RA_Tmax(frame.max())
-                frame = np.clip(frame, Tmin, Tmax)
-                display_frame = self.smooth_frame_temporally(frame)
-                _imgs, _struct = self.tip(frame, display_frame=display_frame)
-                self.images['thermal'].update(_imgs)
-                self.struct['thermal'].update(_struct)
-                self.display.img = self.display.composer([self.images['thermal']['display']])
+        if not self._running or self.isInterruptionRequested():
+            return
+        if raw_data is None:
+            self.consecutive_read_failures += 1
+            if self.consecutive_read_failures >= 3:
+                logger.error(f"infrared camera {self.id} returned no data 3 consecutive times")
+                self._release_camera_connection()
+                self.init_error_log_show = False
+                self._schedule_reconnect()
+            else:
+                self.msleep(100)
+            return
+        self.consecutive_read_failures = 0
 
-                # self.display(self.display.img)  # 显示，可删除
-                self.display.dir = Path(pic_save_path)
-                file_base_name = time_util.get_format_file_from_time(time.time())
-                self.display.save('{0}.bmp'.format(file_base_name))
-                with lock:
-                    frame_nums += 1
+        try:
+            frame = data_to_frame(
+                raw_data,
+                (self.mi48.cols, self.mi48.rows),
+                hflip=False,
+            )
+            Tmin, Tmax = self.RA_Tmin(frame.min()), self.RA_Tmax(frame.max())
+            frame = np.clip(frame, Tmin, Tmax)
+            display_frame = self.smooth_frame_temporally(frame)
+            _imgs, _struct = self.tip(frame, display_frame=display_frame)
+            self.images['thermal'].update(_imgs)
+            self.struct['thermal'].update(_struct)
+            self.display.img = self.display.composer([self.images['thermal']['display']])
 
-                # 写入 数据库          # 数据保存
-                if self.datasave is None:
-                    self.datasave = Monitor_Datas_Handle()  # 创建数据库
-                # 存储值----------------------------------------------------
-                return_data_struct = {}
-                return_data_struct['module_name'] = 'MouseInfrared'
-                return_data_struct['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                return_data_struct['table_name'] = next(iter(Others_Tables.Mouse_infrared_Data.value.keys()))
-                return_data_struct['mouse_cage_number'] = self.id
-                return_data_struct['data'] = [
+            self.display.dir = Path(pic_save_path)
+            file_base_name = time_util.get_format_file_from_time(time.time())
+            with delete_process_lock:
+                self.display.save(f'{file_base_name}.bmp')
+            with lock:
+                frame_nums += 1
+
+            if self.datasave is None:
+                self.datasave = Monitor_Datas_Handle()
+            return_data_struct = {
+                'module_name': 'MouseInfrared',
+                'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
+                'table_name': next(iter(Others_Tables.Mouse_infrared_Data.value.keys())),
+                'mouse_cage_number': self.id,
+                'data': [
                     {'desc': '识别时间', 'value': file_base_name},
-                    {'desc': '最大值温度(摄氏度)', 'value':  round(float(self.struct['thermal']['hs_max']),4) if self.struct['thermal']['hs_max'] is not None else None},
-                ]
+                    {
+                        'desc': '最大值温度(摄氏度)',
+                        'value': round(float(self.struct['thermal']['hs_max']), 4)
+                        if self.struct['thermal']['hs_max'] is not None
+                        else None,
+                    },
+                ],
+                'slave_id': 0,
+                'function_code': 0,
+            }
+            status, msg = self.datasave.insert_data(return_data_struct)
+            if not status:
+                logger.error(f"红外相机{self.id}存储数据错误：{msg}")
 
-                return_data_struct['slave_id'] = 0
-                return_data_struct['function_code'] = 0
-                # logger.error(f"红外温度{self.struct['thermal']['hs_max']}，{return_data_struct}")
-                status, msg = self.datasave.insert_data(return_data_struct)
-                if not status:
-                    logger.error(f"红外相机{self.id}存储数据错误：{msg}")
+            key = cv.waitKey(1) & 0xFF
+            if key == ord('q') or key == 27:
+                self.stop()
+            logger.debug(
+                f"infrared_camera_{self.id}| image_process | "
+                f"图像处理线程一次处理时间：{time.time() - start_time}秒 | "
+                f"此时总图像帧数量:{frame_nums}"
+            )
+        except Exception as error:
+            logger.error(
+                f"红外相机_{self.id} |运行出现错误:{error} | {traceback.format_exc()}"
+            )
 
-
-                key = cv.waitKey(1) & 0xFF
-                if key != -1:
-                    if key == ord("q") or key == 27:
-                        self.stop()
-                end_time = time.time()
-                logger.debug(
-                    f"infrared_camera_{self.id}| image_process  | 图像处理线程一次处理时间：{end_time - start_time}秒 | 此时总图像帧数量:{frame_nums}")
-            except Exception as e:
-                logger.error(f"红外相机_{self.id} |运行出现错误:{e}")
-        time.sleep(float(global_setting.get_setting("camera_config")['INFRARED_CAMERA']['delay']))
+        delay_ms = max(
+            1,
+            int(float(global_setting.get_setting('camera_config')['INFRARED_CAMERA']['delay']) * 1000),
+        )
+        self.msleep(delay_ms)
 
     pass
 
@@ -938,58 +1071,84 @@ def check_setting_cameras_each_number():
         pass
 
 
+def _stop_infrared_camera_threads(camera_structs, wait_ms=5000):
+    threads = []
+    for camera_struct in camera_structs:
+        if not isinstance(camera_struct, dict):
+            continue
+        camera = camera_struct.get('camera')
+        if camera is None:
+            continue
+        threads.append(camera)
+        try:
+            camera.stop()
+            camera.requestInterruption()
+        except Exception as error:
+            logger.error(f"infrared camera stop request failed: {error}")
+
+    deadline = time.monotonic() + max(wait_ms, 0) / 1000.0
+    all_stopped = True
+    for camera in threads:
+        remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+        if camera.isRunning() and (remaining_ms <= 0 or not camera.wait(remaining_ms)):
+            all_stopped = False
+            logger.error(f"infrared camera thread release timed out: {camera.objectName()}")
+    return all_stopped
+
+
 def init_camera_and_image_handle_thread(serials):
-    global camera_list, read_queue_data_thread
-    # global_setting.get_setting("queue").put(
-    #     ObjectQueueItem(title="stop_running_cameras", origin="main_infrared_camera", to="main_infrared_camera",
-    #                     time=time_util.get_format_from_time(time.time())))
-    # 初始化保存路径
-    path = global_setting.get_setting("camera_config")['STORAGE']['fold_path'] + \
-           global_setting.get_setting("camera_config")['INFRARED_CAMERA']['path']
-    # camera_nums = int(global_setting.get_setting("camera_config")['INFRARED_CAMERA']['nums'])
-    camera_nums = len(serials)
-    # 更改相机数量全局变量
+    global camera_list, read_queue_data_thread, is_used_ports
+    serials = [item for item in (serials or []) if isinstance(item, dict)]
+
+    if not _stop_infrared_camera_threads(camera_list):
+        logger.error("infrared camera reconfiguration cancelled: old threads are still running")
+        return False
+
+    camera_list = []
+    read_queue_data_thread.camera_list = camera_list
+    with infrared_connect_lock:
+        is_used_ports.clear()
+
+    path = (
+        global_setting.get_setting("camera_config")['STORAGE']['fold_path']
+        + global_setting.get_setting("camera_config")['INFRARED_CAMERA']['path']
+    )
     camera_config_temp = global_setting.get_setting("camera_config")
-    camera_config_temp['INFRARED_CAMERA']['nums'] = camera_nums
+    camera_config_temp['INFRARED_CAMERA']['nums'] = len(serials)
     global_setting.set_setting("camera_config", camera_config_temp)
 
-    # 之前正在运行的相机thread全部结束
-    if len(camera_list) > 0:
-        for camera_struct_l in camera_list:
-            if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                try:
-                    if camera_struct_l['camera'] is not None and camera_struct_l['camera'].isRunning():
-                        camera_struct_l['camera'].stop()
-
-                except Exception as e:
-                    logger.error(f"关闭实验监测错误，原因：{e}")
-    camera_list = []
-    for num in range(camera_nums):
-
-        camera_struct = {}
-        camera = None
-        try:
-            # 初始化
-            camera = Thermal_process(
-                path=path + f"{global_setting.get_setting('camera_config')['INFRARED_CAMERA']['mouse_cage_prefix']}{serials[num]['mouse_cage_number']}/",
-                id=serials[num]['mouse_cage_number'], serial_number=serials[num]['serial'])
-            logger.debug(f"红外相机{num + 1}初始化成功 |  异常堆栈跟踪：{traceback.print_exc()}")
-        except Exception as e:
-            logger.error(f"红外相机{num + 1}初始化失败，失败原因：{e} |  异常堆栈跟踪：{traceback.print_exc()}")
-            # 所有线程停止
-            delete_file_thread.stop()
-            for camera_struct_l in camera_list:
-                if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-                    camera_struct_l['camera'].stop()
+    mouse_cage_prefix = camera_config_temp['INFRARED_CAMERA']['mouse_cage_prefix']
+    for index, camera_config in enumerate(serials, start=1):
+        serial_number = str(camera_config.get('serial', '')).strip()
+        mouse_cage_number = camera_config.get('mouse_cage_number')
+        if not serial_number or mouse_cage_number in (None, ''):
+            logger.error(
+                f"infrared camera config ignored: index={index}, "
+                f"serial={serial_number!r}, mouse_cage_number={mouse_cage_number!r}"
+            )
             continue
 
-        camera.start()
+        try:
+            camera = Thermal_process(
+                path=path + f"{mouse_cage_prefix}{mouse_cage_number}/",
+                id=mouse_cage_number,
+                serial_number=serial_number,
+            )
+            camera_list.append({'id': index, 'camera': camera})
+            logger.info(
+                f"infrared camera capture thread created: "
+                f"index={index}, cage={mouse_cage_number}, serial={serial_number}"
+            )
+        except Exception as error:
+            logger.error(
+                f"infrared camera {index} thread creation failed: "
+                f"{error} | {traceback.format_exc()}"
+            )
 
-        camera_struct['id'] = num + 1
-        camera_struct['camera'] = camera
-        camera_list.append(camera_struct)
     read_queue_data_thread.camera_list = camera_list
-    pass
+    for camera_struct in camera_list:
+        camera_struct['camera'].start()
+    return True
 
 
 def main(q):
@@ -1036,58 +1195,69 @@ def pause():
     logger.info(f"{'-' * 30}infrared_camera_pause{'-' * 30}")
     pass
 def stop():
-    # 所有红外相机线程停止
+    global camera_list, delete_file_thread, experiment_running, is_used_ports
     logger.info(f"{'-' * 30}infrared_camera_stop{'-' * 30}")
-    logger.error("stop_infrared_camera_thread")
-    for i, camera_struct_l in enumerate(camera_list):
-        if len(camera_struct_l) != 0 and 'camera' in camera_struct_l:
-            try:
-                if camera_struct_l['camera'] is not None :
-                    camera_struct_l['camera'].stop()
-                    camera_struct_l['camera'].deleteLater()
-                    # 返回响应
-                    queue = global_setting.get_setting("queue", None)
-                    if queue:
-                        logger.error(f"红外相机{i}已停止")
-                        queue.put(
-                            ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
-                                            title="stop_infrared_camera_return",
-                                            data=f"红外相机{i}已停止",
-                                            time=time_util.get_format_from_time(time.time())))
-            except Exception as e:
-                logger.error(f"关闭实验监测infrared_camera_camera_list错误，原因：{e}")
-                # 返回响应
-                queue = global_setting.get_setting("queue", None)
-                if queue:
-                    queue.put(
-                        ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
-                                        title="stop_infrared_camera_return",
-                                        data=f"红外相机{i}停止失败：原因{e}",
-                                        time=time_util.get_format_from_time(time.time())))
-    try:
-        if delete_file_thread is not None :
-            delete_file_thread.stop()
-            delete_file_thread.deleteLater()
-            # 返回响应
-            queue = global_setting.get_setting("queue", None)
-            if queue:
-                logger.error(f"红外相机-文件删除线程已停止")
-                queue.put(
-                    ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
-                                    title="stop_infrared_camera_return",
-                                    data=f"红外相机-文件删除线程已停止",
-                                    time=time_util.get_format_from_time(time.time())))
-    except Exception as e:
-        logger.error(f"关闭实验监测infrared_camera_delete_file_thread错误，原因：{e}")
-        # 返回响应
-        queue = global_setting.get_setting("queue", None)
+    experiment_running = False
+    queue = global_setting.get_setting("queue", None)
+
+    current_cameras = list(camera_list)
+    cameras_stopped = _stop_infrared_camera_threads(current_cameras)
+    for camera_struct in current_cameras:
+        camera = camera_struct.get('camera') if isinstance(camera_struct, dict) else None
+        cage_number = getattr(camera, 'id', camera_struct.get('id', '')) if camera is not None else ''
+        message = (
+            f"红外相机{cage_number}已停止"
+            if cameras_stopped
+            else f"红外相机{cage_number}停止超时"
+        )
         if queue:
             queue.put(
-                ObjectQueueItem(origin="main_infrared_camera", to="MainWindow_index",
-                                title="stop_infrared_camera_return",
-                                data=f"红外相机-文件线程线程停止失败，原因：{e}",
-                                time=time_util.get_format_from_time(time.time())))
-    pass
+                ObjectQueueItem(
+                    origin="main_infrared_camera",
+                    to="MainWindow_index",
+                    title="stop_infrared_camera_return",
+                    data=message,
+                    time=time_util.get_format_from_time(time.time()),
+                )
+            )
+
+    if cameras_stopped:
+        camera_list = []
+        read_queue_data_thread.camera_list = camera_list
+        with infrared_connect_lock:
+            is_used_ports.clear()
+
+    try:
+        if delete_file_thread is not None:
+            delete_file_thread.stop()
+            delete_file_thread.requestInterruption()
+            if delete_file_thread.isRunning() and not delete_file_thread.wait(5000):
+                logger.error("infrared camera delete-file thread release timed out")
+            else:
+                delete_file_thread = None
+            if queue:
+                queue.put(
+                    ObjectQueueItem(
+                        origin="main_infrared_camera",
+                        to="MainWindow_index",
+                        title="stop_infrared_camera_return",
+                        data="红外相机-文件删除线程已停止",
+                        time=time_util.get_format_from_time(time.time()),
+                    )
+                )
+    except Exception as error:
+        logger.error(f"infrared camera delete-file thread stop failed: {error}")
+        if queue:
+            queue.put(
+                ObjectQueueItem(
+                    origin="main_infrared_camera",
+                    to="MainWindow_index",
+                    title="stop_infrared_camera_return",
+                    data=f"红外相机-文件删除线程停止失败，原因：{error}",
+                    time=time_util.get_format_from_time(time.time()),
+                )
+            )
+    return cameras_stopped
 if __name__ == "__main__":
     q = multiprocessing.Queue()
     main(q)

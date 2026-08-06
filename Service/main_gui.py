@@ -3,7 +3,7 @@ import sys
 import time
 import traceback
 from multiprocessing import freeze_support
-from PyQt6.QtCore import QThreadPool, QRect, QTimer
+from PyQt6.QtCore import QThreadPool, QRect, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 from blinker import signal
 from loguru import logger
@@ -30,11 +30,13 @@ from theme.ThemeManager import ThemeManager
 infrared_camera_config_dialog_obj =None
 deep_camera_config_dialog_obj =None
 class read_queue_data_Thread(MyQThread):
+    infrared_camera_scan_ready_signal = pyqtSignal(object)
+
     def __init__(self, name):
         super().__init__(name)
         self.queue = None
         self.camera_list = None
-        pass
+        self.infrared_camera_scan_ready_signal.connect(self.apply_infrared_camera_scan_ready)
 
     def dosomething(self):
         if not self.queue.empty():
@@ -55,6 +57,8 @@ class read_queue_data_Thread(MyQThread):
                     case "infrared_camera_config_dialog":
                         QTimer.singleShot(100, self.show_infrared_camera_config_dialog)
                         pass
+                    case "infrared_camera_scan_ready":
+                        self.infrared_camera_scan_ready_signal.emit(message.data or {})
                     case _:
                         pass
 
@@ -77,6 +81,13 @@ class read_queue_data_Thread(MyQThread):
         pass
 
         pass
+
+    def apply_infrared_camera_scan_ready(self, response):
+        dialog = global_setting.get_setting("active_infrared_camera_config_dialog", None)
+        if dialog is None:
+            logger.warning("infrared camera scan acknowledgement ignored: config dialog is unavailable")
+            return
+        dialog.handle_camera_release_ack(response)
 
 
 read_queue_data_thread = read_queue_data_Thread(name="main_gui_read_queue_data_thread")

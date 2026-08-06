@@ -3,8 +3,8 @@ import time
 import typing
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import QRect, Qt, pyqtSignal, QCoreApplication
-from PyQt6.QtWidgets import QDialog, QComboBox, QLabel, QPushButton, QDialogButtonBox
+from PyQt6.QtCore import QRect, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtWidgets import QDialog, QComboBox, QLabel, QPushButton, QDialogButtonBox, QMessageBox
 from loguru import logger
 
 from equipment.infrared_camera.senxor.utils import query_devices
@@ -17,6 +17,28 @@ from public.util.json_util import json_util
 from public.util.time_util import time_util
 
 
+class InfraredCameraScanThread(QThread):
+    scan_finished = pyqtSignal(list, str)
+
+    def run(self):
+        try:
+            devices = []
+            for scan_round in range(2):
+                devices = query_devices()
+                if devices or scan_round == 1:
+                    break
+                self.msleep(750)
+            cameras = [
+                {"id": index, "serial": serial}
+                for index, serial in enumerate(devices, start=1)
+            ]
+            logger.info(f"infrared camera scan completed: count={len(cameras)}")
+            self.scan_finished.emit(cameras, "")
+        except Exception as error:
+            logger.exception(f"infrared camera scan failed: {error}")
+            self.scan_finished.emit([], str(error))
+
+
 class infrared_camera_config_dialog(QDialog):
     """
 
@@ -24,17 +46,10 @@ class infrared_camera_config_dialog(QDialog):
 
     # camera_config_finished_signal = pyqtSignal(list)
     def scan_realsense(self):  # 搜索相机
-
-        global_setting.get_setting("queue").put(
-            ObjectQueueItem(title="stop_running_cameras", origin="infrared_camera_config_dialog_index", to="main_infrared_camera",
-                            time=time_util.get_format_from_time(time.time())))
-        camera_series_in_computer=[]
-        devices = query_devices()
-        id = 1
-        for dev in devices:
-            camera_series_in_computer.append({'id': id, 'serial': dev})
-            id += 1
-        return camera_series_in_computer
+        return [
+            {"id": index, "serial": serial}
+            for index, serial in enumerate(query_devices(), start=1)
+        ]
 
     def showEvent(self, a0: typing.Optional[QtGui.QShowEvent]) -> None:
         # 加载qss样式表
@@ -86,9 +101,9 @@ class infrared_camera_config_dialog(QDialog):
         self.refresh_btn: QPushButton = None
         # ok按钮
         self.ok_btn: QPushButton = None
+        self.pending_release_request_id = None
+        self.scan_thread = None
 
-        # 获得数据
-        self.get_data()
         # 实例化ui
         self._init_ui(parent, geometry, title)
         # 实例化自定义ui
@@ -97,6 +112,8 @@ class infrared_camera_config_dialog(QDialog):
         self.init_data()
         # 实例化功能
         self._init_function()
+        global_setting.set_setting("active_infrared_camera_config_dialog", self)
+        self.finished.connect(self._clear_active_dialog)
 
         pass
 
@@ -205,9 +222,16 @@ class infrared_camera_config_dialog(QDialog):
         pass
 
     def show_frame(self):
-
+        global_setting.set_setting("active_infrared_camera_config_dialog", self)
+        QTimer.singleShot(0, self.refresh_func)
         self.exec()
         # self.show()
+
+    def _clear_active_dialog(self, _result):
+        active_dialog = global_setting.get_setting("active_infrared_camera_config_dialog", None)
+        if active_dialog is self:
+            global_setting.set_setting("active_infrared_camera_config_dialog", None)
+
     def init_label(self):
         # 实例化label
         self.mouse_cage_1_checked_label: QLabel = self.findChild(QLabel, "d_mouse_cage_1_checked_value")
@@ -733,6 +757,10 @@ class infrared_camera_config_dialog(QDialog):
         # 获取 OK 按钮的引用
         button_box = self.findChild(QDialogButtonBox, "dialog_btn")
         if button_box is not None:
+            try:
+                button_box.accepted.disconnect()
+            except TypeError:
+                pass
             self.ok_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
         # 获取 REFRESH 按钮的引用
         self.refresh_btn = self.findChild(QPushButton, "refresh")
@@ -747,25 +775,81 @@ class infrared_camera_config_dialog(QDialog):
         pass
 
     def refresh_func(self):
-        """
-        refresh按钮事件
-        :return:
-        """
-        try:
-            self.get_data()
-            # 将原本的下拉列表值给删掉
-            # print(f"need:{self.camera_series_list_select_need}")
-            choose_list = [i['serial'] for i in self.camera_series_choose_list if i is not None]
-            # print(f"choose_list:{choose_list}")
-            camera_series_list_select_need_flag = []
-            for item in self.camera_series_list_select_need:
-                if item['serial'] not in choose_list:
-                    camera_series_list_select_need_flag.append(item)
-            self.camera_series_list_select_need = camera_series_list_select_need_flag
-            # print(f"after:{self.camera_series_list_select_need}")
-            self.init_combox()
-        except Exception as e:
-            logger.error(f"{e}")
+        if self.pending_release_request_id is not None:
+            return
+        if self.scan_thread is not None and self.scan_thread.isRunning():
+            return
+
+        request_id = str(time.time_ns())
+        self.pending_release_request_id = request_id
+        self._set_scan_controls_enabled(False)
+
+        queue = global_setting.get_setting("queue", None)
+        if queue is None:
+            logger.error("infrared camera refresh failed: process queue is unavailable")
+            self.pending_release_request_id = None
+            self._set_scan_controls_enabled(True)
+            return
+
+        queue.put(
+            ObjectQueueItem(
+                title="prepare_camera_scan",
+                origin="infrared_camera_config_dialog_index",
+                to="main_infrared_camera",
+                data={"request_id": request_id},
+                time=time_util.get_format_from_time(time.time()),
+            )
+        )
+        QTimer.singleShot(6000, lambda rid=request_id: self._release_request_timeout(rid))
+
+    def handle_camera_release_ack(self, response):
+        response = response if isinstance(response, dict) else {}
+        request_id = str(response.get("request_id", ""))
+        if request_id != self.pending_release_request_id:
+            return
+        self.pending_release_request_id = None
+        if not response.get("released", False):
+            self._set_scan_controls_enabled(True)
+            logger.error("infrared camera refresh cancelled: capture threads did not release in time")
+            QMessageBox.warning(self, "刷新失败", "红外相机仍被后台占用，请稍后再次刷新。")
+            return
+        self.scan_thread = InfraredCameraScanThread(self)
+        self.scan_thread.scan_finished.connect(self._apply_scan_result)
+        self.scan_thread.finished.connect(self.scan_thread.deleteLater)
+        self.scan_thread.start()
+
+    def _release_request_timeout(self, request_id):
+        if request_id != self.pending_release_request_id:
+            return
+        self.pending_release_request_id = None
+        self._set_scan_controls_enabled(True)
+        logger.error("infrared camera refresh timed out while waiting for camera release")
+
+    def _apply_scan_result(self, cameras, error):
+        self.camera_series_list = [item for item in cameras if isinstance(item, dict)]
+        selected_serials = {
+            item.get("serial")
+            for item in self.camera_series_choose_list
+            if item is not None
+        }
+        self.camera_series_list_select_need = [
+            item for item in self.camera_series_list
+            if item.get("serial") not in selected_serials
+        ]
+        self.toggle_signal_combox(True)
+        self.init_combox()
+        self.toggle_signal_combox(False)
+        self.combox_connect_func()
+        self.scan_thread = None
+        self._set_scan_controls_enabled(True)
+        if error:
+            logger.error(f"infrared camera refresh failed: {error}")
+
+    def _set_scan_controls_enabled(self, enabled):
+        if self.refresh_btn is not None:
+            self.refresh_btn.setEnabled(enabled)
+        if self.ok_button is not None:
+            self.ok_button.setEnabled(enabled)
 
     def ok_func(self):
         """
@@ -781,6 +865,11 @@ class infrared_camera_config_dialog(QDialog):
 
         # 1.把选择的数据存到json中
         config_file_path = f"./{global_setting.get_setting('camera_config')['INFRARED_CAMERA']['camera_to_mouse_cage_number_file_name']}"
+        if not choose_data and folder_util.is_exist_file(config_file_path):
+            old_data = json_util.read_json_to_dict_list(config_file_path)
+            if old_data:
+                QMessageBox.warning(self, "无法保存", "当前未选择任何红外相机，原配置不会被清空。")
+                return
         json_util.store_json_from_dict_list(filename=config_file_path, data=choose_data)
         # 2.给主线程传输信号 实例化相机线程
         queue =global_setting.get_setting("queue",None)
@@ -791,4 +880,4 @@ class infrared_camera_config_dialog(QDialog):
             pass
         # self.camera_config_finished_signal.emit(choose_data)
 
-        pass
+        self.accept()

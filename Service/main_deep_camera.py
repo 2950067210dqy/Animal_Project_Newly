@@ -32,6 +32,8 @@ lock = threading.Lock()
 delete_process_lock = threading.Lock()
 runtime_diagnostics_drop_lock = threading.Lock()
 runtime_diagnostics_dropped = 0
+camera_connect_lock = threading.Lock()
+experiment_running = False
 # Image files may be deleted by the cleanup thread while capture is still writing.
 file_locks = {}
 
@@ -162,6 +164,7 @@ class read_queue_data_Thread(MyQThread):
         self.camera_list = None
 
     def dosomething(self):
+        global experiment_running
         # This thread only consumes messages addressed to main_deep_camera.
         if self.queue is None or self.queue.empty():
             time.sleep(0.05)
@@ -185,16 +188,7 @@ class read_queue_data_Thread(MyQThread):
 
         match message.title:
             case "stop_running_cameras":
-                if self.camera_list is not None:
-                    for camera_struct in self.camera_list:
-                        camera = camera_struct.get("camera")
-                        if camera is not None:
-                            camera.stop()
-                            camera.terminal()
-                        img_process = camera_struct.get("img_process")
-                        if img_process is not None:
-                            img_process.stop()
-                            img_process.terminal()
+                _stop_camera_threads(self.camera_list or [])
             case "start":
                 data = message.data or {}
                 global_setting.set_setting(
@@ -209,6 +203,7 @@ class read_queue_data_Thread(MyQThread):
                     "relieve_pause_experiment_time",
                     data.get("relieve_pause_experiment_time", []),
                 )
+                experiment_running = True
                 start()
             case "pause":
                 pause()
@@ -218,6 +213,7 @@ class read_queue_data_Thread(MyQThread):
                     "stop_experiment_time",
                     data.get("stop_experiment_time", time.time()),
                 )
+                experiment_running = False
                 stop()
             case "experiment_setting":
                 data = message.data or {}
@@ -227,8 +223,10 @@ class read_queue_data_Thread(MyQThread):
                     data.get("experiment_setting_file", ""),
                 )
             case "camera_config":
-                if message.data is not None:
+                if experiment_running and message.data:
                     init_camera_and_image_handle_thread(message.data)
+                else:
+                    logger.info("deep camera config saved; camera startup deferred until experiment start")
             case _:
                 pass
 
@@ -390,7 +388,9 @@ class UVCCameraProcessor(MyQThread):
         self.last_failure_log_time = 0.0
         self.last_stats_log_time = time.time()
         self.frames_since_stats_log = 0
-        self.init_state = self.init_camera()
+        self.init_state = False
+        self.reconnect_delay_seconds = 1.0
+        self.next_reconnect_time = 0.0
 
     def _open_capture(self, index):
         # Try common Windows backends first, then fall back to OpenCV default.
@@ -403,16 +403,24 @@ class UVCCameraProcessor(MyQThread):
 
         for backend in backends:
             capture = cv2.VideoCapture(index, backend) if backend is not None else cv2.VideoCapture(index)
-            if capture is not None and capture.isOpened():
+            if capture is None or not capture.isOpened():
+                if capture is not None:
+                    capture.release()
+                continue
+
+            frame_ok = False
+            for _ in range(5):
+                frame_ok, _ = capture.read()
+                if frame_ok:
+                    break
+            if frame_ok:
                 return capture
-            if capture is not None:
+            else:
                 capture.release()
         return None
 
     def init_camera(self):
-        if self.capture is not None:
-            self.capture.release()
-            self.capture = None
+        self._release_capture()
 
         if self.device_index is None:
             error_message = f"UVC camera config is invalid, serial={self.serial_number}"
@@ -426,7 +434,8 @@ class UVCCameraProcessor(MyQThread):
                 logged_errors.add(error_message)
             return False
 
-        self.capture = self._open_capture(self.device_index)
+        with camera_connect_lock:
+            self.capture = self._open_capture(self.device_index)
         if self.capture is None:
             error_message = f"UVC camera open failed, index={self.device_index}"
             if error_message not in logged_errors:
@@ -448,6 +457,9 @@ class UVCCameraProcessor(MyQThread):
             self.capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000)
         self.camera_session_id = secrets.randbits(63)
         self.frame_id = 0
+        self.reconnect_delay_seconds = 1.0
+        self.next_reconnect_time = 0.0
+        logged_errors.discard(f"UVC camera open failed, index={self.device_index}")
         shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
         logger.info(
             f"deep_camera_{self.id} connected to UVC device {self.device_index}, "
@@ -460,6 +472,19 @@ class UVCCameraProcessor(MyQThread):
             f"configured_fps={self.fps}, size={self.frame_width}x{self.frame_height}",
         )
         return True
+
+    def _release_capture(self):
+        capture = self.capture
+        self.capture = None
+        if capture is not None:
+            try:
+                capture.release()
+            except Exception as error:
+                logger.error(f"deep_camera_{self.id} release failed: {error}")
+
+    def _schedule_reconnect(self):
+        self.next_reconnect_time = time.monotonic() + self.reconnect_delay_seconds
+        self.reconnect_delay_seconds = min(self.reconnect_delay_seconds * 2.0, 10.0)
 
     def _ensure_dir(self, path):
         if not os.path.exists(path):
@@ -479,9 +504,6 @@ class UVCCameraProcessor(MyQThread):
         return color_path, file_name
 
     def stop(self):
-        if self.capture is not None:
-            self.capture.release()
-            self.capture = None
         shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
         super().stop()
 
@@ -489,36 +511,47 @@ class UVCCameraProcessor(MyQThread):
         logger.warning(f"{self.name} thread has been started")
         self._running = True
         global frame_nums
+        try:
+            if _save_raw_frames():
+                color_dir = os.path.join(self.path, _deep_camera_config()["color_dir"].strip("/\\"))
+                self._ensure_dir(color_dir)
 
-        if _save_raw_frames():
-            color_dir = os.path.join(self.path, _deep_camera_config()["color_dir"].strip("/\\"))
-            self._ensure_dir(color_dir)
+                with os.scandir(color_dir) as it:
+                    for entry in it:
+                        if entry.is_file():
+                            with lock:
+                                frame_nums += 1
 
-            with os.scandir(color_dir) as it:
-                for entry in it:
-                    if entry.is_file():
-                        with lock:
-                            frame_nums += 1
+            self.msleep(max(self.cage_number - 1, 0) * 120)
+            while self._running:
+                self.mutex.lock()
+                if self._paused:
+                    self.condition.wait(self.mutex)
+                self.mutex.unlock()
 
-        while self._running:
-            self.mutex.lock()
-            if self._paused:
-                self.condition.wait(self.mutex)
-            self.mutex.unlock()
-
-            try:
-                self.dosomething()
-            except Exception as e:
-                logger.error(f"deep_camera_{self.id} run failed: {e} | {traceback.format_exc()}")
+                try:
+                    self.dosomething()
+                except Exception as e:
+                    logger.error(f"deep_camera_{self.id} run failed: {e} | {traceback.format_exc()}")
+        finally:
+            self._release_capture()
+            self.init_state = False
+            self._running = False
+            shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
+            logger.info(f"deep_camera_{self.id} capture thread released")
 
     def dosomething(self):
         global frame_nums
 
         # Reconnect lazily if the device dropped during runtime.
         if not self.init_state:
+            now = time.monotonic()
+            if now < self.next_reconnect_time:
+                self.msleep(100)
+                return
             self.init_state = self.init_camera()
             if not self.init_state:
-                time.sleep(float(_deep_camera_config()["delay"]))
+                self._schedule_reconnect()
                 return
 
         if self.capture is None:
@@ -543,8 +576,10 @@ class UVCCameraProcessor(MyQThread):
                 )
                 self.last_failure_log_time = failure_time
             shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
+            self._release_capture()
             self.init_state = False
-            time.sleep(float(_deep_camera_config()["delay"]))
+            self.reconnect_delay_seconds = 1.0
+            self._schedule_reconnect()
             return
 
         timestamp = time.time()
@@ -625,6 +660,32 @@ def check_setting_cameras_each_number():
         logger.error(f"open deep camera config dialog failed: {e}")
 
 
+def _stop_camera_threads(camera_structs, wait_ms=4000):
+    threads = []
+    all_stopped = True
+    for camera_struct in list(camera_structs or []):
+        for key in ("camera", "img_process"):
+            thread = camera_struct.get(key)
+            if thread is None:
+                continue
+            try:
+                thread.stop()
+                thread.requestInterruption()
+                threads.append(thread)
+            except Exception as error:
+                logger.error(f"stop old deep camera {key} failed: {error}")
+
+    for thread in threads:
+        try:
+            if thread.isRunning() and not thread.wait(wait_ms):
+                all_stopped = False
+                logger.error(f"deep camera thread did not stop in {wait_ms}ms: {thread.objectName()}")
+        except Exception as error:
+            all_stopped = False
+            logger.error(f"wait deep camera thread failed: {error}")
+    return all_stopped
+
+
 def init_camera_and_image_handle_thread(serials):
     global camera_list, read_queue_data_thread, delete_file_thread
 
@@ -633,29 +694,21 @@ def init_camera_and_image_handle_thread(serials):
     camera_config_temp["DEEP_CAMERA"]["nums"] = camera_nums
     global_setting.set_setting("camera_config", camera_config_temp)
 
-    if camera_list:
-        for camera_struct in camera_list:
-            camera = camera_struct.get("camera")
-            if camera is not None:
-                try:
-                    if camera.isRunning():
-                        camera.stop()
-                except Exception as e:
-                    logger.error(f"stop old deep camera thread failed: {e}")
-
-            img_process = camera_struct.get("img_process")
-            if img_process is not None:
-                try:
-                    if img_process.isRunning():
-                        img_process.stop()
-                except Exception as e:
-                    logger.error(f"stop old deep camera process thread failed: {e}")
+    if not _stop_camera_threads(camera_list):
+        logger.error("deep camera reconfiguration cancelled: old camera threads are still running")
+        return
 
     camera_list = []
 
     for num in range(camera_nums):
         camera_struct = {}
         serial_config = serials[num]
+        device_index = serial_config.get("device_index")
+        if device_index is None:
+            device_index = parse_uvc_device_index(serial_config.get("serial"))
+        if device_index is None:
+            logger.error(f"skip invalid deep camera config: {serial_config}")
+            continue
 
         try:
             # Each mouse cage maps to one UVC device index from the saved config file.
@@ -663,7 +716,7 @@ def init_camera_and_image_handle_thread(serials):
                 path=_camera_base_path(serial_config["mouse_cage_number"]),
                 id=serial_config["mouse_cage_number"],
                 serial_number=serial_config.get("serial"),
-                device_index=serial_config.get("device_index"),
+                device_index=device_index,
             )
         except Exception as e:
             logger.error(
@@ -688,6 +741,7 @@ def init_camera_and_image_handle_thread(serials):
 
 
 def main(q=None, runtime_diagnostics_queue=None, auto_start=False):
+    global experiment_running
     global_setting.set_setting("queue", q)
     global_setting.set_setting(
         "runtime_diagnostics_queue",
@@ -708,6 +762,7 @@ def main(q=None, runtime_diagnostics_queue=None, auto_start=False):
         read_queue_data_thread.stop()
     read_queue_data_thread.start()
     if auto_start:
+        experiment_running = True
         logger.warning("deep_camera process restarted, resume camera capture automatically")
         start()
 
@@ -765,54 +820,38 @@ def pause():
 
 
 def stop():
-    global delete_file_thread, camera_list, save_frame_thread
+    global delete_file_thread, camera_list, save_frame_thread, experiment_running
 
+    experiment_running = False
     logger.info(f"{'-' * 30}deep_camera_stop{'-' * 30}")
     logger.warning("stop_deep_camera_thread")
 
     queue = global_setting.get_setting("queue", None)
 
-    for i, camera_struct in enumerate(camera_list):
-        camera = camera_struct.get("camera")
-        if camera is not None:
-            try:
-                camera.stop()
-                camera.deleteLater()
-                if queue:
-                    queue.put(
-                        ObjectQueueItem(
-                            origin="main_deep_camera",
-                            to="MainWindow_index",
-                            title="stop_deep_camera_return",
-                            data=f"deep camera {i} stopped",
-                            time=time_util.get_format_from_time(time.time()),
-                        )
-                    )
-            except Exception as e:
-                logger.error(f"stop deep camera thread failed: {e}")
-                if queue:
-                    queue.put(
-                        ObjectQueueItem(
-                            origin="main_deep_camera",
-                            to="MainWindow_index",
-                            title="stop_deep_camera_return",
-                            data=f"deep camera {i} stop failed: {e}",
-                            time=time_util.get_format_from_time(time.time()),
-                        )
-                    )
-
-        img_process = camera_struct.get("img_process")
-        if img_process is not None:
-            try:
-                img_process.stop()
-                img_process.deleteLater()
-            except Exception as e:
-                logger.error(f"stop deep camera img_process failed: {e}")
+    cameras_to_stop = list(camera_list)
+    cameras_stopped = _stop_camera_threads(cameras_to_stop)
+    for i, _camera_struct in enumerate(cameras_to_stop, start=1):
+        if queue:
+            queue.put(
+                ObjectQueueItem(
+                    origin="main_deep_camera",
+                    to="MainWindow_index",
+                    title="stop_deep_camera_return",
+                    data=(
+                        f"deep camera {i} stopped"
+                        if cameras_stopped
+                        else f"deep camera {i} stop timed out"
+                    ),
+                    time=time_util.get_format_from_time(time.time()),
+                )
+            )
 
     if delete_file_thread is not None:
         try:
             delete_file_thread.stop()
-            delete_file_thread.deleteLater()
+            delete_file_thread.requestInterruption()
+            if delete_file_thread.isRunning() and not delete_file_thread.wait(5000):
+                logger.error("deep camera delete thread stop timed out")
             if queue:
                 queue.put(
                     ObjectQueueItem(
@@ -823,6 +862,7 @@ def stop():
                         time=time_util.get_format_from_time(time.time()),
                     )
                 )
+            delete_file_thread = None
         except Exception as e:
             logger.error(f"stop deep_camera_delete_file_thread failed: {e}")
             if queue:
@@ -845,6 +885,9 @@ def stop():
             logger.error(f"stop deep_camera_save_raw_frame failed: {e}")
         save_frame_thread = None
 
+    if cameras_stopped:
+        camera_list = []
+        read_queue_data_thread.camera_list = camera_list
     shared_video_frame_store.close_writer()
 
 
