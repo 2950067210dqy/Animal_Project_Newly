@@ -27,6 +27,7 @@ class FFmpegVideoRecorderConfig:
     bufsize_kbps: int = 240
     preset: str = "ultrafast"
     encoder_threads: int = 1
+    fragment_seconds: float = 2.0
     stats_interval_seconds: float = 5.0
 
 
@@ -34,9 +35,8 @@ class FFmpegVideoRecorderConfig:
 class _WriterState:
     cage_number: int
     output_path: str
-    stderr_path: str
+    recording_path: str
     process: subprocess.Popen
-    stderr_handle: Any
     started_monotonic: float
     next_frame_due: float
     last_frame: Any = None
@@ -71,12 +71,14 @@ class FFmpegVideoRecorderThread(MyQThread):
         config: FFmpegVideoRecorderConfig,
         session_timestamp: float | None = None,
         diagnostic_callback: Callable[[str, str], None] | None = None,
+        recovery_root: str = "",
     ):
         super().__init__(name="deep_camera_ffmpeg_video_recorder")
         self.config = config
         self.ffmpeg_executable = find_ffmpeg_executable(config.ffmpeg_path)
         self.session_timestamp = float(session_timestamp or time.time())
         self.diagnostic_callback = diagnostic_callback
+        self.recovery_root = str(recovery_root or "")
 
         self.fps = max(float(config.fps), 0.1)
         self.width = max(2, int(config.width) // 2 * 2)
@@ -85,6 +87,7 @@ class FFmpegVideoRecorderThread(MyQThread):
         self.maxrate_kbps = max(self.bitrate_kbps, int(config.maxrate_kbps))
         self.bufsize_kbps = max(self.maxrate_kbps, int(config.bufsize_kbps))
         self.encoder_threads = max(1, int(config.encoder_threads))
+        self.fragment_seconds = max(0.5, float(config.fragment_seconds))
         self.stats_interval_seconds = max(float(config.stats_interval_seconds), 1.0)
         self.output_dir_name = str(config.output_dir_name or "video").strip("/\\") or "video"
 
@@ -133,6 +136,7 @@ class FFmpegVideoRecorderThread(MyQThread):
         self._running = True
         self._stop_requested = False
         self._paused = False
+        self._recover_existing_recordings()
         expected_mb_10h = self.bitrate_kbps * 1000 * 10 * 60 * 60 / 8 / 1_000_000
         logger.info(
             f"FFmpeg video recorder started: ffmpeg={self.ffmpeg_executable}, "
@@ -180,11 +184,11 @@ class FFmpegVideoRecorderThread(MyQThread):
             except Exception as error:
                 logger.error(
                     f"FFmpeg video write failed: cage={cage_number}, "
-                    f"output={state.output_path}, reason={error}"
+                    f"output={state.recording_path}, reason={error}"
                 )
                 self._emit_diagnostic(
                     "video_record_failed",
-                    f"cage={cage_number}, output={state.output_path}, reason={error}",
+                    f"cage={cage_number}, output={state.recording_path}, reason={error}",
                 )
                 self.disabled_cages.add(cage_number)
                 self._close_writer(cage_number, terminate=True)
@@ -214,9 +218,8 @@ class FFmpegVideoRecorderThread(MyQThread):
         video_dir = Path(cage_path) / self.output_dir_name
         video_dir.mkdir(parents=True, exist_ok=True)
         session_name = datetime.fromtimestamp(self.session_timestamp).strftime("%Y_%m_%d_%H_%M_%S_%f")[:-3]
-        output_path = str(video_dir / f"video_{session_name}_cage{cage_number}.mp4")
-        stderr_path = str(video_dir / f"video_{session_name}_cage{cage_number}.ffmpeg.log")
-        stderr_handle = open(stderr_path, "ab", buffering=0)
+        base_stem = f"video_{session_name}_cage{cage_number}"
+        output_path, recording_path = self._unique_output_paths(video_dir, base_stem)
 
         command = [
             self.ffmpeg_executable,
@@ -247,7 +250,11 @@ class FFmpegVideoRecorderThread(MyQThread):
             "-bufsize",
             f"{self.bufsize_kbps}k",
             "-g",
-            str(max(1, int(round(self.fps * 10)))),
+            str(max(1, int(round(self.fps * self.fragment_seconds)))),
+            "-keyint_min",
+            str(max(1, int(round(self.fps * self.fragment_seconds)))),
+            "-sc_threshold",
+            "0",
             "-threads",
             str(self.encoder_threads),
             "-pix_fmt",
@@ -255,7 +262,7 @@ class FFmpegVideoRecorderThread(MyQThread):
             "-movflags",
             "+frag_keyframe+empty_moov+default_base_moof",
             "-y",
-            output_path,
+            recording_path,
         ]
         creation_flags = (
             getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -266,12 +273,11 @@ class FFmpegVideoRecorderThread(MyQThread):
                 command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
-                stderr=stderr_handle,
+                stderr=subprocess.DEVNULL,
                 bufsize=0,
                 creationflags=creation_flags,
             )
         except Exception as error:
-            stderr_handle.close()
             logger.error(f"FFmpeg process start failed: cage={cage_number}, reason={error}")
             self._emit_diagnostic(
                 "video_record_failed",
@@ -279,18 +285,17 @@ class FFmpegVideoRecorderThread(MyQThread):
             )
             return None
 
-        logger.info(f"FFmpeg video output opened: cage={cage_number}, path={output_path}")
+        logger.info(f"FFmpeg video output opened: cage={cage_number}, path={recording_path}")
         self._emit_diagnostic(
             "video_output_opened",
-            f"cage={cage_number}, path={output_path}",
+            f"cage={cage_number}, recording_path={recording_path}, final_path={output_path}",
         )
         now = time.monotonic()
         return _WriterState(
             cage_number=cage_number,
             output_path=output_path,
-            stderr_path=stderr_path,
+            recording_path=recording_path,
             process=process,
-            stderr_handle=stderr_handle,
             started_monotonic=now,
             next_frame_due=now,
         )
@@ -300,7 +305,7 @@ class FFmpegVideoRecorderThread(MyQThread):
             pending_count = len(self.pending_frames)
         for cage_number, state in self.writer_states.items():
             elapsed = max(now - state.started_monotonic, 0.001)
-            file_size_mb = self._file_size_mb(state.output_path)
+            file_size_mb = self._file_size_mb(state.recording_path)
             average_write_ms = (
                 state.write_seconds * 1000 / state.encoded_frames
                 if state.encoded_frames
@@ -312,7 +317,7 @@ class FFmpegVideoRecorderThread(MyQThread):
                 f"submitted_frames={self.submitted_frames[cage_number]}, "
                 f"replaced_frames={self.replaced_frames[cage_number]}, "
                 f"write_avg_ms={average_write_ms:.2f}, pending_cages={pending_count}, "
-                f"file_size_mb={file_size_mb:.2f}, output={state.output_path}"
+                f"file_size_mb={file_size_mb:.2f}, output={state.recording_path}"
             )
             logger.debug(f"FFmpeg video runtime: {message}")
             self._emit_diagnostic("video_record_runtime", message)
@@ -339,10 +344,7 @@ class FFmpegVideoRecorderThread(MyQThread):
                 state.process.wait(timeout=1.0)
             except Exception:
                 pass
-        try:
-            state.stderr_handle.close()
-        except Exception:
-            pass
+        self._finalize_recording(state.recording_path, state.output_path)
         self._log_final_state(state)
 
     def _close_all_writers(self):
@@ -369,10 +371,7 @@ class FFmpegVideoRecorderThread(MyQThread):
                         state.process.kill()
                     except Exception:
                         pass
-            try:
-                state.stderr_handle.close()
-            except Exception:
-                pass
+            self._finalize_recording(state.recording_path, state.output_path)
             self._log_final_state(state)
 
     def _log_final_state(self, state: _WriterState):
@@ -381,10 +380,136 @@ class FFmpegVideoRecorderThread(MyQThread):
         message = (
             f"cage={state.cage_number}, duration_seconds={elapsed:.1f}, "
             f"encoded_frames={state.encoded_frames}, file_size_mb={file_size_mb:.2f}, "
-            f"output={state.output_path}, ffmpeg_log={state.stderr_path}"
+            f"output={state.output_path}"
         )
         logger.info(f"FFmpeg video finalized: {message}")
         self._emit_diagnostic("video_record_finalized", message)
+
+    def _unique_output_paths(self, video_dir: Path, base_stem: str):
+        part_number = 1
+        while True:
+            stem = base_stem if part_number == 1 else f"{base_stem}_part{part_number}"
+            output_path = video_dir / f"{stem}.mp4"
+            recording_path = video_dir / f"{stem}.recording.mp4"
+            if not output_path.exists() and not recording_path.exists():
+                return str(output_path), str(recording_path)
+            part_number += 1
+
+    def _recover_existing_recordings(self):
+        if not self.recovery_root:
+            return
+        root = Path(self.recovery_root)
+        if not root.exists():
+            return
+
+        video_directories = [
+            path
+            for path in root.rglob(self.output_dir_name)
+            if path.is_dir() and path.name.lower() == self.output_dir_name.lower()
+        ]
+        for video_dir in video_directories:
+            for recording_path in sorted(video_dir.glob("*.recording.mp4")):
+                final_name = recording_path.name.replace(".recording.mp4", ".mp4")
+                self._finalize_recording(str(recording_path), str(recording_path.with_name(final_name)))
+
+            # Recover files produced by the first recorder version, which wrote
+            # fragmented data directly to the final .mp4 name.
+            for video_path in sorted(video_dir.glob("video_*.mp4")):
+                if ".recording.mp4" in video_path.name:
+                    continue
+                if self._is_fragmented_mp4(str(video_path)):
+                    self._finalize_recording(str(video_path), str(video_path))
+
+    def _finalize_recording(self, recording_path: str, output_path: str):
+        if not os.path.isfile(recording_path) or os.path.getsize(recording_path) <= 0:
+            return False
+
+        same_path = os.path.abspath(recording_path) == os.path.abspath(output_path)
+        temp_output = f"{output_path}.recovering.mp4" if same_path else f"{output_path}.tmp.mp4"
+        try:
+            if os.path.exists(temp_output):
+                os.remove(temp_output)
+            command = [
+                self.ffmpeg_executable,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-fflags",
+                "+discardcorrupt",
+                "-i",
+                recording_path,
+                "-map",
+                "0:v:0",
+                "-c",
+                "copy",
+                "-movflags",
+                "+faststart",
+                "-y",
+                temp_output,
+            ]
+            creation_flags = (
+                getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+            )
+            result = subprocess.run(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                timeout=120,
+                creationflags=creation_flags,
+            )
+            if result.returncode != 0 or not os.path.isfile(temp_output) or os.path.getsize(temp_output) <= 0:
+                reason = result.stderr.decode(errors="replace").strip()
+                logger.error(
+                    f"FFmpeg video finalize failed: input={recording_path}, "
+                    f"output={output_path}, reason={reason or result.returncode}"
+                )
+                self._emit_diagnostic(
+                    "video_finalize_failed",
+                    f"input={recording_path}, output={output_path}, reason={reason or result.returncode}",
+                )
+                return False
+
+            warning = result.stderr.decode(errors="replace").strip()
+            if warning:
+                logger.warning(
+                    f"FFmpeg recovered a truncated video tail: input={recording_path}, details={warning}"
+                )
+            os.replace(temp_output, output_path)
+            if not same_path and os.path.exists(recording_path):
+                os.remove(recording_path)
+            logger.info(f"FFmpeg video index finalized: path={output_path}")
+            self._emit_diagnostic(
+                "video_index_finalized",
+                f"input={recording_path}, output={output_path}, "
+                f"file_size_mb={self._file_size_mb(output_path):.2f}",
+            )
+            return True
+        except Exception as error:
+            logger.error(
+                f"FFmpeg video finalize exception: input={recording_path}, "
+                f"output={output_path}, reason={error}"
+            )
+            self._emit_diagnostic(
+                "video_finalize_failed",
+                f"input={recording_path}, output={output_path}, reason={error}",
+            )
+            return False
+        finally:
+            if os.path.exists(temp_output):
+                try:
+                    os.remove(temp_output)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _is_fragmented_mp4(path: str):
+        try:
+            with open(path, "rb") as file:
+                header = file.read(2 * 1024 * 1024)
+            return b"mvex" in header or b"moof" in header
+        except OSError:
+            return False
 
     @staticmethod
     def _file_size_mb(path: str):

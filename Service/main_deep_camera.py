@@ -166,6 +166,7 @@ def _video_recorder_config():
         bufsize_kbps=int(float(config.get("video_bufsize_kbps", 240) or 240)),
         preset=str(config.get("video_preset", "ultrafast") or "ultrafast"),
         encoder_threads=int(float(config.get("video_encoder_threads", 1) or 1)),
+        fragment_seconds=float(config.get("video_fragment_seconds", 2) or 2),
         stats_interval_seconds=float(config.get("video_stats_interval_seconds", 5) or 5),
     )
 
@@ -834,7 +835,7 @@ def start():
             try:
                 video_recorder_thread.stop()
                 video_recorder_thread.requestInterruption()
-                video_recorder_thread.wait(6000)
+                video_recorder_thread.wait(120000)
             except Exception as e:
                 logger.error(f"stop old FFmpeg video recorder failed: {e}")
             video_recorder_thread = None
@@ -851,6 +852,7 @@ def start():
                 config=_video_recorder_config(),
                 session_timestamp=global_setting.get_setting("start_experiment_time", time.time()),
                 diagnostic_callback=_emit_runtime_diagnostic,
+                recovery_root=_storage_root(),
             )
             if recorder.available:
                 video_recorder_thread = recorder
@@ -961,7 +963,7 @@ def stop():
         try:
             video_recorder_thread.stop()
             video_recorder_thread.requestInterruption()
-            if video_recorder_thread.isRunning() and not video_recorder_thread.wait(6000):
+            if video_recorder_thread.isRunning() and not video_recorder_thread.wait(120000):
                 logger.error("FFmpeg video recorder stop timed out")
         except Exception as e:
             logger.error(f"stop FFmpeg video recorder failed: {e}")
