@@ -18,6 +18,10 @@ from public.config_class.global_setting import global_setting
 from public.entity.MyQThread import MyQThread
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.folder_util import folder_util
+from public.util.ffmpeg_video_recorder import (
+    FFmpegVideoRecorderConfig,
+    FFmpegVideoRecorderThread,
+)
 from public.util.json_util import json_util
 from public.util.shared_video_frames import shared_video_frame_store
 from public.util.time_util import time_util
@@ -26,6 +30,7 @@ from public.util.time_util import time_util
 logged_errors = set()
 delete_file_thread = None
 save_frame_thread = None
+video_recorder_thread = None
 camera_list = []
 frame_nums = 0
 lock = threading.Lock()
@@ -144,6 +149,27 @@ def _color_jpg_quality():
         return 85
 
 
+def _record_video_enabled():
+    return _as_bool(_deep_camera_config().get("record_video", False), False)
+
+
+def _video_recorder_config():
+    config = _deep_camera_config()
+    return FFmpegVideoRecorderConfig(
+        ffmpeg_path=str(config.get("ffmpeg_path", "") or ""),
+        output_dir_name=str(config.get("video_dir", "video") or "video"),
+        fps=float(config.get("video_fps", 10) or 10),
+        width=int(float(config.get("video_width", 480) or 480)),
+        height=int(float(config.get("video_height", 270) or 270)),
+        bitrate_kbps=int(float(config.get("video_bitrate_kbps", 100) or 100)),
+        maxrate_kbps=int(float(config.get("video_maxrate_kbps", 120) or 120)),
+        bufsize_kbps=int(float(config.get("video_bufsize_kbps", 240) or 240)),
+        preset=str(config.get("video_preset", "ultrafast") or "ultrafast"),
+        encoder_threads=int(float(config.get("video_encoder_threads", 1) or 1)),
+        stats_interval_seconds=float(config.get("video_stats_interval_seconds", 5) or 5),
+    )
+
+
 def _storage_root():
     config = _camera_config()
     return config["STORAGE"]["fold_path"] + config["DEEP_CAMERA"]["path"]
@@ -247,6 +273,13 @@ class Delete_file(MyQThread):
         except Exception:
             return False
 
+    def _is_video_output_file(self, file_path):
+        try:
+            video_dir = str(_deep_camera_config().get("video_dir", "video") or "video").strip("/\\").lower()
+            return os.path.basename(os.path.dirname(file_path)).lower() == video_dir
+        except Exception:
+            return False
+
     def get_and_delete_files(self):
         global file_locks, frame_nums
 
@@ -261,7 +294,7 @@ class Delete_file(MyQThread):
                     continue
 
                 file_path = os.path.join(root, file_name)
-                if self._is_raw_color_file(file_path):
+                if self._is_raw_color_file(file_path) or self._is_video_output_file(file_path):
                     continue
 
                 try:
@@ -541,7 +574,7 @@ class UVCCameraProcessor(MyQThread):
             logger.info(f"deep_camera_{self.id} capture thread released")
 
     def dosomething(self):
-        global frame_nums
+        global frame_nums, video_recorder_thread
 
         # Reconnect lazily if the device dropped during runtime.
         if not self.init_state:
@@ -601,6 +634,13 @@ class UVCCameraProcessor(MyQThread):
             camera_session_id=self.camera_session_id,
             capture_monotonic_ns=capture_monotonic_ns,
         )
+        if video_recorder_thread is not None and video_recorder_thread.isRunning():
+            video_recorder_thread.submit_frame(
+                self.cage_number,
+                self.path,
+                color_image,
+                timestamp,
+            )
         with lock:
             frame_nums += 1
 
@@ -770,7 +810,7 @@ def main(q=None, runtime_diagnostics_queue=None, auto_start=False):
 
 
 def start():
-    global delete_file_thread, save_frame_thread
+    global delete_file_thread, save_frame_thread, video_recorder_thread
 
     try:
         logger.info(f"{'-' * 30}deep_camera_run{'-' * 30}")
@@ -790,12 +830,44 @@ def start():
         except Exception as e:
             logger.error(f"stop deep_camera_save_raw_frame failed: {e}")
 
+        if video_recorder_thread is not None:
+            try:
+                video_recorder_thread.stop()
+                video_recorder_thread.requestInterruption()
+                video_recorder_thread.wait(6000)
+            except Exception as e:
+                logger.error(f"stop old FFmpeg video recorder failed: {e}")
+            video_recorder_thread = None
+
         if _save_raw_frames():
             save_frame_thread = SaveRawFrameThread()
             save_frame_thread.start()
         else:
             save_frame_thread = None
             logger.info("deep_camera raw frame saving disabled")
+
+        if _record_video_enabled():
+            recorder = FFmpegVideoRecorderThread(
+                config=_video_recorder_config(),
+                session_timestamp=global_setting.get_setting("start_experiment_time", time.time()),
+                diagnostic_callback=_emit_runtime_diagnostic,
+            )
+            if recorder.available:
+                video_recorder_thread = recorder
+                video_recorder_thread.start()
+            else:
+                video_recorder_thread = None
+                logger.error(
+                    "FFmpeg video recording disabled: ffmpeg executable was not found. "
+                    "Install imageio-ffmpeg or set DEEP_CAMERA.ffmpeg_path."
+                )
+                _emit_runtime_diagnostic(
+                    "video_record_unavailable",
+                    "ffmpeg executable was not found; camera capture and trajectory continue normally",
+                )
+        else:
+            video_recorder_thread = None
+            logger.info("deep_camera FFmpeg video recording disabled by config")
 
         delete_file_thread = Delete_file(
             path=path,
@@ -820,7 +892,7 @@ def pause():
 
 
 def stop():
-    global delete_file_thread, camera_list, save_frame_thread, experiment_running
+    global delete_file_thread, camera_list, save_frame_thread, video_recorder_thread, experiment_running
 
     experiment_running = False
     logger.info(f"{'-' * 30}deep_camera_stop{'-' * 30}")
@@ -884,6 +956,16 @@ def stop():
         except Exception as e:
             logger.error(f"stop deep_camera_save_raw_frame failed: {e}")
         save_frame_thread = None
+
+    if video_recorder_thread is not None:
+        try:
+            video_recorder_thread.stop()
+            video_recorder_thread.requestInterruption()
+            if video_recorder_thread.isRunning() and not video_recorder_thread.wait(6000):
+                logger.error("FFmpeg video recorder stop timed out")
+        except Exception as e:
+            logger.error(f"stop FFmpeg video recorder failed: {e}")
+        video_recorder_thread = None
 
     if cameras_stopped:
         camera_list = []
