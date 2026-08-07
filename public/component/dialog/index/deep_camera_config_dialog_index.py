@@ -4,7 +4,7 @@ import typing
 import cv2
 from PyQt6 import QtGui
 from PyQt6.QtCore import QRect, Qt, QThread, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QLabel, QMessageBox, QPushButton
+from PyQt6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QLabel, QPushButton
 from loguru import logger
 
 from public.component.dialog.deep_camera_config_dialog import Ui_deep_camera_config_dialog
@@ -126,7 +126,8 @@ class deep_camera_config_dialog(QDialog):
         self.ui = Ui_deep_camera_config_dialog()
         self.ui.setupUi(self)
         self.setParent(None)
-        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        # 保留右上角关闭按钮。
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, True)
         self.setModal(True)
         self.setWindowTitle(title)
 
@@ -296,11 +297,6 @@ class deep_camera_config_dialog(QDialog):
     def ok_func(self):
         choose_data = [item for item in self.camera_series_choose_list if item is not None]
         config_file_path = f"./{global_setting.get_setting('camera_config')['DEEP_CAMERA']['camera_to_mouse_cage_number_file_name']}"
-        if not choose_data and folder_util.is_exist_file(config_file_path):
-            old_data = json_util.read_json_to_dict_list(config_file_path)
-            if old_data:
-                QMessageBox.warning(self, "无法保存", "当前未选择任何深度相机，原配置不会被清空。")
-                return
         json_util.store_json_from_dict_list(filename=config_file_path, data=choose_data)
 
         queue = global_setting.get_setting("queue", None)

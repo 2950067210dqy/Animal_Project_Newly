@@ -132,8 +132,8 @@ class infrared_camera_config_dialog(QDialog):
         self.setParent(None)
         # 窗口总是在最顶层
         # self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
-        # 隐藏右上角的关闭按钮
-        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        # 保留右上角关闭按钮。
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, True)
         self.setModal(True)
         self.setWindowTitle(title)
         pass
@@ -865,11 +865,6 @@ class infrared_camera_config_dialog(QDialog):
 
         # 1.把选择的数据存到json中
         config_file_path = f"./{global_setting.get_setting('camera_config')['INFRARED_CAMERA']['camera_to_mouse_cage_number_file_name']}"
-        if not choose_data and folder_util.is_exist_file(config_file_path):
-            old_data = json_util.read_json_to_dict_list(config_file_path)
-            if old_data:
-                QMessageBox.warning(self, "无法保存", "当前未选择任何红外相机，原配置不会被清空。")
-                return
         json_util.store_json_from_dict_list(filename=config_file_path, data=choose_data)
         # 2.给主线程传输信号 实例化相机线程
         queue =global_setting.get_setting("queue",None)
