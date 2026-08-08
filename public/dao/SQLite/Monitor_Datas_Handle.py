@@ -41,6 +41,49 @@ class Monitor_Datas_Handle():
         "running_wheel_num",
     }
 
+    @staticmethod
+    def get_epoch_query_plan(mouse_cage_number: int) -> Dict[str, List[str]]:
+        """返回单个笼子生成 Epoch 数据时真正需要读取的表和字段。"""
+        cage_number = int(mouse_cage_number)
+        return {
+            "ZeroCalibration_data": [
+                "oxygen_calibration_zero_value",
+                "zos_pressure_calibration_zero_value",
+                "remarks",
+            ],
+            "SpanCalibration_data": [
+                "oxygen_calibration_span_value",
+                "zos_pressure_calibration_span_value",
+                "carbon_calibration_span_value",
+                "remarks",
+            ],
+            f"UFC_monitor_data_cage_{cage_number}": ["flow_num", "remarks"],
+            f"UGC_monitor_data_cage_{cage_number}": ["flow_num_1", "CO2_num", "remarks"],
+            f"ZOS_monitor_data_cage_{cage_number}": [
+                "oxygen_partial_pressure",
+                "zos_temperature_num",
+                "gas_pressure",
+                "oxygen_num",
+                "dry_basis_oxygen_num",
+                "fault_code",
+                "oxygen_temperature_2_num",
+                "oxygen_humidity_num",
+                "remarks",
+            ],
+            f"MouseInfrared_data_cage_{cage_number}": ["tmp_hs_max", "tmp_hs_mean"],
+            f"ENM_monitor_data_cage_{cage_number}": [
+                "temperature_num",
+                "humidity_num",
+                "noise_num",
+                "barometer_num",
+                "running_wheel_num",
+                "remarks",
+            ],
+            f"DWM_monitor_data_cage_{cage_number}": ["weight_num", "remarks"],
+            f"EM_monitor_data_cage_{cage_number}": ["weight_num", "remarks"],
+            f"WM_monitor_data_cage_{cage_number}": ["weight_num", "remarks"],
+        }
+
     def __init__(self,db_name=None):
         # 实验设置
         self.experiment_setting: Experiment_setting_entity = global_setting.get_setting("experiment_setting", None)
@@ -1001,19 +1044,25 @@ class Monitor_Datas_Handle():
         pass
 
 
-    def query_epoch_actual_end_time(self, start_time, end_time=None):
+    def query_epoch_actual_end_time(self, start_time, end_time=None, table_names=None):
         if end_time is None:
             end_time = time.time()
-        tables = self.sqlite_manager.get_tables_with_time(exclude_substr=["meta","Epoch_data"], columns=['time'])
+        tables = list(table_names) if table_names is not None else self.sqlite_manager.get_tables_with_time(
+            exclude_substr=["meta", "Epoch_data"], columns=['time']
+        )
         return self.sqlite_manager.get_latest_time_across_tables(tables, start_time=start_time, end_time=end_time)
 
-    def query_data_in_line_with_epoch_data(self,start_time,end_time, start_exclusive=False):
+    def query_data_in_line_with_epoch_data(self, start_time, end_time, start_exclusive=False,
+                                           table_columns=None):
         # 找出当前时间段的所有数据表的数据除了meta表
-        tables = self.sqlite_manager.get_tables_with_time(exclude_substr=["meta","Epoch_data"],columns=['time'])
+        tables = list(table_columns) if table_columns is not None else self.sqlite_manager.get_tables_with_time(
+            exclude_substr=["meta", "Epoch_data"], columns=['time']
+        )
         # logger.critical(tables)
         # 执行查询
         results, columns = self.sqlite_manager.get_multi_table_data(tables,
-            start_time, end_time, join_type="separate", start_exclusive=start_exclusive
+            start_time, end_time, join_type="separate", start_exclusive=start_exclusive,
+            selected_columns=table_columns
         )
         # logger.critical(results)
         # logger.critical(columns)

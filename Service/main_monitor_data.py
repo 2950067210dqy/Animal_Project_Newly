@@ -1230,8 +1230,13 @@ def barrier_action():
 
 
     handle = Monitor_Datas_Handle()  # # 创建数据库操作器
+    epoch_query_plan = handle.get_epoch_query_plan(mouse_cage_number)
     start_time = global_setting.get_setting("start_time_messages_sent_epoch_for_running", time.time())
-    actual_end_time = handle.query_epoch_actual_end_time(start_time, query_end_limit)
+    actual_end_time = handle.query_epoch_actual_end_time(
+        start_time,
+        query_end_limit,
+        table_names=epoch_query_plan,
+    )
     end_time = actual_end_time if actual_end_time is not None else start_time
 
     logo_text =f"{time_util.get_format_from_time(time.time())} | 一轮结束|结束时间：{time_util.get_format_from_time(end_time)}|开始时间：{time_util.get_format_from_time(start_time)}|用时：{time_util.format_timedelta(a= datetime.fromtimestamp(end_time),b= datetime.fromtimestamp(start_time),signed=True,zero_pad=True)}|一轮传感器发送报文结束|期间一共发送{ global_setting.get_setting('messages_sent_epoch_for_running', 0)}条报文。"
@@ -1244,7 +1249,12 @@ def barrier_action():
                             data=logo_text,
                             time=time_util.get_format_from_time(time.time())))
     # 去数据库里查询 所有的在这个时间段的数据
-    results, columns=handle.query_data_in_line_with_epoch_data(start_time,end_time, start_exclusive=True)
+    results, columns = handle.query_data_in_line_with_epoch_data(
+        start_time,
+        end_time,
+        start_exclusive=True,
+        table_columns=epoch_query_plan,
+    )
     # logger.critical(f"{results}")
     store_Datas =[]
     # store_Datas.append({'desc':'序号','value':None})

@@ -257,16 +257,21 @@ class SQLiteManager:
         end_time_f = datetime.datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if end_time is not None else None
         latest_time_text = None
 
+        valid_tables = []
+        for table_name in table_names:
+            try:
+                columns = {row[1] for row in self.get_table_info(table_name)}
+                if self.TIME_COLUMN_NAME not in columns:
+                    continue
+                self.ensure_time_index(table_name)
+                valid_tables.append(table_name)
+            except sqlite3.OperationalError as e:
+                logger.error(f"检查表 {table_name} 时出错: {e}")
+
         with self.execute_transaction(auto_commit=True) as cursor:
-            for table_name in table_names:
+            for table_name in valid_tables:
                 try:
                     q = self.quote_ident(table_name)
-                    cursor.execute(f"PRAGMA table_info({q})")
-                    table_info = cursor.fetchall()
-                    cols = [r[1] for r in table_info]
-                    if self.TIME_COLUMN_NAME not in cols:
-                        continue
-
                     where_clauses = []
                     params = []
                     if start_time_f is not None:
@@ -488,7 +493,8 @@ class SQLiteManager:
         return ",\n".join(foreign_keys)
 
     def get_multi_table_data(self, table_names: List[str], start_time: float, end_time: float,
-                             join_type: str = "union", start_exclusive: bool = False):
+                             join_type: str = "union", start_exclusive: bool = False,
+                             selected_columns: Optional[Dict[str, List[str]]] = None):
         """从多个SQLite表中获取指定时间范围的数据"""
         try:
             valid_tables = []
@@ -503,14 +509,21 @@ class SQLiteManager:
                             continue
 
                         # 获取表的列信息
-                        cursor.execute(f"PRAGMA table_info({table})")
+                        cursor.execute(f"PRAGMA table_info({self.quote_ident(table)})")
                         columns_info = cursor.fetchall()
                         columns = [col[1] for col in columns_info]
 
                         if self.TIME_COLUMN_NAME not in columns:
                             continue
 
-                        other_columns = [col for col in columns if col not in ['id', 'time']]
+                        if selected_columns is None:
+                            other_columns = [col for col in columns if col not in ['id', 'time']]
+                        else:
+                            requested_columns = selected_columns.get(table, [])
+                            other_columns = [
+                                col for col in requested_columns
+                                if col in columns and col not in ['id', 'time']
+                            ]
 
                         if other_columns:
                             valid_tables.append(table)
@@ -522,6 +535,9 @@ class SQLiteManager:
 
             if not valid_tables:
                 return [], []
+
+            for table in valid_tables:
+                self.ensure_time_index(table)
 
             if join_type.lower() == "union":
                 return self._union_query(valid_tables, table_columns, start_time, end_time, start_exclusive=start_exclusive)
@@ -541,17 +557,26 @@ class SQLiteManager:
         all_columns = ['time']
         start_time_f = datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         end_time_f = datetime.datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        time_condition = "time > ? AND time <= ?" if start_exclusive else "time BETWEEN ? AND ?"
 
         with self.execute_transaction(auto_commit=True) as cursor:
             for table in tables:
                 table_cols = table_columns[table]
-                column_selects = ['time'] + [f"{col} AS {table}__{col}" for col in table_cols]
+                quoted_time = self.quote_ident(self.TIME_COLUMN_NAME)
+                quoted_table = self.quote_ident(table)
+                time_condition = (
+                    f"{quoted_time} > ? AND {quoted_time} <= ?"
+                    if start_exclusive
+                    else f"{quoted_time} BETWEEN ? AND ?"
+                )
+                column_selects = [quoted_time] + [
+                    f"{self.quote_ident(col)} AS {self.quote_ident(f'{table}__{col}')}"
+                    for col in table_cols
+                ]
                 query = f"""
                 SELECT {', '.join(column_selects)}
-                FROM {table}
+                FROM {quoted_table}
                 WHERE {time_condition}
-                ORDER BY time
+                ORDER BY {quoted_time}
                 """
 
                 cursor.execute(query, (start_time_f, end_time_f))
