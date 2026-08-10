@@ -48,7 +48,12 @@ from public.util.time_util import time_util
 MESSAGE_BATCH_SIZE = 0
 total_messages_processed = 1
 lock = threading.Lock()
-batch_complete_event = threading.Event()
+COLLECTION_BATCH_TIMEOUT_SECONDS = 20.0
+COLLECTION_BARRIER_TIMEOUT_SECONDS = 45.0
+COLLECTION_SENSOR_MAX_ATTEMPTS = 3
+COLLECTION_SENSOR_RETRY_DELAY_SECONDS = 0.1
+
+batch_complete_event = threading.Semaphore(0)
 #等待气路启动之后在一起运行发送
 wait_UFC_UGC_ZOS_start_event = threading.Event()
 global_setting.set_setting("wait_UFC_UGC_ZOS_start_event",wait_UFC_UGC_ZOS_start_event)
@@ -56,12 +61,53 @@ global_setting.set_setting("wait_UFC_UGC_ZOS_start_event",wait_UFC_UGC_ZOS_start
 experiment_settings = global_setting.get_setting("experiment_setting",None)
 gids = [group.id for group in experiment_settings.groups if group.is_selected == 1] if experiment_settings is not None else []
 #气路之间也需要顺序run ufc run->ugc run->zos run
-wait_UFC_run_finish_event = threading.Event()
-wait_UGC_run_finish_event = threading.Event()
-wait_ZOS_run_finish_event = threading.Event()
+wait_UFC_run_finish_event = threading.Semaphore(0)
+wait_UGC_run_finish_event = threading.Semaphore(0)
+wait_ZOS_run_finish_event = threading.Semaphore(0)
 global_setting.set_setting("wait_UFC_run_finish_event",wait_UFC_run_finish_event)
 global_setting.set_setting("wait_UGC_run_finish_event",wait_UGC_run_finish_event)
 global_setting.set_setting("wait_ZOS_run_finish_event",wait_ZOS_run_finish_event)
+
+
+def _reset_collection_sync_signals():
+    """Install empty counting signals for a new experiment run."""
+    global batch_complete_event
+    global wait_UFC_run_finish_event, wait_UGC_run_finish_event, wait_ZOS_run_finish_event
+
+    batch_complete_event = threading.Semaphore(0)
+    wait_UFC_run_finish_event = threading.Semaphore(0)
+    wait_UGC_run_finish_event = threading.Semaphore(0)
+    wait_ZOS_run_finish_event = threading.Semaphore(0)
+    global_setting.set_setting("wait_UFC_run_finish_event", wait_UFC_run_finish_event)
+    global_setting.set_setting("wait_UGC_run_finish_event", wait_UGC_run_finish_event)
+    global_setting.set_setting("wait_ZOS_run_finish_event", wait_ZOS_run_finish_event)
+
+
+def _release_collection_sync_waiters():
+    """Wake collection workers promptly while an experiment is stopping."""
+    batch_complete_event.release()
+    for signal_name in (
+        "wait_UFC_run_finish_event",
+        "wait_UGC_run_finish_event",
+        "wait_ZOS_run_finish_event",
+    ):
+        signal = global_setting.get_setting(signal_name, None)
+        if signal is not None and hasattr(signal, "release"):
+            signal.release()
+
+
+def _drain_collection_stage_signals():
+    """Discard notifications left over from a completed or failed round."""
+    for signal_name in (
+        "wait_UFC_run_finish_event",
+        "wait_UGC_run_finish_event",
+        "wait_ZOS_run_finish_event",
+    ):
+        signal = global_setting.get_setting(signal_name, None)
+        if signal is None or not hasattr(signal, "acquire"):
+            continue
+        while signal.acquire(blocking=False):
+            pass
 
 #使用端口
 port_use=None
@@ -723,6 +769,35 @@ class Send_thread(MyQThread):
     def set_modbus(self, modbus):
         self.modbus = modbus
 
+    def _send_sensor_read_with_retry(self, send_message):
+        result = (None, None, False, None)
+        for attempt in range(1, COLLECTION_SENSOR_MAX_ATTEMPTS + 1):
+            result = self.modbus.send_command(
+                slave_id=send_message['slave_id'],
+                function_code=send_message['function_code'],
+                data_hex_list=send_message['data'],
+                is_parse_response=False,
+            )
+            if result[2]:
+                if attempt > 1:
+                    logger.warning(
+                        "sensor read recovered after retry: "
+                        f"slave_id={send_message['slave_id']}, "
+                        f"function_code={send_message['function_code']}, "
+                        f"attempt={attempt}"
+                    )
+                return result
+
+            logger.warning(
+                "sensor read failed; retrying current request: "
+                f"slave_id={send_message['slave_id']}, "
+                f"function_code={send_message['function_code']}, "
+                f"attempt={attempt}/{COLLECTION_SENSOR_MAX_ATTEMPTS}"
+            )
+            if attempt < COLLECTION_SENSOR_MAX_ATTEMPTS:
+                time.sleep(COLLECTION_SENSOR_RETRY_DELAY_SECONDS)
+        return result
+
     def run(self):
         logger.warning(f"{self.name} thread has been started！")
         self._running=True
@@ -850,11 +925,8 @@ class Send_thread(MyQThread):
                             # 普通鼠笼消息直接发送；参考分支只放行显式允许的 reference_enm
                             if message and message.get('type', None) in (None, 'reference_enm'):
                                 start_time=time.time()
-                                response, response_hex, send_state,return_data = self.modbus.send_command(
-                                    slave_id=send_message['slave_id'],
-                                    function_code=send_message['function_code'],
-                                    data_hex_list=send_message['data'],
-                                    is_parse_response=False
+                                response, response_hex, send_state, return_data = (
+                                    self._send_sensor_read_with_retry(send_message)
                                 )
                                 end_time = time.time()
                                 if response is not None:
@@ -926,8 +998,7 @@ class Send_thread(MyQThread):
                                     total_messages_processed = 1
                                     MESSAGE_BATCH_SIZE = 0
 
-                                    batch_complete_event.set()  # 通知主线程当前批次完成
-                                    batch_complete_event.clear()  # 重置事件
+                                    batch_complete_event.release()
                                 else:
                                     total_messages_processed += 1
                         else:
@@ -943,8 +1014,7 @@ class Send_thread(MyQThread):
 
                                     total_messages_processed = 1
                                     MESSAGE_BATCH_SIZE = 0
-                                    batch_complete_event.set()  # 通知主线程当前批次完成
-                                    batch_complete_event.clear()  # 重置事件
+                                    batch_complete_event.release()
                                 else:
                                     total_messages_processed += 1
 
@@ -1086,15 +1156,38 @@ class Add_message_thread(MyQThread):
             # 当前为参考气 则下一个为第一个鼠笼
                 self.mouse_cage_index = 0
                 pass
-            batch_complete_event.wait()
+            batch_completed = batch_complete_event.acquire(
+                timeout=COLLECTION_BATCH_TIMEOUT_SECONDS
+            )
+            if not batch_completed:
+                logger.critical(
+                    "collection batch timeout: "
+                    f"cage_index={current_mouse_cage_index}, "
+                    f"expected_messages={len(send_messages)}, "
+                    f"timeout={COLLECTION_BATCH_TIMEOUT_SECONDS:.1f}s"
+                )
 
             # 在这里手动触发 barrier（只有自己一个线程，立刻触发 barrier_action）
             try:
                 barrier = global_setting.get_setting("barrier")
                 if barrier is not None:
-                    barrier.wait()
-            except threading.BrokenBarrierError:
-                logger.error("barrier broken，跳过本轮")
+                    barrier.wait(timeout=COLLECTION_BARRIER_TIMEOUT_SECONDS)
+            except threading.BrokenBarrierError as exc:
+                logger.critical(
+                    "collection barrier failed; workers were released for recovery: "
+                    f"cage_index={current_mouse_cage_index}, error={exc}"
+                )
+                try:
+                    _drain_collection_stage_signals()
+                    barrier.reset()
+                    logger.warning(
+                        "collection barrier reset completed: "
+                        f"cage_index={current_mouse_cage_index}"
+                    )
+                except Exception as reset_error:
+                    logger.critical(
+                        f"collection barrier reset failed: {reset_error}"
+                    )
 
             logger.info(f"从线程已处理完上批消息，主线程继续发送下一批\n")
 
@@ -1211,6 +1304,7 @@ def get_epoch_mouse_cage_index():
 
 
 def barrier_action():
+    _drain_collection_stage_signals()
     query_end_limit = time.time()
     mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
     mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
@@ -1551,7 +1645,11 @@ def main(q,send_message_q):
     # barrier专门用于多个线程需要在某个点同步等待的场景。每个线程执行完自己的工作后调用
     # barrier.wait()，当所有线程都到达这个同步点时，它们会同时继续执行下一轮循环。
     # barrier = ActionCompleteBarrier(4,action=barrier_action)
-    barrier = DynamicBarrier(1, action=barrier_action)
+    barrier = DynamicBarrier(
+        1,
+        action=barrier_action,
+        timeout=COLLECTION_BARRIER_TIMEOUT_SECONDS,
+    )
     global_setting.set_setting("barrier", barrier)
     #专属于ufc ugc zos 的run的barrier
     # ufc_ugc_zos_barrier =ActionCompleteBarrier(3,action=after_run_of_ufc_ugc_zos_barrier_action)
@@ -1580,6 +1678,7 @@ def start():
     global MESSAGE_BATCH_SIZE, total_messages_processed,gids
     MESSAGE_BATCH_SIZE = 0
     total_messages_processed = 1
+    _reset_collection_sync_signals()
     # 当前鼠笼号列表的下标 参考气的下标为None 注意区分
     global_setting.set_setting("cage_number_list_index", None)
     # 通道
@@ -1815,6 +1914,7 @@ def stop():
         return
     # 重置barrier回1，下次实验从1开始
     barrier = global_setting.get_setting("barrier")
+    _release_collection_sync_waiters()
     if barrier is not None:
         barrier.reset(parties=1)
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread
