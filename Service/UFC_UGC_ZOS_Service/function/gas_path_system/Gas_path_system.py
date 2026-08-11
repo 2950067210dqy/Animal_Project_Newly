@@ -30,70 +30,6 @@ wait_UFC_start_finish_event = threading.Event()
 # 等待ufc 停止完
 wait_UFC_stop_finish_event = threading.Event()
 logger = logger.bind(category="monitor_data_logger")
-
-COLLECTION_STAGE_TIMEOUT_SECONDS = 15.0
-COLLECTION_BARRIER_TIMEOUT_SECONDS = 45.0
-
-
-def _notify_collection_stage(signal_name, participant):
-    signal = global_setting.get_setting(signal_name, None)
-    if signal is None:
-        logger.critical(
-            f"collection stage signal missing: participant={participant}, "
-            f"signal={signal_name}"
-        )
-        return False
-
-    if hasattr(signal, "release"):
-        signal.release()
-    else:
-        signal.set()
-    logger.debug(
-        f"collection stage notified: participant={participant}, signal={signal_name}"
-    )
-    return True
-
-
-def _wait_collection_stage(signal_name, participant):
-    signal = global_setting.get_setting(signal_name, None)
-    if signal is None:
-        logger.critical(
-            f"collection stage signal missing: participant={participant}, "
-            f"signal={signal_name}"
-        )
-        return False
-
-    if hasattr(signal, "acquire"):
-        completed = signal.acquire(timeout=COLLECTION_STAGE_TIMEOUT_SECONDS)
-    else:
-        completed = signal.wait(timeout=COLLECTION_STAGE_TIMEOUT_SECONDS)
-        if completed:
-            signal.clear()
-
-    if not completed:
-        logger.critical(
-            f"collection stage timeout; continuing to avoid deadlock: "
-            f"participant={participant}, waiting_for={signal_name}, "
-            f"timeout={COLLECTION_STAGE_TIMEOUT_SECONDS:.1f}s"
-        )
-    return completed
-
-
-def _wait_collection_barrier(participant):
-    barrier = global_setting.get_setting("barrier", None)
-    if barrier is None:
-        return True
-    try:
-        barrier.wait(timeout=COLLECTION_BARRIER_TIMEOUT_SECONDS)
-        return True
-    except threading.BrokenBarrierError as exc:
-        logger.critical(
-            f"collection barrier failed; participant released for recovery: "
-            f"participant={participant}, error={exc}"
-        )
-        return False
-
-
 class Gas_path_system:
     """
     气路系统 三个气路模块的父类
@@ -426,9 +362,14 @@ class UFC_gas_path_system_run_thread(MyQThread):
         else:
             logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
         # 让ugc开始运行
-        _notify_collection_stage("wait_UFC_run_finish_event", "UFC")
-        logger.debug("barrier_UFC run one batch done ! ")
-        _wait_collection_barrier("UFC")
+        wait_UFC_run_finish_event = global_setting.get_setting("wait_UFC_run_finish_event", None)
+        if wait_UFC_run_finish_event:
+            wait_UFC_run_finish_event.set()
+            wait_UFC_run_finish_event.clear()
+        barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            logger.debug(f"barrier_UFC run one batch done ! ")
+            barrier.wait()
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
 
     def read_flow_rate_value_circulation(self, resolve, reject, port, mouse_cages_inc):
@@ -480,8 +421,10 @@ class UFC_gas_path_system_run_thread(MyQThread):
         # if ufc_ugc_zos_barrier is not None :
         #     logger.debug(f"ufc_ugc_zos_barrier_UFC run one batch done ! ")
         #     ufc_ugc_zos_barrier.wait()
-        logger.debug("barrier_UFC run one batch done ! ")
-        _wait_collection_barrier("UFC-circular-read")
+        barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            logger.debug(f"barrier_UFC run one batch done ! ")
+            barrier.wait()
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['run_time_delay']))
         resolve()
 class UFC_gas_path_system(Gas_path_system):
@@ -712,15 +655,10 @@ class UGC_gas_path_system_run_thread(MyQThread):
 
         return result_data
     def dosomething(self):
-        if not _wait_collection_stage("wait_UFC_run_finish_event", "UGC"):
-            logger.critical(
-                "UGC skipped this collection round because UFC did not finish"
-            )
-            _wait_collection_barrier("UGC-stage-timeout")
-            time.sleep(float(
-                global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']
-            ))
-            return
+        wait_UFC_run_finish_event=global_setting.get_setting("wait_UFC_run_finish_event",None )
+        if wait_UFC_run_finish_event:
+            # 阻塞 等待ufc运行完在运行
+            wait_UFC_run_finish_event.wait()
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
@@ -755,9 +693,15 @@ class UGC_gas_path_system_run_thread(MyQThread):
             logger.error(f"数据存储失败: {result.error if result else '未知错误'}")
 
         # 通知zos 运行
-        _notify_collection_stage("wait_UGC_run_finish_event", "UGC")
-        logger.debug("barrier_UGC run one batch done ! ")
-        _wait_collection_barrier("UGC")
+        wait_UGC_run_finish_event=global_setting.get_setting("wait_UGC_run_finish_event",None )
+        if wait_UGC_run_finish_event:
+            wait_UGC_run_finish_event.set()
+            wait_UGC_run_finish_event.clear()
+
+        barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            logger.debug(f"barrier_UGC run one batch done ! ")
+            barrier.wait()
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UGC']['run_time_delay']))
 class UGC_gas_path_system(Gas_path_system):
     """
@@ -1080,12 +1024,9 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         super().stop()
 
     def dosomething(self):
-        if not _wait_collection_stage("wait_UGC_run_finish_event", "ZOS"):
-            logger.critical(
-                "ZOS skipped this collection round because UGC did not finish"
-            )
-            self._finish_batch()
-            return
+        wait_UGC_run_finish_event = global_setting.get_setting("wait_UGC_run_finish_event", None)
+        if wait_UGC_run_finish_event:
+            wait_UGC_run_finish_event.wait()
 
         mouse_cage_index = global_setting.get_setting("cage_number_list_index", None)
         mouse_cages_inc: list = global_setting.get_setting("mouse_cages", None)
@@ -1139,8 +1080,10 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         self._finish_batch()
 
     def _finish_batch(self):
-        logger.debug("barrier_ZOS run one batch done ! ")
-        _wait_collection_barrier("ZOS")
+        barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            logger.debug(f"barrier_ZOS run one batch done ! ")
+            barrier.wait()
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
 
 
@@ -1237,8 +1180,10 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             pass
         global_setting.set_setting("cage_number_list_index", mouse_cage_index)
         # logger.critical(f"zos run :mouse_cage_index after:{mouse_cage_index}")
-        logger.debug("barrier_ZOS run one batch done ! ")
-        _wait_collection_barrier("ZOS-circular-read")
+        barrier = global_setting.get_setting("barrier")
+        if barrier is not None:
+            logger.debug(f"barrier_ZOS run one batch done ! ")
+            barrier.wait()
         pass
         time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['run_time_delay']))
         resolve()
