@@ -82,6 +82,8 @@ class StopExperimentExportThread(QThread):
 
 
 class read_queue_data_Thread(MyQThread):
+    gas_path_start_completed_signal = pyqtSignal()
+
     def __init__(self, name,window=None):
         super().__init__(name)
         self.queue = None
@@ -132,18 +134,7 @@ class read_queue_data_Thread(MyQThread):
                             self.window.status_bar.update_tip(message.data)
                             pass
                     case 'close_start_experiment_dialog':
-                        if self.window is not None and self.window.start_dialog is not None:
-                            self.window.start_dialog.update_progress_value(self.window.start_dialog.progress_max)
-                        if self.window is not None:
-                            # ★ 标记成功，取消备用超时计时器
-                            self.window._gas_path_success = True
-                            if self.window._gas_path_timeout_timer is not None:
-                                self.window._gas_path_timeout_timer.stop()
-                                self.window._gas_path_timeout_timer = None
-                            # 显示3秒成功提示，之后恢复"正在监控数据"
-                            self.window.show_temp_status_tip_signal.emit("气路启动成功！", "#00aa00", 3000)
-                            QTimer.singleShot(3100,
-                                              lambda: self.window.status_bar.update_status() if self.window else None)
+                        self.gas_path_start_completed_signal.emit()
                     case "stop_deep_camera_return" |"stop_infrared_camera_return"|"stop_gap_system_return"|"stop_ufc_gap_system_return"|"stop_ugc_gap_system_return"|"stop_zos_gap_system_return"|"stop_monitor_data_return"|"stop_show_info_except_status_counts":
                         if message.data and self.window:
                             #  更新气路运行消息
@@ -479,6 +470,9 @@ class MainWindow_Index(ThemedWindow):
         # ★ 新增：气路成功标志 & 备用超时计时器
         self._gas_path_success = False
         self._gas_path_timeout_timer = None
+        read_queue_data_thread.gas_path_start_completed_signal.connect(
+            self._on_gas_path_start_success
+        )
         #暂停实验标志位
         self.is_paused = False
         # 点击开始实验 接受数据和存储数据的线程
@@ -1504,9 +1498,25 @@ class MainWindow_Index(ThemedWindow):
         pass
 
     def _on_gas_path_final_timeout(self):
-        """备用计时器到期：force_entered后气路仍未成功，仅显示红色提示，不停止"""
+        """备用计时器到期只表示完成通知尚未到达，不直接判定设备失败。"""
         if not self._gas_path_success:
-            self.show_temp_status_tip_signal.emit("气路初始化失败", "#cc0000", 0)
+            logger.warning("气路启动完成通知等待超时，后台仍在运行")
+            self.show_temp_status_tip_signal.emit(
+                "气路启动等待超时，后台仍在确认...", "#ff8800", 0
+            )
+
+    def _on_gas_path_start_success(self):
+        """在GUI线程确认气路启动完成并取消备用失败计时器。"""
+        self._gas_path_success = True
+        if self._gas_path_timeout_timer is not None:
+            self._gas_path_timeout_timer.stop()
+            self._gas_path_timeout_timer.deleteLater()
+            self._gas_path_timeout_timer = None
+        if self.start_dialog is not None:
+            self.start_dialog.update_progress_value(self.start_dialog.progress_max)
+        self.show_temp_status_tip_signal.emit("气路启动成功！", "#00aa00", 3000)
+        QTimer.singleShot(3100, self.status_bar.update_status)
+
     def cache_calibration_detail_log(self, message, has_time=True):
         self.calibration_detail_log_buffer.append((message, has_time))
         if len(self.calibration_detail_log_buffer) > 1000:

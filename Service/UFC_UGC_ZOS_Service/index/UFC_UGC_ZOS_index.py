@@ -87,8 +87,12 @@ class Monitor_start_state_Thread(MyQThread):
     def dosomething(self):
         # logger.critical(f"UFC:{self.UFC_gas_path_system_obj.ufc_start_time_state},ZOS:{self.ZOS_gas_path_system_obj.zos_start_status}" )
         if self.ZOS_gas_path_system_obj.zos_start_status:
-
-            self.update_start_state_signal.send()
+            # The signal is synchronous. Stop this polling loop first, then let
+            # the owner publish completion without waiting on this same thread.
+            self.stop()
+            if self.update_start_state_signal is not None:
+                self.update_start_state_signal.send()
+            return
         time.sleep(1)
 
 
@@ -293,12 +297,10 @@ class UFC_UGC_ZOS_index(MyQThread):
     def update_start_state(self, sender, **kwargs):
         if self.monitor_start_state_Thread is not None:
             self.monitor_start_state_Thread.stop()
-            self.monitor_start_state_Thread.deleteLater()
-            self.monitor_start_state_Thread = None
         self.close_timers()
 
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | 气路启动完成")
-        logger.error(f"更新启动完成状态{'-'*100 }")
+        logger.info(f"更新启动完成状态{'-'*100 }")
         global auto_wait_event
         auto_wait_event.set()
         auto_wait_event.clear()
