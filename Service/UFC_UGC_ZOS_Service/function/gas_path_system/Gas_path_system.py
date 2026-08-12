@@ -12,7 +12,10 @@ from blinker.base import _PNamespaceSignal
 from loguru import logger
 
 
-from Service.UFC_UGC_ZOS_Service.function.o2_compensation import calculate_o2_compensated
+from Service.UFC_UGC_ZOS_Service.function.o2_compensation import (
+    calculate_o2_compensated,
+    get_reference_dry_oxygen_percent,
+)
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
 
 from public.config_class.global_setting import global_setting
@@ -981,7 +984,8 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             return result_data
 
         reference_cage_number = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
-        if int(mouse_cage_number) == reference_cage_number:
+        is_reference_cage = int(mouse_cage_number) == reference_cage_number
+        if is_reference_cage:
             channel_id = "REF"
         elif 1 <= int(mouse_cage_number) <= 8:
             channel_id = f"M{int(mouse_cage_number)}"
@@ -989,6 +993,14 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             return result_data
 
         data_items = result_data.get("data", [])
+        if is_reference_cage:
+            self._set_data_value(
+                data_items,
+                "干基氧浓度(%)",
+                get_reference_dry_oxygen_percent(),
+            )
+            return result_data
+
         o2_partial_press = self._get_data_value(data_items, "氧分压(hPa)")
         gas_total_press = self._get_data_value(data_items, "气体压力(hPa)")
         o2_raw_pct = self._get_data_value(data_items, "氧浓度(%)")

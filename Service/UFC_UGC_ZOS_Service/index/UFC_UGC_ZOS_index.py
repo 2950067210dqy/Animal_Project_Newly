@@ -10,6 +10,7 @@ from loguru import logger
 from blinker import signal, Signal
 
 from Service.UFC_UGC_ZOS_Service.function.co2_compensation import Startup_CO2_Air_Calibration
+from Service.UFC_UGC_ZOS_Service.function.o2_compensation import initialize_reference_dry_oxygen_percent
 from Service.UFC_UGC_ZOS_Service.function.gas_calibration.Gas_Carlibration import Zero_Carlibration, Range_Carlibration
 from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
     UGC_gas_path_system, UFC_gas_path_system
@@ -135,6 +136,8 @@ class UFC_UGC_ZOS_index(MyQThread):
         else:
             logger.error("UFC_UGC_ZOS_config配置文件读取失败。")
         global_setting.set_setting("UFC_UGC_ZOS_config", configer)
+        reference_dry_oxygen = initialize_reference_dry_oxygen_percent(configer)
+        logger.info(f"REF干基氧浓度启动值: {reference_dry_oxygen:.3f}%")
         serial_lock = threading.Lock()
         global_setting.set_setting("serial_lock", serial_lock)
 
