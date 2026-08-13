@@ -284,6 +284,18 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             Tab_1._initialization_state[instance_id] = 'completed'
 
 
+    @staticmethod
+    def _environment_module_only_enabled():
+        value = global_setting.get_setting("environment_module_only", False)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _required_cage_modules(self):
+        if self._environment_module_only_enabled():
+            return {"ENM"}
+        return {"ENM", "EM", "DWM", "WM"}
+
     def _init_attributes(self):
         """初始化所有属性 - 必须在 super().__init__() 之后调用"""
 
@@ -305,8 +317,12 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.air_modules_completed = {}
         self.air_modules_detected = {}
         self.air_modules_valid = {}
-        self.air_modules_to_detect = ['UFC', 'UGC', 'ZOS']
-        self.required_air_modules = {'UFC', 'UGC', 'ZOS'}
+        if self._environment_module_only_enabled():
+            self.air_modules_to_detect = []
+            self.required_air_modules = set()
+        else:
+            self.air_modules_to_detect = ['UFC', 'UGC', 'ZOS']
+            self.required_air_modules = {'UFC', 'UGC', 'ZOS'}
 
         self.air_module_detection_results = {
             'UFC': {'detected': False, 'valid': False},
@@ -446,6 +462,17 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.module_detection_layout.setContentsMargins(10, 10, 10, 10)
 
         self.module_status_labels = {}
+
+        if self._environment_module_only_enabled():
+            status_label = QtWidgets.QLabel(
+                "仅环境模块测试：UFC、UGC、ZOS 检测已跳过"
+            )
+            status_label.setStyleSheet(
+                "QLabel { color: #28764f; font-weight: bold; padding: 6px; }"
+            )
+            self.module_detection_layout.addWidget(status_label)
+            self.module_detection_layout.addStretch()
+            return
 
         modules_to_detect = [
             {'name': 'UFC', 'key': 'UFC'},
@@ -741,7 +768,10 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             for module_key, module_value in self.config.items():
                 if module_key == Modbus_Type.Modbus_Slave_Ids.ENM.value['name']:
                     self.init_enm_config_ui_default(module_key, module_value, self.content_layout)
-                elif module_key == Modbus_Type.Modbus_Slave_Ids.EM.value['name']:
+                elif (
+                    not self._environment_module_only_enabled()
+                    and module_key == Modbus_Type.Modbus_Slave_Ids.EM.value['name']
+                ):
                     self.init_em_config_ui_default(module_key, module_value, self.content_layout)
 
         self.content_layout.addStretch()
@@ -1046,7 +1076,10 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         self.reset_calibration_selection_state()
         self.device_config_ready = False
         self.update_device_config_button_state()
-        global_setting.set_setting("air_modules_all_valid", False)
+        global_setting.set_setting(
+            "air_modules_all_valid",
+            self._environment_module_only_enabled(),
+        )
         if self.main_gui is not None:
             self.main_gui.change_enable_component_app_state_signal.emit()
 
@@ -1057,7 +1090,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
         with self.air_module_detection_lock:
             self.air_detection_complete_event.clear()
-            self._air_detection_finished = False
+            self._air_detection_finished = self._environment_module_only_enabled()
             self._air_ui_has_been_updated = False
             self._air_detection_final_result_cached = None
             self.air_modules_completed = {module_name: False for module_name in self.air_modules_to_detect}
@@ -1098,17 +1131,18 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             time=time_util.get_format_from_time(time.time())
         ))
 
-        send_message_queue.put(ObjectQueueItem(
-            origin="New_main_experiment_setting",
-            to="main_monitor_data",
-            title="detect_air_modules_only",
-            data={
-                'port': self.send_message['port'],
-                'mouse_cage_index': None,
-                'detection_session_id': detection_session_id
-            },
-            time=time_util.get_format_from_time(time.time())
-        ))
+        if not self._environment_module_only_enabled():
+            send_message_queue.put(ObjectQueueItem(
+                origin="New_main_experiment_setting",
+                to="main_monitor_data",
+                title="detect_air_modules_only",
+                data={
+                    'port': self.send_message['port'],
+                    'mouse_cage_index': None,
+                    'detection_session_id': detection_session_id
+                },
+                time=time_util.get_format_from_time(time.time())
+            ))
 
         logger.info(
             f"启动检测轮次 session={detection_session_id} | "
@@ -1116,7 +1150,8 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
         )
 
         QtWidgets.QApplication.processEvents()
-        QTimer.singleShot(3000, self._detect_next_cage)
+        detection_delay_ms = 0 if self._environment_module_only_enabled() else 3000
+        QTimer.singleShot(detection_delay_ms, self._detect_next_cage)
 
     # ==========配置UI创建==========
     def init_em_config_ui_default(self, module_key, module_value, scroll_area_layout):
@@ -1994,11 +2029,11 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
             mouse_cage_detect_dict[mouse_cage_number]['update_time'] = time_util.get_format_from_time(time.time())
 
             cage_modules = mouse_cage_detect_dict[mouse_cage_number]['cage_modules']
-            required_modules = {'ENM', 'EM', 'DWM', 'WM'}
+            required_modules = self._required_cage_modules()
 
             # ==================== 检查笼子是否完整 ====================
             all_received = required_modules.issubset(set(cage_modules.keys()))
-            all_valid = all(cage_modules.values()) if cage_modules else False
+            all_valid = all(cage_modules.get(name, False) for name in required_modules)
             cage_is_valid = all_received and all_valid
 
             mouse_cage_detect_dict[mouse_cage_number]['cage_is_valid'] = cage_is_valid
@@ -2102,7 +2137,8 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                 cage_is_valid = cage_data.get('cage_is_valid', False)
                 air_modules = cage_data.get('air_modules', {})
 
-                required_cage_modules = {'ENM', 'EM', 'DWM', 'WM'}
+                required_cage_modules = self._required_cage_modules()
+                required_count = len(required_cage_modules)
                 received_count = len(cage_modules)
                 missing_modules = required_cage_modules - set(cage_modules.keys())
                 failed_modules = [name for name, status in cage_modules.items() if not status]
@@ -2113,7 +2149,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                 # ==================== 修复逻辑 ====================
 
                 # 情况1：所有4个模块都收到了，且全部有效
-                if received_count >= 4 and all(cage_modules.values()):
+                if received_count >= required_count and all(
+                    cage_modules.get(name, False) for name in required_cage_modules
+                ):
                     status_text = "✓ 检测完成（可配置）"
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                     item.setBackground(QtGui.QColor(240, 255, 240))
@@ -2121,7 +2159,9 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                     # logger.info(f"笼 {cage_number} 检测通过")
 
                 # 情况2：所有4个模块都收到了，但有无效的
-                elif received_count >= 4 and not all(cage_modules.values()):
+                elif received_count >= required_count and not all(
+                    cage_modules.get(name, False) for name in required_cage_modules
+                ):
                     failed_str = ", ".join(sorted(failed_modules))
                     status_text = f"✗ 检测异常 - 失败模块: {failed_str}"
                     item.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -2132,7 +2172,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                 # 情况3：还在检测中（少于4个或有缺失）
                 elif received_count > 0:
                     modules_str = ", ".join(sorted(cage_modules.keys()))
-                    status_text = f"检测中... ({received_count}/4 模块: {modules_str})"
+                    status_text = f"检测中... ({received_count}/{required_count} 模块: {modules_str})"
                     item.setFlags(Qt.ItemFlag.NoItemFlags)
                     item.setBackground(QtGui.QColor(255, 255, 240))
                     item.setForeground(QtGui.QColor(184, 134, 11))
@@ -2180,7 +2220,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
 
                 group_name = f"[{group.name}]" if group else ""
 
-                if cage_is_valid and len(cage_modules) >= 4:
+                if cage_is_valid and len(cage_modules) >= len(self._required_cage_modules()):
                     status_text = "✓ 检测完成（可配置）"
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                     item.setBackground(QtGui.QColor(240, 255, 240))
@@ -2199,7 +2239,7 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                             status_text = f"✗ 检测异常 - 失败模块: {failed_str}"
                         else:
                             received_str = ", ".join(sorted(received_modules))
-                            missing = {'ENM', 'EM', 'DWM', 'WM'} - set(received_modules)
+                            missing = self._required_cage_modules() - set(received_modules)
                             missing_str = ", ".join(sorted(missing))
                             status_text = f"检测不完整 - 已收到: {received_str}, 缺少: {missing_str}"
                     else:
@@ -2287,7 +2327,10 @@ class Tab_1(ThemedWindow, metaclass=SafeSingletonMeta):
                     module_config = saved_config.get('ENM', {})
                     self.init_enm_config_ui_for_group(module_key, module_value, self.content_layout, group_num,
                                                       module_config)
-                elif module_key == Modbus_Type.Modbus_Slave_Ids.EM.value['name']:
+                elif (
+                    not self._environment_module_only_enabled()
+                    and module_key == Modbus_Type.Modbus_Slave_Ids.EM.value['name']
+                ):
                     module_config = saved_config.get('EM', {})
                     self.init_em_config_ui_for_group(module_key, module_value, self.content_layout, group_num,
                                                      module_config)

@@ -58,6 +58,50 @@ COLLECTION_BARRIER_TIMEOUT_SECONDS = 45.0
 COLLECTION_SENSOR_MAX_ATTEMPTS = 3
 COLLECTION_SENSOR_RETRY_DELAY_SECONDS = 0.1
 
+
+def _environment_module_only_enabled():
+    value = global_setting.get_setting("environment_module_only", None)
+    if value is None:
+        monitor_config = global_setting.get_setting("monitor_data", {}) or {}
+        value = (monitor_config.get("MODULE_TEST", {}) or {}).get(
+            "environment_module_only", False
+        )
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _cage_data_type_enabled(data_type):
+    if not _environment_module_only_enabled():
+        return True
+    return getattr(data_type, "name", "") == "ENM"
+
+
+def _send_main_window_status(title, data):
+    message_queue = global_setting.get_setting("queue", None)
+    if message_queue:
+        message_queue.put(
+            ObjectQueueItem(
+                origin="main_monitor_data",
+                to="MainWindow_index",
+                title=title,
+                data=data,
+                time=time_util.get_format_from_time(time.time()),
+            )
+        )
+
+
+def _notify_environment_only_gas_stop_complete():
+    statuses = (
+        ("stop_gap_system_return", "仅环境模块模式：气路未启动"),
+        ("stop_ufc_gap_system_return", "仅环境模块模式：UFC未启动"),
+        ("stop_ugc_gap_system_return", "仅环境模块模式：UGC未启动"),
+        ("stop_zos_gap_system_return", "仅环境模块模式：ZOS未启动"),
+    )
+    for title, text in statuses:
+        _send_main_window_status(title, text)
+
+
 batch_complete_event = threading.Semaphore(0)
 #等待气路启动之后在一起运行发送
 wait_UFC_UGC_ZOS_start_event = threading.Event()
@@ -501,6 +545,8 @@ def all_modules_check_online_state_Each_Mouse_Cage(port, mouse_cage_index, detec
     slave_id_offset = int(mouse_cage_index)
 
     for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Module_Info.value:
+        if not _cage_data_type_enabled(data_type):
+            continue
         """获取该笼子的所有传感器模块"""
         for message_struct in data_type.value['send_messages']:
             message_temp = copy.deepcopy(message_struct.message)
@@ -536,6 +582,10 @@ def all_modules_check_online_state_Not_Each_Mouse_Cage(port, mouse_cage_index, d
     """
     检测气路模块的在线状态
     """
+    if _environment_module_only_enabled():
+        logger.info("Environment-only mode: skip UFC/UGC/ZOS online detection")
+        return
+
     send_messages = []
     # ==================== 获取鼠笼号 ====================
     if mouse_cage_index is not None:
@@ -1095,6 +1145,8 @@ class Add_message_thread(MyQThread):
             #             MESSAGE_BATCH_SIZE += 1
             # 每个笼子里的传感器的send_messages
             for data_type in Modbus_Slave_Type.Each_Mouse_Cage_Message_Senior_Data.value:
+                if not _cage_data_type_enabled(data_type):
+                    continue
                 """debugger专用 需要哪个模块的数据监控就放进去"""
                 # logger.critical(f"data type : {data_type}")
                 if data_type in [
@@ -1797,8 +1849,13 @@ def start():
     try:
         # ufc_ugc_zos = UFC_UGC_ZOS_index()
         # ufc_ugc_zos.auto_btn_handle()
-        ufc_ugc_zos_thread= UFC_UGC_ZOS_index()
-        ufc_ugc_zos_thread.start()
+        if _environment_module_only_enabled():
+            logger.warning(
+                "Environment-only mode enabled: skip UFC/UGC/ZOS gas path startup"
+            )
+        else:
+            ufc_ugc_zos_thread= UFC_UGC_ZOS_index()
+            ufc_ugc_zos_thread.start()
 
     except Exception as ex:
         logger.error(f"气路模块进程启动失败：{ex}")
@@ -1839,9 +1896,22 @@ def start():
     lighting_schedule_thread = LightingScheduleThread(schedule, gids, send_thread)
     lighting_schedule_thread.start()
 
+    if _environment_module_only_enabled():
+        _send_main_window_status(
+            "gap_system_running_state",
+            "仅环境模块模式：UFC、UGC、ZOS及其他笼内模块已禁用",
+        )
+        _send_main_window_status(
+            "close_start_experiment_dialog",
+            "环境模块采集已启动",
+        )
+
     # 将实验配置存储到该实验的文件夹中去
     copy_experiment_setting_file()
 def start_zero_calibration():
+    if _environment_module_only_enabled():
+        logger.warning("Environment-only mode: zero calibration request ignored")
+        return
     global ufc_ugc_zos_thread, ufc_ugc_zos
     if ufc_ugc_zos_thread is not None:
         ufc_ugc_zos_thread.zero_calibration_handle()
@@ -1855,6 +1925,9 @@ def start_range_calibration():
       校span
     :return:
     """
+    if _environment_module_only_enabled():
+        logger.warning("Environment-only mode: span calibration request ignored")
+        return
     if ufc_ugc_zos_thread is not None:
         ufc_ugc_zos_thread.range_calibration_handle()
     pass
@@ -1863,6 +1936,9 @@ def start_calibration():
       校0 和span
     :return:
     """
+    if _environment_module_only_enabled():
+        logger.warning("Environment-only mode: calibration request ignored")
+        return
     if ufc_ugc_zos_thread is not None:
         ufc_ugc_zos_thread.calibration_btn_start()
     pass
@@ -2036,6 +2112,9 @@ def stop():
     if barrier is not None:
         barrier.reset(parties=1)
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread
+    gas_path_was_skipped = (
+        _environment_module_only_enabled() and ufc_ugc_zos_thread is None
+    )
     try:
         logger.error("stop_ufc_ugc_zos")
 
@@ -2064,6 +2143,9 @@ def stop():
                 ObjectQueueItem(origin="main_monitor_data", to="MainWindow_index", title="stop_zos_gap_system_return",
                                 data=f"关闭zos气路模块错误，原因：{e}",
                                 time=time_util.get_format_from_time(time.time())))
+
+    if gas_path_was_skipped:
+        _notify_environment_only_gas_stop_complete()
 
     try:
         logger.error("stop_periodic_xlsx_export_thread")

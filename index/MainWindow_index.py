@@ -945,7 +945,10 @@ class MainWindow_Index(ThemedWindow):
             global_setting.set_setting("device_config_calibration_selected", False)
             global_setting.set_setting("startup_calibration_mode", "none")
             global_setting.set_setting("is_auto_calibration", False)
-            global_setting.set_setting("air_modules_all_valid", False)
+            global_setting.set_setting(
+                "air_modules_all_valid",
+                bool(global_setting.get_setting("environment_module_only", False)),
+            )
             self.calibration_selection_changed_signal.emit(
                 False,
                 global_setting.get_setting("startup_calibration_mode", "none")
@@ -1012,8 +1015,11 @@ class MainWindow_Index(ThemedWindow):
             btn.clicked.connect(module.click_method)
             if obj_name == "dynamic_New_main_experiment_calibration":
                 btn.setEnabled(
-                    bool(global_setting.get_setting("air_modules_all_valid", False))
-                    or bool(global_setting.get_setting("allow_test_calibration_without_air_validation", False))
+                    not global_setting.get_setting("environment_module_only", False)
+                    and (
+                        bool(global_setting.get_setting("air_modules_all_valid", False))
+                        or bool(global_setting.get_setting("allow_test_calibration_without_air_validation", False))
+                    )
                 )
 
             # # 文字竖排
@@ -1442,8 +1448,9 @@ class MainWindow_Index(ThemedWindow):
                                                        "relieve_pause_experiment_time")
                                                },
                                                time=time_util.get_format_from_time(time.time())))
-        message_structs = [
-
+        message_structs = []
+        if not global_setting.get_setting("environment_module_only", False):
+            message_structs = [
             ObjectQueueItem(origin='MainWindow_Index', to='main_infrared_camera', title='start',
                             data={
                                 'start_experiment_time': global_setting.get_setting("start_experiment_time"),
@@ -1460,7 +1467,7 @@ class MainWindow_Index(ThemedWindow):
                                     "relieve_pause_experiment_time")
                             },
                             time=time_util.get_format_from_time(time.time())),
-        ]
+            ]
         for message_struct in message_structs:
             queue = global_setting.get_setting("queue")
             queue.put(message_struct)
@@ -1475,14 +1482,18 @@ class MainWindow_Index(ThemedWindow):
         pass
 
     def show_open_dialog(self, resolve, reject):
+        environment_only = bool(
+            global_setting.get_setting("environment_module_only", False)
+        )
         start_wait_times = float(global_setting.get_setting('configer')['dialog_timeout']['timeout']) + float(
             global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + float(
             global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time']) / float(
             global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay']) * 2 * 8 + 20
+        start_message = "正在启动环境模块..." if environment_only else "正在启动气路..."
 
         if self.start_dialog is None:
             self.start_dialog = AnimatedLoadingDialog(countdown_seconds=start_wait_times, title="开始实验",
-                                                      message="正在启动气路...")
+                                                      message=start_message)
         else:
             self.start_dialog.reset_progress()
             self.start_dialog.clear_list_data()
@@ -1490,7 +1501,7 @@ class MainWindow_Index(ThemedWindow):
             self.start_dialog = None
             self.start_dialog = AnimatedLoadingDialog(
                 countdown_seconds=start_wait_times,
-                title="开始实验", message="正在启动气路...")
+                title="开始实验", message=start_message)
 
         if global_setting.get_setting("deep_camera_instance_state", "starting") == "blocked":
             self.start_dialog.insert_data_signal.emit(
@@ -1498,6 +1509,8 @@ class MainWindow_Index(ThemedWindow):
             )
 
         startup_calibration_mode = global_setting.get_setting('startup_calibration_mode', None)
+        if environment_only:
+            startup_calibration_mode = "none"
         if startup_calibration_mode == "air_co2":
             startup_calibration_mode = "air"
         if startup_calibration_mode not in {"none", "air", "full"}:
@@ -1522,6 +1535,11 @@ class MainWindow_Index(ThemedWindow):
             self.start_dialog.insert_calibration_dialog(self.calibration_details_windows)
 
         self.start_dialog.timeout_signal.connect(self._on_start_experiment_timeout)  # 新增
+        if environment_only:
+            self.start_dialog.insert_data_signal.emit(
+                "仅环境模块模式：气路、相机、饮水、食物和称重模块已跳过"
+            )
+            QTimer.singleShot(300, self._on_gas_path_start_success)
         result = self.start_dialog.exec()
         self.release_calibration_windows()
 
@@ -1566,7 +1584,12 @@ class MainWindow_Index(ThemedWindow):
             self._gas_path_timeout_timer = None
         if self.start_dialog is not None:
             self.start_dialog.update_progress_value(self.start_dialog.progress_max)
-        self.show_temp_status_tip_signal.emit("气路启动成功！", "#00aa00", 3000)
+        success_message = (
+            "环境模块采集已启动！"
+            if global_setting.get_setting("environment_module_only", False)
+            else "气路启动成功！"
+        )
+        self.show_temp_status_tip_signal.emit(success_message, "#00aa00", 3000)
         QTimer.singleShot(3100, self.status_bar.update_status)
 
     def cache_calibration_detail_log(self, message, has_time=True):
@@ -1807,7 +1830,24 @@ class MainWindow_Index(ThemedWindow):
                                                        "stop_experiment_time"),
                                                },
                                                time=time_util.get_format_from_time(time.time())))
-        message_structs = [
+        message_structs = []
+        if global_setting.get_setting("environment_module_only", False):
+            queue = global_setting.get_setting("queue")
+            for title, data in (
+                ("stop_deep_camera_return", "仅环境模块模式：深度相机未启动"),
+                ("stop_infrared_camera_return", "仅环境模块模式：红外相机未启动"),
+            ):
+                queue.put(
+                    ObjectQueueItem(
+                        origin="MainWindow_Index",
+                        to="MainWindow_index",
+                        title=title,
+                        data=data,
+                        time=time_util.get_format_from_time(time.time()),
+                    )
+                )
+        else:
+            message_structs = [
             ObjectQueueItem(origin='MainWindow_Index', to='main_deep_camera', title='stop', data={
                 'stop_experiment_time': global_setting.get_setting("stop_experiment_time"),
             },
@@ -1817,7 +1857,7 @@ class MainWindow_Index(ThemedWindow):
             },
                             time=time_util.get_format_from_time(time.time())),
 
-        ]
+            ]
         for message_struct in message_structs:
             queue = global_setting.get_setting("queue")
             queue.put(message_struct)
@@ -2094,6 +2134,10 @@ class MainWindow_Index(ThemedWindow):
             obj_name = tool_bar_action["obj_name"]
             if obj_name in ["stop_experiment", "pause_experiment"]:
                 tool_bar_action["action"].setEnabled(current_app_state == AppState.MONITORING)
+            elif obj_name == "calibration_gas" and global_setting.get_setting(
+                "environment_module_only", False
+            ):
+                tool_bar_action["action"].setEnabled(False)
             elif obj_name in ["toggle_mode", "window_exchange"]:
                 tool_bar_action["action"].setEnabled(False)
 
@@ -2106,8 +2150,11 @@ class MainWindow_Index(ThemedWindow):
 
             if dynamic_action["obj_name"] == "dynamic_New_main_experiment_calibration":
                 dynamic_action["action"].setEnabled(
-                    bool(global_setting.get_setting("air_modules_all_valid", False))
-                    or bool(global_setting.get_setting("allow_test_calibration_without_air_validation", False))
+                    not global_setting.get_setting("environment_module_only", False)
+                    and (
+                        bool(global_setting.get_setting("air_modules_all_valid", False))
+                        or bool(global_setting.get_setting("allow_test_calibration_without_air_validation", False))
+                    )
                 )
 
         self.sync_module_interface_enabled_state()

@@ -26,6 +26,20 @@ def _init_startup_calibration_mode():
     global_setting.set_setting("is_auto_calibration", mode != "none")
 
 
+def _init_environment_module_only(config):
+    enabled = _read_test_bool(
+        config,
+        "MODULE_TEST",
+        "environment_module_only",
+        False,
+    )
+    global_setting.set_setting("environment_module_only", enabled)
+    if enabled:
+        global_setting.set_setting("startup_calibration_mode", "none")
+        global_setting.set_setting("is_auto_calibration", False)
+        global_setting.set_setting("is_calibrating", False)
+
+
 def load_global_setting():
     config_path = "/config"
     # 加载配置
@@ -60,6 +74,7 @@ def load_global_setting():
     else:
         logger.error("监控配置文件读取失败。")
     global_setting.set_setting("monitor_data", config)
+    _init_environment_module_only(config)
     config_file_path = os.getcwd() + config_path+"/UFC_UGC_ZOS_Test.ini"
     config = ini_parser(config_file_path).read()
     if len(config) != 0:
@@ -119,6 +134,7 @@ def load_global_setting_without_Qt():
     else:
         logger.error("监控配置文件读取失败。")
     global_setting.set_setting("monitor_data", config)
+    _init_environment_module_only(config)
     config_file_path = os.getcwd() + config_path + "/UFC_UGC_ZOS_Test.ini"
     config = ini_parser(config_file_path).read()
     if len(config) != 0:
@@ -176,6 +192,7 @@ def load_global_setting_without_Qt_for_subprocess():
     else:
         logger.error("监控配置文件读取失败。")
     global_setting.set_setting("monitor_data", config)
+    _init_environment_module_only(config)
     # 风格默认是dark  light
     global_setting.set_setting("style", configer['theme']['default'])
     # 图标风格 white black

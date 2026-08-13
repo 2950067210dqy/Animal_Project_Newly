@@ -251,6 +251,8 @@ class Main_experiment_calibration(BaseModule):
             self.main_gui.calibration_selection_changed_signal.emit(selection_made, mode)
 
     def is_calibration_gate_passed(self) -> bool:
+        if global_setting.get_setting("environment_module_only", False):
+            return False
         if global_setting.get_setting("allow_test_calibration_without_air_validation", False):
             return True
         return bool(global_setting.get_setting("air_modules_all_valid", False))

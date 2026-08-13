@@ -619,13 +619,14 @@ class ContentWindow(ThemedWindow):
             send_message_queue = global_setting.get_setting("send_message_queue")
             send_message_queue.put(ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_monitor_data', title='experiment_setting',data={'experiment_setting':enabled_setting_data,"experiment_setting_file":self.setting_file_path},
                                                    time=time_util.get_format_from_time(time.time())))
-            message_structs = [
-
-                ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_infrared_camera', title='experiment_setting',data={'experiment_setting':enabled_setting_data,"experiment_setting_file":self.setting_file_path},
-                                time=time_util.get_format_from_time(time.time())),
-                ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_deep_camera', title='experiment_setting',data={'experiment_setting':enabled_setting_data,"experiment_setting_file":self.setting_file_path},
-                                time=time_util.get_format_from_time(time.time())),
-            ]
+            message_structs = []
+            if not global_setting.get_setting("environment_module_only", False):
+                message_structs = [
+                    ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_infrared_camera', title='experiment_setting',data={'experiment_setting':enabled_setting_data,"experiment_setting_file":self.setting_file_path},
+                                    time=time_util.get_format_from_time(time.time())),
+                    ObjectQueueItem(origin='Main_New_experiment_cotent_index_apply_experiment', to='main_deep_camera', title='experiment_setting',data={'experiment_setting':enabled_setting_data,"experiment_setting_file":self.setting_file_path},
+                                    time=time_util.get_format_from_time(time.time())),
+                ]
             for message_struct in message_structs:
                 queue = global_setting.get_setting("queue")
                 queue.put(message_struct)
