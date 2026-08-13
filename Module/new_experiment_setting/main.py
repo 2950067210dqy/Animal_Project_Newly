@@ -400,6 +400,19 @@ class Main_deep_camera_mapping_config(Camera_config_action_base):
     toolbar_order = 12
 
     def open_dialog(self):
+        camera_state = global_setting.get_setting("deep_camera_instance_state", "starting")
+        if camera_state != "ready":
+            message = (
+                "独立视频模块正在运行，请关闭后再配置深度相机。"
+                if camera_state == "blocked"
+                else "深度相机服务正在初始化，请稍后再试。"
+            )
+            QMessageBox.warning(
+                self.main_gui,
+                "深度相机被占用",
+                message,
+            )
+            return
         self.dialog_frame = deep_camera_config_dialog(
             title=self.dialog_title,
             tip="\n设置好后要重新启动程序！！！！！！"

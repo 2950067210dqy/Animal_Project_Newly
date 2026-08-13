@@ -109,6 +109,25 @@ class read_queue_data_Thread(MyQThread):
             if message is not None and isinstance(message, ObjectQueueItem) and message.to=='MainWindow_index':
                 # logger.error(f"{self.name}_get_message:{message}")
                 match message.title:
+                    case "deep_camera_instance_state":
+                        state_data = message.data if isinstance(message.data, dict) else {}
+                        state = str(state_data.get("state", "starting"))
+                        owner = state_data.get("owner") or {}
+                        previous_state = global_setting.get_setting(
+                            "deep_camera_instance_state",
+                            "starting",
+                        )
+                        global_setting.set_setting("deep_camera_instance_state", state)
+                        global_setting.set_setting(
+                            "deep_camera_instance_owner",
+                            owner,
+                        )
+                        if self.window:
+                            self.window.deep_camera_instance_state_changed_signal.emit(
+                                state,
+                                str(previous_state),
+                                owner,
+                            )
                     case "gap_system_running_state":
                         if message.data  and self.window:
                             #  更新气路运行消息
@@ -326,6 +345,8 @@ class MainWindow_Index(ThemedWindow):
     update_status_tip_signal = QtCore.pyqtSignal(str)
     # 临时覆盖状态栏中间文字的信号 (message, color, duration_ms)
     show_temp_status_tip_signal = QtCore.pyqtSignal(str, str, int)
+    # 深度相机互斥状态必须回到 GUI 线程更新，避免初始化期间直接访问空控件。
+    deep_camera_instance_state_changed_signal = QtCore.pyqtSignal(str, str, object)
     def close_window_handle(self):
         """
         关闭窗口执行的事件
@@ -558,7 +579,6 @@ class MainWindow_Index(ThemedWindow):
         global read_queue_data_thread
         read_queue_data_thread.queue = global_setting.get_setting("queue",None)
         read_queue_data_thread.window=self
-        read_queue_data_thread.start()
         self.content_layout = self.findChild(QVBoxLayout,"content_layout")
         self.tab_widget:QTabWidget = self.findChild(QTabWidget,"tab_widget")
         # 启用标签关闭按钮
@@ -612,7 +632,33 @@ class MainWindow_Index(ThemedWindow):
         # 新增连接
         self.update_status_tip_signal.connect(self.status_bar.update_tip)
         self.show_temp_status_tip_signal.connect(self.status_bar.show_temp_tip)
+        self.deep_camera_instance_state_changed_signal.connect(
+            self._on_deep_camera_instance_state_changed
+        )
+        # 消息可能在窗口构造前已经进入队列。所有 GUI 控件和信号准备好后再消费，
+        # 否则一次早到的状态消息就会让整个消息线程永久退出。
+        if not read_queue_data_thread.isRunning():
+            read_queue_data_thread.start()
         pass
+
+    def _on_deep_camera_instance_state_changed(self, state, previous_state, owner):
+        if state == "blocked":
+            message = "独立视频模块正在运行，上位机视频功能暂不可用"
+            self.status_bar.update_tip(message)
+            if self.start_dialog is not None and self.start_dialog.isVisible():
+                self.start_dialog.insert_data_signal.emit(
+                    "独立视频模块占用相机，本次实验跳过上位机视频采集；其他功能继续启动"
+                )
+            if self.stop_dialog is not None and self.stop_dialog.isVisible():
+                self.stop_dialog.insert_data_signal.emit(
+                    "独立视频模块占用相机，上位机深度相机未启动，无需停止"
+                )
+        elif state == "ready" and previous_state == "blocked":
+            self.status_bar.update_tip("独立视频模块已关闭，上位机视频功能已恢复")
+            if self.start_dialog is not None and self.start_dialog.isVisible():
+                self.start_dialog.insert_data_signal.emit(
+                    "独立视频模块已关闭，上位机视频采集正在自动恢复"
+                )
     # 创建工具栏
     def create_tool_bar(self):
         # 创建 QToolBar
@@ -1445,6 +1491,11 @@ class MainWindow_Index(ThemedWindow):
                 countdown_seconds=start_wait_times,
                 title="开始实验", message="正在启动气路...")
 
+        if global_setting.get_setting("deep_camera_instance_state", "starting") == "blocked":
+            self.start_dialog.insert_data_signal.emit(
+                "独立视频模块占用相机，本次实验跳过上位机视频采集；其他功能继续启动"
+            )
+
         startup_calibration_mode = global_setting.get_setting('startup_calibration_mode', None)
         if startup_calibration_mode == "air_co2":
             startup_calibration_mode = "air"
@@ -1822,6 +1873,11 @@ class MainWindow_Index(ThemedWindow):
             self.stop_dialog = AnimatedLoadingDialog(
                 countdown_seconds=stop_wait_times,
                 title="停止实验", message="正在停止实验...")
+
+        if global_setting.get_setting("deep_camera_instance_state", "starting") == "blocked":
+            self.stop_dialog.insert_data_signal.emit(
+                "独立视频模块占用相机，上位机深度相机未启动，无需停止"
+            )
 
         # self.start_dialog.set_progress_range(0, ZOS_gas_path_system.process_nums+UFC_gas_path_system.process_nums+UGC_gas_path_system.process_nums)
         self.stop_dialog.exec()

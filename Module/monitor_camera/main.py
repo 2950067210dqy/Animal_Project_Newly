@@ -1,10 +1,12 @@
 from Module.monitor_camera.index.tab_4 import Tab_4
+from PyQt6.QtWidgets import QMessageBox
 
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
 from public.entity.BaseWindow import BaseWindow
 from public.entity.enum.Public_Enum import BaseInterfaceType, AppState
+from public.config_class.global_setting import global_setting
 
 
 class Main_Monitor_camera_service(BaseService):
@@ -92,3 +94,19 @@ class Main_Video_image_Module(MonitorCameraModuleBase):
     module_name = "Main_Video_image"
     module_title = "视频图像"
     display_mode = Tab_4.MODE_VIDEO
+
+    def click_method(self):
+        camera_state = global_setting.get_setting("deep_camera_instance_state", "starting")
+        if camera_state != "ready":
+            message = (
+                "独立视频模块正在运行。请先关闭独立模块，再打开上位机视频功能。"
+                if camera_state == "blocked"
+                else "视频模块正在初始化，请稍后再试。"
+            )
+            QMessageBox.warning(
+                self.main_gui,
+                "视频功能不可用",
+                message,
+            )
+            return
+        super().click_method()

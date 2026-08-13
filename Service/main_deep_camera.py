@@ -10,7 +10,7 @@ from collections import deque
 from typing import Any
 
 import cv2
-from PyQt6.QtCore import QCoreApplication
+from PyQt6.QtCore import QCoreApplication, QTimer
 from loguru import logger
 
 from public.config_class import global_load
@@ -25,6 +25,7 @@ from public.util.ffmpeg_video_recorder import (
 from public.util.json_util import json_util
 from public.util.shared_video_frames import shared_video_frame_store
 from public.util.time_util import time_util
+from public.util.video_program_instance_lock import VideoProgramInstanceLock
 
 
 logged_errors = set()
@@ -33,6 +34,12 @@ save_frame_thread = None
 video_recorder_thread = None
 camera_list = []
 frame_nums = 0
+camera_instance_lock = None
+camera_lock_retry_timer = None
+camera_lock_state = "starting"
+camera_lock_owner = {}
+camera_session_state = "stopped"
+camera_session_state_lock = threading.Lock()
 lock = threading.Lock()
 delete_process_lock = threading.Lock()
 runtime_diagnostics_drop_lock = threading.Lock()
@@ -677,6 +684,69 @@ def load_global_setting():
     logger.info(f"deep_camera load settings at {time_util.get_format_from_time(start_time)}")
 
 
+def _publish_camera_lock_state(state, owner=None):
+    global camera_lock_state, camera_lock_owner
+    camera_lock_state = str(state)
+    camera_lock_owner = dict(owner or {})
+    queue_obj = global_setting.get_setting("queue", None)
+    if queue_obj is None:
+        return
+    queue_obj.put(
+        ObjectQueueItem(
+            origin="main_deep_camera",
+            to="MainWindow_index",
+            title="deep_camera_instance_state",
+            data={"state": camera_lock_state, "owner": camera_lock_owner},
+            time=time_util.get_format_from_time(time.time()),
+        )
+    )
+
+
+def _try_acquire_camera_instance_lock():
+    global camera_instance_lock
+    if camera_instance_lock is None:
+        camera_instance_lock = VideoProgramInstanceLock("host")
+    if camera_instance_lock.acquire():
+        if camera_lock_state != "ready":
+            logger.info("deep camera instance lock acquired")
+            _publish_camera_lock_state("ready")
+            if experiment_running:
+                logger.info("standalone video program exited; resuming upper-computer camera capture")
+                start()
+        return True
+
+    owner = camera_instance_lock.read_owner()
+    if camera_lock_state != "blocked" or owner != camera_lock_owner:
+        logger.warning(f"deep camera unavailable: standalone video program owns camera lock, owner={owner}")
+        _publish_camera_lock_state("blocked", owner)
+    return False
+
+
+def _release_camera_instance_lock():
+    global camera_instance_lock, camera_lock_retry_timer
+    if camera_lock_retry_timer is not None:
+        camera_lock_retry_timer.stop()
+        camera_lock_retry_timer = None
+    if camera_instance_lock is not None:
+        camera_instance_lock.release()
+        camera_instance_lock = None
+
+
+def _begin_camera_session():
+    global camera_session_state
+    with camera_session_state_lock:
+        if camera_session_state in {"starting", "running", "stopping"}:
+            return False
+        camera_session_state = "starting"
+        return True
+
+
+def _set_camera_session_state(state):
+    global camera_session_state
+    with camera_session_state_lock:
+        camera_session_state = str(state)
+
+
 def check_setting_cameras_each_number():
     config_file_path = f"./{_deep_camera_config()['camera_to_mouse_cage_number_file_name']}"
     if folder_util.is_exist_file(config_file_path):
@@ -730,6 +800,10 @@ def _stop_camera_threads(camera_structs, wait_ms=4000):
 def init_camera_and_image_handle_thread(serials):
     global camera_list, read_queue_data_thread, delete_file_thread
 
+    if camera_instance_lock is None or not camera_instance_lock.acquired:
+        logger.warning("deep camera configuration deferred: standalone video program owns the cameras")
+        return
+
     camera_nums = len(serials)
     camera_config_temp = _camera_config()
     camera_config_temp["DEEP_CAMERA"]["nums"] = camera_nums
@@ -782,7 +856,7 @@ def init_camera_and_image_handle_thread(serials):
 
 
 def main(q=None, runtime_diagnostics_queue=None, auto_start=False):
-    global experiment_running
+    global experiment_running, camera_lock_retry_timer
     global_setting.set_setting("queue", q)
     global_setting.set_setting(
         "runtime_diagnostics_queue",
@@ -798,6 +872,13 @@ def main(q=None, runtime_diagnostics_queue=None, auto_start=False):
 
     load_global_setting()
 
+    _try_acquire_camera_instance_lock()
+    camera_lock_retry_timer = QTimer()
+    camera_lock_retry_timer.setInterval(2000)
+    camera_lock_retry_timer.timeout.connect(_try_acquire_camera_instance_lock)
+    camera_lock_retry_timer.start()
+    app.aboutToQuit.connect(_release_camera_instance_lock)
+
     read_queue_data_thread.queue = q
     if read_queue_data_thread.isRunning():
         read_queue_data_thread.stop()
@@ -812,6 +893,18 @@ def main(q=None, runtime_diagnostics_queue=None, auto_start=False):
 
 def start():
     global delete_file_thread, save_frame_thread, video_recorder_thread
+
+    if camera_instance_lock is None or not camera_instance_lock.acquired:
+        logger.warning("deep camera start deferred: standalone video program is running")
+        _publish_camera_lock_state(
+            "blocked",
+            camera_instance_lock.read_owner() if camera_instance_lock is not None else {},
+        )
+        return
+
+    if not _begin_camera_session():
+        logger.info(f"deep camera start ignored: session state is {camera_session_state}")
+        return
 
     try:
         logger.info(f"{'-' * 30}deep_camera_run{'-' * 30}")
@@ -877,7 +970,9 @@ def start():
         )
         delete_file_thread.start()
         check_setting_cameras_each_number()
+        _set_camera_session_state("running")
     except Exception as e:
+        _set_camera_session_state("stopped")
         logger.error(f"deep_camera start failed: {e}")
 
 
@@ -897,10 +992,26 @@ def stop():
     global delete_file_thread, camera_list, save_frame_thread, video_recorder_thread, experiment_running
 
     experiment_running = False
+    _set_camera_session_state("stopping")
     logger.info(f"{'-' * 30}deep_camera_stop{'-' * 30}")
     logger.warning("stop_deep_camera_thread")
 
     queue = global_setting.get_setting("queue", None)
+
+    if camera_instance_lock is None or not camera_instance_lock.acquired:
+        if queue:
+            queue.put(
+                ObjectQueueItem(
+                    origin="main_deep_camera",
+                    to="MainWindow_index",
+                    title="stop_deep_camera_return",
+                    data="独立视频模块占用中，上位机深度相机未启动",
+                    time=time_util.get_format_from_time(time.time()),
+                )
+            )
+        shared_video_frame_store.close_writer()
+        _set_camera_session_state("stopped")
+        return
 
     cameras_to_stop = list(camera_list)
     cameras_stopped = _stop_camera_threads(cameras_to_stop)
@@ -973,6 +1084,7 @@ def stop():
         camera_list = []
         read_queue_data_thread.camera_list = camera_list
     shared_video_frame_store.close_writer()
+    _set_camera_session_state("stopped")
 
 
 if __name__ == "__main__":
