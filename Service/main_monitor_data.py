@@ -37,11 +37,16 @@ from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_S
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
 from public.function.promise.AsyPromise import AsyPromise
-from public.util.cage_light_state_util import force_save_cage_lights_off
+from public.util.cage_light_state_util import (
+    build_cage_light_commands,
+    force_save_cage_lights_off,
+    save_cage_light_state,
+)
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.number_util import number_util
 from public.util.string_util import String_util
 from public.util.time_util import time_util
+from public.util.lighting_schedule import normalize_lighting_schedule, resolve_lighting_state
 
 # 全局变量
 # 实现主线程发一整轮消息，当从线程响应完全部的消息后，主线程在发一整轮消息
@@ -246,6 +251,14 @@ class read_queue_data_Thread(MyQThread):
                             for key, value in data.items():
                                 # logger.critical(f"{self.name}<UNK>{key}<UNK>{value}")
                                 global_setting.set_setting(key, value)
+                    case 'lighting_schedule':
+                        schedule = normalize_lighting_schedule(message.data)
+                        global_setting.set_setting("lighting_schedule", schedule)
+                        experiment_setting = global_setting.get_setting("experiment_setting", None)
+                        if experiment_setting is not None:
+                            experiment_setting.lighting_schedule = copy.deepcopy(schedule)
+                        if lighting_schedule_thread is not None and lighting_schedule_thread.isRunning():
+                            lighting_schedule_thread.set_schedule(schedule, apply_now=True)
                     case 'start':
                         data = message.data
                         if data is not None:
@@ -1172,6 +1185,97 @@ ufc_ugc_zos_thread:UFC_UGC_ZOS_index =None
 # 存储线程
 store_thread:Store_Thread = None
 periodic_xlsx_export_thread: PeriodicXlsxExportThread = None
+
+
+class LightingScheduleThread(QThread):
+    def __init__(self, schedule, cages, sender, parent=None):
+        super().__init__(parent)
+        self._lock = threading.RLock()
+        self._schedule = normalize_lighting_schedule(schedule)
+        self._cages = _parse_mouse_cage_numbers(cages)
+        self._sender = sender
+        self._running = True
+        self._force_apply = True
+        self._last_signature = None
+
+    def set_schedule(self, schedule, apply_now=False):
+        with self._lock:
+            self._schedule = normalize_lighting_schedule(schedule)
+            if apply_now:
+                self._force_apply = True
+                self._last_signature = None
+
+    def stop(self):
+        with self._lock:
+            self._running = False
+        self.requestInterruption()
+        self.wait(3000)
+
+    def run(self):
+        logger.info(f"lighting schedule started: cages={self._cages}")
+        while not self.isInterruptionRequested():
+            with self._lock:
+                if not self._running:
+                    break
+                schedule = copy.deepcopy(self._schedule)
+                force_apply = self._force_apply
+                self._force_apply = False
+            try:
+                state = resolve_lighting_state(schedule, datetime.now())
+                if state is not None:
+                    signature = (
+                        state["stage_key"],
+                        state["power"],
+                        state["color_temperature"],
+                        state["brightness"],
+                    )
+                    if force_apply or signature != self._last_signature:
+                        if self._apply_state(state):
+                            self._last_signature = signature
+            except Exception:
+                logger.exception("lighting schedule evaluation failed")
+            self.msleep(1000)
+        logger.info("lighting schedule stopped")
+
+    def _apply_state(self, state):
+        if self._sender is None or not self._sender.isRunning():
+            logger.warning("lighting schedule skipped: send thread unavailable")
+            return False
+        if getattr(self._sender, "modbus", None) is None:
+            logger.warning("lighting schedule waiting: modbus unavailable")
+            return False
+        queued = 0
+        for cage in self._cages:
+            commands = build_cage_light_commands(
+                cage,
+                state["power"],
+                state["color_temperature"],
+                state["brightness"],
+                port=global_setting.get_setting("port", None),
+            )
+            for command in commands:
+                self._sender.add_message(
+                    message={"message": command},
+                    urgent=True,
+                    origin="lighting_schedule",
+                )
+                queued += 1
+        save_cage_light_state(
+            self._cages,
+            state["power"],
+            state["color_temperature"],
+            state["brightness"],
+        )
+        logger.info(
+            "lighting schedule applied: "
+            f"stage={state['stage_key']}, cages={self._cages}, power={state['power']}, "
+            f"color_temperature={state['color_temperature']}, brightness={state['brightness']}, "
+            f"transitioning={state['transitioning']}, queued={queued}"
+        )
+        return True
+
+
+lighting_schedule_thread: LightingScheduleThread = None
 # 发送报文线程
 send_thread :Send_thread= None
 add_message_thread:Add_message_thread = None
@@ -1587,7 +1691,7 @@ def start():
     gids = [group.id for group in experiment_settings.groups if
             group.is_selected == 1] if experiment_settings is not None else []
     # UFC_UGC_ZOS
-    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread, _shutdown_lights_off_done
+    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread, lighting_schedule_thread, _shutdown_lights_off_done
     _shutdown_lights_off_done = False
     ufc_ugc_zos_thread = None
     ufc_ugc_zos = None
@@ -1625,6 +1729,16 @@ def start():
     global port_use
     add_message_thread = Add_message_thread("monitor_data_add_message", send_thread, port_use)
     add_message_thread.start()
+
+    schedule = normalize_lighting_schedule(
+        getattr(experiment_settings, "lighting_schedule", None) if experiment_settings is not None else None
+    )
+    global_setting.set_setting("lighting_schedule", schedule)
+    if lighting_schedule_thread is not None and lighting_schedule_thread.isRunning():
+        lighting_schedule_thread.stop()
+        lighting_schedule_thread.deleteLater()
+    lighting_schedule_thread = LightingScheduleThread(schedule, gids, send_thread)
+    lighting_schedule_thread.start()
 
     # 将实验配置存储到该实验的文件夹中去
     copy_experiment_setting_file()
@@ -1726,17 +1840,13 @@ def _get_opened_mouse_cages_for_light_off():
     return _parse_mouse_cage_numbers(global_setting.get_setting("mouse_cages", None))
 
 def _build_light_off_message(mouse_cage_number):
-    base_slave_id = int(Modbus_Slave_Ids.DWM.value['address'])
-    return {
-        'port': global_setting.get_setting("port", None),
-        'data': ['00', '70', '00', '00'],
-        'slave_id': format(base_slave_id + 16 * int(mouse_cage_number), '02X'),
-        'function_code': format(int("5", 16), '02X'),
-        'timeout': 0,
-        'no_response': True,
-        'module_type': 'DWM',
-        'switch_step': 'shutdown_light_off',
-    }
+    command = build_cage_light_commands(
+        mouse_cage_number,
+        power=False,
+        port=global_setting.get_setting("port", None),
+    )[0]
+    command["switch_step"] = "shutdown_light_off"
+    return command
 
 def _send_opened_mouse_cages_light_off(wait_seconds=None, cages=None):
     global send_thread
@@ -1797,6 +1907,14 @@ def _force_shutdown_lights_off_and_sync_state():
 
 def stop():
     logger.info(f"{'-' * 30}monitor_data_stop{'-' * 30}")
+    global lighting_schedule_thread
+    try:
+        if lighting_schedule_thread is not None and lighting_schedule_thread.isRunning():
+            lighting_schedule_thread.stop()
+            lighting_schedule_thread.deleteLater()
+        lighting_schedule_thread = None
+    except Exception as e:
+        logger.error(f"stop lighting schedule failed: {e}")
     try:
         _force_shutdown_lights_off_and_sync_state()
     except Exception as e:

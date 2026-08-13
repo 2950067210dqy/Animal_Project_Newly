@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from public.util.lighting_schedule import default_lighting_schedule
+
 
 
 
@@ -8,6 +10,7 @@ class Experiment_setting_entity:
         self.animals:[Animal] = []
         self.groups:[Group] = []
         self.animalGroupRecords:[AnimalGroupRecord] = []
+        self.lighting_schedule: dict = default_lighting_schedule()
         super().__init__()
     def is_emtpy(self) -> bool:
 

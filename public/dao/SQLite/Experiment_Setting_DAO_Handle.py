@@ -1,4 +1,5 @@
 import os
+import json
 
 from sympy.external.gmpy import remove
 
@@ -9,6 +10,7 @@ from loguru import logger
 
 from public.entity.experiment_setting_entity import Experiment_setting_entity, Group, Animal, AnimalGroupRecord
 from public.util.class_util import class_util
+from public.util.lighting_schedule import normalize_lighting_schedule
 
 
 class Experiment_Setting_DAO_Handle():
@@ -114,7 +116,31 @@ class Experiment_Setting_DAO_Handle():
                 else:
                     insert_state.append(False)
                     logger.info(f"数据插入表{table_name}失败！")
+            table_name = Setting_Table.Lighting_Schedule.value['table_name']
+            schedule = normalize_lighting_schedule(getattr(data, "lighting_schedule", None))
+            result = self.sqlite_manager.insert_2(
+                table_name,
+                ["id", "config_json"],
+                [1, json.dumps(schedule, ensure_ascii=False)]
+            )
+            insert_state.append(result == 1)
         return all(insert_state) if len(insert_state) > 0 else False
+
+    def save_lighting_schedule(self, schedule):
+        table_name = Setting_Table.Lighting_Schedule.value['table_name']
+        config_json = json.dumps(normalize_lighting_schedule(schedule), ensure_ascii=False)
+        existing = self.sqlite_manager.query(table_name, id=1)
+        if existing:
+            return self.sqlite_manager.update(
+                table_name,
+                {"id": 1},
+                config_json=config_json,
+            ) == 1
+        return self.sqlite_manager.insert_2(
+            table_name,
+            ["id", "config_json"],
+            [1, config_json],
+        ) == 1
     def query_data_database_all(self):
         """
         获取数据库所有表的数据
@@ -155,6 +181,15 @@ class Experiment_Setting_DAO_Handle():
                         animal_group_record = AnimalGroupRecord(**animal_group_record_data)  # 使用解包操作符传递字典参数
                         animalGroupRecords.append(animal_group_record)
                         pass
+                    case Setting_Table.Lighting_Schedule:
+                        if result:
+                            row_data = {column: result[i] for i, column in enumerate(columns)}
+                            try:
+                                experiment_setting_entity.lighting_schedule = normalize_lighting_schedule(
+                                    json.loads(row_data.get("config_json") or "{}")
+                                )
+                            except (TypeError, ValueError, json.JSONDecodeError) as e:
+                                logger.warning(f"加载实验光照时间表失败，使用默认关闭配置: {e}")
                     case _:
                         pass
         experiment_setting_entity.groups=groups

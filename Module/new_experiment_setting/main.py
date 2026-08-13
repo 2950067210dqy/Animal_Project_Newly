@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QMainWindow, QMessageBox
 
 from Module.new_experiment_setting.index.Tab_1 import Tab_1
 from Module.new_experiment_setting.index.monitor_hardware_config_dialog import MonitorHardwareConfigDialog
+from Module.new_experiment_setting.index.lighting_schedule_dialog import LightingScheduleDialog
 from my_abc.BaseInterfaceWidget import BaseInterfaceWidget
 from my_abc.BaseModule import BaseModule
 from my_abc.BaseService import BaseService
@@ -448,6 +449,22 @@ class Main_monitor_hardware_config(Camera_config_action_base):
     def open_dialog(self):
         self.dialog_frame = MonitorHardwareConfigDialog(title=self.dialog_title)
         self.dialog_frame.set_main_gui(self.main_gui)
+        self.dialog_frame.show()
+        self.dialog_frame.raise_()
+        self.dialog_frame.activateWindow()
+
+
+class Main_lighting_schedule(Camera_config_action_base):
+    action_name = "Main_lighting_schedule"
+    action_title = "光照时间表"
+    dialog_title = "光照时间表"
+    toolbar_order = 15
+
+    def get_app_state(self) -> AppState:
+        return AppState.INITIALIZED
+
+    def open_dialog(self):
+        self.dialog_frame = LightingScheduleDialog(parent=self.main_gui)
         self.dialog_frame.show()
         self.dialog_frame.raise_()
         self.dialog_frame.activateWindow()

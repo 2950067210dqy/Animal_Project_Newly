@@ -51,3 +51,13 @@ class Setting_Table(Enum):
 
         }
     }
+
+    Lighting_Schedule = {
+        "table_name": "lighting_schedule",
+        "desc": "实验光照时间表",
+        "column": [
+            ("id", "序号", " INTEGER PRIMARY KEY "),
+            ("config_json", "光照时间表配置", " TEXT NOT NULL ")
+        ],
+        "foreign_key": None
+    }
