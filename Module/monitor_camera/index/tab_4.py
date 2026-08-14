@@ -2180,12 +2180,9 @@ class Tab_4(ThemedWindow):
         except (MemoryError, SystemError) as error:
             logger.warning(f"skip video overlay due to memory pressure: {error}")
             return frame
-        frame_id = int(frame_payload.get("frame_id", 0) or 0)
         overlay = self.latest_trajectory_overlays.get(cage_number, {}) or {}
         corners = overlay.get("corners") or self.last_good_corners.get(cage_number)
         self._draw_cage_corners(display_frame, corners)
-        mouse_overlay, mouse_box = self._get_display_mouse_overlay(cage_number, display_frame, frame_id)
-        self._draw_mouse_box(display_frame, mouse_box, mouse_overlay)
         return display_frame
 
     def _show_trajectory_plot_if_changed(self, cage_number: int, plot_key: str, image_path: str) -> bool:
