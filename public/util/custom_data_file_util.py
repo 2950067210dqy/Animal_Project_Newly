@@ -94,18 +94,32 @@ class custom_data_file_util:
         return getattr(cls._export_state, "last_error", "")
 
     @classmethod
-    def show_export_success_message(cls, export_file_path):
+    def show_export_success_message(cls, export_file_path, additional_file_paths=None):
+        additional_file_paths = [
+            str(path) for path in (additional_file_paths or []) if path
+        ]
+        exported_files = [str(export_file_path), *additional_file_paths]
+        if additional_file_paths:
+            file_details = (
+                f"原始数据: {export_file_path}\n"
+                + "\n".join(
+                    f"称重拟合数据: {path}" for path in additional_file_paths
+                )
+            )
+        else:
+            file_details = f"数据已导出到: {export_file_path}"
         msg_box = QMessageBox(
             QMessageBox.Icon.Information,
             "导出成功",
-            f"数据已导出到: {export_file_path}\n\n点击'open'按钮可以打开保存的文件以及文件夹。",
+            f"{file_details}\n\n点击'open'按钮可以打开保存的文件以及文件夹。",
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Open
         )
         msg_box.setDefaultButton(QMessageBox.StandardButton.Open)
         msg_box.setWindowFlags(msg_box.windowFlags())
         if QMessageBox.StandardButton.Open == msg_box.exec():
             folder_util.open_folder(os.path.dirname(export_file_path))
-            folder_util.open_folder(export_file_path)
+            for exported_file in exported_files:
+                folder_util.open_folder(exported_file)
 
     @classmethod
     def save_folder_contents_as_custom_file(
