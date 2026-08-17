@@ -171,12 +171,6 @@ class ModbusRTUMasterNew:
         try:
             if self.ser:
                 if self.ser.is_open:
-                    # 清空缓冲区
-                    try:
-                        self.ser.reset_input_buffer()
-                        self.ser.reset_output_buffer()
-                    except:
-                        pass
                     self.ser.close()
         except:
             pass
@@ -372,16 +366,15 @@ class ModbusRTUMasterNew:
                           return_data: dict) -> Tuple[Optional[bytes], Optional[str], bool, dict]:
         """发送报文并接收响应 - 原子操作"""
         try:
-            # 清空缓冲区
-            self.ser.reset_input_buffer()
-            self.ser.reset_output_buffer()
+            # 不调用 reset_input/output_buffer：现场日志证明部分 USB 串口驱动
+            # 会卡在这里，且此时发送日志尚未产生。其余收发时序保持原样。
 
             # 发送数据
             self._send_status_message(f"发送数据帧{frame.hex()}")
             logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-发送数据帧{frame.hex()}")
 
             self.ser.write(frame)
-            self.ser.flush()  # 确保数据发送完成
+            self.ser.flush()  # 保留现场串口正常工作所需的原发送时序
 
             # 小延迟等待响应
             time.sleep(0.01)
@@ -396,6 +389,8 @@ class ModbusRTUMasterNew:
         except Exception as e:
             error_msg = f"发送接收异常: {e}"
             logger.error(f"{self.sport}-{error_msg}")
+            # 标记连接失效；现有重试逻辑会在下一次请求时重新连接。
+            self._close_connection_unsafe()
             return_data['data'].append({'desc': '备注', 'value': error_msg})
             return_data['response_msg'] = error_msg
             return_data['response_code'] = ModBusResponseCode.SEND_RECEIVE_EXCEPTION
