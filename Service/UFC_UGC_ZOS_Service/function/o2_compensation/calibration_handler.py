@@ -48,6 +48,7 @@ class CalibrationHandler:
         self.is_active = False
         self.calibrated = False
         self.completed = False
+        self.calculation_error = None
         self.offsets = {}
         self.secondary_models = {}
 
@@ -66,6 +67,8 @@ class CalibrationHandler:
             if self.calibrated:
                 return True
             if not self.is_active or self.completed:
+                return False
+            if len(self.data[channel]) >= self.target_points:
                 return False
 
             self.data[channel].append({
@@ -90,7 +93,13 @@ class CalibrationHandler:
                 self.completed = True
                 self.is_active = False
             else:
-                logger.error("O2 Air calibration coefficient calculation failed")
+                self.calculation_error = (
+                    f"O2 Air calibration coefficient calculation failed after strict collection "
+                    f"of {self.target_points} points per channel"
+                )
+                self.completed = True
+                self.is_active = False
+                logger.error(self.calculation_error)
             return success
 
     def _perform_enhanced_calibration(self):
@@ -196,6 +205,7 @@ class CalibrationHandler:
                 "is_active": self.is_active,
                 "calibrated": self.calibrated,
                 "completed": self.completed,
+                "calculation_error": self.calculation_error,
                 "points_received": points_received,
                 "current_counts": current_counts,
                 "all_ready": all(count >= self.target_points for count in current_counts.values()),
