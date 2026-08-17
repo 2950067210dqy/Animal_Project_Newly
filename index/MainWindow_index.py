@@ -11,7 +11,7 @@ from PyQt6 import QtCore
 from PyQt6.QtCore import QTimer, QObject, QThread, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QToolBar, QTabWidget, QDialog, QMenu, QMenuBar, QWidget, \
-    QApplication, QCheckBox
+    QApplication, QCheckBox, QFileDialog, QProgressDialog
 from loguru import logger
 
 from PyQt6.QtCore import Qt
@@ -331,6 +331,50 @@ class PeriodicExcelExportThread(threading.Thread):
                 self.callback(success, message)
 
 
+class ManualExcelExportThread(QThread):
+    """在后台完成手动 Excel 导出，避免阻塞 Qt 主线程。"""
+
+    export_finished = pyqtSignal(bool, str)
+
+    def __init__(self, db_path, export_file_path, parent=None):
+        super().__init__(parent)
+        self.db_path = db_path
+        self.export_file_path = export_file_path
+
+    def run(self):
+        snapshot_db_path = f"{self.db_path}.{time.time_ns()}.manual_export.snapshot.db"
+        try:
+            if not os.path.exists(self.db_path):
+                raise FileNotFoundError(f"数据库文件不存在: {self.db_path}")
+
+            export_dir = os.path.dirname(self.export_file_path)
+            if export_dir:
+                os.makedirs(export_dir, exist_ok=True)
+
+            # 先复制出一致性快照，Excel 导出只读快照，减少和实时写库的互相影响。
+            PeriodicExcelExportThread._create_snapshot(self.db_path, snapshot_db_path)
+            success = custom_data_file_util.export_data_to_csv(
+                export_file_path=self.export_file_path,
+                file_path=snapshot_db_path,
+                show_success_message=False,
+                use_atomic_replace=True,
+            )
+            if success:
+                self.export_finished.emit(True, self.export_file_path)
+            else:
+                detail = custom_data_file_util.get_last_export_error()
+                self.export_finished.emit(False, detail or "data export failed")
+        except Exception as error:
+            logger.exception(f"手动导出实验数据失败: {error}")
+            self.export_finished.emit(False, str(error))
+        finally:
+            if os.path.exists(snapshot_db_path):
+                try:
+                    os.remove(snapshot_db_path)
+                except OSError as remove_error:
+                    logger.error(f"删除手动导出数据库快照失败: {remove_error}")
+
+
 read_queue_data_thread = read_queue_data_Thread(name="MainWindow_index_read_queue_data_thread")
 class MainWindow_Index(ThemedWindow):
     # 根据程序状态来改变是否可以点击的组件
@@ -546,6 +590,8 @@ class MainWindow_Index(ThemedWindow):
         self.periodic_export_lock = threading.Lock()
         self.periodic_export_in_progress = False
         self.periodic_export_thread = None
+        self.manual_export_thread = None
+        self.manual_export_progress = None
         self.stop_export_thread = None
         self.stop_export_finished = True
         self.stop_dialog_close_pending = False
@@ -2048,29 +2094,71 @@ class MainWindow_Index(ThemedWindow):
         导出实验数据按钮函数
         :return:
         """
+        if self.manual_export_thread is not None and self.manual_export_thread.isRunning():
+            QMessageBox.information(self, "正在导出", "已有一个导出任务正在进行，请稍候。")
+            return
 
-        def stop_store_info_Qtimer():
-            # 读取实验设置文件路径
-            experiment_setting_file = global_setting.get_setting("experiment_setting_file", None)
-            if experiment_setting_file is not None and os.path.exists(experiment_setting_file):
-                # 获取文件所在的文件夹路径
-                folder_path = os.path.dirname(experiment_setting_file)
-                # 获取文件名称
-                file_name = os.path.basename(experiment_setting_file)
-                # 不带扩展名的文件名称
-                file_name_without_extension = os.path.splitext(file_name)[0]
-                # 获取文件的扩展名
-                file_name_extension = os.path.splitext(file_name)[1]
-                # 定义文件夹路径
-                folder_path_data = os.getcwd() + global_setting.get_setting('monitor_data')['STORAGE'][
-                    'fold_path'] + os.path.join(
-                    global_setting.get_setting('monitor_data')['STORAGE']['sub_fold_path'],
-                    f"{file_name_without_extension}_{time_util.get_format_file_from_time(global_setting.get_setting('start_experiment_time', time.time()))}")
-                custom_data_file_util.export_data_to_csv(export_file_path=None,
-                                                         file_name=os.path.basename(folder_path_data))
-                # custom_data_file_util.save_folder_contents_as_custom_file(folder_path_data,is_delete_original_data_file=False)
+        db_path = self._get_experiment_db_path()
+        if db_path is None or not os.path.exists(db_path):
+            QMessageBox.warning(self, "导出失败", "当前实验数据库不存在，无法导出数据。")
+            logger.warning(f"手动导出跳过：数据库不存在 {db_path}")
+            return
 
-        QTimer.singleShot(1000, stop_store_info_Qtimer)
+        default_export_path = self._get_experiment_excel_path()
+        if default_export_path is None:
+            default_export_path = os.path.join(os.getcwd(), "monitor_data.xlsx")
+        export_file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "保存监测数据",
+            default_export_path,
+            "Excel文件 (*.xlsx);;所有文件 (*)",
+        )
+        if not export_file_path:
+            return
+        if not export_file_path.lower().endswith(".xlsx"):
+            export_file_path += ".xlsx"
+
+        logger.info(f"开始手动导出实验数据: {export_file_path}")
+        self.manual_export_progress = QProgressDialog(
+            "正在导出实验数据，请稍候...",
+            "",
+            0,
+            0,
+            self,
+        )
+        self.manual_export_progress.setWindowTitle("导出实验数据")
+        self.manual_export_progress.setCancelButton(None)
+        self.manual_export_progress.setMinimumDuration(0)
+        self.manual_export_progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self.manual_export_progress.show()
+
+        self.manual_export_thread = ManualExcelExportThread(
+            db_path=db_path,
+            export_file_path=export_file_path,
+            parent=self,
+        )
+        self.manual_export_thread.export_finished.connect(self._on_manual_export_finished)
+        self.manual_export_thread.finished.connect(self._on_manual_export_thread_finished)
+        self.manual_export_thread.start()
+
+    def _on_manual_export_finished(self, success, message):
+        if self.manual_export_progress is not None:
+            self.manual_export_progress.close()
+            self.manual_export_progress.deleteLater()
+            self.manual_export_progress = None
+
+        if success:
+            logger.info(f"手动导出实验数据成功: {message}")
+            custom_data_file_util.show_export_success_message(message)
+        else:
+            logger.error(f"手动导出实验数据失败: {message}")
+            QMessageBox.critical(self, "导出失败", f"数据导出失败:\n{message}")
+
+    def _on_manual_export_thread_finished(self):
+        thread = self.manual_export_thread
+        self.manual_export_thread = None
+        if thread is not None:
+            thread.deleteLater()
 
     def close_tab(self, index):
         """关闭标签页"""
