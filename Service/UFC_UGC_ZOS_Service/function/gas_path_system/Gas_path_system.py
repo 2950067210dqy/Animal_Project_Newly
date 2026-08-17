@@ -15,6 +15,7 @@ from loguru import logger
 from Service.UFC_UGC_ZOS_Service.function.o2_compensation import (
     calculate_o2_compensated,
     get_reference_dry_oxygen_percent,
+    has_valid_reference_dry_oxygen_sample,
 )
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
 
@@ -1033,7 +1034,8 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         return None
 
     def _set_or_reuse_dry_oxygen_value(
-            self, data_items, mouse_cage_number, compensation_value):
+            self, data_items, mouse_cage_number, compensation_value,
+            allow_default=False):
         cage_number = int(mouse_cage_number)
         if self._is_valid_dry_oxygen_value(compensation_value):
             compensation_value = round(float(compensation_value), 3)
@@ -1044,6 +1046,15 @@ class ZOS_gas_path_system_run_thread(MyQThread):
 
         previous_value = self._get_last_valid_dry_oxygen_value(cage_number)
         if previous_value is None:
+            if allow_default:
+                default_value = round(get_reference_dry_oxygen_percent(), 3)
+                self.last_valid_dry_oxygen_values[cage_number] = default_value
+                self._set_data_value(data_items, "干基氧浓度(%)", default_value)
+                logger.warning(
+                    f"ZOS运行：{cage_number}号通道补偿结果异常且无历史有效值，"
+                    f"使用初始默认干基氧浓度：{default_value:.3f}"
+                )
+                return True
             if cage_number not in self.dry_oxygen_fallback_warning_channels:
                 logger.warning(
                     f"ZOS运行：{cage_number}号通道本轮无有效REF，且无历史有效干基氧浓度"
@@ -1148,6 +1159,15 @@ class ZOS_gas_path_system_run_thread(MyQThread):
                 zos_rh,
             )
 
+        # 只有REF已经建立真实基线后，普通通道的异常结果才允许使用
+        # 最近有效值或初始默认值；没有REF时继续保持None，避免伪造结果。
+        allow_default_fallback = (
+            not is_reference_cage
+            and inputs_complete
+            and compensation_value == -1
+            and has_valid_reference_dry_oxygen_sample()
+        )
+
         if is_reference_cage:
             self._set_data_value(
                 data_items,
@@ -1160,6 +1180,7 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             data_items,
             mouse_cage_number,
             compensation_value,
+            allow_default=allow_default_fallback,
         )
         return result_data
 

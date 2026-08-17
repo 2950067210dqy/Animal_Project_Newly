@@ -219,6 +219,10 @@ class RealtimeO2Compensator:
     def get_mode(self, channel):
         return self._detect_mode_20points(channel)
 
+    def has_valid_reference_sample(self):
+        """Return whether at least one real REF dry-oxygen sample is buffered."""
+        return any(np.isfinite(value) for value in self.dry_ref_buffer)
+
 
 def get_realtime_o2_compensator():
     global _COMPENSATOR
@@ -228,6 +232,11 @@ def get_realtime_o2_compensator():
         else:
             _COMPENSATOR.ensure_latest()
         return _COMPENSATOR
+
+
+def has_valid_reference_dry_oxygen_sample():
+    """Check whether compensation has a real REF sample to use as its baseline."""
+    return get_realtime_o2_compensator().has_valid_reference_sample()
 
 
 def reload_o2_compensation_config():
