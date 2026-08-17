@@ -959,6 +959,9 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,
             send_message=self.send_message)
         self.data_handle = None
+        self.last_valid_dry_oxygen_values = {}
+        self.dry_oxygen_history_checked_channels = set()
+        self.dry_oxygen_fallback_warning_channels = set()
         self.last_zos_channel_read_time = 0.0
         super().__init__(name=name)
     def before_Runing_work(self):
@@ -985,6 +988,77 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             return float(value) == 0.0
         except Exception:
             return value == 0
+
+    @staticmethod
+    def _is_valid_dry_oxygen_value(value):
+        try:
+            value = float(value)
+            return np.isfinite(value) and 0.0 <= value <= 100.0
+        except (TypeError, ValueError):
+            return False
+
+    def _get_last_valid_dry_oxygen_value(self, mouse_cage_number):
+        cage_number = int(mouse_cage_number)
+        cached_value = self.last_valid_dry_oxygen_values.get(cage_number)
+        if self._is_valid_dry_oxygen_value(cached_value):
+            return round(float(cached_value), 3)
+        if cage_number in self.dry_oxygen_history_checked_channels:
+            return None
+
+        if self.data_handle is None:
+            self.data_handle = Monitor_Datas_Handle()
+
+        table_name = f"ZOS_monitor_data_cage_{cage_number}"
+        column_name = "dry_basis_oxygen_num"
+        try:
+            rows = self.data_handle.sqlite_manager.query_conditions(
+                table_name,
+                f' WHERE "{column_name}" IS NOT NULL '
+                f'ORDER BY time DESC LIMIT 1',
+            )
+            meta_rows = self.data_handle.sqlite_manager.query(f"{table_name}_meta")
+            if rows and meta_rows:
+                previous_data = dict(zip([item[0] for item in meta_rows], rows[0]))
+                previous_value = previous_data.get(column_name)
+                if self._is_valid_dry_oxygen_value(previous_value):
+                    previous_value = round(float(previous_value), 3)
+                    self.last_valid_dry_oxygen_values[cage_number] = previous_value
+                    return previous_value
+        except Exception as exc:
+            logger.warning(
+                f"ZOS运行：{cage_number}号通道读取最近有效干基氧浓度失败：{exc}"
+            )
+        finally:
+            self.dry_oxygen_history_checked_channels.add(cage_number)
+        return None
+
+    def _set_or_reuse_dry_oxygen_value(
+            self, data_items, mouse_cage_number, compensation_value):
+        cage_number = int(mouse_cage_number)
+        if self._is_valid_dry_oxygen_value(compensation_value):
+            compensation_value = round(float(compensation_value), 3)
+            self.last_valid_dry_oxygen_values[cage_number] = compensation_value
+            self.dry_oxygen_fallback_warning_channels.discard(cage_number)
+            self._set_data_value(data_items, "干基氧浓度(%)", compensation_value)
+            return True
+
+        previous_value = self._get_last_valid_dry_oxygen_value(cage_number)
+        if previous_value is None:
+            if cage_number not in self.dry_oxygen_fallback_warning_channels:
+                logger.warning(
+                    f"ZOS运行：{cage_number}号通道本轮无有效REF，且无历史有效干基氧浓度"
+                )
+                self.dry_oxygen_fallback_warning_channels.add(cage_number)
+            return False
+
+        self._set_data_value(data_items, "干基氧浓度(%)", previous_value)
+        if cage_number not in self.dry_oxygen_fallback_warning_channels:
+            logger.warning(
+                f"ZOS运行：{cage_number}号通道本轮无有效REF，"
+                f"已沿用最近有效干基氧浓度：{previous_value:.3f}"
+            )
+            self.dry_oxygen_fallback_warning_channels.add(cage_number)
+        return True
 
     def _wait_zos_channel_read_interval(self):
         min_read_interval = 1.0
@@ -1049,6 +1123,31 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             return result_data
 
         data_items = result_data.get("data", [])
+        o2_partial_press = self._get_data_value(data_items, "氧分压(hPa)")
+        gas_total_press = self._get_data_value(data_items, "气体压力(hPa)")
+        o2_raw_pct = self._get_data_value(data_items, "氧浓度(%)")
+
+        zos_temp = self._get_data_value(data_items, "ZOS温度2测量值(°C)")
+        zos_rh = self._get_data_value(data_items, "ZOS湿度测量值(%RH)")
+        inputs_complete = None not in (
+            o2_partial_press,
+            zos_temp,
+            gas_total_press,
+            o2_raw_pct,
+            zos_rh,
+        )
+
+        compensation_value = -1
+        if inputs_complete:
+            compensation_value = calculate_o2_compensated(
+                channel_id,
+                o2_partial_press,
+                zos_temp,
+                gas_total_press,
+                o2_raw_pct,
+                zos_rh,
+            )
+
         if is_reference_cage:
             self._set_data_value(
                 data_items,
@@ -1057,32 +1156,11 @@ class ZOS_gas_path_system_run_thread(MyQThread):
             )
             return result_data
 
-        o2_partial_press = self._get_data_value(data_items, "氧分压(hPa)")
-        gas_total_press = self._get_data_value(data_items, "气体压力(hPa)")
-        o2_raw_pct = self._get_data_value(data_items, "氧浓度(%)")
-
-        zos_temp = self._get_data_value(data_items, "ZOS温度2测量值(°C)")
-        zos_rh = self._get_data_value(data_items, "ZOS湿度测量值(%RH)")
-        if None in (
-            o2_partial_press,
-            zos_temp,
-            gas_total_press,
-            o2_raw_pct,
-            zos_rh,
-        ):
-            return result_data
-
-        compensation_value = calculate_o2_compensated(
-            channel_id,
-            o2_partial_press,
-            zos_temp,
-            gas_total_press,
-            o2_raw_pct,
-            zos_rh,
+        self._set_or_reuse_dry_oxygen_value(
+            data_items,
+            mouse_cage_number,
+            compensation_value,
         )
-        if compensation_value == -1:
-            return result_data
-        self._set_data_value(data_items, "干基氧浓度(%)", compensation_value)
         return result_data
 
     def stop(self):

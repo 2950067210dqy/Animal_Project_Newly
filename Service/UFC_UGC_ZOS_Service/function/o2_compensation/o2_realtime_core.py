@@ -57,6 +57,7 @@ class RealtimeO2Compensator:
         self.ref_rh_buffer = []
         self.dry_ref_buffer = []
         self.last_values = {}
+        self._missing_reference_channels = set()
         self._config_mtime_ns = None
         self.reload_config(force=True)
 
@@ -141,12 +142,18 @@ class RealtimeO2Compensator:
         }
 
         dry_raw = calc_dry_o2(o2_value, gas_pressure_value, zos_temp_value, rh_value)
+        if not np.isfinite(dry_raw):
+            logger.warning(
+                f"O2 compensation skipped because channel {channel} raw dry oxygen is invalid"
+            )
+            return -1
 
         self.dry_buffer[channel].append(dry_raw)
         self.rh_buffer[channel].append(rh_value)
         if channel == "REF":
             self.ref_rh_buffer.append(rh_value)
             self.dry_ref_buffer.append(dry_raw)
+            self._missing_reference_channels.clear()
 
         for buffer_item in (self.dry_buffer[channel], self.rh_buffer[channel]):
             if len(buffer_item) > 50:
@@ -161,7 +168,18 @@ class RealtimeO2Compensator:
             dry_sg = dry_raw
 
         dry_sec = self._apply_secondary(dry_sg, rh_value, zos_temp_value, channel)
-        ref_dry = self.dry_ref_buffer[-1] if self.dry_ref_buffer else dry_sec
+        valid_reference_values = [
+            value for value in self.dry_ref_buffer if np.isfinite(value)
+        ]
+        if channel != "REF" and not valid_reference_values:
+            if channel not in self._missing_reference_channels:
+                logger.warning(
+                    f"O2 compensation skipped for {channel}: no valid REF dry oxygen sample"
+                )
+                self._missing_reference_channels.add(channel)
+            return -1
+
+        ref_dry = valid_reference_values[-1] if valid_reference_values else dry_sec
         offset = float(self.offsets.get(channel, 0.0))
         final_value = dry_sec - (ref_dry - self.target_o2) - offset
 
