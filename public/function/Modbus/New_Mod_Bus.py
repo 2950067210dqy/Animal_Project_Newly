@@ -42,10 +42,6 @@ class ModbusRTUMasterNew:
         self._last_error_time = 0
         self._error_cooldown = 1.0  # 错误冷却时间
 
-        # 响应读取采用非阻塞轮询，避免串口驱动在 read/reset 上无限占住采集线程。
-        self._response_poll_interval = 0.005
-        self._response_inter_byte_timeout = 0.02
-
         # 自动重连参数
         self.auto_reconnect = True
         self.max_reconnect_attempts = 3
@@ -175,6 +171,12 @@ class ModbusRTUMasterNew:
         try:
             if self.ser:
                 if self.ser.is_open:
+                    # 清空缓冲区
+                    try:
+                        self.ser.reset_input_buffer()
+                        self.ser.reset_output_buffer()
+                    except:
+                        pass
                     self.ser.close()
         except:
             pass
@@ -217,91 +219,6 @@ class ModbusRTUMasterNew:
 
         logger.error(f"{self.sport}-重连失败，已达到最大重试次数")
         return False
-
-    def _drain_input_nonblocking(self):
-        """丢弃上一条异常报文的残留字节，不调用可能阻塞的驱动清缓冲接口。"""
-        if not self.ser or not self.ser.is_open:
-            return
-
-        original_timeout = self.ser.timeout
-        discarded = 0
-        try:
-            self.ser.timeout = 0
-            for _ in range(4):
-                pending = self.ser.read(256)
-                if not pending:
-                    break
-                discarded += len(pending)
-            if discarded:
-                logger.warning(
-                    f"{self.sport}-丢弃上一条报文残留数据 {discarded} 字节"
-                )
-        except Exception as exc:
-            logger.warning(f"{self.sport}-非阻塞清理串口输入缓冲失败: {exc}")
-        finally:
-            try:
-                self.ser.timeout = original_timeout
-            except Exception:
-                pass
-
-    @staticmethod
-    def _response_length(response_prefix: bytes) -> Optional[int]:
-        """根据 Modbus 响应头推断完整帧长度。"""
-        if len(response_prefix) < 3:
-            return None
-
-        function_code = response_prefix[1]
-        if function_code & 0x80:
-            return 5
-        if function_code in (1, 2, 3, 4):
-            return 3 + response_prefix[2] + 2
-        if function_code in (5, 6, 15, 16):
-            return 8
-        return None
-
-    def _read_response_until_deadline(self) -> bytes:
-        """以真正的截止时间读取响应，避免 pyserial read 长时间卡住。"""
-        if not self.ser or not self.ser.is_open:
-            return b''
-
-        deadline = time.monotonic() + max(float(self.timeout), 1.0)
-        original_timeout = self.ser.timeout
-        response = bytearray()
-        last_byte_time = None
-        try:
-            # timeout=0 使每次 read 立即返回，截止时间由本方法统一控制。
-            self.ser.timeout = 0
-            while time.monotonic() < deadline:
-                chunk = self.ser.read(256)
-                now = time.monotonic()
-                if chunk:
-                    response.extend(chunk)
-                    last_byte_time = now
-                    expected_length = self._response_length(response)
-                    if expected_length is not None and len(response) >= expected_length:
-                        return bytes(response[:expected_length])
-                    if len(response) >= 256:
-                        return bytes(response)
-                elif (
-                    response
-                    and last_byte_time is not None
-                    and now - last_byte_time >= self._response_inter_byte_timeout
-                ):
-                    # 已收到部分帧且总线保持静默，交给 CRC/长度校验统一判定。
-                    return bytes(response)
-                else:
-                    time.sleep(self._response_poll_interval)
-            return bytes(response)
-        finally:
-            try:
-                self.ser.timeout = original_timeout
-            except Exception:
-                pass
-
-    def _recover_serial_connection(self, reason: str):
-        """将异常串口置为不可用，下一次请求通过统一重连流程恢复。"""
-        logger.warning(f"{self.sport}-串口收发异常，准备重连: {reason}")
-        self._close_connection_unsafe()
 
     def calculate_crc(self, data: bytes) -> bytes:
         """计算Modbus RTU CRC-16，使用查找表提高效率"""
@@ -455,22 +372,22 @@ class ModbusRTUMasterNew:
                           return_data: dict) -> Tuple[Optional[bytes], Optional[str], bool, dict]:
         """发送报文并接收响应 - 原子操作"""
         try:
-            # 不使用 reset_input/output_buffer：部分 USB 串口驱动在该调用处会阻塞。
-            # 只用非阻塞读取清理上一条异常报文的残留字节。
-            self._drain_input_nonblocking()
+            # 清空缓冲区
+            self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
 
             # 发送数据
             self._send_status_message(f"发送数据帧{frame.hex()}")
             logger.info(f"{time_util.get_format_from_time(time.time())}-{self.sport}-发送数据帧{frame.hex()}")
 
             self.ser.write(frame)
-            # write 已受 write_timeout 约束，不再额外调用可能阻塞的 flush。
-            response = self._read_response_until_deadline()
+            self.ser.flush()  # 确保数据发送完成
 
-            if not response:
-                self._recover_serial_connection(
-                    f"报文{frame.hex()}在{max(float(self.timeout), 1.0):.1f}秒内未收到响应"
-                )
+            # 小延迟等待响应
+            time.sleep(0.01)
+
+            # 读取响应 - 减少读取大小，提高效率
+            response = self.ser.read(256)  # 大多数Modbus响应不会超过64字节
 
             # 验证响应
             return self._validate_response(response, slave_id, function_code,
@@ -479,7 +396,6 @@ class ModbusRTUMasterNew:
         except Exception as e:
             error_msg = f"发送接收异常: {e}"
             logger.error(f"{self.sport}-{error_msg}")
-            self._recover_serial_connection(error_msg)
             return_data['data'].append({'desc': '备注', 'value': error_msg})
             return_data['response_msg'] = error_msg
             return_data['response_code'] = ModBusResponseCode.SEND_RECEIVE_EXCEPTION
