@@ -90,9 +90,9 @@ class Startup_CO2_Air_Calibration:
     def _normalize_target_points():
         calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
         try:
-            target_points = int(float(calibration_config.get("startup_air_calibration_target_points", 60)))
+            target_points = int(float(calibration_config.get("startup_air_calibration_target_points", 120)))
         except Exception:
-            target_points = 60
+            target_points = 120
         return max(target_points, 1)
 
     @staticmethod
