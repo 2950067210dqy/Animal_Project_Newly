@@ -9,6 +9,67 @@ from theme.ThemeQt6 import ThemedDialog
 class CellDetailDialog(ThemedDialog):
     """单元格详情弹窗"""
 
+    @staticmethod
+    def _table_model(table):
+        if table is None:
+            return None
+        model = getattr(table, "model", None)
+        return model() if callable(model) else model
+
+    @classmethod
+    def _column_count(cls, table):
+        column_count = getattr(table, "columnCount", None)
+        if callable(column_count):
+            return column_count()
+
+        model = cls._table_model(table)
+        model_column_count = getattr(model, "columnCount", None)
+        return model_column_count() if callable(model_column_count) else 0
+
+    @classmethod
+    def _header_text(cls, table, column):
+        horizontal_header_item = getattr(table, "horizontalHeaderItem", None)
+        if callable(horizontal_header_item):
+            header_item = horizontal_header_item(column)
+            if header_item is not None:
+                return header_item.text()
+
+        model = cls._table_model(table)
+        column_title = getattr(model, "column_title", None)
+        if callable(column_title):
+            return str(column_title(column))
+
+        header_data = getattr(model, "headerData", None)
+        if callable(header_data):
+            value = header_data(
+                column,
+                Qt.Orientation.Horizontal,
+                Qt.ItemDataRole.DisplayRole,
+            )
+            if value is not None:
+                return str(value)
+        return f"列{column + 1}"
+
+    @classmethod
+    def _cell_text(cls, table, row, column):
+        item_getter = getattr(table, "item", None)
+        if callable(item_getter):
+            item = item_getter(row, column)
+            return item.text() if item is not None else "(空)"
+
+        model = cls._table_model(table)
+        cell_text = getattr(model, "cell_text", None)
+        if callable(cell_text):
+            value = cell_text(row, column)
+            return str(value) if value not in (None, "") else "(空)"
+
+        model_index = getattr(model, "index", None)
+        model_data = getattr(model, "data", None)
+        if callable(model_index) and callable(model_data):
+            value = model_data(model_index(row, column), Qt.ItemDataRole.DisplayRole)
+            return str(value) if value not in (None, "") else "(空)"
+        return "(空)"
+
     def __init__(self, cell_value, row, column, column_name, parent=None):
         super().__init__()
         self.setWindowTitle(f"单元格详情 - 行{row + 1}, 列{column_name}")
@@ -60,10 +121,10 @@ class CellDetailDialog(ThemedDialog):
         # 行数据显示表格
         row_data_table = QTableWidget()
         row_data_table.setRowCount(1)
-        row_data_table.setColumnCount(parent.columnCount())
+        column_count = self._column_count(parent)
+        row_data_table.setColumnCount(column_count)
         row_data_table.setHorizontalHeaderLabels(
-            [parent.horizontalHeaderItem(col).text() if parent.horizontalHeaderItem(col) else f"列{col + 1}" for col in
-             range(parent.columnCount())]
+            [self._header_text(parent, col) for col in range(column_count)]
         )
         row_data_table.setStyleSheet("""
             QTableWidget {
@@ -76,9 +137,9 @@ class CellDetailDialog(ThemedDialog):
             }
         """)
 
-        for col in range(parent.columnCount()):
+        for col in range(column_count):
             if col != column:
-                item = QTableWidgetItem(parent.item(row, col).text() if parent.item(row, col) else "(空)")
+                item = QTableWidgetItem(self._cell_text(parent, row, col))
                 row_data_table.setItem(0, col, item)
 
         row_data_table.resizeColumnsToContents()
