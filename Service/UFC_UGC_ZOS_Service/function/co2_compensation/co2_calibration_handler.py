@@ -24,8 +24,6 @@ class CO2CalibrationHandler:
         self.data = {channel: [] for channel in self.channels}
         self.calibrated = False
         self.is_active = False
-        self.completed = False
-        self.calculation_error = None
         self.lock = threading.Lock()
 
         self.valid_range = (300, 5000)
@@ -38,16 +36,12 @@ class CO2CalibrationHandler:
             self.data = {channel: [] for channel in self.channels}
             self.calibrated = False
             self.is_active = True
-            self.completed = False
-            self.calculation_error = None
         return True
 
     def add_data(self, channel, co2_std, timestamp=None):
         with self.lock:
-            if channel not in self.channels or not self.is_active or self.calibrated or self.completed:
+            if channel not in self.channels or not self.is_active or self.calibrated:
                 return self.calibrated
-            if len(self.data[channel]) >= self.target_points:
-                return False
 
             if timestamp is None:
                 ts = datetime.now()
@@ -76,16 +70,9 @@ class CO2CalibrationHandler:
                     f"(time_sync_tolerance={self.time_sync_tolerance}s)"
                 )
                 self.calibrated = True
-                self.completed = True
                 self.is_active = False
             else:
-                self.calculation_error = (
-                    f"CO2 Air calibration coefficient calculation failed after strict collection "
-                    f"of {self.target_points} points per channel"
-                )
-                self.completed = True
-                self.is_active = False
-                logger.error(self.calculation_error)
+                logger.error("CO2 Air calibration coefficient calculation failed")
             return success
 
     def _preprocess_channel_data(self, channel):
@@ -234,8 +221,6 @@ class CO2CalibrationHandler:
             return {
                 "is_active": self.is_active,
                 "calibrated": self.calibrated,
-                "completed": self.completed,
-                "calculation_error": self.calculation_error,
                 "current_counts": counts,
                 "valid_counts": valid_counts,
                 "all_ready": all(count >= self.target_points for count in counts.values()),

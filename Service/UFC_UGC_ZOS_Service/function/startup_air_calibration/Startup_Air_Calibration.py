@@ -435,25 +435,6 @@ class Startup_Air_Calibration:
                     resolve()
                     return
 
-                o2_failed = o2_status.get("completed", False) and not o2_calibrated
-                co2_failed = co2_status.get("completed", False) and not co2_calibrated
-                if o2_failed or co2_failed:
-                    failure_parts = []
-                    if o2_failed:
-                        failure_parts.append(o2_status.get("calculation_error") or "O2拟合失败")
-                    if co2_failed:
-                        valid_counts = co2_status.get("valid_counts", {})
-                        valid_summary = "，".join(
-                            f"{channel}={valid_counts.get(channel, 0)}"
-                            for channel in ["REF"] + [f"M{idx}" for idx in range(1, 9)]
-                        )
-                        failure_parts.append(
-                            f"{co2_status.get('calculation_error') or 'CO2拟合失败'}；"
-                            f"有效点[{valid_summary}]"
-                        )
-                    reject("；".join(failure_parts))
-                    return
-
             channel_index = (channel_index + 1) % len(active_channels)
 
             current_time = time.time()
