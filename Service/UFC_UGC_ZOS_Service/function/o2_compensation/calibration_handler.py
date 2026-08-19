@@ -49,6 +49,7 @@ class CalibrationHandler:
         self.calibrated = False
         self.completed = False
         self.offsets = {}
+        self.gains = {}
         self.secondary_models = {}
 
     def start_new_calibration(self):
@@ -110,12 +111,29 @@ class CalibrationHandler:
                         frame[key] = sequential_jump_clean(frame[key], threshold)
                 processed[channel] = self._enhanced_process(frame, channel)
 
+            target_o2 = 20.93
             ref_final = processed["REF"]["final"].mean()
+            if not np.isfinite(ref_final) or ref_final <= 0:
+                logger.error("O2 Air calibration failed: REF final value is invalid")
+                return False
+
+            ref_gain = target_o2 / ref_final
             for channel in self.channels:
+                channel_final = processed[channel]["final"].mean()
+                if not np.isfinite(channel_final) or channel_final <= 0:
+                    logger.error(
+                        f"O2 Air calibration failed: {channel} final value is invalid"
+                    )
+                    return False
+
                 if channel == "REF":
                     self.offsets[channel] = 0.0
                 else:
-                    self.offsets[channel] = float(processed[channel]["final"].mean() - ref_final)
+                    # 新版增益校准已经把各通道归一到目标浓度，保留偏移字段但不叠加旧偏移。
+                    self.offsets[channel] = 0.0
+                self.gains[channel] = float(
+                    ref_gain if channel == "REF" else target_o2 / channel_final
+                )
 
             self._save_config()
             return True
@@ -175,13 +193,14 @@ class CalibrationHandler:
 
     def _save_config(self):
         config = {
-            "version": "2.1",
+            "version": "2.2",
             "temperature_source": "ZOS_temperature_2",
             "humidity_source": "ZOS_humidity",
             "calibration_time": datetime.now().isoformat(),
             "target_o2": 20.93,
             "target_points": self.target_points,
             "offsets": self.offsets,
+            "gains": self.gains,
             "secondary_models": self.secondary_models,
         }
         self.config_path.parent.mkdir(parents=True, exist_ok=True)

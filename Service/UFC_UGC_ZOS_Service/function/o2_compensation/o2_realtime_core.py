@@ -50,6 +50,7 @@ class RealtimeO2Compensator:
     def __init__(self, config_path=None):
         self.config_path = Path(config_path or get_default_config_path())
         self.offsets = {}
+        self.gains = {}
         self.secondary_models = {}
         self.target_o2 = 20.93
         self.dry_buffer = defaultdict(list)
@@ -83,11 +84,13 @@ class RealtimeO2Compensator:
         )
         if source_is_valid:
             self.offsets = config.get("offsets", {})
+            self.gains = config.get("gains", {})
             self.secondary_models = config.get("secondary_models", {})
         else:
             self.offsets = {}
+            self.gains = {}
             self.secondary_models = {}
-            if config.get("offsets"):
+            if config.get("offsets") or config.get("gains"):
                 logger.warning(
                     "O2 calibration config ignored because it was not generated "
                     "with ZOS temperature 2 and ZOS humidity; run Air calibration again"
@@ -100,7 +103,12 @@ class RealtimeO2Compensator:
             with self.config_path.open("r", encoding="utf-8") as file:
                 return json.load(file)
         except Exception:
-            return {"offsets": {}, "secondary_models": {}, "target_o2": 20.93}
+            return {
+                "offsets": {},
+                "gains": {},
+                "secondary_models": {},
+                "target_o2": 20.93,
+            }
 
     def compensate(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, zos_rh):
         del o2_partial
@@ -176,12 +184,18 @@ class RealtimeO2Compensator:
                 logger.warning(
                     f"O2 compensation skipped for {channel}: no valid REF dry oxygen sample"
                 )
-                self._missing_reference_channels.add(channel)
+            self._missing_reference_channels.add(channel)
             return -1
 
         ref_dry = valid_reference_values[-1] if valid_reference_values else dry_sec
+        gain_ch = self._get_gain(channel)
+        gain_ref = self._get_gain("REF")
         offset = float(self.offsets.get(channel, 0.0))
-        final_value = dry_sec - (ref_dry - self.target_o2) - offset
+        final_value = (
+            dry_sec * gain_ch
+            - (ref_dry * gain_ref - self.target_o2)
+            - offset
+        )
 
         mode = self._detect_mode_20points(channel)
         if mode == "empty":
@@ -196,6 +210,16 @@ class RealtimeO2Compensator:
         if channel not in self.secondary_models:
             return dry_value
         return dry_value
+
+    def _get_gain(self, channel):
+        """Return a valid calibration gain while supporting legacy configs."""
+        gain = _coerce_float(self.gains.get(channel, 1.0))
+        if not np.isfinite(gain) or gain <= 0:
+            logger.warning(
+                f"O2 calibration gain for {channel} is invalid; using 1.0"
+            )
+            return 1.0
+        return float(gain)
 
     def _detect_mode_20points(self, channel):
         if len(self.dry_buffer[channel]) < 40:
