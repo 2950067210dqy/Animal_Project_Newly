@@ -57,6 +57,16 @@ COLLECTION_BATCH_TIMEOUT_SECONDS = 20.0
 COLLECTION_BARRIER_TIMEOUT_SECONDS = 45.0
 COLLECTION_SENSOR_MAX_ATTEMPTS = 3
 COLLECTION_SENSOR_RETRY_DELAY_SECONDS = 0.1
+FOOD_TROUGH_CURRENT_OFF_COMMAND = {
+    "slave_id": "FF",
+    "function_code": "05",
+    "data": ["00", "71", "00", "00"],
+    "write_only": True,
+    "no_response": True,
+    "command_name": "food_trough_current_off",
+}
+_last_food_trough_current_off_start_time = None
+send_thread = None
 
 
 def _environment_module_only_enabled():
@@ -89,6 +99,41 @@ def _send_main_window_status(title, data):
                 time=time_util.get_format_from_time(time.time()),
             )
         )
+
+
+def _queue_food_trough_current_off_command():
+    """Queue the global current-off command once for the current experiment."""
+    global _last_food_trough_current_off_start_time, send_thread
+
+    if _environment_module_only_enabled():
+        logger.info("仅环境模块模式：跳过食槽驱动电流关闭命令")
+        return False
+
+    experiment_start_time = global_setting.get_setting("start_experiment_time", None)
+    if (
+            experiment_start_time is not None
+            and experiment_start_time == _last_food_trough_current_off_start_time
+    ):
+        logger.warning("本次实验已发送食槽驱动电流关闭命令，跳过重复发送")
+        return False
+
+    if send_thread is None or not send_thread.isRunning():
+        logger.critical("食槽驱动电流关闭命令未发送：串口发送线程未运行")
+        return False
+
+    command = copy.deepcopy(FOOD_TROUGH_CURRENT_OFF_COMMAND)
+    command["port"] = global_setting.get_setting("port", port_use)
+    send_thread.add_message(
+        message={"message": command},
+        urgent=True,
+        origin="main_monitor_data",
+    )
+    _last_food_trough_current_off_start_time = experiment_start_time
+    logger.warning(
+        "实验启动：食槽门保持打开，已排队关闭驱动电流命令 "
+        "FF 05 00 71 00 00 88 0F"
+    )
+    return True
 
 
 def _notify_environment_only_gas_stop_complete():
@@ -898,18 +943,27 @@ class Send_thread(MyQThread):
                             send_message = message['message']['message']
 
                             logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
-                            response, response_hex, send_state, return_data= self.modbus.send_command(
-                                slave_id=send_message['slave_id'],
-                                function_code=send_message['function_code'],
-                                data_hex_list=send_message['data'],
-
-                                is_parse_response=False
-                            )
+                            is_write_only = bool(send_message.get('write_only', False))
+                            if is_write_only:
+                                response, response_hex, send_state, return_data = (
+                                    self.modbus.send_command_without_response(
+                                        slave_id=send_message['slave_id'],
+                                        function_code=send_message['function_code'],
+                                        data_hex_list=send_message['data'],
+                                    )
+                                )
+                            else:
+                                response, response_hex, send_state, return_data = self.modbus.send_command(
+                                    slave_id=send_message['slave_id'],
+                                    function_code=send_message['function_code'],
+                                    data_hex_list=send_message['data'],
+                                    is_parse_response=False
+                                )
                             response_return_data =copy.deepcopy(return_data)
                             final_return_data = response_return_data
                             # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
                             parser_message=""
-                            if send_state:
+                            if send_state and not is_write_only:
                                 return_data, parser_message = self.modbus.parse_response(response=response,
                                                                                          response_hex=response.hex(),
                                                                                          send_state=True,
@@ -927,6 +981,18 @@ class Send_thread(MyQThread):
                                         if desc and desc == "大气压测量值(KPa)":
                                             global_setting.set_setting("air_pressure_1104", float(data.get("value")))
                                             break
+                            elif send_state and is_write_only:
+                                parser_message = send_message.get(
+                                    'command_name', '无需响应报文发送成功'
+                                )
+                                logger.warning(
+                                    f"安全控制命令发送成功: {response_hex} | {parser_message}"
+                                )
+                            elif is_write_only:
+                                logger.critical(
+                                    "安全控制命令发送失败: "
+                                    f"{send_message.get('command_name', send_message)}"
+                                )
 
                             if 'detection_session_id' in send_message:
                                 final_return_data['detection_session_id'] = send_message.get('detection_session_id')
@@ -1841,6 +1907,7 @@ def start():
     experiment_settings = global_setting.get_setting("experiment_setting", None)
     gids = [group.id for group in experiment_settings.groups if
             group.is_selected == 1] if experiment_settings is not None else []
+    _queue_food_trough_current_off_command()
     # UFC_UGC_ZOS
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread, lighting_schedule_thread, _shutdown_lights_off_done
     _shutdown_lights_off_done = False

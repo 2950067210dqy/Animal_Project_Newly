@@ -361,6 +361,64 @@ class ModbusRTUMasterNew:
             self.is_connected = False
             return None, None, False, return_data
 
+    def send_command_without_response(
+            self,
+            slave_id: Union[str, int],
+            function_code: Union[str, int],
+            data_hex_list: List[str],
+    ) -> Tuple[Optional[bytes], Optional[str], bool, dict]:
+        """Atomically write a command that must not wait for a Modbus response."""
+        return_data = self._prepare_return_data(slave_id, function_code)
+
+        try:
+            with self._safe_operation_lock(timeout=5.0):
+                if not self._ensure_connection():
+                    error_msg = f"{self.sport}-{slave_id, function_code, data_hex_list}-无法建立连接"
+                    return_data['data'].append({'desc': '备注', 'value': error_msg})
+                    return_data['response_msg'] = error_msg
+                    logger.error(error_msg)
+                    return None, None, False, return_data
+
+                frame = self.build_frame(slave_id, function_code, data_hex_list)
+                if frame is None:
+                    error_msg = "构造发送报文 frame 为空"
+                    return_data['data'].append({'desc': '备注', 'value': error_msg})
+                    return_data['response_msg'] = error_msg
+                    return None, None, False, return_data
+
+                self._send_status_message(f"发送无需响应数据帧{frame.hex()}")
+                logger.info(
+                    f"{time_util.get_format_from_time(time.time())}-{self.sport}-"
+                    f"发送无需响应数据帧{frame.hex()}"
+                )
+                written = self.ser.write(frame)
+                self.ser.flush()
+                if written is not None and written != len(frame):
+                    raise serial.SerialTimeoutException(
+                        f"报文未完整写入: {written}/{len(frame)} bytes"
+                    )
+
+                return_data['response_state'] = True
+                return_data['response_code'] = ModBusResponseCode.SUCCESS
+                return_data['response_msg'] = "无需响应报文发送成功"
+                return frame, frame.hex(), True, return_data
+
+        except TimeoutError as e:
+            error_msg = f"{self.sport}-操作超时: {e}"
+            logger.error(error_msg)
+            return_data['data'].append({'desc': '备注', 'value': error_msg})
+            return_data['response_msg'] = error_msg
+            return_data['response_code'] = ModBusResponseCode.OPERATOR_TIMEOUT
+            return None, None, False, return_data
+        except Exception as e:
+            error_msg = f"无需响应报文发送异常: {e}"
+            logger.error(f"{self.sport}-{error_msg}")
+            self._close_connection_unsafe()
+            return_data['data'].append({'desc': '备注', 'value': error_msg})
+            return_data['response_msg'] = error_msg
+            return_data['response_code'] = ModBusResponseCode.SEND_RECEIVE_EXCEPTION
+            return None, None, False, return_data
+
     def _send_and_receive(self, frame: bytes, slave_id: Union[str, int],
                           function_code: Union[str, int], is_parse_response: bool,
                           return_data: dict) -> Tuple[Optional[bytes], Optional[str], bool, dict]:
