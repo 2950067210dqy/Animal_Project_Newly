@@ -24,6 +24,8 @@ class CO2CalibrationHandler:
         self.data = {channel: [] for channel in self.channels}
         self.calibrated = False
         self.is_active = False
+        self.failed = False
+        self.failure_reason = None
         self.lock = threading.Lock()
 
         self.valid_range = (300, 5000)
@@ -36,12 +38,16 @@ class CO2CalibrationHandler:
             self.data = {channel: [] for channel in self.channels}
             self.calibrated = False
             self.is_active = True
+            self.failed = False
+            self.failure_reason = None
         return True
 
     def add_data(self, channel, co2_std, timestamp=None):
         with self.lock:
-            if channel not in self.channels or not self.is_active or self.calibrated:
+            if channel not in self.channels or not self.is_active or self.calibrated or self.failed:
                 return self.calibrated
+            if len(self.data[channel]) >= self.target_points:
+                return False
 
             if timestamp is None:
                 ts = datetime.now()
@@ -72,7 +78,12 @@ class CO2CalibrationHandler:
                 self.calibrated = True
                 self.is_active = False
             else:
-                logger.error("CO2 Air calibration coefficient calculation failed")
+                self.failed = True
+                self.is_active = False
+                logger.error(
+                    f"CO2 Air calibration coefficient calculation failed; "
+                    f"calibration stopped: {self.failure_reason or 'unknown reason'}"
+                )
             return success
 
     def _preprocess_channel_data(self, channel):
@@ -110,10 +121,15 @@ class CO2CalibrationHandler:
         try:
             ref_raw = self._preprocess_channel_data("REF")
             if ref_raw.empty:
+                self.failure_reason = "REF has no usable data"
                 return False
 
             valid_count_ref = int(ref_raw["is_valid"].sum())
             if valid_count_ref < self.target_points * self.min_valid_ratio:
+                self.failure_reason = (
+                    f"REF valid points {valid_count_ref}/{self.target_points} "
+                    f"below minimum ratio {self.min_valid_ratio:.0%}"
+                )
                 return False
 
             ref_raw = ref_raw.sort_values("timestamp").reset_index(drop=True)
@@ -174,11 +190,16 @@ class CO2CalibrationHandler:
                 })
 
             if len(coefficient_items) < 2:
+                self.failure_reason = (
+                    "fewer than one measurement channel produced a valid coefficient"
+                )
                 return False
 
             self._write_config(coefficient_items)
             return True
-        except Exception:
+        except Exception as exc:
+            self.failure_reason = f"{type(exc).__name__}: {exc}"
+            logger.exception("CO2 Air calibration coefficient calculation raised an exception")
             return False
 
     def _write_config(self, coefficient_items):
@@ -221,6 +242,8 @@ class CO2CalibrationHandler:
             return {
                 "is_active": self.is_active,
                 "calibrated": self.calibrated,
+                "failed": self.failed,
+                "failure_reason": self.failure_reason,
                 "current_counts": counts,
                 "valid_counts": valid_counts,
                 "all_ready": all(count >= self.target_points for count in counts.values()),

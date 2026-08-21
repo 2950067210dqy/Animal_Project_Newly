@@ -48,6 +48,8 @@ class CalibrationHandler:
         self.is_active = False
         self.calibrated = False
         self.completed = False
+        self.failed = False
+        self.failure_reason = None
         self.offsets = {}
         self.gains = {}
         self.secondary_models = {}
@@ -66,7 +68,9 @@ class CalibrationHandler:
                 return False
             if self.calibrated:
                 return True
-            if not self.is_active or self.completed:
+            if not self.is_active or self.completed or self.failed:
+                return False
+            if len(self.data[channel]) >= self.target_points:
                 return False
 
             self.data[channel].append({
@@ -91,7 +95,12 @@ class CalibrationHandler:
                 self.completed = True
                 self.is_active = False
             else:
-                logger.error("O2 Air calibration coefficient calculation failed")
+                self.failed = True
+                self.is_active = False
+                logger.error(
+                    f"O2 Air calibration coefficient calculation failed; "
+                    f"calibration stopped: {self.failure_reason or 'unknown reason'}"
+                )
             return success
 
     def _perform_enhanced_calibration(self):
@@ -114,16 +123,14 @@ class CalibrationHandler:
             target_o2 = 20.93
             ref_final = processed["REF"]["final"].mean()
             if not np.isfinite(ref_final) or ref_final <= 0:
-                logger.error("O2 Air calibration failed: REF final value is invalid")
+                self.failure_reason = "REF final value is invalid"
                 return False
 
             ref_gain = target_o2 / ref_final
             for channel in self.channels:
                 channel_final = processed[channel]["final"].mean()
                 if not np.isfinite(channel_final) or channel_final <= 0:
-                    logger.error(
-                        f"O2 Air calibration failed: {channel} final value is invalid"
-                    )
+                    self.failure_reason = f"{channel} final value is invalid"
                     return False
 
                 if channel == "REF":
@@ -137,7 +144,9 @@ class CalibrationHandler:
 
             self._save_config()
             return True
-        except Exception:
+        except Exception as exc:
+            self.failure_reason = f"{type(exc).__name__}: {exc}"
+            logger.exception("O2 Air calibration coefficient calculation raised an exception")
             return False
 
     def _enhanced_process(self, frame, channel):
@@ -215,6 +224,8 @@ class CalibrationHandler:
                 "is_active": self.is_active,
                 "calibrated": self.calibrated,
                 "completed": self.completed,
+                "failed": self.failed,
+                "failure_reason": self.failure_reason,
                 "points_received": points_received,
                 "current_counts": current_counts,
                 "all_ready": all(count >= self.target_points for count in current_counts.values()),

@@ -423,6 +423,24 @@ class Startup_Air_Calibration:
 
                 o2_status = self.o2_calibration_handler.get_status()
                 co2_status = self.co2_calibration_handler.get_status()
+                failed_handlers = []
+                if o2_status.get("failed"):
+                    failed_handlers.append(
+                        f"O2：{o2_status.get('failure_reason') or '拟合失败'}"
+                    )
+                if co2_status.get("failed"):
+                    failed_handlers.append(
+                        f"CO2：{co2_status.get('failure_reason') or '拟合失败'}"
+                    )
+                if failed_handlers:
+                    failure_message = "；".join(failed_handlers)
+                    logger.error(f"{self.name}校准失败，已停止继续采集：{failure_message}")
+                    self._send_text(
+                        f"{self.name}校准失败，已停止继续采集：{failure_message}"
+                    )
+                    reject(f"{self.name}校准失败：{failure_message}")
+                    return
+
                 co2_ready = all(
                     count >= target_points for count in co2_status.get("current_counts", {}).values()
                 )
