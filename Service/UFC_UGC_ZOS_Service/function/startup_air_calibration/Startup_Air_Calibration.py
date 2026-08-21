@@ -195,7 +195,9 @@ class Startup_Air_Calibration:
 
     def _build_calibration_handlers(self, sample_interval=None, active_channel_count=None):
         try:
-            from Service.UFC_UGC_ZOS_Service.function.o2_compensation.calibration_handler import CalibrationHandler
+            from Service.UFC_UGC_ZOS_Service.function.o2_compensation import (
+                create_o2_calibration_handler,
+            )
             from Service.UFC_UGC_ZOS_Service.function.co2_compensation.co2_calibration_handler import (
                 CO2CalibrationHandler,
             )
@@ -203,7 +205,9 @@ class Startup_Air_Calibration:
             raise RuntimeError(f"加载 Air 校准处理器失败: {exc}")
 
         target_points = self._normalize_target_points()
-        self.o2_calibration_handler = CalibrationHandler(target_points=target_points)
+        self.o2_calibration_handler = create_o2_calibration_handler(
+            target_points=target_points,
+        )
         self.co2_calibration_handler = CO2CalibrationHandler(target_points=target_points)
         if sample_interval is not None and active_channel_count is not None:
             channel_gap_window = max(

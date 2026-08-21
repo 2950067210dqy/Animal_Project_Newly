@@ -17,6 +17,9 @@ from Service.UFC_UGC_ZOS_Service.function.o2_compensation import (
     get_reference_dry_oxygen_percent,
     has_valid_reference_dry_oxygen_sample,
 )
+from Service.UFC_UGC_ZOS_Service.function.o2_compensation.host_wet_o2_guard import (
+    WetOxygenAnomalyGuard,
+)
 from Service.UFC_UGC_ZOS_Service.function.Send_Message.Send_Message import Send_Message
 
 from public.config_class.global_setting import global_setting
@@ -964,9 +967,71 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         self.dry_oxygen_history_checked_channels = set()
         self.dry_oxygen_fallback_warning_channels = set()
         self.last_zos_channel_read_time = 0.0
+        o2_config = global_setting.get_setting("UFC_UGC_ZOS_config", {})
+        self.wet_o2_guard = WetOxygenAnomalyGuard.from_config(
+            o2_config,
+            log=lambda message: logger.warning(f"ZOS运行：{message}"),
+        )
+        self._last_zos_cage_index = None
+        self._has_last_zos_cage_index = False
+        self._zos_cage_signature = None
         super().__init__(name=name)
+
     def before_Runing_work(self):
-        pass
+        self.reset_wet_o2_anomaly_guard("ZOS运行启动")
+
+    def reset_wet_o2_anomaly_guard(self, reason="状态切换"):
+        self.wet_o2_guard.reset()
+        self._last_zos_cage_index = None
+        self._has_last_zos_cage_index = False
+        self._zos_cage_signature = None
+        logger.info(f"ZOS运行：已重置湿基氧异常保护（{reason}，预热{self.wet_o2_guard.warmup_cycles}轮）")
+
+    def _observe_zos_cycle(self, cage_index, mouse_cages):
+        """Count full rounds from the actual REF/selected-cage round robin."""
+        cage_signature = tuple(mouse_cages or [])
+        if cage_signature != self._zos_cage_signature:
+            self._zos_cage_signature = cage_signature
+            self.wet_o2_guard.reset()
+            self._last_zos_cage_index = None
+            self._has_last_zos_cage_index = False
+            logger.info(
+                f"ZOS运行：检测到采集笼列表变化，重置湿基氧异常保护：{cage_signature}"
+            )
+
+        previous_index = self._last_zos_cage_index
+        if (
+            self._has_last_zos_cage_index
+            and previous_index is not None
+            and cage_index is None
+            and len(cage_signature) > 0
+            and previous_index == len(cage_signature) - 1
+        ):
+            cycle = self.wet_o2_guard.complete_cycle()
+            logger.debug(f"ZOS运行：湿基氧异常保护完成第{cycle}个完整采集轮次")
+        self._last_zos_cage_index = cage_index
+        self._has_last_zos_cage_index = True
+
+    def _protect_wet_o2_before_compensation(self, result_data, cage_index, mouse_cages):
+        self._observe_zos_cycle(cage_index, mouse_cages)
+        mouse_cage_number = result_data.get("mouse_cage_number")
+        if mouse_cage_number is None:
+            return result_data
+
+        reference_cage_number = int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+        if int(mouse_cage_number) == reference_cage_number:
+            channel_id = "REF"
+        elif 1 <= int(mouse_cage_number) <= 8:
+            channel_id = f"M{int(mouse_cage_number)}"
+        else:
+            return result_data
+
+        data_items = result_data.get("data", [])
+        current_value = self._get_data_value(data_items, "氧浓度(%)")
+        filtered_value, replaced = self.wet_o2_guard.filter(channel_id, current_value)
+        if replaced:
+            self._set_data_value(data_items, "氧浓度(%)", filtered_value)
+        return result_data
 
     @staticmethod
     def _get_data_value(data_items, desc):
@@ -1234,6 +1299,9 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         result_data = self._replace_zero_zos_values_with_previous(result_data)
+        result_data = self._protect_wet_o2_before_compensation(
+            result_data, mouse_cage_index, mouse_cages_inc
+        )
         result_data = self._append_o2_compensation(result_data)
         logger.error(f"zos:{result_data}")
 
@@ -1298,6 +1366,9 @@ class ZOS_gas_path_system_run_thread(MyQThread):
         result_data['mouse_cage_number'] = mouse_cages_inc[mouse_cage_index] if mouse_cage_index is not None else int(global_setting.get_setting('configer')['mouse_cage']['reference'])
         result_data['time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         result_data = self._replace_zero_zos_values_with_previous(result_data)
+        result_data = self._protect_wet_o2_before_compensation(
+            result_data, mouse_cage_index, mouse_cages_inc
+        )
         result_data = self._append_o2_compensation(result_data)
         logger.error(f"zos:{result_data}")
 
@@ -1388,6 +1459,7 @@ class ZOS_gas_path_system(Gas_path_system):
     def start(self,resolve,reject):
         time.sleep(0.01)
         self.update_status_main_signal_gui_update.send(f"{time_util.get_format_from_time(time.time())} | ZOS 正在启动")
+        self.zos_gas_path_system_run_thread.reset_wet_o2_anomaly_guard("ZOS启动/状态切换")
         # 1.上电启动气路
         port = global_setting.get_setting("port", None)
         if port is None:
