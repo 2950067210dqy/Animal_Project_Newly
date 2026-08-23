@@ -838,6 +838,48 @@ class Store_Thread(MyQThread):
 数据存储区域 end
 """
 
+class UrgentBatchTracker:
+    def __init__(self, total, label=""):
+        self.total = int(total)
+        self.label = label
+        self._lock = threading.Lock()
+        self._event = threading.Event()
+        self._completed = 0
+        self._successful = 0
+        self._failed_messages = []
+        self._errors = []
+        if self.total <= 0:
+            self._event.set()
+
+    def complete(self, message, success, error=None):
+        with self._lock:
+            if self._completed >= self.total:
+                return
+            self._completed += 1
+            if success:
+                self._successful += 1
+            else:
+                self._failed_messages.append(message)
+                if error:
+                    self._errors.append(str(error))
+            if self._completed >= self.total:
+                self._event.set()
+
+    def wait(self, timeout=None):
+        return self._event.wait(timeout)
+
+    def snapshot(self):
+        with self._lock:
+            return {
+                "total": self.total,
+                "completed": self._completed,
+                "successful": self._successful,
+                "failed": len(self._failed_messages),
+                "failed_messages": list(self._failed_messages),
+                "errors": list(self._errors),
+            }
+
+
 class Send_thread(MyQThread):
     """
     请求数据线程
@@ -868,6 +910,50 @@ class Send_thread(MyQThread):
             with self.normal_queue_lock:
                 self.normal_queue.put(message)
 
+    def add_urgent_batch(self, messages, origin, label=""):
+        """Atomically queue a batch and expose completion without changing other origins."""
+        tracker = UrgentBatchTracker(len(messages), label=label)
+        new_items = [
+            {
+                'origin': origin,
+                'message': message,
+                'batch_tracker': tracker,
+            }
+            for message in messages
+        ]
+        if not new_items:
+            return tracker, 0
+
+        with self.priority_queue_lock:
+            with self.priority_queue.mutex:
+                self.priority_queue.queue.extend(new_items)
+                self.priority_queue.unfinished_tasks += len(new_items)
+                self.priority_queue.not_empty.notify_all()
+        return tracker, len(new_items)
+
+    @staticmethod
+    def _complete_urgent_item(item, success, error=None):
+        tracker = item.get('batch_tracker') if isinstance(item, dict) else None
+        if tracker is not None:
+            tracker.complete(item.get('message'), success, error)
+
+    def _get_next_urgent_item(self):
+        """Prefer non-lighting urgent work so schedules never block gas-path commands."""
+        with self.priority_queue_lock:
+            with self.priority_queue.mutex:
+                pending = self.priority_queue.queue
+                if not pending:
+                    raise queue.Empty
+                selected_index = 0
+                for index, item in enumerate(pending):
+                    if item.get('origin') != "lighting_schedule":
+                        selected_index = index
+                        break
+                item = pending[selected_index]
+                del pending[selected_index]
+                self.priority_queue.not_full.notify()
+                return item
+
     def replace_urgent_messages(self, messages, origin, replace_origins=None):
         """Replace pending urgent messages from selected origins without touching others."""
         replace_origins = set(replace_origins or (origin,))
@@ -881,6 +967,10 @@ class Send_thread(MyQThread):
             # replacement atomic while preserving every other urgent message's order.
             with self.priority_queue.mutex:
                 pending = self.priority_queue.queue
+                removed_items = [
+                    item for item in pending
+                    if item.get('origin') in replace_origins
+                ]
                 retained = [
                     item for item in pending
                     if item.get('origin') not in replace_origins
@@ -899,6 +989,9 @@ class Send_thread(MyQThread):
                 if new_items:
                     self.priority_queue.unfinished_tasks += len(new_items)
                     self.priority_queue.not_empty.notify_all()
+
+        for item in removed_items:
+            self._complete_urgent_item(item, False, "pending command replaced")
 
         return removed, len(new_items)
 
@@ -971,9 +1064,12 @@ class Send_thread(MyQThread):
                     try:
                         # logger.info(self.send_messages)
 
+                        priority_item = None
+                        priority_send_state = False
+                        priority_error = None
                         try:
-                            with self.priority_queue_lock:
-                                message = self.priority_queue.get_nowait()
+                            message = self._get_next_urgent_item()
+                            priority_item = message
                             send_message = message['message']['message']
 
                             logger.debug(f"{self.name}接收到查询报文。正在发送查询报文：{send_message}")
@@ -993,6 +1089,7 @@ class Send_thread(MyQThread):
                                     data_hex_list=send_message['data'],
                                     is_parse_response=False
                                 )
+                            priority_send_state = bool(send_state)
                             response_return_data =copy.deepcopy(return_data)
                             final_return_data = response_return_data
                             # 响应报文是正确的，即发送状态时正确的 进行解析响应报文
@@ -1077,6 +1174,16 @@ class Send_thread(MyQThread):
                         except queue.Empty:
                             self.priority_queue_empty=True
                             pass
+                        except Exception as exc:
+                            priority_error = exc
+                            raise
+                        finally:
+                            if priority_item is not None:
+                                self._complete_urgent_item(
+                                    priority_item,
+                                    priority_send_state,
+                                    priority_error,
+                                )
                         send_message=None
                         # 处理普通消息
                         try:
@@ -1434,6 +1541,8 @@ periodic_xlsx_export_thread: PeriodicXlsxExportThread = None
 
 class LightingScheduleThread(QThread):
     QUEUE_ORIGIN = "lighting_schedule"
+    BATCH_TIMEOUT_SECONDS = 60.0
+    MAX_SEND_ATTEMPTS = 3
 
     def __init__(self, schedule, cages, sender, parent=None):
         super().__init__(parent)
@@ -1444,6 +1553,8 @@ class LightingScheduleThread(QThread):
         self._running = True
         self._force_apply = True
         self._last_signature = None
+        self._applied_state = None
+        self._cage_start_index = 0
 
     def set_schedule(self, schedule, apply_now=False):
         normalized_schedule = normalize_lighting_schedule(schedule)
@@ -1509,8 +1620,92 @@ class LightingScheduleThread(QThread):
         if getattr(self._sender, "modbus", None) is None:
             logger.warning("lighting schedule waiting: modbus unavailable")
             return False
-        messages = []
-        for cage in self._cages:
+        messages, command_steps = self._build_state_messages(state)
+        if not messages:
+            self._applied_state = self._state_values(state)
+            return True
+
+        pending_messages = messages
+        total_successful = 0
+        for attempt in range(1, self.MAX_SEND_ATTEMPTS + 1):
+            if self.isInterruptionRequested():
+                return False
+            with self._lock:
+                if not self._running:
+                    return False
+
+            label = f"{state['stage_key']}:{state['brightness']}:attempt-{attempt}"
+            tracker, queued = self._sender.add_urgent_batch(
+                pending_messages,
+                origin=self.QUEUE_ORIGIN,
+                label=label,
+            )
+            if not self._wait_for_batch(tracker):
+                self._discard_pending_commands("batch timeout or scheduler stopping")
+                snapshot = tracker.snapshot()
+                logger.critical(
+                    "lighting schedule batch incomplete: "
+                    f"label={label}, completed={snapshot['completed']}/{snapshot['total']}"
+                )
+                return False
+
+            snapshot = tracker.snapshot()
+            total_successful += snapshot["successful"]
+            if snapshot["failed"] == 0:
+                save_cage_light_state(
+                    self._cages,
+                    state["power"],
+                    state["color_temperature"],
+                    state["brightness"],
+                )
+                self._applied_state = self._state_values(state)
+                logger.info(
+                    "lighting schedule batch completed: "
+                    f"stage={state['stage_key']}, cages={self._cages}, power={state['power']}, "
+                    f"color_temperature={state['color_temperature']}, brightness={state['brightness']}, "
+                    f"transitioning={state['transitioning']}, commands={command_steps}, "
+                    f"queued={queued}, successful={snapshot['successful']}/{snapshot['total']}, "
+                    f"attempt={attempt}"
+                )
+                return True
+
+            pending_messages = snapshot["failed_messages"]
+            logger.warning(
+                "lighting schedule command retry: "
+                f"stage={state['stage_key']}, attempt={attempt}/{self.MAX_SEND_ATTEMPTS}, "
+                f"failed={snapshot['failed']}/{snapshot['total']}, errors={snapshot['errors'][:3]}"
+            )
+
+        logger.critical(
+            "lighting schedule batch failed: "
+            f"stage={state['stage_key']}, cages={self._cages}, commands={command_steps}, "
+            f"remaining={len(pending_messages)}, successful_attempts={total_successful}"
+        )
+        return False
+
+    def _build_state_messages(self, state):
+        previous = self._applied_state
+        if not state["power"]:
+            command_steps = ["light_off"]
+        elif previous is None or not previous["power"]:
+            command_steps = [
+                "light_color_temperature",
+                "light_brightness",
+                "light_on",
+            ]
+        else:
+            command_steps = []
+            if previous["color_temperature"] != state["color_temperature"]:
+                command_steps.append("light_color_temperature")
+            if previous["brightness"] != state["brightness"]:
+                command_steps.append("light_brightness")
+
+        if not command_steps or not self._cages:
+            return [], command_steps
+
+        cages = self._rotated_cages()
+        commands_by_cage = {}
+        for cage in cages:
             commands = build_cage_light_commands(
                 cage,
                 state["power"],
@@ -1518,26 +1713,53 @@ class LightingScheduleThread(QThread):
                 state["brightness"],
                 port=global_setting.get_setting("port", None),
             )
-            for command in commands:
-                messages.append({"message": command})
-        removed, queued = self._sender.replace_urgent_messages(
-            messages=messages,
-            origin=self.QUEUE_ORIGIN,
-            replace_origins={self.QUEUE_ORIGIN},
+            commands_by_cage[cage] = {
+                command.get("switch_step"): command
+                for command in commands
+            }
+
+        messages = []
+        for command_step in command_steps:
+            for cage in cages:
+                command = commands_by_cage[cage].get(command_step)
+                if command is not None:
+                    command["lighting_cage"] = cage
+                    messages.append({"message": command})
+        return messages, command_steps
+
+    def _rotated_cages(self):
+        if not self._cages:
+            return []
+        start = self._cage_start_index % len(self._cages)
+        cages = self._cages[start:] + self._cages[:start]
+        self._cage_start_index = (start + 1) % len(self._cages)
+        return cages
+
+    def _wait_for_batch(self, tracker):
+        timeout_seconds = max(
+            self.BATCH_TIMEOUT_SECONDS,
+            tracker.total * 5.0,
         )
-        save_cage_light_state(
-            self._cages,
-            state["power"],
-            state["color_temperature"],
-            state["brightness"],
-        )
-        logger.info(
-            "lighting schedule applied: "
-            f"stage={state['stage_key']}, cages={self._cages}, power={state['power']}, "
-            f"color_temperature={state['color_temperature']}, brightness={state['brightness']}, "
-            f"transitioning={state['transitioning']}, queued={queued}, replaced={removed}"
-        )
-        return True
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if tracker.wait(0.2):
+                return True
+            if self.isInterruptionRequested():
+                return False
+            with self._lock:
+                if not self._running:
+                    return False
+            if self._sender is None or not self._sender.isRunning():
+                return False
+        return tracker.wait(0)
+
+    @staticmethod
+    def _state_values(state):
+        return {
+            "power": bool(state["power"]),
+            "color_temperature": int(state["color_temperature"]),
+            "brightness": int(state["brightness"]),
+        }
 
 
 lighting_schedule_thread: LightingScheduleThread = None
