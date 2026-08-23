@@ -868,6 +868,40 @@ class Send_thread(MyQThread):
             with self.normal_queue_lock:
                 self.normal_queue.put(message)
 
+    def replace_urgent_messages(self, messages, origin, replace_origins=None):
+        """Replace pending urgent messages from selected origins without touching others."""
+        replace_origins = set(replace_origins or (origin,))
+        new_items = [
+            {'origin': origin, 'message': message}
+            for message in messages
+        ]
+
+        with self.priority_queue_lock:
+            # queue.Queue has no selective removal API. Holding its mutex keeps this
+            # replacement atomic while preserving every other urgent message's order.
+            with self.priority_queue.mutex:
+                pending = self.priority_queue.queue
+                retained = [
+                    item for item in pending
+                    if item.get('origin') not in replace_origins
+                ]
+                removed = len(pending) - len(retained)
+                pending.clear()
+                pending.extend(retained)
+                pending.extend(new_items)
+
+                if removed:
+                    self.priority_queue.unfinished_tasks = max(
+                        0,
+                        self.priority_queue.unfinished_tasks - removed,
+                    )
+                    self.priority_queue.not_full.notify_all()
+                if new_items:
+                    self.priority_queue.unfinished_tasks += len(new_items)
+                    self.priority_queue.not_empty.notify_all()
+
+        return removed, len(new_items)
+
 
     def stop(self):
         if self.modbus is not None:
@@ -1399,6 +1433,8 @@ periodic_xlsx_export_thread: PeriodicXlsxExportThread = None
 
 
 class LightingScheduleThread(QThread):
+    QUEUE_ORIGIN = "lighting_schedule"
+
     def __init__(self, schedule, cages, sender, parent=None):
         super().__init__(parent)
         self._lock = threading.RLock()
@@ -1410,17 +1446,35 @@ class LightingScheduleThread(QThread):
         self._last_signature = None
 
     def set_schedule(self, schedule, apply_now=False):
+        normalized_schedule = normalize_lighting_schedule(schedule)
         with self._lock:
-            self._schedule = normalize_lighting_schedule(schedule)
+            self._schedule = normalized_schedule
             if apply_now:
                 self._force_apply = True
                 self._last_signature = None
+        if not normalized_schedule["enabled"]:
+            self._discard_pending_commands("schedule disabled")
 
     def stop(self):
         with self._lock:
             self._running = False
         self.requestInterruption()
         self.wait(3000)
+        self._discard_pending_commands("schedule stopped")
+
+    def _discard_pending_commands(self, reason):
+        if self._sender is None:
+            return 0
+        removed, _ = self._sender.replace_urgent_messages(
+            messages=[],
+            origin=self.QUEUE_ORIGIN,
+            replace_origins={self.QUEUE_ORIGIN},
+        )
+        if removed:
+            logger.info(
+                f"lighting schedule pending commands discarded: reason={reason}, removed={removed}"
+            )
+        return removed
 
     def run(self):
         logger.info(f"lighting schedule started: cages={self._cages}")
@@ -1455,7 +1509,7 @@ class LightingScheduleThread(QThread):
         if getattr(self._sender, "modbus", None) is None:
             logger.warning("lighting schedule waiting: modbus unavailable")
             return False
-        queued = 0
+        messages = []
         for cage in self._cages:
             commands = build_cage_light_commands(
                 cage,
@@ -1465,12 +1519,12 @@ class LightingScheduleThread(QThread):
                 port=global_setting.get_setting("port", None),
             )
             for command in commands:
-                self._sender.add_message(
-                    message={"message": command},
-                    urgent=True,
-                    origin="lighting_schedule",
-                )
-                queued += 1
+                messages.append({"message": command})
+        removed, queued = self._sender.replace_urgent_messages(
+            messages=messages,
+            origin=self.QUEUE_ORIGIN,
+            replace_origins={self.QUEUE_ORIGIN},
+        )
         save_cage_light_state(
             self._cages,
             state["power"],
@@ -1481,7 +1535,7 @@ class LightingScheduleThread(QThread):
             "lighting schedule applied: "
             f"stage={state['stage_key']}, cages={self._cages}, power={state['power']}, "
             f"color_temperature={state['color_temperature']}, brightness={state['brightness']}, "
-            f"transitioning={state['transitioning']}, queued={queued}"
+            f"transitioning={state['transitioning']}, queued={queued}, replaced={removed}"
         )
         return True
 
@@ -2104,17 +2158,24 @@ def _send_opened_mouse_cages_light_off(wait_seconds=None, cages=None):
         return []
 
     queued_cages = []
+    messages = []
     for cage in cages:
         command = _build_light_off_message(cage)
-        send_thread.add_message(
-            message={'message': command},
-            urgent=True,
-            origin="monitor_data_stop"
-        )
+        messages.append({'message': command})
         queued_cages.append(cage)
         logger.info(
-            f"shutdown light off queued: cage={cage}, slave_id={command['slave_id']}, data={command['data']}"
+            f"shutdown light off prepared: cage={cage}, slave_id={command['slave_id']}, data={command['data']}"
         )
+
+    removed, queued = send_thread.replace_urgent_messages(
+        messages=messages,
+        origin="monitor_data_stop",
+        replace_origins={LightingScheduleThread.QUEUE_ORIGIN, "monitor_data_stop"},
+    )
+    logger.info(
+        "shutdown light off batch queued: "
+        f"cages={queued_cages}, queued={queued}, stale_light_commands_removed={removed}"
+    )
 
     if wait_seconds is None:
         wait_seconds = min(3.0, 0.25 * len(cages) + 0.5)
