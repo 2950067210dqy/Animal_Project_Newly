@@ -82,9 +82,16 @@ class CO2CalibrationHandler:
                 self.is_active = False
                 logger.error(
                     f"CO2 Air calibration coefficient calculation failed; "
-                    f"calibration stopped: {self.failure_reason or 'unknown reason'}"
+                    f"existing configuration retained: {self.failure_reason or 'unknown reason'}"
                 )
             return success
+
+    def mark_failed(self, reason):
+        """记录不可用的 CO2 拟合结果，但不负责决定外层校准是否终止。"""
+        with self.lock:
+            self.failed = True
+            self.is_active = False
+            self.failure_reason = str(reason)
 
     def _preprocess_channel_data(self, channel):
         frame = pd.DataFrame(self.data[channel])

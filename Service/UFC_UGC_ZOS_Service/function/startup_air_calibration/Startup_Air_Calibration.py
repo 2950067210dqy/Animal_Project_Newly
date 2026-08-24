@@ -355,6 +355,7 @@ class Startup_Air_Calibration:
         max_timeout = self._normalize_run_timeout(target_points, sample_interval, len(active_channels))
         last_progress_log_time = 0.0
         start_time = time.time()
+        co2_failure_notified = False
 
         self._send_text(
             f"{self.name}开始采集 9 路 O2 / CO2 数据并行校准，"
@@ -414,8 +415,10 @@ class Startup_Air_Calibration:
                                 compensated_co2,
                             )
                         except Exception as exc:
-                            reject(f"{self.name}执行 CO2 CalibrationHandler 失败: {exc}")
-                            return
+                            logger.exception(f"{self.name} CO2 拟合异常（非阻断）")
+                            self.co2_calibration_handler.mark_failed(
+                                f"{type(exc).__name__}: {exc}"
+                            )
                 elif co2_snapshot is None:
                     logger.warning(f"{self.name}读取 {display_name} CO2 数据失败")
                 else:
@@ -423,23 +426,28 @@ class Startup_Air_Calibration:
 
                 o2_status = self.o2_calibration_handler.get_status()
                 co2_status = self.co2_calibration_handler.get_status()
-                failed_handlers = []
                 if o2_status.get("failed"):
-                    failed_handlers.append(
-                        f"O2：{o2_status.get('failure_reason') or '拟合失败'}"
-                    )
-                if co2_status.get("failed"):
-                    failed_handlers.append(
-                        f"CO2：{co2_status.get('failure_reason') or '拟合失败'}"
-                    )
-                if failed_handlers:
-                    failure_message = "；".join(failed_handlers)
+                    failure_message = f"O2：{o2_status.get('failure_reason') or '拟合失败'}"
                     logger.error(f"{self.name}校准失败，已停止继续采集：{failure_message}")
                     self._send_text(
                         f"{self.name}校准失败，已停止继续采集：{failure_message}"
                     )
                     reject(f"{self.name}校准失败：{failure_message}")
                     return
+
+                # CO2 拟合失败只影响本次 CO2 系数更新，不阻断 O2 或整轮 Air 校准。
+                # CO2CalibrationHandler 只在成功时写入配置，因此失败时会自然保留旧配置。
+                if co2_status.get("failed") and not co2_failure_notified:
+                    failure_reason = co2_status.get("failure_reason") or "拟合失败"
+                    logger.warning(
+                        f"{self.name} CO2 拟合失败（非阻断）：{failure_reason}；"
+                        "CO2 配置保持不变，继续等待 O2 校准完成"
+                    )
+                    self._send_text(
+                        f"{self.name}提示：CO2 已收满 {target_points} 点，但拟合失败（{failure_reason}）；"
+                        "保留原有 CO2 配置，不影响本轮 Air 校准"
+                    )
+                    co2_failure_notified = True
 
                 co2_ready = all(
                     count >= target_points for count in co2_status.get("current_counts", {}).values()
@@ -452,8 +460,21 @@ class Startup_Air_Calibration:
 
                 o2_calibrated = o2_status.get("calibrated", getattr(self.o2_calibration_handler, "calibrated", False))
                 co2_calibrated = co2_status.get("calibrated", getattr(self.co2_calibration_handler, "calibrated", False))
-                if o2_calibrated and co2_calibrated:
-                    self._send_text(f"{self.name}判定完成，O2 / CO2 校准配置已输出")
+                co2_failed_nonblocking = bool(co2_status.get("failed"))
+                co2_fit_failed_after_collection = co2_failed_nonblocking and co2_ready
+                if o2_calibrated and (co2_calibrated or co2_failed_nonblocking):
+                    if co2_fit_failed_after_collection:
+                        self._send_text(
+                            f"{self.name}采集完成：O2 校准成功，CO2 已收满 {target_points} 点但拟合失败；"
+                            "本轮不更新 CO2 配置，继续后续流程"
+                        )
+                    elif co2_failed_nonblocking:
+                        self._send_text(
+                            f"{self.name}采集完成：O2 校准成功，CO2 处理异常且未完成 {target_points} 点；"
+                            "本轮不更新 CO2 配置，继续后续流程"
+                        )
+                    else:
+                        self._send_text(f"{self.name}判定完成，O2 / CO2 校准配置已输出")
                     resolve()
                     return
 

@@ -250,6 +250,7 @@ class Startup_CO2_Air_Calibration:
         max_timeout = self._normalize_run_timeout(target_points, sample_interval)
         last_progress_log_time = 0.0
         start_time = time.time()
+        co2_failure_notified = False
 
         self._send_text(f"{self.name}开始采集 9 路 CO2 数据并执行拟合，目标点数 {target_points}")
 
@@ -284,11 +285,30 @@ class Startup_CO2_Air_Calibration:
                         compensated_co2,
                     )
                 except Exception as e:
-                    reject(f"{self.name}执行 CO2CalibrationHandler 失败: {e}")
-                    return
+                    logger.exception(f"{self.name} CO2 拟合异常（非阻断）")
+                    self.calibration_handler.mark_failed(
+                        f"{type(e).__name__}: {e}"
+                    )
+                    finished = False
 
                 if finished:
                     self._send_text(f"{self.name}判定完成，CO2 拟合系数已输出")
+                    resolve()
+                    return
+
+                status = self.calibration_handler.get_status()
+                if status.get("failed") and status.get("all_ready"):
+                    if not co2_failure_notified:
+                        failure_reason = status.get("failure_reason") or "拟合失败"
+                        logger.warning(
+                            f"{self.name} CO2 拟合失败（非阻断）：{failure_reason}；"
+                            "CO2 配置保持不变，继续后续流程"
+                        )
+                        self._send_text(
+                            f"{self.name}提示：已收满 {target_points} 点，但 CO2 拟合失败（{failure_reason}）；"
+                            "保留原有 CO2 配置，不影响后续流程"
+                        )
+                        co2_failure_notified = True
                     resolve()
                     return
 
