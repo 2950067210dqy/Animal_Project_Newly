@@ -1,11 +1,13 @@
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
 from public.function.weight.weight_postprocessor import (
     CAGE_HEADER,
+    TIME_HEADER,
     WEIGHT_HEADER,
     WeightPostprocessConfig,
     create_fitted_workbook,
@@ -36,6 +38,23 @@ class WeightPostprocessorTest(unittest.TestCase):
         self.assertTrue(all(value is not None for value in fitted))
         self.assertTrue(all(24.0 <= value <= 26.0 for value in fitted))
         self.assertNotIn(40.0, fitted)
+
+    def test_timestamped_fit_uses_mean_of_previous_ten_seconds(self):
+        values = [
+            10.0, 10.1, 9.9,
+            28.0, 28.1, 27.9,
+            0.0, 0.1, -0.1,
+        ]
+        timestamps = list(range(len(values)))
+
+        fitted, event_count = fit_weight_series(
+            values,
+            WeightPostprocessConfig(reference_history=10),
+            timestamps=timestamps,
+        )
+
+        self.assertGreaterEqual(event_count, 1)
+        self.assertEqual(18.0, fitted[4])
 
     def test_workbook_postprocess_keeps_raw_file_and_replaces_only_epoch_weight(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -95,6 +114,32 @@ class WeightPostprocessorTest(unittest.TestCase):
                 75.0,
                 fitted_workbook["称重模块监控数据_通道1"].cell(2, 2).value,
             )
+
+    def test_timestamped_workbook_restores_chronological_order_before_fitting(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            raw_path = Path(temp_dir) / "reversed.xlsx"
+            fitted_path = Path(temp_dir) / "reversed_称重拟合.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.append([CAGE_HEADER, WEIGHT_HEADER, TIME_HEADER])
+
+            base_time = datetime(2026, 8, 24, 12, 0, 0)
+            chronological = [
+                (100.0, 0), (100.1, 1), (99.9, 2),
+                (118.0, 3), (118.1, 4), (117.9, 5),
+                (100.0, 6), (100.1, 7), (99.9, 8),
+            ]
+            for value, offset in reversed(chronological):
+                sheet.append([1, value, base_time + timedelta(seconds=offset)])
+            workbook.save(raw_path)
+
+            result = create_fitted_workbook(raw_path, output_path=fitted_path)
+
+            self.assertTrue(result.success, result.error)
+            fitted_workbook = load_workbook(fitted_path, data_only=True)
+            fitted_sheet = fitted_workbook.active
+            fitted_values = [fitted_sheet.cell(row, 2).value for row in range(2, 11)]
+            self.assertEqual([18.0] * 9, fitted_values)
 
     def test_no_weight_data_is_not_reported_as_export_failure(self):
         with tempfile.TemporaryDirectory() as temp_dir:

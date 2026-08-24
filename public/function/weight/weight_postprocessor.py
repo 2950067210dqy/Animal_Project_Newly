@@ -5,8 +5,9 @@ import math
 import os
 import tempfile
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
-from statistics import median
+from statistics import mean, median
 from typing import Iterable, Optional, Sequence
 
 try:
@@ -19,6 +20,7 @@ except ImportError:  # Allows the postprocessor to run in lightweight export too
 
 CAGE_HEADER = "鼠笼号"
 WEIGHT_HEADER = "称重重量测量值(g)"
+TIME_HEADER = "获取时间"
 DEFAULT_CONFIG_PATH = (
     Path(__file__).resolve().parents[3]
     / "config"
@@ -37,6 +39,7 @@ class WeightPostprocessConfig:
     reference_history: int = 3
     decimal_places: int = 3
     output_suffix: str = "_称重拟合"
+    baseline_window_seconds: float = 10.0
 
 
 @dataclass(frozen=True)
@@ -100,6 +103,7 @@ def load_weight_postprocess_config(
         reference_history=max(1, get_int("reference_history", 3)),
         decimal_places=max(0, get_int("decimal_places", 3)),
         output_suffix=get("output_suffix", "_称重拟合").strip() or "_称重拟合",
+        baseline_window_seconds=max(0.1, get_float("baseline_window_seconds", 10.0)),
     )
     if config.maximum_body_weight_g <= config.minimum_body_weight_g:
         raise ValueError("maximum_body_weight_g must be greater than minimum_body_weight_g")
@@ -119,6 +123,26 @@ def _to_finite_float(value) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return result if math.isfinite(result) else None
+
+
+def _to_timestamp(value) -> Optional[float]:
+    """Convert Excel/SQLite time values to seconds for time-window fitting."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, datetime):
+        return value.timestamp()
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time()).timestamp()
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed.timestamp()
+    return _to_finite_float(value)
 
 
 def _find_stable_plateaus(
@@ -205,15 +229,40 @@ def _interpolated_baseline(
     return before.level + ((after.level - before.level) * ratio)
 
 
+def _previous_window_baseline(
+        values: Sequence[Optional[float]],
+        timestamps: Sequence[float],
+        upper: _Plateau,
+        config: WeightPostprocessConfig,
+) -> Optional[float]:
+    """Use the arithmetic mean of valid readings in the ten-second pre-window."""
+    if upper.start >= len(timestamps):
+        return None
+    upper_time = timestamps[upper.start]
+    window_start = upper_time - config.baseline_window_seconds
+    previous_values = [
+        value
+        for index, value in enumerate(values[:upper.start])
+        if value is not None
+        and window_start <= timestamps[index] < upper_time
+    ]
+    return float(mean(previous_values)) if previous_values else None
+
+
 def _candidate_weight_events(
         plateaus: Sequence[_Plateau],
         config: WeightPostprocessConfig,
+        values: Sequence[Optional[float]],
+        timestamps: Optional[Sequence[float]] = None,
 ) -> list[_WeightEvent]:
     candidates: list[_WeightEvent] = []
     for index, upper in enumerate(plateaus):
-        before = _nearest_lower_plateau(plateaus, index, -1, config)
-        after = _nearest_lower_plateau(plateaus, index, 1, config)
-        baseline = _interpolated_baseline(upper, before, after)
+        if timestamps is not None:
+            baseline = _previous_window_baseline(values, timestamps, upper, config)
+        else:
+            before = _nearest_lower_plateau(plateaus, index, -1, config)
+            after = _nearest_lower_plateau(plateaus, index, 1, config)
+            baseline = _interpolated_baseline(upper, before, after)
         if baseline is None:
             continue
         weight = upper.level - baseline
@@ -254,11 +303,24 @@ def _filter_weight_events(
 def fit_weight_series(
         values: Iterable,
         config: Optional[WeightPostprocessConfig] = None,
+        timestamps: Optional[Iterable] = None,
 ) -> tuple[list[Optional[float]], int]:
     config = config or WeightPostprocessConfig()
     numeric_values = [_to_finite_float(value) for value in values]
+    numeric_timestamps: Optional[list[float]] = None
+    if timestamps is not None:
+        timestamp_values = [_to_timestamp(value) for value in timestamps]
+        if len(timestamp_values) == len(numeric_values) and all(
+                value is not None for value in timestamp_values
+        ):
+            numeric_timestamps = [float(value) for value in timestamp_values]
     plateaus = _find_stable_plateaus(numeric_values, config)
-    candidates = _candidate_weight_events(plateaus, config)
+    candidates = _candidate_weight_events(
+        plateaus,
+        config,
+        numeric_values,
+        numeric_timestamps,
+    )
     events = _filter_weight_events(candidates, config)
     if not events:
         return [None] * len(numeric_values), 0
@@ -336,6 +398,7 @@ def create_fitted_workbook(
             if cage_column is None or weight_column is None:
                 continue
             matched_sheets += 1
+            time_column = headers.get(TIME_HEADER)
 
             grouped_rows: dict[str, list[int]] = {}
             for row_number in range(2, worksheet.max_row + 1):
@@ -346,10 +409,30 @@ def create_fitted_workbook(
 
             sheet_processed = False
             for cage_name, row_numbers in grouped_rows.items():
-                raw_values = [
-                    worksheet.cell(row_number, weight_column).value
+                records = [
+                    (
+                        row_number,
+                        worksheet.cell(row_number, weight_column).value,
+                        _to_timestamp(
+                            worksheet.cell(row_number, time_column).value
+                        ) if time_column is not None else None,
+                    )
                     for row_number in row_numbers
                 ]
+                has_complete_timestamps = (
+                    time_column is not None
+                    and bool(records)
+                    and all(record[2] is not None for record in records)
+                )
+                if has_complete_timestamps:
+                    records.sort(key=lambda record: float(record[2]))
+                ordered_rows = [record[0] for record in records]
+                raw_values = [record[1] for record in records]
+                timestamps = (
+                    [float(record[2]) for record in records]
+                    if has_complete_timestamps
+                    else None
+                )
                 numeric_count = sum(_to_finite_float(value) is not None for value in raw_values)
                 if numeric_count == 0:
                     for row_number in row_numbers:
@@ -358,7 +441,11 @@ def create_fitted_workbook(
                             cell.value = None
                     continue
 
-                fitted_values, event_count = fit_weight_series(raw_values, config)
+                fitted_values, event_count = fit_weight_series(
+                    raw_values,
+                    config,
+                    timestamps=timestamps,
+                )
                 if event_count == 0:
                     fitted_values = _fill_existing_numeric(raw_values)
                     skipped_cage_names.add(cage_name)
@@ -368,7 +455,7 @@ def create_fitted_workbook(
                 else:
                     processed_cage_names.add(cage_name)
 
-                for row_number, fitted_value in zip(row_numbers, fitted_values):
+                for row_number, fitted_value in zip(ordered_rows, fitted_values):
                     worksheet.cell(row_number, weight_column).value = (
                         None
                         if fitted_value is None
