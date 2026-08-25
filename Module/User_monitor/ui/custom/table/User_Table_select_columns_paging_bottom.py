@@ -14,7 +14,12 @@ from Module.new_monitor_data.ui.custom.table.Table_select_columns_paging_bottom 
     DataFetcher as OptimizedDataFetcher,
     Table_select_columns_paging_bottom,
 )
-from Module.new_monitor_data.ui.custom.table.Virtualized_table import VirtualizedFrozenTable
+from Module.new_monitor_data.ui.custom.table.Virtualized_table import (
+    VirtualizedFrozenTable,
+    _format_co2_display_value,
+    _format_sensor_status_code,
+    prepare_co2_display_result,
+)
 from public.config.Data_Column import Data_column_list
 from public.config_class.global_setting import global_setting
 from theme.ThemeQt6 import ThemedWindow
@@ -233,12 +238,20 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         # 2. 预处理数据：处理None值和空行，并过滤掉指定列
         processed_records = self._preprocess_data(page_records, safe_columns_to_remove)
 
-        formatted_records = self._format_records_for_display(
+        # 仅调整用户界面的展示列，不改变查询结果和原始记录。
+        display_column_keys, display_columns, display_records = prepare_co2_display_result(
+            filtered_column_keys,
+            filtered_columns,
             processed_records,
-            filtered_column_keys
+        )
+        self.all_columns = display_columns
+
+        formatted_records = self._format_records_for_display(
+            display_records,
+            display_column_keys
         )
         self.table.set_result(
-            filtered_column_keys,
+            display_column_keys,
             self.all_columns,
             formatted_records
         )
@@ -260,7 +273,11 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                     final_val = str(col_val) if col_val is not None else ""
                 else:
                     title = self.all_columns[col_idx]
-                    if col_val is None:
+                    if col_key == "UGC_flow_num_1":
+                        final_val = _format_sensor_status_code(col_val)
+                    elif col_key in {"UGC_CO2_num", "UGC_air_pressure"}:
+                        final_val = _format_co2_display_value(col_val)
+                    elif col_val is None:
                         final_val = ""
                     elif "鼠笼号" in title:
                         try:

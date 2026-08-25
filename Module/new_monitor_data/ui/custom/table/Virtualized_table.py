@@ -19,6 +19,101 @@ from Module.new_monitor_data.ui.custom.table.TableCellDetailDialog import CellDe
 from public.config_class.global_setting import global_setting
 
 
+# CO2 对外展示顺序只作用于监控界面，数据库中的原始列顺序不变。
+CO2_DISPLAY_COLUMN_ORDER = (
+    "UGC_flow_num_1",
+    "UGC_CO2_num",
+    "UGC_air_pressure",
+)
+CO2_DISPLAY_COLUMN_TITLES = {
+    "UGC_flow_num_1": "传感器状态码",
+    "UGC_CO2_num": "气压补偿后CO2",
+    "UGC_air_pressure": "对齐后CO2",
+}
+CO2_HIDDEN_COLUMN_KEYS = {"UGC_CO2_origin_num"}
+
+
+def _format_sensor_status_code(value):
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return "1"
+        if value == 0:
+            return "0"
+
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "正常", "ok", "normal", "true"}:
+        return "1"
+    if normalized in {"0", "故障", "错误", "fault", "error", "false"}:
+        return "0"
+    return str(value)
+
+
+def _format_co2_display_value(value):
+    if value is None:
+        return ""
+    try:
+        return f"{float(value):.04f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def prepare_co2_display_result(columns, titles, rows):
+    """Prepare the CO2 columns for display without mutating the raw query result."""
+    current_columns = list(columns or [])
+    current_titles = list(titles or [])
+    if not current_columns:
+        return current_columns, current_titles, list(rows or [])
+
+    target_columns = [
+        column for column in CO2_DISPLAY_COLUMN_ORDER if column in current_columns
+    ]
+    if not target_columns and not any(
+        column in current_columns for column in CO2_HIDDEN_COLUMN_KEYS
+    ):
+        return current_columns, current_titles or current_columns, list(rows or [])
+
+    title_by_column = {
+        column: current_titles[index] if index < len(current_titles) else column
+        for index, column in enumerate(current_columns)
+    }
+    visible_other_columns = [
+        column
+        for column in current_columns
+        if column not in CO2_HIDDEN_COLUMN_KEYS
+        and column not in CO2_DISPLAY_COLUMN_ORDER
+    ]
+
+    target_positions = [
+        index
+        for index, column in enumerate(current_columns)
+        if column in CO2_DISPLAY_COLUMN_ORDER
+    ]
+    first_target_index = min(target_positions, default=len(current_columns))
+    insert_at = sum(
+        1
+        for column in current_columns[:first_target_index]
+        if column not in CO2_HIDDEN_COLUMN_KEYS
+        and column not in CO2_DISPLAY_COLUMN_ORDER
+    )
+    ordered_columns = (
+        visible_other_columns[:insert_at]
+        + target_columns
+        + visible_other_columns[insert_at:]
+    )
+    ordered_titles = [
+        CO2_DISPLAY_COLUMN_TITLES.get(column, title_by_column.get(column, column))
+        for column in ordered_columns
+    ]
+
+    # Keep every field in each row so cell-detail dialogs and remarks remain intact.
+    display_rows = [dict(row) for row in (rows or [])]
+    return ordered_columns, ordered_titles, display_rows
+
+
 class EpochTableModel(QAbstractTableModel):
     """A lightweight model that renders only cells visible in the viewport."""
 
@@ -70,6 +165,10 @@ class EpochTableModel(QAbstractTableModel):
                     return "参考笼"
             except (TypeError, ValueError):
                 pass
+        if key == "UGC_flow_num_1":
+            return _format_sensor_status_code(value)
+        if key in {"UGC_CO2_num", "UGC_air_pressure"}:
+            return _format_co2_display_value(value)
         if ("oxygen" in key or "CO2" in key) and value is not None and not isinstance(value, str):
             try:
                 return f"{value:.04f}"

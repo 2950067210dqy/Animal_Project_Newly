@@ -11,7 +11,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal
 
-from Module.new_monitor_data.ui.custom.table.Virtualized_table import VirtualizedFrozenTable
+from Module.new_monitor_data.ui.custom.table.Virtualized_table import (
+    VirtualizedFrozenTable,
+    prepare_co2_display_result,
+)
 from public.config.Data_Column import Data_column_list
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
@@ -361,11 +364,16 @@ class Table_select_columns_paging_bottom(ThemedWindow):
         if not result or result.get("_request_id", -1) < self._latest_request_id:
             return
 
-        self.all_columns = result.get("columns_title", [])
-        self.table.set_result(
+        display_columns, display_titles, display_rows = prepare_co2_display_result(
             result.get("columns", []),
+            result.get("columns_title", []),
+            result.get("rows", []),
+        )
+        self.all_columns = display_titles
+        self.table.set_result(
+            display_columns,
             self.all_columns,
-            result.get("rows", [])
+            display_rows,
         )
         self.current_page = result.get("page", self.current_page)
         self.total_items = result.get("total_items", 0)
