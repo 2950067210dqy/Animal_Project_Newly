@@ -1081,9 +1081,16 @@ class Modbus_Response_DWM(Modbus_Response_Parents):
                     )
                     j += 1
                 case 2:
+                    state_value = int(self.response_struct['data'][i])
+                    if state_value == 0xFF:
+                        state_desc = "开门"
+                    elif state_value == 0x00:
+                        state_desc = "关门"
+                    else:
+                        state_desc = f"未知门控状态(0x{state_value:02X})"
                     return_datas.append({
                         "desc": port_types[j],
-                        'value': "开门" if int(self.response_struct['data'][i]) == 255 else "关门"
+                        'value': state_desc
                     }
                     )
                     j += 1
@@ -1335,9 +1342,16 @@ class Modbus_Response_EM(Modbus_Response_Parents):
                     pass
                 case 2:
 
+                    state_value = int(self.response_struct['data'][i])
+                    if state_value == 0xFF:
+                        state_desc = "开食槽"
+                    elif state_value == 0x00:
+                        state_desc = "关食槽"
+                    else:
+                        state_desc = f"未知食槽状态(0x{state_value:02X})"
                     return_datas.append({
                         "desc": port_types[j],
-                        'value': "开食槽" if int(self.response_struct['data'][i]) == 255 else "关食槽"
+                        'value': state_desc
                     }
                     )
                     j += 1
