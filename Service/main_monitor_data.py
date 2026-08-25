@@ -136,6 +136,30 @@ def _queue_food_trough_current_off_command():
     return True
 
 
+def _is_food_trough_door_command(send_message):
+    """识别食槽门控制报文，不把其他写报文误判为门控。"""
+    if not isinstance(send_message, dict):
+        return False
+
+    function_code = send_message.get("function_code")
+    try:
+        function_code = int(str(function_code).strip().lower().replace("0x", ""), 16)
+    except (TypeError, ValueError):
+        return False
+    if function_code != 0x05:
+        return False
+
+    data = send_message.get("data") or []
+    if len(data) < 2:
+        return False
+    try:
+        address_high = int(str(data[0]).strip().lower().replace("0x", ""), 16)
+        address_low = int(str(data[1]).strip().lower().replace("0x", ""), 16)
+    except (TypeError, ValueError):
+        return False
+    return address_high == 0x00 and address_low == 0x70
+
+
 def _notify_environment_only_gas_stop_complete():
     statuses = (
         ("stop_gap_system_return", "仅环境模块模式：气路未启动"),
@@ -877,6 +901,36 @@ class Send_thread(MyQThread):
     def set_modbus(self, modbus):
         self.modbus = modbus
 
+    def _send_food_trough_current_off_after_door_command(self, door_command):
+        """食槽门控制成功后立即关断驱动电流，避免门动作结束后持续放电。"""
+        if _environment_module_only_enabled():
+            logger.info("仅环境模块模式：跳过食槽门后的驱动电流关闭命令")
+            return False
+        if self.modbus is None:
+            logger.critical("食槽门控制后未发送关电流命令：Modbus未初始化")
+            return False
+
+        command = copy.deepcopy(FOOD_TROUGH_CURRENT_OFF_COMMAND)
+        command["port"] = door_command.get(
+            "port", global_setting.get_setting("port", port_use)
+        )
+        response, response_hex, send_state, _ = self.modbus.send_command_without_response(
+            slave_id=command["slave_id"],
+            function_code=command["function_code"],
+            data_hex_list=command["data"],
+        )
+        if send_state:
+            logger.warning(
+                "食槽门控制成功后已关闭驱动电流："
+                f"{response_hex} | {command['command_name']}"
+            )
+        else:
+            logger.critical(
+                "食槽门控制已发送，但关闭驱动电流命令发送失败："
+                f"{response_hex or response}"
+            )
+        return bool(send_state)
+
     def _send_sensor_read_with_retry(self, send_message):
         result = (None, None, False, None)
         for attempt in range(1, COLLECTION_SENSOR_MAX_ATTEMPTS + 1):
@@ -988,6 +1042,10 @@ class Send_thread(MyQThread):
                                 logger.warning(
                                     f"安全控制命令发送成功: {response_hex} | {parser_message}"
                                 )
+                                if _is_food_trough_door_command(send_message):
+                                    self._send_food_trough_current_off_after_door_command(
+                                        send_message
+                                    )
                             elif is_write_only:
                                 logger.critical(
                                     "安全控制命令发送失败: "
