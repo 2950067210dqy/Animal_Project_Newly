@@ -106,6 +106,17 @@ class DbTransferExcel():
                 enabled_cages.add(int(cage_id))
             except (TypeError, ValueError):
                 logger.warning(f"忽略无法识别的实验笼号: {cage_id!r}")
+
+        # 参考笼用于普通笼的 CO2/O2 等计算，即使用户没有勾选它，
+        # 也必须随本次实验一起导出，供结果复核和后续分析使用。
+        try:
+            configer = global_setting.get_setting("configer", {}) or {}
+            mouse_cage_config = configer.get("mouse_cage", {}) or {}
+            reference_cage = mouse_cage_config.get("reference")
+            if reference_cage not in (None, ""):
+                enabled_cages.add(int(reference_cage))
+        except (AttributeError, TypeError, ValueError):
+            logger.warning("导出时未能解析配置中的参考笼号")
         return enabled_cages
 
 
