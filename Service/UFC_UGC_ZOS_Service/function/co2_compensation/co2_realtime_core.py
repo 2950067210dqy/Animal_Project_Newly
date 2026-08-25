@@ -14,7 +14,7 @@ class CO2RealtimeCompensator:
         self.config_path = Path(config_path or get_default_config_path())
         self.channels = ["REF"] + [f"M{i}" for i in range(1, 9)]
         self.last_valid = {channel: None for channel in self.channels}
-        self.valid_range = (300, 5000)
+        self.valid_range = (0, 5000)
         self.max_consecutive_invalid = 10
         self.consecutive_invalid = {channel: 0 for channel in self.channels}
         self._config_mtime = None
