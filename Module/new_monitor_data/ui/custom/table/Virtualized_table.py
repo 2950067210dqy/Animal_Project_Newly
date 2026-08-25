@@ -62,6 +62,7 @@ class EpochTableModel(QAbstractTableModel):
     def _display_value(self, row, column):
         key = self._columns[column]
         value = self._rows[row].get(key)
+        title = self._titles[column] if column < len(self._titles) else ""
         if key == "mouse_cage_number" and value is not None:
             configer = global_setting.get_setting("configer", {}) or {}
             reference_cage = int(configer.get("mouse_cage", {}).get("reference", -1))
@@ -70,9 +71,27 @@ class EpochTableModel(QAbstractTableModel):
                     return "参考笼"
             except (TypeError, ValueError):
                 pass
+        if title == "传感器状态码":
+            if isinstance(value, bool):
+                return "1" if value else "0"
+            if isinstance(value, (int, float)):
+                if value == 1:
+                    return "1"
+                if value == 0:
+                    return "0"
+            normalized = str(value).strip().lower()
+            if normalized in {"1", "正常", "ok", "normal", "true"}:
+                return "1"
+            if normalized in {"0", "故障", "错误", "fault", "error", "false"}:
+                return "0"
         if ("oxygen" in key or "CO2" in key) and value is not None and not isinstance(value, str):
             try:
                 return f"{value:.04f}"
+            except (TypeError, ValueError):
+                pass
+        if title in {"气压补偿后CO2", "对齐后CO2"} and value is not None:
+            try:
+                return f"{float(value):.04f}"
             except (TypeError, ValueError):
                 pass
         return str(value)

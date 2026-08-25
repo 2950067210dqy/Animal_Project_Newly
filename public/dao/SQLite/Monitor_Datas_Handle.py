@@ -945,9 +945,17 @@ class Monitor_Datas_Handle():
             columns=projection
         )
         result = self._reorder_epoch_query_result(result)
+        result = self._prepare_epoch_display_result(result)
         descriptions = self._get_table_meta(table_name)["description_by_name"]
+        display_description_overrides = {
+            "UGC_flow_num_1": "传感器状态码",
+            "UGC_CO2_num": "气压补偿后CO2",
+            "UGC_air_pressure": "对齐后CO2",
+        }
         result["columns_title"] = [
-            descriptions.get(column, column) for column in result["columns"]
+            display_description_overrides.get(
+                column, descriptions.get(column, column)
+            ) for column in result["columns"]
         ]
         # print("参与联立的表:", tables)
         # print(
@@ -1033,6 +1041,49 @@ class Monitor_Datas_Handle():
         ordered_columns = [column for column in desired_columns if column in current_columns]
         ordered_columns.extend(column for column in current_columns if column not in ordered_columns)
 
+        result["columns"] = ordered_columns
+        result["rows"] = [
+            {column: row.get(column) for column in ordered_columns}
+            for row in result.get("rows", [])
+        ]
+        return result
+
+    def _prepare_epoch_display_result(self, result):
+        """Keep raw storage columns, but expose the user-facing CO2 columns only."""
+        if not result or "columns" not in result or "rows" not in result:
+            return result
+
+        target_columns = [
+            "UGC_flow_num_1",
+            "UGC_CO2_num",
+            "UGC_air_pressure",
+        ]
+        hidden_columns = {"UGC_CO2_origin_num"}
+        current_columns = list(result.get("columns", []))
+        if not any(column in current_columns for column in target_columns):
+            return result
+
+        visible_columns = [
+            column for column in current_columns
+            if column not in hidden_columns and column not in target_columns
+        ]
+        target_present = [
+            column for column in target_columns if column in current_columns
+        ]
+        first_target_index = min(
+            (index for index, column in enumerate(current_columns)
+             if column in target_columns),
+            default=len(current_columns),
+        )
+        insert_at = sum(
+            1 for column in current_columns[:first_target_index]
+            if column not in hidden_columns and column not in target_columns
+        )
+        ordered_columns = (
+            visible_columns[:insert_at]
+            + target_present
+            + visible_columns[insert_at:]
+        )
         result["columns"] = ordered_columns
         result["rows"] = [
             {column: row.get(column) for column in ordered_columns}
@@ -1491,8 +1542,10 @@ def _monitor_datas_handle_migrate_co2_display_tables(self, gids, reference_cage_
 
 
 Monitor_Datas_Handle.ZERO_FILL_MONITOR_DESCS.update({
+    "传感器状态码",
     "补偿前CO2",
     "气压补偿后CO2",
+    "对齐后CO2",
     "拟合后CO2",
 })
 Monitor_Datas_Handle._migrate_co2_display_tables = _monitor_datas_handle_migrate_co2_display_tables

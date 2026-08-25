@@ -237,6 +237,9 @@ _epoch_missing_fill_limit = 10
 _epoch_carry_forward_desc_to_column = {
     "ufc_流量计测量值(sccm)": "UFC_flow_num",
     "ufc_参考气流量计测量值(sccm)": "reference_flow_num",
+    "传感器状态码": "UGC_flow_num_1",
+    "传感器状态": "UGC_flow_num_1",
+    "对齐后CO2": "UGC_air_pressure",
     "拟合后CO2": "UGC_air_pressure",
     "补偿前CO2": "UGC_CO2_origin_num",
     "补偿前CO2(%)": "UGC_CO2_origin_num",
@@ -262,6 +265,25 @@ _epoch_carry_forward_desc_to_column = {
     "食物重量测量值(g)": "EM_weight_num",
     "称重重量测量值(g)": "WM_weight_num",
 }
+
+
+def _normalize_ugc_sensor_status(value):
+    """Convert the UGC sensor state to the public 1=normal, 0=fault code."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return 1
+        if value == 0:
+            return 0
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "正常", "ok", "normal", "true"}:
+        return 1
+    if normalized in {"0", "故障", "错误", "fault", "error", "false"}:
+        return 0
+    return None
 
 
 def _channel_number_to_co2_channel_name(mouse_cage_number):
@@ -1652,8 +1674,9 @@ def barrier_action():
                             'SpanCalibration_data__carbon_calibration_span_value') is not None else None})
     store_Datas.append({'desc': 'ufc_流量计测量值(sccm)', 'value': results.get(f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') if results.get(
                             f'UFC_monitor_data_cage_{mouse_cage_number}__flow_num') is not None else None   })
-    store_Datas.append({'desc': '传感器状态', 'value': results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
-                            f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1')  is not None else None })
+    store_Datas.append({'desc': '传感器状态', 'value': results.get(
+        f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') if results.get(
+        f'UGC_monitor_data_cage_{mouse_cage_number}__flow_num_1') is not None else None})
     co2_origin_num = results.get(f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') if results.get(
         f'UGC_monitor_data_cage_{mouse_cage_number}__CO2_num') is not None else None
     gas_pressure = results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__gas_pressure') if results.get(
@@ -1674,8 +1697,7 @@ def barrier_action():
         fitted_co2_num = round(float(fitted_co2_ppm) / 10000, 4)
 
     store_Datas.append({'desc': '拟合后CO2', 'value': fitted_co2_num})
-    store_Datas.append(
-        {'desc': '补偿前CO2', 'value': co2_origin_num})
+    store_Datas.append({'desc': '补偿前CO2', 'value': co2_origin_num})
     store_Datas.append({'desc': '气压补偿后CO2', 'value': co2_num})
     store_Datas.append({'desc': '氧分压(hPa)',
                         'value': results.get(
@@ -1833,7 +1855,7 @@ def _patch_epoch_store_payload(return_data_struct):
 
     payload = copy.deepcopy(return_data_struct)
     data = payload.get("data")
-    if not isinstance(data, list) or len(data) < 12:
+    if not isinstance(data, list) or len(data) < 8:
         return payload
 
     ufc_flow_index = None
@@ -1851,23 +1873,44 @@ def _patch_epoch_store_payload(return_data_struct):
 
     ugc_block = data[ufc_flow_index + 1:oxygen_partial_index]
     status_value = None
+    status_raw_value = None
+    raw_co2 = None
+    pressure_compensated_co2 = None
+    fitted_co2 = None
     numeric_values = []
     for item in ugc_block:
+        desc = str(item.get("desc", "")).strip()
         value = item.get("value")
-        if isinstance(value, str) and status_value is None:
+        if desc in {"传感器状态码", "传感器状态"}:
+            status_raw_value = value
             status_value = value
+        elif desc == "补偿前CO2":
+            raw_co2 = value
+        elif desc == "气压补偿后CO2":
+            pressure_compensated_co2 = value
+        elif desc in {"对齐后CO2", "拟合后CO2"}:
+            fitted_co2 = value
         elif isinstance(value, (int, float)):
             numeric_values.append(value)
 
-    raw_co2 = numeric_values[-2] if len(numeric_values) >= 2 else None
-    pressure_compensated_co2 = numeric_values[-1] if len(numeric_values) >= 1 else None
+    # Compatibility fallback for payloads created by older versions.
+    if status_value is None:
+        for item in ugc_block:
+            value = item.get("value")
+            if isinstance(value, str):
+                status_raw_value = value
+                status_value = value
+                break
+    if pressure_compensated_co2 is None and numeric_values:
+        pressure_compensated_co2 = numeric_values[-1]
+    if raw_co2 is None and len(numeric_values) >= 2:
+        raw_co2 = numeric_values[-2]
 
     channel_number = payload.get("mouse_cage_number")
     if channel_number in (None, -1) and data:
         channel_number = data[0].get("value")
 
-    fitted_co2 = None
-    if pressure_compensated_co2 is not None and channel_number is not None:
+    if fitted_co2 is None and pressure_compensated_co2 is not None and channel_number is not None:
         fitted_ppm = _co2_realtime_compensator.compensate(
             _channel_number_to_co2_channel_name(channel_number),
             float(pressure_compensated_co2) * 10000
@@ -1876,7 +1919,7 @@ def _patch_epoch_store_payload(return_data_struct):
 
     rebuilt_data = list(data[:ufc_flow_index + 1])
     rebuilt_data.extend([
-        {"desc": "传感器状态", "value": status_value},
+        {"desc": "传感器状态", "value": status_raw_value if status_raw_value is not None else status_value},
         {"desc": "拟合后CO2", "value": fitted_co2},
         {"desc": "补偿前CO2", "value": raw_co2},
         {"desc": "气压补偿后CO2", "value": pressure_compensated_co2},

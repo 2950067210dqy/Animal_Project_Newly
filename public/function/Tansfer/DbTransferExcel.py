@@ -17,6 +17,18 @@ from public.util.time_util import time_util
 class DbTransferExcel():
     INVALID_SHEET_CHARS = r'[:\\/*?\[\]]'
     MAX_SHEET_LEN = 31
+    EPOCH_HIDDEN_COLUMNS = {"UGC_CO2_origin_num"}
+    EPOCH_DISPLAY_COLUMN_ORDER = [
+        "UGC_flow_num_1",
+        "UGC_CO2_num",
+        "UGC_air_pressure",
+    ]
+    EPOCH_DISPLAY_DESCRIPTIONS = {
+        "UGC_flow_num_1": "传感器状态码",
+        "UGC_CO2_num": "气压补偿后CO2",
+        "UGC_air_pressure": "对齐后CO2",
+    }
+
     def __init__(self,db_name=None):
         self.handler = Monitor_Datas_Handle(db_name)
         pass
@@ -43,8 +55,58 @@ class DbTransferExcel():
         return s
 
     def get_table_list(self) -> List[Tuple[str, str]]:
-        # 返回 (name, type) 列表，排除 sqlite_ 开头的内部表
-        return self.handler.sqlite_manager.get_tables_with_time_sql_results(select_column_name=["name","type"],exclude_substr=["sqlite_","meta"])
+        """Return only the user-facing epoch tables for enabled cages.
+
+        The database also contains raw module tables, the reference/total epoch
+        tables, camera/trajectory tables, and metadata tables.  Those tables
+        remain available in SQLite, but they are not part of the user-facing
+        experiment workbook.
+        """
+        tables = self.handler.sqlite_manager.get_tables_with_time_sql_results(
+            select_column_name=["name", "type"],
+            exclude_substr=["sqlite_", "meta"],
+        )
+        enabled_cages = self._get_enabled_cage_ids()
+        filtered_tables = []
+        for table_name, table_type in tables:
+            match = re.fullmatch(r"Epoch_data_cage_(\d+)", str(table_name))
+            if match is None:
+                continue
+            cage_number = int(match.group(1))
+            if enabled_cages is not None and cage_number not in enabled_cages:
+                continue
+            filtered_tables.append((table_name, table_type))
+        return filtered_tables
+
+    @staticmethod
+    def _get_enabled_cage_ids():
+        """Read enabled cage IDs from the current experiment setting.
+
+        ``experiment_setting`` is the already-filtered setting sent to the
+        monitoring process.  Returning ``None`` when it is unavailable keeps
+        exporting older standalone databases backward-compatible by allowing
+        all discovered epoch cage tables through.
+        """
+        setting = global_setting.get_setting("experiment_setting", None)
+        groups = getattr(setting, "groups", None) if setting is not None else None
+        if groups is None:
+            logger.warning(
+                "导出时未找到当前实验配置，将按数据库中已有的 Epoch_data_cage_N 表导出"
+            )
+            return None
+
+        enabled_cages = set()
+        for group in groups:
+            if not getattr(group, "is_selected", True):
+                continue
+            cage_id = getattr(group, "id", None)
+            if cage_id is None:
+                cage_id = getattr(group, "name", None)
+            try:
+                enabled_cages.add(int(cage_id))
+            except (TypeError, ValueError):
+                logger.warning(f"忽略无法识别的实验笼号: {cage_id!r}")
+        return enabled_cages
 
 
 
@@ -60,6 +122,92 @@ class DbTransferExcel():
             if isinstance(first, (bytes, bytearray, memoryview)):
                 df[col] = df[col].apply(lambda x: x.hex() if isinstance(x, (bytes, bytearray, memoryview)) else x)
         return df
+
+    @staticmethod
+    def _normalize_sensor_status_code(value):
+        """Convert the UGC sensor state to the public 1=normal, 0=fault code."""
+        try:
+            if pd.isna(value):
+                return value
+        except (TypeError, ValueError):
+            pass
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float)):
+            if value == 1:
+                return 1
+            if value == 0:
+                return 0
+        normalized = str(value).strip().lower()
+        if normalized in {"1", "正常", "ok", "normal", "true"}:
+            return 1
+        if normalized in {"0", "故障", "错误", "fault", "error", "false"}:
+            return 0
+        return value
+
+    def _prepare_epoch_export_frame(self, df: pd.DataFrame, table_name: str,
+                                    col_mapping: dict) -> Tuple[pd.DataFrame, dict]:
+        """Prepare only user-facing Epoch sheets while retaining raw DB columns."""
+        if not table_name.startswith("Epoch_data_"):
+            return df, col_mapping
+
+        df = df.copy()
+        export_col_mapping = dict(col_mapping)
+        if "UGC_flow_num_1" in df.columns:
+            df["UGC_flow_num_1"] = df["UGC_flow_num_1"].map(
+                self._normalize_sensor_status_code
+            )
+
+        current_columns = list(df.columns)
+        target_columns = [
+            column for column in self.EPOCH_DISPLAY_COLUMN_ORDER
+            if column in current_columns
+        ]
+        if not target_columns:
+            return df, export_col_mapping
+
+        visible_columns = [
+            column for column in current_columns
+            if column not in self.EPOCH_HIDDEN_COLUMNS
+            and column not in self.EPOCH_DISPLAY_COLUMN_ORDER
+        ]
+        first_target_index = min(
+            (index for index, column in enumerate(current_columns)
+             if column in self.EPOCH_DISPLAY_COLUMN_ORDER),
+            default=len(current_columns),
+        )
+        insert_at = sum(
+            1 for column in current_columns[:first_target_index]
+            if column not in self.EPOCH_HIDDEN_COLUMNS
+            and column not in self.EPOCH_DISPLAY_COLUMN_ORDER
+        )
+        ordered_columns = (
+            visible_columns[:insert_at]
+            + target_columns
+            + visible_columns[insert_at:]
+        )
+        df = df.loc[:, ordered_columns]
+        export_col_mapping.update(self.EPOCH_DISPLAY_DESCRIPTIONS)
+        return df, export_col_mapping
+
+    @staticmethod
+    def _format_epoch_excel_sheet(writer: pd.ExcelWriter, sheet_name: str):
+        """Keep the two public CO2 columns at exactly four decimal places."""
+        worksheet = writer.sheets.get(sheet_name)
+        if worksheet is None:
+            return
+
+        title_to_column = {
+            str(cell.value).strip(): cell.column
+            for cell in worksheet[1]
+            if cell.value is not None
+        }
+        for title in ("气压补偿后CO2", "对齐后CO2"):
+            column = title_to_column.get(title)
+            if column is None:
+                continue
+            for row in range(2, worksheet.max_row + 1):
+                worksheet.cell(row=row, column=column).number_format = "0.0000"
 
     def export_db_to_excel(self,writer: pd.ExcelWriter, combine_mode: bool, sheet_used: set,
                            chunksize: int = None):
@@ -133,19 +281,27 @@ class DbTransferExcel():
                         for i, chunk in enumerate(pd.read_sql_query(sql, conn, chunksize=chunksize)):
                             # logger.critical(f"chunk: {chunk}")
                             df = self.convert_bytes_columns(chunk)
+                            df, export_col_mapping = self._prepare_epoch_export_frame(
+                                df, name, col_mapping
+                            )
                             # 替换列名
-                            df.rename(columns=col_mapping, inplace=True)
+                            df.rename(columns=export_col_mapping, inplace=True)
                             # header 仅写入第一块
                             header = (startrow == 0)
                             df.to_excel(writer, sheet_name=sheet_name_CN, index=False, startrow=startrow, header=header)
                             startrow += len(df)
+                    self._format_epoch_excel_sheet(writer, sheet_name_CN)
                 else:
                     with self.handler.sqlite_manager.get_connection() as conn:
                         df = pd.read_sql_query(sql, conn,)
                         df = self.convert_bytes_columns(df)
+                        df, export_col_mapping = self._prepare_epoch_export_frame(
+                            df, name, col_mapping
+                        )
                         # 替换列名
-                        df.rename(columns=col_mapping, inplace=True)
+                        df.rename(columns=export_col_mapping, inplace=True)
                         df.to_excel(writer, sheet_name=sheet_name_CN, index=False)
+                    self._format_epoch_excel_sheet(writer, sheet_name_CN)
         finally:
             # # 返回响应
             # queue = global_setting.get_setting("queue", None)
