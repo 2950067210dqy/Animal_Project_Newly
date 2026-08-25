@@ -101,6 +101,15 @@ def _send_main_window_status(title, data):
         )
 
 
+def _notify_food_trough_current_off_success(response_hex=None):
+    """Show the concise success notice for the no-response current-off command."""
+    frame_hex = (response_hex or "FF0500710000880F").replace(" ", "").upper()
+    _send_main_window_status(
+        "mouse_cage_inner_module_running_state",
+        f"食槽门驱动电流关闭指令\n发送报文：{frame_hex}",
+    )
+
+
 def _queue_food_trough_current_off_command():
     """Queue the global current-off command once for the current experiment."""
     global _last_food_trough_current_off_start_time, send_thread
@@ -946,6 +955,7 @@ class Send_thread(MyQThread):
                 "食槽门控制成功后已关闭驱动电流："
                 f"{response_hex} | {command['command_name']}"
             )
+            _notify_food_trough_current_off_success(response_hex)
         else:
             logger.critical(
                 "食槽门控制已发送，但关闭驱动电流命令发送失败："
@@ -1064,6 +1074,8 @@ class Send_thread(MyQThread):
                                 logger.warning(
                                     f"安全控制命令发送成功: {response_hex} | {parser_message}"
                                 )
+                                if send_message.get("command_name") == "food_trough_current_off":
+                                    _notify_food_trough_current_off_success(response_hex)
                                 if _is_food_trough_door_command(send_message):
                                     self._send_food_trough_current_off_after_door_command(
                                         send_message
