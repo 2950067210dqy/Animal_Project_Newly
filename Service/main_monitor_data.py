@@ -1165,6 +1165,13 @@ class Send_thread(MyQThread):
                                                                                              function_code=
                                                                                              send_message['function_code'], )
 
+                                    # 门控报文由普通采集队列发送；门动作完成后仍需立即关断
+                                    # 驱动电流，不能只依赖优先队列中的写入分支。
+                                    if _is_food_trough_door_command(send_message):
+                                        self._send_food_trough_current_off_after_door_command(
+                                            send_message
+                                        )
+
                                     # end_time = time.time()
                                     # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
                                     return_data['data'].append({'desc': '备注', 'value': None})
