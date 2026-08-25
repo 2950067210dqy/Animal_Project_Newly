@@ -1,5 +1,6 @@
 import os
 import json
+import math
 
 from sympy.external.gmpy import remove
 
@@ -116,6 +117,24 @@ class Experiment_Setting_DAO_Handle():
                 else:
                     insert_state.append(False)
                     logger.info(f"数据插入表{table_name}失败！")
+            # 实验前体重按已开启笼子保存，和动物信息解耦，允许不创建动物也能录入。
+            table_name = Setting_Table.Pre_Experiment_Weight.value['table_name']
+            for group_id, weight in getattr(data, "pre_experiment_weights", {}).items():
+                try:
+                    group_id_value = int(group_id)
+                    weight_value = float(weight)
+                except (TypeError, ValueError):
+                    logger.warning(f"跳过无效实验前体重: group_id={group_id}, weight={weight}")
+                    continue
+                if not math.isfinite(weight_value) or weight_value < 0:
+                    logger.warning(f"跳过无效实验前体重: group_id={group_id}, weight={weight}")
+                    continue
+                result = self.sqlite_manager.insert_2(
+                    table_name,
+                    ["group_id", "weight_g"],
+                    [group_id_value, round(weight_value, 3)]
+                )
+                insert_state.append(result == 1)
             table_name = Setting_Table.Lighting_Schedule.value['table_name']
             schedule = normalize_lighting_schedule(getattr(data, "lighting_schedule", None))
             result = self.sqlite_manager.insert_2(
@@ -181,6 +200,16 @@ class Experiment_Setting_DAO_Handle():
                         animal_group_record = AnimalGroupRecord(**animal_group_record_data)  # 使用解包操作符传递字典参数
                         animalGroupRecords.append(animal_group_record)
                         pass
+                    case Setting_Table.Pre_Experiment_Weight:
+                        if result:
+                            row_data = {column: result[i] for i, column in enumerate(columns)}
+                            try:
+                                group_id = int(row_data.get("group_id"))
+                                weight = float(row_data.get("weight_g"))
+                            except (TypeError, ValueError):
+                                continue
+                            if math.isfinite(weight) and weight >= 0:
+                                experiment_setting_entity.pre_experiment_weights[str(group_id)] = round(weight, 3)
                     case Setting_Table.Lighting_Schedule:
                         if result:
                             row_data = {column: result[i] for i, column in enumerate(columns)}

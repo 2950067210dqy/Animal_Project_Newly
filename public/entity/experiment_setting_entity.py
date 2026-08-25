@@ -10,6 +10,8 @@ class Experiment_setting_entity:
         self.animals:[Animal] = []
         self.groups:[Group] = []
         self.animalGroupRecords:[AnimalGroupRecord] = []
+        # 按笼号保存实验开始前的体重，键为 Group.id，值单位固定为 g。
+        self.pre_experiment_weights: dict = {}
         self.lighting_schedule: dict = default_lighting_schedule()
         super().__init__()
     def is_emtpy(self) -> bool:

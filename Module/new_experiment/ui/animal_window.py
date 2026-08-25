@@ -1,15 +1,16 @@
 import datetime
+import math
 import sys
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QMainWindow, QWidget, QVBoxLayout, \
     QHBoxLayout, QPushButton, QListWidget, QScrollArea, QMenu, QLabel, QApplication, QComboBox, QRadioButton, \
-    QListWidgetItem, QMessageBox
+    QListWidgetItem, QMessageBox, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView
 
 from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.config_class.global_setting import global_setting
 from public.entity.enum.Public_Enum import AnimalGender
-from public.entity.experiment_setting_entity import Experiment_setting_entity, Animal, AnimalGroupRecord
+from public.entity.experiment_setting_entity import Experiment_setting_entity, Animal, AnimalGroupRecord, Group
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -126,6 +127,25 @@ class AnimalWindow(ThemedWindow):
         self.sub_top_layout.addWidget(self.title_label)
         main_layout.addLayout(self.sub_top_layout)
 
+        # 体重记录按左侧已开启笼子保存，不要求先创建动物。
+        self.pre_weight_title = QLabel("已开启笼子实验前体重（单位：g；填写后请点击“保存实验模板”）")
+        self.pre_weight_table = QTableWidget(0, 2)
+        self.pre_weight_table.setHorizontalHeaderLabels(["笼号/通道", "实验前体重(g)"])
+        self.pre_weight_table.setAlternatingRowColors(True)
+        self.pre_weight_table.setMinimumHeight(145)
+        self.pre_weight_table.setMaximumHeight(240)
+        self.pre_weight_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.SelectedClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
+        header = self.pre_weight_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.pre_weight_table.cellChanged.connect(self._on_pre_weight_changed)
+        main_layout.addWidget(self.pre_weight_title)
+        main_layout.addWidget(self.pre_weight_table)
+
         # 创建内容布局
         self.content_layout = QVBoxLayout()
         main_layout.addLayout(self.content_layout)
@@ -148,6 +168,111 @@ class AnimalWindow(ThemedWindow):
 
         # 连接双击事件
         self.list_widget.itemDoubleClicked.connect(self.edit_animal_info)
+
+    @staticmethod
+    def _weight_to_grams(animal):
+        """把模板中的动物重量统一换算成克，仅用于体重记录表显示。"""
+        try:
+            value = float(animal.weight)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(value):
+            return None
+        unit = str(animal.weight_unit or "g").strip().lower()
+        factors = {"g": 1.0, "kg": 1000.0, "lb": 453.59237}
+        return value * factors.get(unit, 1.0)
+
+    @staticmethod
+    def _group_sort_key(group):
+        try:
+            return 0, int(group.name)
+        except (TypeError, ValueError):
+            return 1, str(group.name or "")
+
+    def _refresh_pre_weight_table(self):
+        """只显示左侧已开启的笼子，并保留每个笼子的已录入体重。"""
+        self.pre_weight_table.blockSignals(True)
+        try:
+            self.pre_weight_table.setRowCount(0)
+            if self.setting_data is None:
+                return
+
+            enabled_groups = sorted(
+                (group for group in self.setting_data.groups if group.is_selected),
+                key=self._group_sort_key,
+            )
+            weights = getattr(self.setting_data, "pre_experiment_weights", {}) or {}
+            for group in enabled_groups:
+                row = self.pre_weight_table.rowCount()
+                self.pre_weight_table.insertRow(row)
+
+                cage_item = QTableWidgetItem(str(group.name or group.id or ""))
+                cage_item.setData(Qt.ItemDataRole.UserRole, group)
+                cage_item.setFlags(cage_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.pre_weight_table.setItem(row, 0, cage_item)
+
+                weight = weights.get(str(group.id))
+                if weight is None:
+                    # 兼容旧模板：若该笼子曾绑定动物，暂时沿用动物重量作为初始显示值。
+                    for record in self.setting_data.animalGroupRecords:
+                        if record.gid != group.id:
+                            continue
+                        animal = next(
+                            (item for item in self.setting_data.animals if item.id == record.aid),
+                            None,
+                        )
+                        weight = self._weight_to_grams(animal) if animal is not None else None
+                        if weight is not None:
+                            break
+                weight_item = QTableWidgetItem("" if weight is None else f"{weight:.3f}")
+                weight_item.setData(Qt.ItemDataRole.UserRole, group)
+                weight_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.pre_weight_table.setItem(row, 1, weight_item)
+        finally:
+            self.pre_weight_table.blockSignals(False)
+
+    def refresh_pre_weight_table(self, _is_update=False):
+        """供左侧笼子勾选信号调用，刷新当前已开启笼子。"""
+        self.setting_data = global_setting.get_setting("experiment_setting_new", self.setting_data)
+        self._refresh_pre_weight_table()
+
+    def _on_pre_weight_changed(self, row, column):
+        if column != 1:
+            return
+        item = self.pre_weight_table.item(row, column)
+        if item is None:
+            return
+        group = item.data(Qt.ItemDataRole.UserRole)
+        if group is None:
+            return
+
+        text = item.text().strip()
+        weights = getattr(self.setting_data, "pre_experiment_weights", None)
+        if weights is None:
+            weights = {}
+            self.setting_data.pre_experiment_weights = weights
+        if not text:
+            weights.pop(str(group.id), None)
+        else:
+            try:
+                value = float(text)
+            except ValueError:
+                return
+            if not math.isfinite(value) or value < 0:
+                return
+            weights[str(group.id)] = round(value, 3)
+        # 已建立动物关系时同步旧字段，保证旧模板/旧界面仍能看到同一数值。
+        for record in self.setting_data.animalGroupRecords:
+            if record.gid != group.id:
+                continue
+            for animal in self.setting_data.animals:
+                if animal.id == record.aid and text:
+                    animal.weight = round(float(text), 3)
+                    animal.weight_unit = "g"
+                    animal.update_time = datetime.datetime.now()
+        global_setting.set_setting("experiment_setting_new", self.setting_data)
+        # 让现有“保存实验模板”按钮感知修改，不改变实时实验逻辑。
+        self.update_content_signal.emit(False)
     def init_animal(self,is_update=True):
         """
 
@@ -168,8 +293,9 @@ class AnimalWindow(ThemedWindow):
                     self.list_widget.addItem(item)
                     pass
             else:
-                self.title_label.setText("暂无动物，请添加！")
+                self.title_label.setText("暂无动物；可直接在上方已开启笼子表录入体重")
             pass
+        self._refresh_pre_weight_table()
         pass
         # 更新content页面
         if is_update:

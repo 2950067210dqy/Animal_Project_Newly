@@ -52,6 +52,16 @@ class Setting_Table(Enum):
         }
     }
 
+    Pre_Experiment_Weight = {
+        "table_name": "pre_experiment_weight",
+        "desc": "实验前笼级体重",
+        "column": [
+            ("group_id", "笼号/通道序号", " INTEGER PRIMARY KEY "),
+            ("weight_g", "实验前体重(g)", " REAL ")
+        ],
+        "foreign_key": None
+    }
+
     Lighting_Schedule = {
         "table_name": "lighting_schedule",
         "desc": "实验光照时间表",

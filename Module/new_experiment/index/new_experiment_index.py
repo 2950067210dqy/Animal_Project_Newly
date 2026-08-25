@@ -144,6 +144,9 @@ class New_experiment_index(ThemedWindow):
         # 连接信号
         self.left_dock_widget_content.update_content_signal.connect(self.center_widget_content.init_content)
         self.left_dock_widget_content.update_content_signal.connect(self.center_widget_content.update_status)
+        self.left_dock_widget_content.update_content_signal.connect(
+            self.right_dock_widget_content.refresh_pre_weight_table
+        )
         self.right_dock_widget_content.update_content_signal.connect(self.center_widget_content.init_content)
         self.right_dock_widget_content.update_content_signal.connect(self.center_widget_content.update_status)
         self.center_widget_content.update_group_signal.connect(self.left_dock_widget_content.init_group)
