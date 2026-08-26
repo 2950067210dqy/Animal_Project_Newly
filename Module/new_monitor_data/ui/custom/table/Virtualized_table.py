@@ -35,7 +35,7 @@ CO2_HIDDEN_COLUMN_KEYS = {"UGC_CO2_origin_num"}
 
 def _format_sensor_status_code(value):
     if value is None:
-        return ""
+        return "None"
     if isinstance(value, bool):
         return "1" if value else "0"
     if isinstance(value, (int, float)):
@@ -54,7 +54,7 @@ def _format_sensor_status_code(value):
 
 def _format_co2_display_value(value):
     if value is None:
-        return ""
+        return "None"
     try:
         return f"{float(value):.04f}"
     except (TypeError, ValueError):
