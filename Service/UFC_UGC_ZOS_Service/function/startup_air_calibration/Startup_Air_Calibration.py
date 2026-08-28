@@ -1,4 +1,5 @@
 import copy
+import math
 import time
 
 from blinker.base import _PNamespaceSignal
@@ -10,6 +11,9 @@ from public.entity.enum.Public_Enum import GapSystem_Running_Type
 from public.function.promise.AsyPromise import AsyPromise
 from public.util.number_util import number_util
 from public.util.time_util import time_util
+from Service.UFC_UGC_ZOS_Service.function.o2_compensation.host_wet_o2_guard import (
+    WetOxygenReferenceFilter,
+)
 
 
 class Startup_Air_Calibration:
@@ -36,7 +40,9 @@ class Startup_Air_Calibration:
         }
         self.o2_calibration_handler = None
         self.co2_calibration_handler = None
+        self.o2_calibration_filter = WetOxygenReferenceFilter()
         self.previous_valid_snapshots = {}
+        self.pre_calibration_references = {}
         self.calculation_started_logged = False
 
     def update(self):
@@ -193,6 +199,43 @@ class Startup_Air_Calibration:
     def _get_active_channels(self):
         return list(range(9))
 
+    def _capture_pre_calibration_references(self, active_channels):
+        """Capture the three stable wet-O2 values used by Air calibration."""
+        references = {
+            self._channel_to_handler_name(channel): []
+            for channel in active_channels
+        }
+        sample_interval = self._normalize_sample_interval()
+
+        for sample_index in range(3):
+            for channel in active_channels:
+                snapshot = self._read_zos_channel_snapshot(channel)
+                if snapshot is None:
+                    continue
+                try:
+                    value = float(snapshot["o2_percent"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if math.isfinite(value) and 0.0 < value <= 100.0:
+                    references[self._channel_to_handler_name(channel)].append(value)
+            if sample_index < 2:
+                time.sleep(sample_interval)
+
+        self.pre_calibration_references = references
+        missing = [
+            channel
+            for channel, values in references.items()
+            if len(values) != 3
+        ]
+        if missing:
+            logger.warning(
+                f"{self.name}: 稳定阶段未能为以下通道取得完整3点湿基氧参考：{missing}"
+            )
+            return False
+
+        logger.info(f"{self.name}: 已保存空气校准前各通道最后3个湿基氧参考值")
+        return True
+
     def _build_calibration_handlers(self, sample_interval=None, active_channel_count=None):
         try:
             from Service.UFC_UGC_ZOS_Service.function.o2_compensation import (
@@ -220,6 +263,12 @@ class Startup_Air_Calibration:
                 f"for {active_channel_count} sequential channels"
             )
         self.o2_calibration_handler.start_new_calibration()
+        self.o2_calibration_filter = WetOxygenReferenceFilter()
+        for channel in self.o2_calibration_handler.channels:
+            self.o2_calibration_filter.set_initial_references(
+                channel,
+                self.pre_calibration_references[channel],
+            )
         self.co2_calibration_handler.start_new_calibration()
         self.previous_valid_snapshots = {}
         self.calculation_started_logged = False
@@ -320,6 +369,11 @@ class Startup_Air_Calibration:
         wait_seconds = self._normalize_startup_wait_seconds()
         if wait_seconds == 0:
             self._send_text(f"{self.name}等待阶段已跳过")
+            if not self._capture_pre_calibration_references(self._get_active_channels()):
+                reject(
+                    f"{self.name}无法开始：每个通道必须先取得3个稳定湿基氧参考值"
+                )
+                return
             resolve()
             return
 
@@ -329,6 +383,11 @@ class Startup_Air_Calibration:
                     f"{self.name}等待稳定：当前等待 {second + 1}/{wait_seconds} 秒"
                 )
             time.sleep(1)
+        if not self._capture_pre_calibration_references(self._get_active_channels()):
+            reject(
+                f"{self.name}无法开始：每个通道必须先取得3个稳定湿基氧参考值"
+            )
+            return
         resolve()
 
     def run(self, resolve, reject):
@@ -344,6 +403,16 @@ class Startup_Air_Calibration:
 
         sample_interval = self._normalize_sample_interval()
         target_points = self._normalize_target_points()
+        if any(
+            len(
+                self.pre_calibration_references.get(
+                    self._channel_to_handler_name(channel), []
+                )
+            ) != 3
+            for channel in active_channels
+        ):
+            reject(f"{self.name}无法开始：空气校准前的三点湿基氧参考不完整")
+            return
         try:
             self._build_calibration_handlers(
                 sample_interval=sample_interval,
@@ -384,18 +453,30 @@ class Startup_Air_Calibration:
                         oxygen_value=snapshot["o2_percent"],
                         oxygen_pressure_value=snapshot["gas_pressure"],
                     )
-                    try:
-                        self.o2_calibration_handler.add_data(
-                            self._channel_to_handler_name(channel),
-                            snapshot["o2_partial"],
-                            snapshot["zos_temp"],
-                            snapshot["gas_pressure"],
-                            snapshot["o2_percent"],
-                            snapshot["zos_rh"],
+                    channel_name = self._channel_to_handler_name(channel)
+                    o2_filter_result = self.o2_calibration_filter.filter_with_status(
+                        channel_name,
+                        snapshot["o2_percent"],
+                    )
+                    cleaned_o2_percent = o2_filter_result["value"]
+                    if cleaned_o2_percent is None:
+                        logger.warning(
+                            f"{self.name}跳过 {display_name} 本次 O2 点："
+                            "首次采样没有可用参考值"
                         )
-                    except Exception as exc:
-                        reject(f"{self.name}执行 O2 CalibrationHandler 失败: {exc}")
-                        return
+                    else:
+                        try:
+                            self.o2_calibration_handler.add_data(
+                                channel_name,
+                                snapshot["o2_partial"],
+                                snapshot["zos_temp"],
+                                snapshot["gas_pressure"],
+                                cleaned_o2_percent,
+                                snapshot["zos_rh"],
+                            )
+                        except Exception as exc:
+                            reject(f"{self.name}执行 O2 CalibrationHandler 失败: {exc}")
+                            return
                 else:
                     logger.warning(f"{self.name}读取 {display_name} O2 数据失败")
 
