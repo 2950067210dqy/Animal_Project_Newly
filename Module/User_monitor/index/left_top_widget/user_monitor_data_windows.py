@@ -6,10 +6,9 @@ from enum import Enum
 from PyQt6 import QtGui
 from PyQt6.QtCore import QTimer, pyqtSignal, Qt
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QButtonGroup, QRadioButton, \
-    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame, QSplitter
+    QPushButton, QListWidget, QScrollArea, QFileDialog, QMessageBox, QFrame, QSplitter, QSizePolicy
 from loguru import logger
 
-from Module.User_monitor.ui.custom.charts.Custom_charts import AdvancedChartWidget
 from Module.User_monitor.ui.custom.table.User_Table_select_columns_paging_bottom import User_table_select_columns_paging_bottom
 from public.component.dialog.custom.InfoDialog import InfoDialog
 from public.component.dock_widget.DraggableWindow import DemoDraggableDockWidget
@@ -105,7 +104,6 @@ class UserMonitorDataWindows(ThemedWidget):
         self.n = 0
         # 存放创建的 dock 引用
         self._docks_widget = []
-        self._docks_widget_charts = []
         self._docks_widget_calibration = []
         self._retired_data_widgets = []
         # 是否正在零点标定 和量程标定
@@ -250,39 +248,43 @@ class UserMonitorDataWindows(ThemedWidget):
 
         # 表格区域
         self.content_layout_widget = QWidget()
+        # 表格区保留紧凑高度，确保底部总横向滚动条在窗口内可见。
+        self.content_layout_widget.setMaximumHeight(475)
         self.content_layout = QVBoxLayout( self.content_layout_widget)
-        self.content_widget = DemoDraggableDockWidget(is_showt_tab=False, enable_detach=False)
+        self.content_widget = DemoDraggableDockWidget(
+            is_showt_tab=False,
+            enable_detach=False,
+            disable_vertical_wheel=True,
+        )
+        # 外层只需要横向切换通道，隐藏不需要的纵向滚动条。
+        self.content_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.content_layout.addWidget(self.content_widget)
 
         self.main_splitter.addWidget(self.content_layout_widget)
         # self.main_layout.addLayout(self.content_layout,stretch=8)
 
+        # 表格缩短后，把剩余高度留在表格下方，避免反向撑大上方操作区。
+        self.content_bottom_spacer = QWidget()
+        self.content_bottom_spacer.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.main_splitter.addWidget(self.content_bottom_spacer)
 
-        # 图表区域
-        self.charts_layout_widget=QWidget()
-        self.charts_layout = QVBoxLayout(self.charts_layout_widget)
-        self.charts_widget = DemoDraggableDockWidget(is_showt_tab=False, enable_detach=False)
-        self.charts_layout.addWidget(self.charts_widget)
 
-        self.main_splitter.addWidget(self.charts_layout_widget)
-        # self.main_layout.addLayout(self.charts_layout, stretch=8)
         # 设置拉伸因子 (索引, 拉伸因子)
-        self.main_splitter.setStretchFactor(0, 2)
-        self.main_splitter.setStretchFactor(1, 10)
-        self.main_splitter.setStretchFactor(2, 6)
+        self.main_splitter.setStretchFactor(0, 0)
+        self.main_splitter.setStretchFactor(1, 0)
+        self.main_splitter.setStretchFactor(2, 1)
+        self.main_splitter.setSizes([175, 475, 0])
         for i in range(1, self.main_splitter.count()):
             self.main_splitter.handle(i).setEnabled(False)
-        # # 上面“操作区-表格区”之间仍然不允许拖
-        # self.main_splitter.handle(1).setEnabled(False)
-        #
-        # # 下面“表格区-图表区”之间允许拖
-        # self.main_splitter.handle(2).setEnabled(True)
         self.main_layout.addWidget(self.main_splitter)
 
         self.setLayout(self.main_layout)
 
     def clear_existing_docks(self):
-        all_data_widgets = list(self._docks_widget) + list(self._docks_widget_charts)
+        all_data_widgets = list(self._docks_widget)
         for widget in all_data_widgets:
             if hasattr(widget, "shutdown"):
                 widget.shutdown(wait_ms=0)
@@ -298,9 +300,7 @@ class UserMonitorDataWindows(ThemedWidget):
             self._retire_data_widget(widget)
 
         self.content_widget.remove_all()
-        self.charts_widget.remove_all()
         self._docks_widget = []
-        self._docks_widget_charts = []
 
     def _retire_data_widget(self, widget):
         thread = getattr(widget, "data_fetcher_thread", None)
@@ -336,15 +336,7 @@ class UserMonitorDataWindows(ThemedWidget):
                 )
 
                 self._docks_widget.append(widget)
-
-                widget_charts =AdvancedChartWidget(gid=gid)
-                widget_charts.setWindowTitle(f"通道/鼠笼 {gid} {'(参考气)' if gid==int(global_setting.get_setting('configer')['mouse_cage']['reference']) else ''}")
-                widget_charts.setWindowTitle(
-                    f"通道/鼠笼 {'参考笼' if gid == int(global_setting.get_setting('configer')['mouse_cage']['reference']) else gid}"
-                )
-                self._docks_widget_charts.append(widget_charts)
             self.content_widget.addFrames(self._docks_widget)
-            self.charts_widget.addFrames(self._docks_widget_charts)
         else:
             widget = User_table_select_columns_paging_bottom(gid=-1)
             widget.setWindowTitle(f"通道/鼠笼 总表")
@@ -352,11 +344,6 @@ class UserMonitorDataWindows(ThemedWidget):
             widget.on_replace_headers([1])
             self._docks_widget.append(widget)
             self.content_widget.addFrames(self._docks_widget)
-
-            widget_charts = AdvancedChartWidget(gid=-1)
-            widget_charts.setWindowTitle(f"通道/鼠笼 总表")
-            self._docks_widget_charts.append(widget_charts)
-            self.charts_widget.addFrames(self._docks_widget_charts)
     def on_show_selection_changed(self, button):
         # 获取自定义数据值
         self.setRadiosEnable(enable=False)

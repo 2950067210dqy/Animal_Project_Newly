@@ -10,11 +10,13 @@ from public.component.dock_widget.DraggableDockWidget import TabNavigator, Dragg
 class DemoDraggableDockWidget(QScrollArea):
     """演示如何使用拖拽框架的主窗口 - 朴素风格"""
 
-    def __init__(self, parent=None, is_showt_tab=True, enable_detach=True):
+    def __init__(self, parent=None, is_showt_tab=True, enable_detach=True,
+                 disable_vertical_wheel=False):
         super().__init__(parent)
         self.setWindowTitle("Tab导航 + 拖拽框架")
         self.is_showt_tab = is_showt_tab
         self.enable_detach = enable_detach
+        self.disable_vertical_wheel = disable_vertical_wheel
         self.frames = []  # 存储所有Frame的引用
 
         # 设置QScrollArea的属性
@@ -23,6 +25,13 @@ class DemoDraggableDockWidget(QScrollArea):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self.setupUI()
+
+    def wheelEvent(self, event):
+        if self.disable_vertical_wheel:
+            # 外层区域只负责横向切换通道，避免空白区域被鼠标滚轮带动。
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def setupUI(self):
         # 创建主widget作为scrollArea的内容
@@ -94,8 +103,8 @@ class DemoDraggableDockWidget(QScrollArea):
 
             # 计算尺寸
             min_size = widget.minimumSize()
-            total_width += min_size.width()
-            max_height = max(max_height, min_size.height())
+            total_width += max(min_size.width(), widget.minimumWidth(), frame.minimumWidth())
+            max_height = max(max_height, min_size.height(), widget.minimumHeight(), frame.minimumHeight())
 
             # 添加到QSplitter
             self.container_layout.addWidget(frame)
@@ -122,7 +131,10 @@ class DemoDraggableDockWidget(QScrollArea):
             main_widget.setMinimumSize(splitter_width + 48, splitter_height + 100)  # 考虑tab navigator和margins
 
             # 设置初始分割比例
-            sizes = [frame.content_widget.minimumSize().width() for frame in self.frames]
+            sizes = [
+                max(frame.content_widget.minimumWidth(), frame.minimumWidth())
+                for frame in self.frames
+            ]
             self.container_layout.setSizes(sizes)
 
     def navigateToFrame(self, frame):

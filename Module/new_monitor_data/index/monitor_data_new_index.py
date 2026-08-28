@@ -115,10 +115,6 @@ class Monitor_data_new_index(ThemedWindow):
             widget: Table_select_columns_paging_bottom
             if widget is not None and hasattr(widget,"data_fetcher_thread") and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.pause()
-        for widget in self.left_top_widget_content._docks_widget_charts:
-            widget: Table_select_columns_paging_bottom
-            if widget is not None and hasattr(widget,"data_fetcher_thread") and widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
-                widget.data_fetcher_thread.pause()
         pass
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]):
         global read_queue_data_thread
@@ -131,13 +127,6 @@ class Monitor_data_new_index(ThemedWindow):
                 widget.data_fetcher_thread.resume()
             elif widget is not None and hasattr(widget,"data_fetcher_thread")  and  widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
                 widget.data_fetcher_thread.start()
-        for widget in self.left_top_widget_content._docks_widget_charts:
-            widget: Table_select_columns_paging_bottom
-            if widget is not None and hasattr(widget,"data_fetcher_thread")  and  widget.data_fetcher_thread is not None and widget.data_fetcher_thread.isRunning():
-                widget.data_fetcher_thread.resume()
-            elif widget is not None and hasattr(widget,"data_fetcher_thread")  and  widget.data_fetcher_thread is not None and not widget.data_fetcher_thread.isRunning():
-                widget.data_fetcher_thread.start()
-
     def closeEvent(self, a0: typing.Optional[QtGui.QCloseEvent]) -> None:
         pass
 
