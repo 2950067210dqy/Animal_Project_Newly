@@ -245,6 +245,11 @@ class Gas_Carlibration:
                 logger.warning(f"UGC标准气体浓度取回包失败，使用用户设置值兜底: {e}")
 
             self.ugc_span_target_co2_ppm = target_co2
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | 校span成功："
+                f"UGC已成功写入CO2标准气体浓度={target_co2}ppm",
+                title=self.title
+            )
             resolve()
 
         self.send_thread.send_message = self.send_message
