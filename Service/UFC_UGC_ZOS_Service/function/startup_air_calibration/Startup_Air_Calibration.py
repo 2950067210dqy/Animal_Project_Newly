@@ -44,6 +44,8 @@ class Startup_Air_Calibration:
         self.previous_valid_snapshots = {}
         self.pre_calibration_references = {}
         self.calculation_started_logged = False
+        self.o2_failure_notified = False
+        self.o2_failure_reason = None
 
     def update(self):
         self.send_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
@@ -54,6 +56,23 @@ class Startup_Air_Calibration:
                 f"{time_util.get_format_from_time(time.time())} | {text}",
                 title=self.title,
             )
+
+    def _record_nonblocking_o2_failure(self, reason):
+        """Record an O2 calibration failure without stopping the Air sequence."""
+        reason = str(reason or "拟合失败")
+        self.o2_failure_reason = reason
+        if self.o2_failure_notified:
+            return
+
+        self.o2_failure_notified = True
+        logger.warning(
+            f"{self.name} O2 校准失败（非阻断）：{reason}；"
+            "保留原有 O2 配置，继续执行 Air 校准"
+        )
+        self._send_text(
+            f"{self.name}提示：O2 校准失败（{reason}）；"
+            "保留原有 O2 配置，继续采集其它数据，不终止 Air 校准"
+        )
 
     def _send_state(self, state_type, value):
         if self.update_status_main_signal_gui_update is not None:
@@ -272,6 +291,8 @@ class Startup_Air_Calibration:
         self.co2_calibration_handler.start_new_calibration()
         self.previous_valid_snapshots = {}
         self.calculation_started_logged = False
+        self.o2_failure_notified = False
+        self.o2_failure_reason = None
 
     def _read_ugc_channel_snapshot(self, channel):
         port = self._get_port()
@@ -465,18 +486,23 @@ class Startup_Air_Calibration:
                             "首次采样没有可用参考值"
                         )
                     else:
-                        try:
-                            self.o2_calibration_handler.add_data(
-                                channel_name,
-                                snapshot["o2_partial"],
-                                snapshot["zos_temp"],
-                                snapshot["gas_pressure"],
-                                cleaned_o2_percent,
-                                snapshot["zos_rh"],
-                            )
-                        except Exception as exc:
-                            reject(f"{self.name}执行 O2 CalibrationHandler 失败: {exc}")
-                            return
+                        if self.o2_failure_reason is None:
+                            try:
+                                self.o2_calibration_handler.add_data(
+                                    channel_name,
+                                    snapshot["o2_partial"],
+                                    snapshot["zos_temp"],
+                                    snapshot["gas_pressure"],
+                                    cleaned_o2_percent,
+                                    snapshot["zos_rh"],
+                                )
+                            except Exception as exc:
+                                logger.exception(
+                                    f"{self.name} O2 CalibrationHandler 异常（非阻断）"
+                                )
+                                self._record_nonblocking_o2_failure(
+                                    f"{type(exc).__name__}: {exc}"
+                                )
                 else:
                     logger.warning(f"{self.name}读取 {display_name} O2 数据失败")
 
@@ -508,13 +534,9 @@ class Startup_Air_Calibration:
                 o2_status = self.o2_calibration_handler.get_status()
                 co2_status = self.co2_calibration_handler.get_status()
                 if o2_status.get("failed"):
-                    failure_message = f"O2：{o2_status.get('failure_reason') or '拟合失败'}"
-                    logger.error(f"{self.name}校准失败，已停止继续采集：{failure_message}")
-                    self._send_text(
-                        f"{self.name}校准失败，已停止继续采集：{failure_message}"
+                    self._record_nonblocking_o2_failure(
+                        f"{o2_status.get('failure_reason') or '拟合失败'}"
                     )
-                    reject(f"{self.name}校准失败：{failure_message}")
-                    return
 
                 # CO2 拟合失败只影响本次 CO2 系数更新，不阻断 O2 或整轮 Air 校准。
                 # CO2CalibrationHandler 只在成功时写入配置，因此失败时会自然保留旧配置。
@@ -541,10 +563,25 @@ class Startup_Air_Calibration:
 
                 o2_calibrated = o2_status.get("calibrated", getattr(self.o2_calibration_handler, "calibrated", False))
                 co2_calibrated = co2_status.get("calibrated", getattr(self.co2_calibration_handler, "calibrated", False))
+                o2_failed_nonblocking = bool(
+                    o2_status.get("failed") or self.o2_failure_reason
+                )
                 co2_failed_nonblocking = bool(co2_status.get("failed"))
                 co2_fit_failed_after_collection = co2_failed_nonblocking and co2_ready
-                if o2_calibrated and (co2_calibrated or co2_failed_nonblocking):
-                    if co2_fit_failed_after_collection:
+                if (o2_calibrated or o2_failed_nonblocking) and (
+                    co2_calibrated or co2_failed_nonblocking
+                ):
+                    if o2_failed_nonblocking and co2_failed_nonblocking:
+                        self._send_text(
+                            f"{self.name}采集完成：O2 校准失败，CO2 也未更新系数；"
+                            "保留原有 O2 / CO2 配置，继续后续流程"
+                        )
+                    elif o2_failed_nonblocking:
+                        self._send_text(
+                            f"{self.name}采集完成：O2 校准失败，CO2 校准成功；"
+                            "保留原有 O2 配置，继续后续流程"
+                        )
+                    elif co2_fit_failed_after_collection:
                         self._send_text(
                             f"{self.name}采集完成：O2 校准成功，CO2 已收满 {target_points} 点但拟合失败；"
                             "本轮不更新 CO2 配置，继续后续流程"
