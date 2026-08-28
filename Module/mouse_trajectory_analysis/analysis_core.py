@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import csv
 import math
@@ -78,6 +78,14 @@ class ChannelTrajectory:
 
 
 @dataclass
+class ComparisonSeries:
+    """One Excel-backed metric series for a single enabled channel."""
+
+    elapsed_seconds: np.ndarray
+    values: np.ndarray
+
+
+@dataclass
 class ExperimentAnalysis:
     source_path: Path
     started_at: datetime
@@ -85,6 +93,8 @@ class ExperimentAnalysis:
     end_timestamp: float
     channels: dict[int, ChannelTrajectory]
     coordinate_source_path: Path | None = None
+    comparison_series: dict[int, dict[str, ComparisonSeries]] = field(default_factory=dict)
+    comparison_source_path: Path | None = None
 
     @property
     def duration_seconds(self) -> float:
@@ -290,6 +300,140 @@ def _cell(row: tuple[object, ...], index: int | None) -> object:
     if index is None or index < 0 or index >= len(row):
         return None
     return row[index]
+
+
+COMPARISON_FIELD_ALIASES = {
+    # These aliases preserve the existing Excel export names and also support
+    # the internal database names used by older exported workbooks.
+    "weight": (
+        "称重重量测量值(g)",
+        "体重",
+        "称重（g）",
+        "body_weight",
+        "weight_num",
+    ),
+    "food": (
+        "食物重量测量值(g)",
+        "累计进食量",
+        "饮食（g）",
+        "food_weight",
+        "food_amount",
+    ),
+    "temperature": (
+        "鼠笼红外温度(°C)",
+        "温度测量值(°C)",
+        "笼内温度",
+        "体温（°C）",
+        "temperature_num",
+    ),
+    "oxygen": (
+        "氧浓度(%)",
+        "干基氧浓度(%)",
+        "O2out浓度",
+        "氧气（%）",
+        "oxygen_num",
+        "dry_basis_oxygen_num",
+    ),
+    "co2": (
+        "对齐后CO2",
+        "气压补偿后CO2",
+        "CO2out浓度",
+        "CO2in浓度",
+        "二氧化碳（ppm）",
+        "CO2_num",
+    ),
+}
+
+
+def _find_columns(header_map: dict[str, int], aliases: Iterable[str]) -> list[int]:
+    indexes: list[int] = []
+    for alias in aliases:
+        index = header_map.get(_normalize_header(alias))
+        if index is not None and index not in indexes:
+            indexes.append(index)
+    return indexes
+
+
+def load_monitor_comparison_workbook(
+    path: str | Path,
+    start_timestamp: float,
+    interruption_requested: Callable[[], bool] | None = None,
+) -> dict[int, dict[str, ComparisonSeries]]:
+    """Load the five fixed comparison fields from the monitor Excel export.
+
+    The monitor workbook stores one sheet per channel and uses ``获取时间`` as
+    the sample time.  A metric may have more than one legacy header in older
+    workbooks, so the first alias containing a numeric value is used per row.
+    """
+
+    source_path = Path(path).expanduser().resolve()
+    workbook = load_workbook(source_path, read_only=True, data_only=True)
+    raw_series: dict[int, dict[str, list[tuple[float, float]]]] = {}
+
+    try:
+        for sheet_name in workbook.sheetnames:
+            if interruption_requested is not None and interruption_requested():
+                raise InterruptedError("Excel对比数据读取已取消")
+            channel = _extract_channel(sheet_name)
+            if channel is None:
+                continue
+
+            worksheet = workbook[sheet_name]
+            iterator = worksheet.iter_rows(values_only=True)
+            header = next(iterator, None)
+            if header is None:
+                continue
+            header_map = {
+                _normalize_header(value): index
+                for index, value in enumerate(header)
+                if _normalize_header(value)
+            }
+            time_index = _find_column(
+                header_map,
+                ("获取时间", "轮次结束时间", "轮次开始时间", "datetime", "timestamp", "time"),
+            )
+            field_indexes = {
+                key: _find_columns(header_map, aliases)
+                for key, aliases in COMPARISON_FIELD_ALIASES.items()
+            }
+            if time_index is None or not any(field_indexes.values()):
+                continue
+
+            channel_series = raw_series.setdefault(channel, {})
+            for row_number, row in enumerate(iterator, start=2):
+                if row_number % 500 == 0 and interruption_requested is not None and interruption_requested():
+                    raise InterruptedError("Excel对比数据读取已取消")
+                timestamp = _parse_timestamp(_cell(row, time_index))
+                if timestamp is None:
+                    continue
+                for key, indexes in field_indexes.items():
+                    value = next(
+                        (
+                            numeric
+                            for index in indexes
+                            if math.isfinite(
+                                numeric := _safe_float(_cell(row, index))
+                            )
+                        ),
+                        math.nan,
+                    )
+                    if math.isfinite(value):
+                        channel_series.setdefault(key, []).append((timestamp, value))
+    finally:
+        workbook.close()
+
+    comparison_series: dict[int, dict[str, ComparisonSeries]] = {}
+    for channel, metric_rows in raw_series.items():
+        for key, rows in metric_rows.items():
+            if not rows:
+                continue
+            rows.sort(key=lambda item: item[0])
+            values = np.asarray(rows, dtype=float)
+            comparison_series.setdefault(channel, {})[key] = ComparisonSeries(
+                elapsed_seconds=values[:, 0] - float(start_timestamp),
+                values=values[:, 1],
+            )
+    return comparison_series
 
 
 def _status_allows_detection(value: object) -> bool:
@@ -502,6 +646,12 @@ def load_experiment_workbook(
     if not any(channel.total_rows for channel in channels.values()):
         raise ValueError("Excel中未找到可分析的通道轨迹数据")
 
+    comparison_series = load_monitor_comparison_workbook(
+        source_path,
+        start_timestamp,
+        interruption_requested=interruption_requested,
+    )
+
     return ExperimentAnalysis(
         source_path=source_path,
         started_at=datetime.fromtimestamp(start_timestamp),
@@ -509,6 +659,8 @@ def load_experiment_workbook(
         end_timestamp=end_timestamp,
         channels=channels,
         coordinate_source_path=source_path,
+        comparison_series=comparison_series,
+        comparison_source_path=source_path if comparison_series else None,
     )
 
 
@@ -537,6 +689,69 @@ def find_matching_trajectory_export(
         best_path = candidate
         best_difference = difference
     return best_path
+
+
+def find_matching_monitor_workbook(
+    monitor_root: str | Path,
+    experiment_started_at: datetime,
+    maximum_difference_seconds: float = 300.0,
+) -> Path | None:
+    """Find the monitor workbook created for a trajectory export."""
+
+    root = Path(monitor_root).expanduser().resolve()
+    if not root.exists():
+        return None
+
+    best_path: Path | None = None
+    best_key = (1, float("inf"), float("inf"))
+    for candidate in root.glob("*.xlsx"):
+        if candidate.name.startswith(("~$", ".")) or not candidate.is_file():
+            continue
+        candidate_time = parse_experiment_time(candidate)
+        if candidate_time is None:
+            continue
+        difference = abs((candidate_time - experiment_started_at).total_seconds())
+        if difference > maximum_difference_seconds:
+            continue
+        try:
+            modified_at = -candidate.stat().st_mtime
+        except OSError:
+            modified_at = 0.0
+        # Original monitor exports are the source of truth while fitted files
+        # are still being validated, so fitted workbooks are fallback only.
+        fitted_rank = 1 if "称重拟合" in candidate.stem else 0
+        candidate_key = (fitted_rank, difference, modified_at)
+        if candidate_key < best_key:
+            best_path = candidate.resolve()
+            best_key = candidate_key
+    return best_path
+
+
+def _load_matching_comparison_series(
+    experiment_started_at: datetime,
+    start_timestamp: float,
+    interruption_requested: Callable[[], bool] | None = None,
+) -> tuple[dict[int, dict[str, ComparisonSeries]], Path | None]:
+    monitor_root = Path(__file__).resolve().parents[2] / "data" / "monitor_data"
+    comparison_path = find_matching_monitor_workbook(
+        monitor_root,
+        experiment_started_at,
+    )
+    if comparison_path is None:
+        return {}, None
+    try:
+        return (
+            load_monitor_comparison_workbook(
+                comparison_path,
+                start_timestamp,
+                interruption_requested=interruption_requested,
+            ),
+            comparison_path,
+        )
+    except InterruptedError:
+        raise
+    except (OSError, ValueError, TypeError):
+        return {}, None
 
 
 def _load_trajectory_csv_export(
@@ -597,6 +812,12 @@ def _load_trajectory_csv_export(
     if not any(channel.total_rows for channel in channels.values()):
         raise ValueError("匹配到的轨迹文件中没有有效坐标")
 
+    comparison_series, comparison_source_path = _load_matching_comparison_series(
+        experiment_started_at,
+        start_timestamp,
+        interruption_requested=interruption_requested,
+    )
+
     return ExperimentAnalysis(
         source_path=source_path,
         started_at=datetime.fromtimestamp(start_timestamp),
@@ -604,6 +825,8 @@ def _load_trajectory_csv_export(
         end_timestamp=end_timestamp,
         channels=channels,
         coordinate_source_path=export_path,
+        comparison_series=comparison_series,
+        comparison_source_path=comparison_source_path,
     )
 
 
@@ -611,7 +834,7 @@ def load_trajectory_experiment(
     export_path: str | Path,
     interruption_requested: Callable[[], bool] | None = None,
 ) -> ExperimentAnalysis:
-    """Load one export directory without using or time-matching an Excel file."""
+    """Load one trajectory export and attach its time-matched monitor data."""
     source_path = Path(export_path).expanduser().resolve()
     if not source_path.is_dir():
         raise ValueError(f"轨迹实验目录不存在：{source_path}")

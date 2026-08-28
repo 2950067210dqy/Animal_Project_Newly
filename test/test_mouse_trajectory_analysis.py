@@ -12,7 +12,9 @@ from Module.mouse_trajectory_analysis.analysis_core import (
     aggregate_distance,
     load_experiment_data,
     load_experiment_workbook,
+    load_monitor_comparison_workbook,
     load_trajectory_experiment,
+    find_matching_monitor_workbook,
     parse_experiment_time,
     scan_experiment_files,
     scan_trajectory_experiments,
@@ -21,6 +23,72 @@ from Module.mouse_trajectory_analysis.analysis_core import (
 
 
 class MouseTrajectoryAnalysisTests(unittest.TestCase):
+    def test_original_monitor_workbook_is_preferred_over_fitted_workbook(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original = root / "1_2026_08_01_12_00_02_000.xlsx"
+            fitted = root / "1_2026_08_01_12_00_00_000_称重拟合.xlsx"
+            original.touch()
+            fitted.touch()
+
+            selected = find_matching_monitor_workbook(
+                root,
+                datetime(2026, 8, 1, 12, 0, 0),
+            )
+
+            self.assertEqual(selected, original.resolve())
+
+    def test_monitor_workbook_loads_the_fixed_comparison_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "1_2026_08_01_12_00_00_000.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "每轮数据监控数据_通道1"
+            sheet.append(
+                [
+                    "获取时间",
+                    "称重重量测量值(g)",
+                    "食物重量测量值(g)",
+                    "温度测量值(°C)",
+                    "氧浓度(%)",
+                    "对齐后CO2",
+                ]
+            )
+            sheet.append(
+                [
+                    "2026-08-01 12:00:01.000",
+                    22.1,
+                    3.2,
+                    36.8,
+                    20.9,
+                    450.0,
+                ]
+            )
+            sheet.append(
+                [
+                    "2026-08-01 12:00:02.000",
+                    22.2,
+                    3.4,
+                    36.9,
+                    21.0,
+                    451.0,
+                ]
+            )
+            workbook.save(path)
+
+            start_timestamp = datetime(2026, 8, 1, 12, 0, 0).timestamp()
+            series = load_monitor_comparison_workbook(path, start_timestamp)
+
+            self.assertEqual(set(series[1]), {"weight", "food", "temperature", "oxygen", "co2"})
+            np.testing.assert_allclose(
+                series[1]["temperature"].elapsed_seconds,
+                np.asarray([1.0, 2.0]),
+            )
+            np.testing.assert_allclose(
+                series[1]["co2"].values,
+                np.asarray([450.0, 451.0]),
+            )
+
     def test_scan_uses_experiment_time_and_sorts_latest_first(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

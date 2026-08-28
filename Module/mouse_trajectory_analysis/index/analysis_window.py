@@ -39,6 +39,8 @@ from Module.mouse_trajectory_analysis.analysis_core import (
     sleep_state_matrix,
     trajectory_plot_arrays,
 )
+from Module.mouse_trajectory_analysis.ui.analysis_dashboard import AnalysisDashboard
+from public.config_class.global_setting import global_setting
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -92,6 +94,9 @@ class TrajectoryLoadThread(QThread):
 
 
 class TrajectoryAnalysisWindow(ThemedWindow):
+    BEHAVIOR_MODE = "behavior"
+    COMPARISON_MODE = "comparison"
+
     TAB_DEFINITIONS = (
         ("累计路程", "cumulative"),
         ("每秒/每分钟", "distance_rate"),
@@ -100,8 +105,9 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         ("睡眠热力图", "sleep"),
     )
 
-    def __init__(self):
+    def __init__(self, content_mode: str = BEHAVIOR_MODE):
         super().__init__()
+        self.content_mode = content_mode
         self.setFont(QFont("Microsoft YaHei", 10))
         self.trajectory_root = self._resolve_trajectory_root()
         self.analysis: ExperimentAnalysis | None = None
@@ -114,6 +120,8 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         self._figures: dict[str, Figure] = {}
         self._canvases: dict[str, FigureCanvas] = {}
         self._experiment_list_initialized = False
+        self.chart_tabs: QTabWidget | None = None
+        self.dashboard: AnalysisDashboard | None = None
 
         self._init_ui()
         self.status_label.setText("进入页面后自动读取实验列表")
@@ -130,7 +138,8 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         return QSize(640, 360)
 
     def _init_ui(self):
-        self.setWindowTitle("运动轨迹分析")
+        title = "行为规律" if self.content_mode == self.BEHAVIOR_MODE else "数据对比"
+        self.setWindowTitle(title)
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         root_layout = QVBoxLayout(central_widget)
@@ -193,6 +202,10 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         self.save_button.clicked.connect(self._save_current_figure)
         self.save_button.setEnabled(False)
         control_layout.addWidget(self.save_button)
+        if self.content_mode != self.BEHAVIOR_MODE:
+            self.threshold_label.hide()
+            self.threshold_combo.hide()
+            self.save_button.hide()
         root_layout.addWidget(control_band)
 
         information_band = QFrame()
@@ -211,28 +224,38 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         self.progress_bar.setTextVisible(False)
         self.progress_bar.hide()
         information_layout.addWidget(self.progress_bar)
+        if self.content_mode != self.BEHAVIOR_MODE:
+            information_band.hide()
         root_layout.addWidget(information_band)
 
-        self.chart_tabs = QTabWidget()
-        self.chart_tabs.setObjectName("trajectoryAnalysisTabs")
-        for title, key in self.TAB_DEFINITIONS:
-            page = QWidget()
-            page_layout = QVBoxLayout(page)
-            page_layout.setContentsMargins(0, 4, 0, 0)
-            figure = Figure(figsize=(12, 4.8), dpi=100, layout="constrained")
-            canvas = FigureCanvas(figure)
-            canvas.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Ignored,
-            )
-            canvas.setMinimumSize(0, 0)
-            page_layout.addWidget(canvas)
-            self.chart_tabs.addTab(page, title)
-            self._figures[key] = figure
-            self._canvases[key] = canvas
-            self._draw_placeholder(key, "请选择实验")
-        self.chart_tabs.currentChanged.connect(self._chart_tab_changed)
-        root_layout.addWidget(self.chart_tabs, 1)
+        if self.content_mode == self.BEHAVIOR_MODE:
+            self.chart_tabs = QTabWidget()
+            self.chart_tabs.setObjectName("trajectoryAnalysisTabs")
+            for chart_title, key in self.TAB_DEFINITIONS:
+                page = QWidget()
+                page_layout = QVBoxLayout(page)
+                page_layout.setContentsMargins(0, 4, 0, 0)
+                figure = Figure(
+                    figsize=(12, 4.8),
+                    dpi=100,
+                    layout=None if key == "sleep" else "constrained",
+                )
+                canvas = FigureCanvas(figure)
+                canvas.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Ignored,
+                )
+                canvas.setMinimumSize(0, 0)
+                page_layout.addWidget(canvas)
+                self.chart_tabs.addTab(page, chart_title)
+                self._figures[key] = figure
+                self._canvases[key] = canvas
+                self._draw_placeholder(key, "请选择实验")
+            self.chart_tabs.currentChanged.connect(self._chart_tab_changed)
+            root_layout.addWidget(self.chart_tabs, 1)
+        else:
+            self.dashboard = AnalysisDashboard()
+            root_layout.addWidget(self.dashboard, 1)
         self._update_threshold_visibility()
 
     def refresh_experiment_list(self):
@@ -253,8 +276,11 @@ class TrajectoryAnalysisWindow(ThemedWindow):
             self.status_label.setToolTip(str(self.trajectory_root))
             self.analysis = None
             self.save_button.setEnabled(False)
-            for _, key in self.TAB_DEFINITIONS:
-                self._draw_placeholder(key, "当前目录没有可分析的 trajectory.csv")
+            if self.dashboard is not None:
+                self.dashboard.set_analysis(None)
+            if self.content_mode == self.BEHAVIOR_MODE:
+                for _, key in self.TAB_DEFINITIONS:
+                    self._draw_placeholder(key, "当前目录没有可分析的 trajectory.csv")
             return
 
         self.status_label.setText(
@@ -361,19 +387,18 @@ class TrajectoryAnalysisWindow(ThemedWindow):
     def _show_load_error(self, message: str):
         self.analysis = None
         self.save_button.setEnabled(False)
+        if self.dashboard is not None:
+            self.dashboard.set_analysis(None)
         self.status_label.setText(f"实验数据读取失败：{message}")
-        for _, key in self.TAB_DEFINITIONS:
-            self._draw_placeholder(key, "实验数据读取失败")
+        if self.content_mode == self.BEHAVIOR_MODE:
+            for _, key in self.TAB_DEFINITIONS:
+                self._draw_placeholder(key, "实验数据读取失败")
 
     def _apply_analysis(self, analysis: ExperimentAnalysis):
         self.analysis = analysis
         self._rendered_keys.clear()
         duration_minutes = analysis.duration_seconds / 60.0
-        available_channels = [
-            channel
-            for channel, data in analysis.channels.items()
-            if data.total_rows > 0
-        ]
+        available_channels = self._enabled_channel_numbers(analysis)
         detection_details = "  ".join(
             f"{channel}号 {analysis.channels[channel].detection_rate:.1%}"
             for channel in available_channels
@@ -387,9 +412,14 @@ class TrajectoryAnalysisWindow(ThemedWindow):
             "坐标来源：cage_1～cage_8/data/trajectory.csv"
         )
         self.save_button.setEnabled(True)
-        self._render_current_chart()
+        if self.dashboard is not None:
+            self.dashboard.set_analysis(analysis, available_channels)
+        if self.content_mode == self.BEHAVIOR_MODE:
+            self._render_current_chart()
 
     def _current_chart_key(self) -> str:
+        if self.chart_tabs is None:
+            return self.TAB_DEFINITIONS[0][1]
         index = self.chart_tabs.currentIndex()
         if index < 0:
             return self.TAB_DEFINITIONS[0][1]
@@ -398,22 +428,60 @@ class TrajectoryAnalysisWindow(ThemedWindow):
     def _available_channel_numbers(self) -> list[int]:
         if self.analysis is None:
             return []
+        return self._enabled_channel_numbers(self.analysis)
+
+    @staticmethod
+    def _enabled_channel_numbers(analysis: ExperimentAnalysis) -> list[int]:
+        """Return the channels enabled for the current experiment.
+
+        The GUI keeps the filtered experiment setting, while the monitor service
+        also publishes its active cage list. Both are preferred over inferring
+        enabled channels from whichever CSV files happen to contain rows.
+        """
+        configured: list[int] = []
+        setting = global_setting.get_setting("experiment_setting")
+        groups = getattr(setting, "groups", None) if setting is not None else None
+        if groups:
+            configured = [
+                int(group.id)
+                for group in groups
+                if getattr(group, "is_selected", True) and getattr(group, "id", None) is not None
+            ]
+
+        if not configured:
+            active_cages = global_setting.get_setting("mouse_cages", None) or []
+            configured = [
+                int(channel_number)
+                for channel_number in active_cages
+                if str(channel_number).strip().lstrip("-").isdigit()
+            ]
+
+        configured = sorted({channel for channel in configured if channel in analysis.channels})
+        if configured:
+            return configured
+
         return [
             channel_number
-            for channel_number, channel in self.analysis.channels.items()
+            for channel_number, channel in analysis.channels.items()
             if channel.total_rows > 0
         ]
 
     def _chart_tab_changed(self, _index: int):
+        if self.content_mode != self.BEHAVIOR_MODE:
+            return
         self._update_threshold_visibility()
         self._render_current_chart()
 
     def _threshold_changed(self, _index: int):
+        if self.content_mode != self.BEHAVIOR_MODE:
+            return
         self._rendered_keys.discard("sleep")
         if self._current_chart_key() == "sleep":
             self._render_current_chart()
 
     def _update_threshold_visibility(self):
+        if self.content_mode != self.BEHAVIOR_MODE:
+            return
         visible = self._current_chart_key() == "sleep"
         self.threshold_label.setVisible(visible)
         self.threshold_combo.setVisible(visible)
@@ -697,6 +765,9 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         key = "sleep"
         figure = self._figures[key]
         figure.clear()
+        # The explanatory note is outside the axes; reserve a real bottom
+        # margin so it cannot collide with the x-axis label or colorbar.
+        figure.subplots_adjust(left=0.08, right=0.92, bottom=0.22, top=0.88)
         axis = figure.add_subplot(111)
         threshold = float(self.threshold_combo.currentData())
         states, time_edges = sleep_state_matrix(
@@ -725,7 +796,7 @@ class TrajectoryAnalysisWindow(ThemedWindow):
             f"{len(channel_numbers)}个笼子10秒分段连续静止睡眠热力图"
             f"（移动阈值 {threshold:g} mm）"
         )
-        axis.set_xlabel("实验时间（分钟）")
+        axis.set_xlabel("实验时间（分钟）", labelpad=12)
         axis.set_ylabel("笼子编号")
         axis.set_yticks(
             range(1, len(channel_numbers) + 1),
@@ -733,19 +804,10 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         )
         color_bar = figure.colorbar(image, ax=axis, fraction=0.028, pad=0.02)
         color_bar.set_ticks([0.0, 1.0], labels=["活动", "睡眠"])
-        axis.text(
-            0.5,
-            -0.13,
-            "每10秒判定一次，连续4段不动后记为睡眠；连续空白帧按不动处理",
-            transform=axis.transAxes,
-            ha="center",
-            va="top",
-            fontsize=9,
-        )
         self._canvases[key].draw_idle()
 
     def _save_current_figure(self):
-        if self.analysis is None:
+        if self.content_mode != self.BEHAVIOR_MODE or self.analysis is None:
             return
         key = self._current_chart_key()
         chart_title = dict((key_name, title) for title, key_name in self.TAB_DEFINITIONS)[key]
@@ -780,3 +842,10 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         if not self._experiment_list_initialized:
             self._experiment_list_initialized = True
             QTimer.singleShot(0, self.refresh_experiment_list)
+
+
+class DataComparisonWindow(TrajectoryAnalysisWindow):
+    """Data comparison page using the shared experiment-loading workflow."""
+
+    def __init__(self):
+        super().__init__(content_mode=self.COMPARISON_MODE)
