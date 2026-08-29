@@ -60,7 +60,36 @@ class MonitorDataWindows(ThemedWidget):
     enabled_stop_zero_calibration_btn_signal = pyqtSignal()
     enabled_stop_range_calibration_btn_signal = pyqtSignal()
     def resizeEvent(self, a0: typing.Optional[QtGui.QResizeEvent]):
+        super().resizeEvent(a0)
         self.setMinimumSize(0, 0)
+        if hasattr(self, "main_splitter") and hasattr(self, "content_layout_widget"):
+            QTimer.singleShot(0, self._update_table_height)
+
+    def _update_table_height(self):
+        """Reduce the table height only when the current window cannot fit 475 px."""
+        if not hasattr(self, "main_splitter") or not hasattr(self, "content_layout_widget"):
+            return
+
+        splitter_height = self.main_splitter.height()
+        if splitter_height <= 0:
+            return
+
+        handle_height = self.main_splitter.handleWidth() * (
+            self.main_splitter.count() - 1
+        )
+        available_height = max(0, splitter_height - handle_height)
+        top_height = 175
+        table_height = min(
+            475,
+            max(0, available_height - top_height),
+        )
+
+        if table_height == self._table_height:
+            return
+
+        self._table_height = table_height
+        self.content_layout_widget.setMaximumHeight(table_height)
+        self.main_splitter.setSizes([top_height, table_height, 0])
 
     @property
     def is_zero_calibration(self):
@@ -248,7 +277,8 @@ class MonitorDataWindows(ThemedWidget):
         # 表格区域
         self.content_layout_widget = QWidget()
         # 表格区保留紧凑高度，确保底部总横向滚动条在窗口内可见。
-        self.content_layout_widget.setMaximumHeight(475)
+        self._table_height = 475
+        self.content_layout_widget.setMaximumHeight(self._table_height)
         self.content_layout = QVBoxLayout( self.content_layout_widget)
         self.content_widget = DemoDraggableDockWidget(
             is_showt_tab=False,
@@ -275,12 +305,13 @@ class MonitorDataWindows(ThemedWidget):
         self.main_splitter.setStretchFactor(0, 0)
         self.main_splitter.setStretchFactor(1, 0)
         self.main_splitter.setStretchFactor(2, 1)
-        self.main_splitter.setSizes([175, 475, 0])
+        self.main_splitter.setSizes([175, self._table_height, 0])
         for i in range(1, self.main_splitter.count()):
             self.main_splitter.handle(i).setEnabled(False)
         self.main_layout.addWidget(self.main_splitter)
 
         self.setLayout(self.main_layout)
+        QTimer.singleShot(0, self._update_table_height)
 
     def clear_existing_docks(self):
         all_data_widgets = list(self._docks_widget)
