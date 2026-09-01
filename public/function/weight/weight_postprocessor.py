@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from statistics import mean, median
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
 try:
     from loguru import logger
@@ -31,15 +31,18 @@ DEFAULT_CONFIG_PATH = (
 @dataclass(frozen=True)
 class WeightPostprocessConfig:
     enabled: bool = True
-    stable_points: int = 3
-    stable_tolerance_g: float = 1.0
+    event_window_points: int = 15
+    minimum_group_points: int = 5
     minimum_body_weight_g: float = 5.0
     maximum_body_weight_g: float = 80.0
-    outlier_ratio: float = 0.20
-    reference_history: int = 3
+    initial_weight_match_ratio: float = 0.20
+    initial_weight_match_min_g: float = 2.0
+    event_outlier_ratio: float = 0.05
+    event_outlier_min_g: float = 1.0
+    event_reference_ratio: float = 0.05
+    event_reference_min_g: float = 1.0
     decimal_places: int = 3
     output_suffix: str = "_称重拟合"
-    baseline_window_seconds: float = 10.0
 
 
 @dataclass(frozen=True)
@@ -66,17 +69,15 @@ class WeightPostprocessResult:
 
 
 @dataclass(frozen=True)
-class _Plateau:
-    start: int
-    end: int
-    position: int
-    level: float
-
-
-@dataclass(frozen=True)
 class _WeightEvent:
     position: int
     weight: float
+
+
+@dataclass(frozen=True)
+class _BaselineMatch:
+    baseline: float
+    first_high_index: int
 
 
 def load_weight_postprocess_config(
@@ -95,18 +96,27 @@ def load_weight_postprocess_config(
 
     config = WeightPostprocessConfig(
         enabled=get_bool("enabled", True),
-        stable_points=max(2, get_int("stable_points", 3)),
-        stable_tolerance_g=max(0.0, get_float("stable_tolerance_g", 1.0)),
+        event_window_points=max(2, get_int("event_window_points", 15)),
+        minimum_group_points=max(1, get_int("minimum_group_points", 5)),
         minimum_body_weight_g=max(0.0, get_float("minimum_body_weight_g", 5.0)),
         maximum_body_weight_g=max(0.0, get_float("maximum_body_weight_g", 80.0)),
-        outlier_ratio=max(0.0, get_float("outlier_ratio", 0.20)),
-        reference_history=max(1, get_int("reference_history", 3)),
+        initial_weight_match_ratio=max(
+            0.0, get_float("initial_weight_match_ratio", 0.20)
+        ),
+        initial_weight_match_min_g=max(
+            0.0, get_float("initial_weight_match_min_g", 2.0)
+        ),
+        event_outlier_ratio=max(0.0, get_float("event_outlier_ratio", 0.05)),
+        event_outlier_min_g=max(0.0, get_float("event_outlier_min_g", 1.0)),
+        event_reference_ratio=max(0.0, get_float("event_reference_ratio", 0.05)),
+        event_reference_min_g=max(0.0, get_float("event_reference_min_g", 1.0)),
         decimal_places=max(0, get_int("decimal_places", 3)),
         output_suffix=get("output_suffix", "_称重拟合").strip() or "_称重拟合",
-        baseline_window_seconds=max(0.1, get_float("baseline_window_seconds", 10.0)),
     )
     if config.maximum_body_weight_g <= config.minimum_body_weight_g:
         raise ValueError("maximum_body_weight_g must be greater than minimum_body_weight_g")
+    if config.minimum_group_points * 2 > config.event_window_points:
+        raise ValueError("minimum_group_points cannot exceed half of event_window_points")
     return config
 
 
@@ -145,193 +155,222 @@ def _to_timestamp(value) -> Optional[float]:
     return _to_finite_float(value)
 
 
-def _find_stable_plateaus(
-        values: Sequence[Optional[float]],
+def _tolerance(reference: float, ratio: float, minimum_g: float) -> float:
+    return max(minimum_g, abs(reference) * ratio)
+
+
+def _robust_group_level(
+        group: Sequence[tuple[int, float]],
         config: WeightPostprocessConfig,
-) -> list[_Plateau]:
-    windows: list[_Plateau] = []
-    width = config.stable_points
-    for start in range(0, len(values) - width + 1):
-        window = values[start:start + width]
-        if any(value is None for value in window):
-            continue
-        numeric_window = [float(value) for value in window if value is not None]
-        if max(numeric_window) - min(numeric_window) > config.stable_tolerance_g:
-            continue
-        windows.append(
-            _Plateau(
-                start=start,
-                end=start + width - 1,
-                position=start + width // 2,
-                level=float(median(numeric_window)),
-            )
-        )
-
-    if not windows:
-        return []
-
-    plateaus: list[_Plateau] = []
-    group = [windows[0]]
-    for window in windows[1:]:
-        previous = group[-1]
-        levels = [item.level for item in group]
-        if (
-                window.start <= previous.end + 1
-                and abs(window.level - float(median(levels))) <= config.stable_tolerance_g
-        ):
-            group.append(window)
-            continue
-        plateaus.append(_merge_plateau_windows(group))
-        group = [window]
-    plateaus.append(_merge_plateau_windows(group))
-    return plateaus
-
-
-def _merge_plateau_windows(windows: Sequence[_Plateau]) -> _Plateau:
-    start = windows[0].start
-    end = windows[-1].end
-    return _Plateau(
-        start=start,
-        end=end,
-        position=(start + end) // 2,
-        level=float(median([window.level for window in windows])),
+) -> Optional[float]:
+    values = [value for _, value in group]
+    center = float(median(values))
+    tolerance = _tolerance(
+        center,
+        config.event_outlier_ratio,
+        config.event_outlier_min_g,
     )
+    inliers = [value for value in values if abs(value - center) <= tolerance]
+    if len(inliers) < config.minimum_group_points:
+        return None
+    return float(mean(inliers))
 
 
-def _nearest_lower_plateau(
-        plateaus: Sequence[_Plateau],
-        upper_index: int,
-        direction: int,
+def _find_initial_baseline(
+        values: Sequence[Optional[float]],
+        initial_weight: float,
         config: WeightPostprocessConfig,
-) -> Optional[_Plateau]:
-    index = upper_index + direction
-    while 0 <= index < len(plateaus):
-        difference = plateaus[upper_index].level - plateaus[index].level
-        if config.minimum_body_weight_g <= difference <= config.maximum_body_weight_g:
-            return plateaus[index]
-        index += direction
+) -> Optional[_BaselineMatch]:
+    """Use the first valid 15-point low/high split that agrees with manual weight."""
+    valid_buffer: list[tuple[int, float]] = []
+    initial_tolerance = _tolerance(
+        initial_weight,
+        config.initial_weight_match_ratio,
+        config.initial_weight_match_min_g,
+    )
+    for index, value in enumerate(values):
+        if value is None:
+            continue
+        valid_buffer.append((index, value))
+        if len(valid_buffer) > config.event_window_points:
+            valid_buffer.pop(0)
+        if len(valid_buffer) < config.event_window_points:
+            continue
+
+        ranked = sorted(valid_buffer, key=lambda item: item[1])
+        candidates: list[tuple[float, float, int]] = []
+        minimum_split = config.minimum_group_points
+        maximum_split = config.event_window_points - config.minimum_group_points
+        for split in range(minimum_split, maximum_split + 1):
+            low_group = ranked[:split]
+            high_group = ranked[split:]
+            low_level = _robust_group_level(low_group, config)
+            high_level = _robust_group_level(high_group, config)
+            if low_level is None or high_level is None:
+                continue
+            candidate_weight = high_level - low_level
+            if not (
+                    config.minimum_body_weight_g
+                    <= candidate_weight
+                    <= config.maximum_body_weight_g
+            ):
+                continue
+            low_position = float(median(position for position, _ in low_group))
+            high_position = float(median(position for position, _ in high_group))
+            if high_position <= low_position:
+                continue
+            candidates.append(
+                (
+                    abs(candidate_weight - initial_weight),
+                    low_level,
+                    min(position for position, _ in high_group),
+                )
+            )
+
+        if candidates:
+            difference, baseline, first_high_index = min(candidates, key=lambda item: item[0])
+            if difference <= initial_tolerance:
+                return _BaselineMatch(baseline, first_high_index)
     return None
 
 
-def _interpolated_baseline(
-        upper: _Plateau,
-        before: Optional[_Plateau],
-        after: Optional[_Plateau],
-) -> Optional[float]:
-    if before is None:
-        return after.level if after is not None else None
-    if after is None:
-        return before.level
-    distance = after.position - before.position
-    if distance <= 0:
-        return float(median([before.level, after.level]))
-    ratio = (upper.position - before.position) / distance
-    return before.level + ((after.level - before.level) * ratio)
-
-
-def _previous_window_baseline(
+def _event_window(
         values: Sequence[Optional[float]],
-        timestamps: Sequence[float],
-        upper: _Plateau,
+        start: int,
+        baseline: float,
+        config: WeightPostprocessConfig,
+) -> tuple[list[tuple[int, float]], int]:
+    """Read one event from valid samples; gaps do not count as data points."""
+    window: list[tuple[int, float]] = []
+    cursor = start
+    while cursor < len(values) and len(window) < config.event_window_points:
+        value = values[cursor]
+        if value is not None:
+            window.append((cursor, value - baseline))
+        cursor += 1
+    return window, cursor
+
+
+def _event_weight(
+        window: Sequence[tuple[int, float]],
         config: WeightPostprocessConfig,
 ) -> Optional[float]:
-    """Use the arithmetic mean of valid readings in the ten-second pre-window."""
-    if upper.start >= len(timestamps):
-        return None
-    upper_time = timestamps[upper.start]
-    window_start = upper_time - config.baseline_window_seconds
-    previous_values = [
+    high_values = [
         value
-        for index, value in enumerate(values[:upper.start])
-        if value is not None
-        and window_start <= timestamps[index] < upper_time
+        for _, value in window
+        if config.minimum_body_weight_g <= value <= config.maximum_body_weight_g
     ]
-    return float(mean(previous_values)) if previous_values else None
+    if len(high_values) < config.minimum_group_points:
+        return None
+
+    center = float(median(high_values))
+    point_tolerance = _tolerance(
+        center,
+        config.event_outlier_ratio,
+        config.event_outlier_min_g,
+    )
+    inliers = [value for value in high_values if abs(value - center) <= point_tolerance]
+    if len(inliers) < config.minimum_group_points:
+        return None
+    return float(median(inliers))
 
 
-def _candidate_weight_events(
-        plateaus: Sequence[_Plateau],
-        config: WeightPostprocessConfig,
+def _confirm_weight_events(
         values: Sequence[Optional[float]],
-        timestamps: Optional[Sequence[float]] = None,
-) -> list[_WeightEvent]:
-    candidates: list[_WeightEvent] = []
-    for index, upper in enumerate(plateaus):
-        if timestamps is not None:
-            baseline = _previous_window_baseline(values, timestamps, upper, config)
-        else:
-            before = _nearest_lower_plateau(plateaus, index, -1, config)
-            after = _nearest_lower_plateau(plateaus, index, 1, config)
-            baseline = _interpolated_baseline(upper, before, after)
-        if baseline is None:
-            continue
-        weight = upper.level - baseline
-        if config.minimum_body_weight_g <= weight <= config.maximum_body_weight_g:
-            candidates.append(_WeightEvent(upper.position, weight))
-    return candidates
-
-
-def _filter_weight_events(
-        candidates: Sequence[_WeightEvent],
+        initial_weight: float,
+        baseline_match: _BaselineMatch,
         config: WeightPostprocessConfig,
 ) -> list[_WeightEvent]:
-    if not candidates:
-        return []
+    events: list[_WeightEvent] = []
+    last_weight = initial_weight
+    index = baseline_match.first_high_index
+    waiting_for_empty_return = False
 
-    robust_candidates = list(candidates)
-    if len(robust_candidates) >= config.reference_history:
-        center = float(median([candidate.weight for candidate in robust_candidates]))
-        tolerance = max(config.stable_tolerance_g, abs(center) * config.outlier_ratio)
-        robust_candidates = [
-            candidate for candidate in robust_candidates
-            if abs(candidate.weight - center) <= tolerance
-        ]
-
-    accepted: list[_WeightEvent] = []
-    for candidate in sorted(robust_candidates, key=lambda item: item.position):
-        if len(accepted) < config.reference_history:
-            accepted.append(candidate)
+    while index < len(values):
+        value = values[index]
+        if value is None:
+            index += 1
             continue
-        history = accepted[-config.reference_history:]
-        reference = float(median([item.weight for item in history]))
-        tolerance = max(config.stable_tolerance_g, abs(reference) * config.outlier_ratio)
-        if abs(candidate.weight - reference) <= tolerance:
-            accepted.append(candidate)
-    return accepted
+        candidate_weight = value - baseline_match.baseline
+
+        if waiting_for_empty_return:
+            if candidate_weight < config.minimum_body_weight_g:
+                waiting_for_empty_return = False
+            index += 1
+            continue
+        if not (
+                config.minimum_body_weight_g
+                <= candidate_weight
+                <= config.maximum_body_weight_g
+        ):
+            index += 1
+            continue
+
+        window, cursor = _event_window(values, index, baseline_match.baseline, config)
+        event_weight = _event_weight(window, config)
+        if event_weight is not None:
+            manual_tolerance = _tolerance(
+                initial_weight,
+                config.event_reference_ratio,
+                config.event_reference_min_g,
+            )
+            history_tolerance = _tolerance(
+                last_weight,
+                config.event_reference_ratio,
+                config.event_reference_min_g,
+            )
+            if (
+                    abs(event_weight - initial_weight) <= manual_tolerance
+                    and abs(event_weight - last_weight) <= history_tolerance
+            ):
+                events.append(_WeightEvent(window[-1][0], event_weight))
+                last_weight = event_weight
+
+        # One high segment may create only one fitted event. A return to the
+        # empty-scale range is required before another segment can be accepted.
+        waiting_for_empty_return = not any(
+            candidate < config.minimum_body_weight_g for _, candidate in window
+        )
+        index = max(cursor, index + 1)
+    return events
 
 
 def fit_weight_series(
         values: Iterable,
         config: Optional[WeightPostprocessConfig] = None,
         timestamps: Optional[Iterable] = None,
+        initial_weight: Optional[float] = None,
 ) -> tuple[list[Optional[float]], int]:
+    """Fit one cage with a fixed empty-scale baseline and event-level updates."""
+    del timestamps  # The confirmed design is point-count based, not time-window based.
     config = config or WeightPostprocessConfig()
     numeric_values = [_to_finite_float(value) for value in values]
-    numeric_timestamps: Optional[list[float]] = None
-    if timestamps is not None:
-        timestamp_values = [_to_timestamp(value) for value in timestamps]
-        if len(timestamp_values) == len(numeric_values) and all(
-                value is not None for value in timestamp_values
-        ):
-            numeric_timestamps = [float(value) for value in timestamp_values]
-    plateaus = _find_stable_plateaus(numeric_values, config)
-    candidates = _candidate_weight_events(
-        plateaus,
-        config,
-        numeric_values,
-        numeric_timestamps,
-    )
-    events = _filter_weight_events(candidates, config)
-    if not events:
+    initial_weight_value = _to_finite_float(initial_weight)
+    if initial_weight_value is None or not (
+            config.minimum_body_weight_g
+            <= initial_weight_value
+            <= config.maximum_body_weight_g
+    ):
         return [None] * len(numeric_values), 0
 
+    baseline_match = _find_initial_baseline(numeric_values, initial_weight_value, config)
+    if baseline_match is None:
+        fitted_initial = round(initial_weight_value, config.decimal_places)
+        return [fitted_initial] * len(numeric_values), 0
+
+    events = _confirm_weight_events(
+        numeric_values,
+        initial_weight_value,
+        baseline_match,
+        config,
+    )
     fitted: list[Optional[float]] = []
     event_index = 0
-    active_weight = events[0].weight
+    active_weight = initial_weight_value
     for index in range(len(numeric_values)):
-        while event_index + 1 < len(events) and events[event_index + 1].position <= index:
-            event_index += 1
+        while event_index < len(events) and events[event_index].position <= index:
             active_weight = events[event_index].weight
+            event_index += 1
         fitted.append(round(active_weight, config.decimal_places))
     return fitted, len(events)
 
@@ -356,10 +395,33 @@ def _default_output_path(raw_excel_path: Path, suffix: str) -> Path:
     return raw_excel_path.with_name(f"{raw_excel_path.stem}{suffix}{raw_excel_path.suffix}")
 
 
+def _initial_weight_for_cage(
+        initial_weights: Optional[Mapping],
+        cage_name: str,
+        config: WeightPostprocessConfig,
+) -> Optional[float]:
+    if not initial_weights:
+        return None
+    normalized_cage_name = str(cage_name).strip()
+    for key, value in initial_weights.items():
+        if str(key).strip() != normalized_cage_name:
+            continue
+        numeric_value = _to_finite_float(value)
+        if numeric_value is not None and (
+                config.minimum_body_weight_g
+                <= numeric_value
+                <= config.maximum_body_weight_g
+        ):
+            return numeric_value
+        return None
+    return None
+
+
 def create_fitted_workbook(
         raw_excel_path: os.PathLike | str,
         output_path: Optional[os.PathLike | str] = None,
         config_path: Optional[os.PathLike | str] = None,
+        initial_weights: Optional[Mapping] = None,
 ) -> WeightPostprocessResult:
     raw_path = Path(raw_excel_path).resolve()
     temp_path: Optional[Path] = None
@@ -434,24 +496,45 @@ def create_fitted_workbook(
                     else None
                 )
                 numeric_count = sum(_to_finite_float(value) is not None for value in raw_values)
+                initial_weight = _initial_weight_for_cage(
+                    initial_weights,
+                    cage_name,
+                    config,
+                )
                 if numeric_count == 0:
-                    for row_number in row_numbers:
+                    for row_number in ordered_rows:
                         cell = worksheet.cell(row_number, weight_column)
-                        if _to_finite_float(cell.value) is None:
-                            cell.value = None
+                        cell.value = (
+                            None
+                            if initial_weight is None
+                            else round(initial_weight, config.decimal_places)
+                        )
+                    if initial_weight is not None:
+                        processed_cage_names.add(cage_name)
+                        sheet_processed = True
+                        warnings.append(
+                            f"{worksheet.title}/{cage_name}: 无有效称重事件，使用实验前体重"
+                        )
                     continue
 
                 fitted_values, event_count = fit_weight_series(
                     raw_values,
                     config,
                     timestamps=timestamps,
+                    initial_weight=initial_weight,
                 )
                 if event_count == 0:
-                    fitted_values = _fill_existing_numeric(raw_values)
-                    skipped_cage_names.add(cage_name)
-                    warnings.append(
-                        f"{worksheet.title}/{cage_name}: 未找到完整的上下稳定平台，保留并补齐原始数值"
-                    )
+                    if initial_weight is not None:
+                        processed_cage_names.add(cage_name)
+                        warnings.append(
+                            f"{worksheet.title}/{cage_name}: 未找到有效称重事件，使用实验前体重"
+                        )
+                    else:
+                        fitted_values = _fill_existing_numeric(raw_values)
+                        skipped_cage_names.add(cage_name)
+                        warnings.append(
+                            f"{worksheet.title}/{cage_name}: 未提供实验前体重或未建立空秤基线，保留并补齐原始数值"
+                        )
                 else:
                     processed_cage_names.add(cage_name)
 

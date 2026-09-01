@@ -15,107 +15,123 @@ from public.function.weight.weight_postprocessor import (
 )
 
 
+def _weighing_cycle(baseline, weight, *, high_values=None):
+    """Make 15-point baseline setup followed by one weighing event."""
+    low_values = [baseline - 0.1, baseline, baseline + 0.1, baseline] * 2
+    if high_values is None:
+        high_values = [baseline + weight - 0.1, baseline + weight, baseline + weight + 0.1] * 4
+    return low_values + high_values + [baseline, baseline + 0.1, baseline - 0.1] * 3
+
+
 class WeightPostprocessorTest(unittest.TestCase):
-    def test_fit_uses_stable_upper_minus_lower_and_rejects_outlier_plateau(self):
-        values = [
-            0.0, 0.1, -0.1,
-            25.0, 25.2, 24.9,
-            0.1, 0.0, -0.1,
-            40.0, 40.1, 39.9,
-            0.0, 0.1, -0.1,
-            25.1, 25.0, 25.2,
-            0.0, -0.1, 0.1,
-        ]
+    def test_manual_weight_establishes_baseline_and_event_updates_after_window(self):
+        values = _weighing_cycle(-10.0, 46.2)
+
+        fitted, event_count = fit_weight_series(values, initial_weight=47.0)
+
+        self.assertEqual(1, event_count)
+        self.assertEqual(47.0, fitted[0])
+        self.assertEqual(47.0, fitted[21])
+        self.assertAlmostEqual(46.2, fitted[22], delta=0.1)
+        self.assertAlmostEqual(46.2, fitted[-1], delta=0.1)
+
+    def test_negative_raw_readings_can_use_a_negative_empty_scale_baseline(self):
+        values = _weighing_cycle(-20.0, 26.1)
+
+        fitted, event_count = fit_weight_series(values, initial_weight=26.0)
+
+        self.assertEqual(1, event_count)
+        self.assertAlmostEqual(26.1, fitted[-1], places=2)
+
+    def test_event_filter_discards_a_single_high_outlier(self):
+        high_values = [47.0, 46.9, 47.1, 47.0, 75.0, 46.9, 47.1, 47.0, 47.0, 46.9]
+        values = _weighing_cycle(0.0, 47.0, high_values=high_values)
+
+        fitted, event_count = fit_weight_series(values, initial_weight=47.0)
+
+        self.assertEqual(1, event_count)
+        self.assertEqual(fitted[22], fitted[-1])
+        self.assertAlmostEqual(47.0, fitted[-1], delta=0.1)
+        self.assertNotIn(75.0, fitted)
+
+    def test_rejected_event_does_not_replace_last_confirmed_weight(self):
+        first_event = _weighing_cycle(0.0, 47.0)
+        second_event = [30.0, 29.9, 30.1] * 4 + [0.0, 0.1, -0.1] * 3
+        values = first_event + [0.0] * 6 + second_event
+
+        fitted, event_count = fit_weight_series(values, initial_weight=47.0)
+
+        self.assertEqual(1, event_count)
+        self.assertAlmostEqual(47.0, fitted[-1], delta=0.1)
+
+    def test_manual_weight_is_held_when_no_baseline_or_event_is_available(self):
         fitted, event_count = fit_weight_series(
-            values,
-            WeightPostprocessConfig(
-                outlier_ratio=0.20,
-                reference_history=3,
-            ),
+            [None, 0.0, 0.2, None] * 5,
+            initial_weight=23.5,
         )
 
-        self.assertGreaterEqual(event_count, 2)
-        self.assertTrue(all(value is not None for value in fitted))
-        self.assertTrue(all(24.0 <= value <= 26.0 for value in fitted))
-        self.assertNotIn(40.0, fitted)
+        self.assertEqual(0, event_count)
+        self.assertEqual([23.5] * 20, fitted)
 
-    def test_timestamped_fit_uses_mean_of_previous_ten_seconds(self):
-        values = [
-            10.0, 10.1, 9.9,
-            28.0, 28.1, 27.9,
-            0.0, 0.1, -0.1,
-        ]
-        timestamps = list(range(len(values)))
+    def test_missing_manual_weight_has_no_fitted_value(self):
+        fitted, event_count = fit_weight_series(_weighing_cycle(0.0, 25.0))
 
-        fitted, event_count = fit_weight_series(
-            values,
-            WeightPostprocessConfig(reference_history=10),
-            timestamps=timestamps,
-        )
+        self.assertEqual(0, event_count)
+        self.assertTrue(all(value is None for value in fitted))
 
-        self.assertGreaterEqual(event_count, 1)
-        self.assertEqual(18.0, fitted[4])
-
-    def test_workbook_postprocess_keeps_raw_file_and_replaces_only_epoch_weight(self):
+    def test_workbook_keeps_raw_file_and_uses_initial_weight_for_every_cage(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             raw_path = Path(temp_dir) / "experiment.xlsx"
             fitted_path = Path(temp_dir) / "experiment_称重拟合.xlsx"
             workbook = Workbook()
-            epoch_sheet = workbook.active
-            epoch_sheet.title = "每轮数据监控数据"
-            epoch_sheet.append(["序号", CAGE_HEADER, WEIGHT_HEADER, "备注"])
+            sheet = workbook.active
+            sheet.title = "每轮数据监控数据"
+            sheet.append(["序号", CAGE_HEADER, WEIGHT_HEADER, "备注"])
 
-            cage_one_values = [
-                0.0, 0.1, -0.1,
-                25.0, 25.2, 24.9,
-                0.1, 0.0, -0.1,
-                75.0,
-                0.0, 0.1, -0.1,
-                25.1, 25.0, 25.2,
-                0.0, -0.1, 0.1,
-            ]
+            cage_one_values = _weighing_cycle(0.0, 47.0)
+            cage_one_values[12] = 75.0
             for index, value in enumerate(cage_one_values, start=1):
-                epoch_sheet.append([index, 1, value, f"原备注{index}"])
-            epoch_sheet.append([100, 2, 1.0, "笼2"])
-            epoch_sheet.append([101, 2, "None", "笼2"])
-            epoch_sheet.append([102, 2, 1.2, "笼2"])
-            epoch_sheet.append([103, "参考笼", "None", "参考"])
+                sheet.append([index, 1, value, f"原备注{index}"])
+            for index in range(1, 5):
+                sheet.append([100 + index, 2, None, "笼2"])
 
             raw_weight_sheet = workbook.create_sheet("称重模块监控数据_通道1")
             raw_weight_sheet.append(["序号", "重量测量值(g)", "备注"])
             raw_weight_sheet.append([1, 75.0, "原始异常值"])
             workbook.save(raw_path)
 
-            result = create_fitted_workbook(raw_path, output_path=fitted_path)
+            result = create_fitted_workbook(
+                raw_path,
+                output_path=fitted_path,
+                initial_weights={"1": 47.0, "2": 33.0},
+            )
 
             self.assertTrue(result.success, result.error)
-            self.assertEqual(str(fitted_path), result.output_path)
             self.assertTrue(raw_path.exists())
             self.assertTrue(fitted_path.exists())
 
             raw_workbook = load_workbook(raw_path, data_only=True)
             fitted_workbook = load_workbook(fitted_path, data_only=True)
-            raw_epoch = raw_workbook["每轮数据监控数据"]
-            fitted_epoch = fitted_workbook["每轮数据监控数据"]
+            raw_sheet = raw_workbook["每轮数据监控数据"]
+            fitted_sheet = fitted_workbook["每轮数据监控数据"]
+            cage_one_count = len(cage_one_values)
+            raw_values = [
+                raw_sheet.cell(row, 3).value
+                for row in range(2, 2 + cage_one_count + 4)
+            ]
+            fitted_values = [
+                fitted_sheet.cell(row, 3).value
+                for row in range(2, 2 + cage_one_count + 4)
+            ]
 
-            raw_values = [raw_epoch.cell(row, 3).value for row in range(2, 21)]
-            fitted_values = [fitted_epoch.cell(row, 3).value for row in range(2, 21)]
             self.assertIn(75.0, raw_values)
             self.assertNotIn(75.0, fitted_values)
-            self.assertTrue(all(isinstance(value, (int, float)) for value in fitted_values))
-            self.assertTrue(all(24.0 <= value <= 26.0 for value in fitted_values))
+            self.assertTrue(all(45.0 <= value <= 48.0 for value in fitted_values[:cage_one_count]))
+            self.assertEqual([33.0] * 4, fitted_values[cage_one_count:])
+            self.assertEqual("原备注1", fitted_sheet.cell(2, 4).value)
+            self.assertEqual(75.0, fitted_workbook["称重模块监控数据_通道1"].cell(2, 2).value)
 
-            fitted_cage_two = [fitted_epoch.cell(row, 3).value for row in range(21, 24)]
-            self.assertEqual([1.0, 1.0, 1.2], fitted_cage_two)
-            self.assertIsNone(fitted_epoch.cell(24, 3).value)
-            self.assertEqual(4, fitted_epoch.max_column)
-            self.assertEqual("原备注1", fitted_epoch.cell(2, 4).value)
-            self.assertEqual(
-                75.0,
-                fitted_workbook["称重模块监控数据_通道1"].cell(2, 2).value,
-            )
-
-    def test_timestamped_workbook_restores_chronological_order_before_fitting(self):
+    def test_workbook_sorts_by_time_for_fit_then_writes_to_original_rows(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             raw_path = Path(temp_dir) / "reversed.xlsx"
             fitted_path = Path(temp_dir) / "reversed_称重拟合.xlsx"
@@ -124,24 +140,32 @@ class WeightPostprocessorTest(unittest.TestCase):
             sheet.append([CAGE_HEADER, WEIGHT_HEADER, TIME_HEADER])
 
             base_time = datetime(2026, 8, 24, 12, 0, 0)
-            chronological = [
-                (100.0, 0), (100.1, 1), (99.9, 2),
-                (118.0, 3), (118.1, 4), (117.9, 5),
-                (100.0, 6), (100.1, 7), (99.9, 8),
-            ]
-            for value, offset in reversed(chronological):
+            chronological = _weighing_cycle(100.0, 18.0)
+            for offset, value in reversed(list(enumerate(chronological))):
                 sheet.append([1, value, base_time + timedelta(seconds=offset)])
             workbook.save(raw_path)
 
-            result = create_fitted_workbook(raw_path, output_path=fitted_path)
+            result = create_fitted_workbook(
+                raw_path,
+                output_path=fitted_path,
+                initial_weights={"1": 18.0},
+            )
 
             self.assertTrue(result.success, result.error)
             fitted_workbook = load_workbook(fitted_path, data_only=True)
             fitted_sheet = fitted_workbook.active
-            fitted_values = [fitted_sheet.cell(row, 2).value for row in range(2, 11)]
-            self.assertEqual([18.0] * 9, fitted_values)
+            fitted_by_time = {
+                fitted_sheet.cell(row, 3).value: fitted_sheet.cell(row, 2).value
+                for row in range(2, fitted_sheet.max_row + 1)
+            }
+            self.assertEqual(18.0, fitted_by_time[base_time])
+            self.assertAlmostEqual(
+                18.0,
+                fitted_by_time[base_time + timedelta(seconds=len(chronological) - 1)],
+                delta=0.1,
+            )
 
-    def test_no_weight_data_is_not_reported_as_export_failure(self):
+    def test_no_weight_data_without_initial_weight_does_not_create_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             raw_path = Path(temp_dir) / "empty_weight.xlsx"
             fitted_path = Path(temp_dir) / "empty_weight_称重拟合.xlsx"

@@ -60,9 +60,10 @@ class StopExperimentExportThread(QThread):
     export_finished = pyqtSignal(bool, str)
     export_status = pyqtSignal(str)
 
-    def __init__(self, folder_path, parent=None):
+    def __init__(self, folder_path, initial_weights=None, parent=None):
         super().__init__(parent)
         self.folder_path = folder_path
+        self.initial_weights = dict(initial_weights or {})
         self.fitted_export_path = None
         self.fitted_export_summary = ""
         self.fitted_export_error = ""
@@ -75,7 +76,10 @@ class StopExperimentExportThread(QThread):
             )
             if export_path:
                 self.export_status.emit("原始数据导出成功，正在生成称重拟合 Excel...")
-                fitted_result = create_fitted_workbook(export_path)
+                fitted_result = create_fitted_workbook(
+                    export_path,
+                    initial_weights=self.initial_weights,
+                )
                 self.fitted_export_summary = fitted_result.summary
                 if fitted_result.success:
                     self.fitted_export_path = fitted_result.output_path
@@ -2015,7 +2019,24 @@ class MainWindow_Index(ThemedWindow):
     def _start_stop_export_thread(self, folder_path):
         if self.stop_export_thread is not None:
             return
-        self.stop_export_thread = StopExperimentExportThread(folder_path, self)
+        experiment_setting = global_setting.get_setting("experiment_setting", None)
+        configured_weights = dict(
+            getattr(experiment_setting, "pre_experiment_weights", {}) or {}
+        )
+        initial_weights = dict(configured_weights)
+        for group in getattr(experiment_setting, "groups", []) or []:
+            weight = configured_weights.get(
+                str(getattr(group, "id", "")),
+                configured_weights.get(getattr(group, "id", None)),
+            )
+            group_name = str(getattr(group, "name", "") or "").strip()
+            if weight is not None and group_name:
+                initial_weights[group_name] = weight
+        self.stop_export_thread = StopExperimentExportThread(
+            folder_path,
+            initial_weights=initial_weights,
+            parent=self,
+        )
         self.stop_export_thread.export_status.connect(self._on_stop_export_status)
         self.stop_export_thread.export_finished.connect(self._on_stop_export_finished)
         self.stop_export_thread.finished.connect(self._on_stop_export_thread_ended)
