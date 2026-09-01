@@ -333,15 +333,30 @@ class DataComparisonWidget(QFrame):
 
         handles, labels = left_axis.get_legend_handles_labels()
         right_handles, right_labels = right_axis.get_legend_handles_labels()
-        if handles or right_handles:
-            left_axis.legend(
-                handles + right_handles,
-                labels + right_labels,
-                loc="upper left",
-                ncol=min(4, len(handles) + len(right_handles)),
+        legend_handles = handles + right_handles
+        legend_labels = labels + right_labels
+        if legend_handles:
+            column_count = min(
+                8,
+                max(2, self.canvas.width() // 170),
+                len(legend_handles),
+            )
+            row_count = (len(legend_handles) + column_count - 1) // column_count
+            bottom_margin = min(0.38, 0.21 + max(0, row_count - 1) * 0.055)
+            self.figure.legend(
+                legend_handles,
+                legend_labels,
+                loc="lower left",
+                bbox_to_anchor=(0.055, 0.012),
+                ncol=column_count,
                 frameon=False,
                 fontsize=9,
+                handlelength=1.7,
+                columnspacing=1.25,
+                labelspacing=0.8,
             )
+        else:
+            bottom_margin = 0.17
         if not plotted:
             left_axis.text(
                 0.5,
@@ -352,7 +367,12 @@ class DataComparisonWidget(QFrame):
                 va="center",
                 color="#8298B2",
             )
-        self.figure.tight_layout()
+        self.figure.subplots_adjust(
+            left=0.07,
+            right=0.94,
+            top=0.88,
+            bottom=bottom_margin,
+        )
         self.canvas.draw_idle()
 
 
