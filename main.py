@@ -62,6 +62,22 @@ def environment_module_only_enabled():
         return False
 
 
+def worker_console_logging_enabled():
+    config = configparser.ConfigParser()
+    try:
+        config.read(
+            resolve_main_program_path("config", "monitor_datas_config.ini"),
+            encoding="utf-8-sig",
+        )
+        return config.getboolean(
+            "LOGGING",
+            "worker_console_logging",
+            fallback=True,
+        )
+    except (OSError, ValueError, configparser.Error):
+        return True
+
+
 def get_writable_log_root():
     candidates = [
         resolve_main_program_path("log"),
@@ -409,6 +425,7 @@ def test_integrated_monitor():
     setup_crash_logging()
     multiprocessing.set_start_method('spawn', force=True)
     environment_only = environment_module_only_enabled()
+    worker_console_logging = worker_console_logging_enabled()
     if not acquire_single_instance_lock():
         print("Animal Project is already running; duplicate startup was blocked.")
         return False
@@ -490,7 +507,7 @@ def test_integrated_monitor():
         log_dir=resolve_log_path("processes", "p_response_comm"),
         log_level="DEBUG",
         custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_response_comm | {module}:{function}:{line} | {message} </level>",
-        enable_console=True
+        enable_console=worker_console_logging
     )
     if not environment_only:
         monitor.start_worker(
@@ -509,7 +526,7 @@ def test_integrated_monitor():
         log_dir=resolve_log_path("processes", "p_monitor_data"),
         log_level="DEBUG",
         custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_monitor_data |{process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message} </level> ",
-        enable_console=True
+        enable_console=worker_console_logging
     )
     monitor.start_worker(
         target_func=main_monitor_data.main,
@@ -524,7 +541,7 @@ def test_integrated_monitor():
         log_dir=resolve_log_path("processes", "p_deep_camera"),
         log_level="DEBUG",
         custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | p_deep_camera | {process.name} | {thread.name} |  {name} : {module}:{function}:{line} | {message} </level>",
-        enable_console=True
+        enable_console=worker_console_logging
     )
 
     if not environment_only:
@@ -544,7 +561,7 @@ def test_integrated_monitor():
         log_dir=resolve_log_path("processes", "p_infrared_camera"),
         log_level="DEBUG",
         custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_infrared_camera | {process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message} </level> ",
-        enable_console=True
+        enable_console=worker_console_logging
     )
     if not environment_only:
         monitor.start_worker(
@@ -562,7 +579,7 @@ def test_integrated_monitor():
         log_dir=resolve_log_path("processes", "p_main_gui"),
         log_level="DEBUG",
         custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}  | p_main_gui | {process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message}  </level>",
-        enable_console=True
+        enable_console=worker_console_logging
     )
     monitor.start_worker(
         target_func=main_gui.main,
