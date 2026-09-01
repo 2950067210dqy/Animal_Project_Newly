@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from pathlib import Path
+from threading import Lock
 from typing import Callable
 
 import numpy as np
@@ -59,6 +60,45 @@ MAX_LINE_POINTS = 12_000
 MAX_TRAJECTORY_POINTS = 20_000
 _ACTIVE_LOAD_THREADS: set[QThread] = set()
 _ANALYSIS_CACHE: OrderedDict[tuple[str, int, int], ExperimentAnalysis] = OrderedDict()
+_LATEST_ANALYSIS_BY_PATH: dict[
+    str,
+    tuple[tuple[str, int, int] | None, ExperimentAnalysis],
+] = {}
+_ANALYSIS_CACHE_LOCK = Lock()
+
+
+def _normalized_experiment_path(path: str | Path) -> str:
+    return str(Path(path).expanduser().resolve())
+
+
+def _trajectory_path_signature(path: Path) -> tuple[str, int, int]:
+    csv_paths = sorted(path.glob("cage_*/data/trajectory.csv"))
+    if not csv_paths:
+        raise FileNotFoundError(f"实验目录中没有 trajectory.csv：{path}")
+    stats = [csv_path.stat() for csv_path in csv_paths]
+    return (
+        _normalized_experiment_path(path),
+        max(int(stat.st_mtime_ns) for stat in stats),
+        sum(int(stat.st_size) for stat in stats),
+    )
+
+
+def _remember_latest_analysis(analysis: ExperimentAnalysis) -> None:
+    try:
+        signature = _trajectory_path_signature(analysis.source_path)
+    except OSError:
+        signature = None
+    with _ANALYSIS_CACHE_LOCK:
+        _LATEST_ANALYSIS_BY_PATH[
+            _normalized_experiment_path(analysis.source_path)
+        ] = (signature, analysis)
+
+
+def _latest_analysis_for_path(
+    path: Path,
+) -> tuple[tuple[str, int, int] | None, ExperimentAnalysis] | None:
+    with _ANALYSIS_CACHE_LOCK:
+        return _LATEST_ANALYSIS_BY_PATH.get(_normalized_experiment_path(path))
 
 rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
 rcParams["axes.unicode_minus"] = False
@@ -80,6 +120,7 @@ class TrajectoryLoadThread(QThread):
                 self.path,
                 interruption_requested=self.isInterruptionRequested,
             )
+            _remember_latest_analysis(analysis)
             if self.isInterruptionRequested():
                 self.cancelled.emit(self.token)
                 return
@@ -317,15 +358,7 @@ class TrajectoryAnalysisWindow(ThemedWindow):
 
     @staticmethod
     def _path_signature(path: Path) -> tuple[str, int, int]:
-        csv_paths = sorted(path.glob("cage_*/data/trajectory.csv"))
-        if not csv_paths:
-            raise FileNotFoundError(f"实验目录中没有 trajectory.csv：{path}")
-        stats = [csv_path.stat() for csv_path in csv_paths]
-        return (
-            str(path),
-            max(int(stat.st_mtime_ns) for stat in stats),
-            sum(int(stat.st_size) for stat in stats),
-        )
+        return _trajectory_path_signature(path)
 
     @classmethod
     def _cache_key(cls, record: ExperimentFile) -> tuple[str, int, int]:
@@ -344,6 +377,15 @@ class TrajectoryAnalysisWindow(ThemedWindow):
             self._apply_analysis(cached)
             return
 
+        latest = _latest_analysis_for_path(record.path)
+        if latest is not None:
+            latest_signature, latest_analysis = latest
+            self._apply_analysis(latest_analysis)
+            if latest_signature == cache_key:
+                self._cache[cache_key] = latest_analysis
+                self._cache.move_to_end(cache_key)
+                return
+
         if self._load_thread is not None and self._load_thread.isRunning():
             self._pending_record = record
             self._load_token += 1
@@ -361,7 +403,39 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         self.refresh_button.setEnabled(False)
         self.experiment_combo.setEnabled(False)
         self.save_button.setEnabled(False)
-        self.status_label.setText(f"正在读取：{record.display_text}")
+        if self.analysis is not None:
+            self.status_label.setText(f"正在更新：{record.display_text}")
+        else:
+            self.status_label.setText(f"正在读取：{record.display_text}")
+
+        normalized_path = _normalized_experiment_path(record.path)
+        worker = next(
+            (
+                current
+                for current in tuple(_ACTIVE_LOAD_THREADS)
+                if isinstance(current, TrajectoryLoadThread)
+                and current.isRunning()
+                and not current.isInterruptionRequested()
+                and _normalized_experiment_path(current.path) == normalized_path
+            ),
+            None,
+        )
+        if worker is not None:
+            self._load_thread = worker
+            worker.loaded.connect(self._shared_trajectory_loaded)
+            worker.failed.connect(self._shared_trajectory_failed)
+            worker.finished.connect(self._worker_finished)
+            if worker.isFinished():
+                self._load_thread = None
+                latest = _latest_analysis_for_path(record.path)
+                if latest is not None:
+                    self._trajectory_loaded(token, latest[1])
+                    self.progress_bar.hide()
+                    self.refresh_button.setEnabled(True)
+                    self.experiment_combo.setEnabled(True)
+                else:
+                    self._start_load(record)
+            return
 
         worker = TrajectoryLoadThread(token, record.path)
         self._load_thread = worker
@@ -373,9 +447,28 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         worker.finished.connect(worker.deleteLater)
         worker.start()
 
+    def _shared_trajectory_loaded(
+        self,
+        _worker_token: int,
+        analysis: ExperimentAnalysis,
+    ) -> None:
+        selected_path = self._preferred_experiment_path
+        if (
+            self.sender() is self._load_thread
+            and selected_path is not None
+            and _normalized_experiment_path(analysis.source_path)
+            == _normalized_experiment_path(selected_path)
+        ):
+            self._trajectory_loaded(self._load_token, analysis)
+
+    def _shared_trajectory_failed(self, _worker_token: int, message: str) -> None:
+        if self.sender() is self._load_thread:
+            self._trajectory_failed(self._load_token, message)
+
     def _trajectory_loaded(self, token: int, analysis: ExperimentAnalysis):
         if self._closing or token != self._load_token:
             return
+        _remember_latest_analysis(analysis)
         try:
             cache_key = self._path_signature(analysis.source_path)
             self._cache[cache_key] = analysis
@@ -860,8 +953,9 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         self._closing = True
         self._load_token += 1
         self._pending_record = None
-        if self._load_thread is not None and self._load_thread.isRunning():
-            self._load_thread.requestInterruption()
+        # Loading is shared across rebuilt menu pages. Let it finish so the next
+        # page can reuse the parsed result instead of restarting the same file.
+        self._load_thread = None
         super().closeEvent(event)
 
     def showEvent(self, event):
