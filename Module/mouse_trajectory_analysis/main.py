@@ -44,6 +44,7 @@ class MainMouseTrajectoryAnalysisModule(BaseModule):
 
     def __init__(self):
         super().__init__()
+        self.selected_experiment_path: str | None = None
         # The module loader runs during application startup. Build the chart-heavy
         # interface only after the user opens this module.
         self.interface_widget = MouseTrajectoryAnalysisInterface(create_window=False)
@@ -71,7 +72,14 @@ class MainMouseTrajectoryAnalysisModule(BaseModule):
     def get_interface_widget(self) -> BaseInterfaceWidget:
         interface = MouseTrajectoryAnalysisInterface()
         interface.module = self
+        interface.frame_obj.set_preferred_experiment_path(self.selected_experiment_path)
+        interface.frame_obj.experiment_selection_changed.connect(
+            self._remember_selected_experiment
+        )
         return interface
+
+    def _remember_selected_experiment(self, path: str):
+        self.selected_experiment_path = path
 
 
 class DataComparisonInterface(BaseInterfaceWidget):
@@ -106,6 +114,7 @@ class MainDataComparisonModule(BaseModule):
 
     def __init__(self):
         super().__init__()
+        self.selected_experiment_path: str | None = None
         self.interface_widget = DataComparisonInterface(create_window=False)
         self.name = self.get_name()
         self.title = self.get_title()
@@ -131,4 +140,11 @@ class MainDataComparisonModule(BaseModule):
     def get_interface_widget(self) -> BaseInterfaceWidget:
         interface = DataComparisonInterface()
         interface.module = self
+        interface.frame_obj.set_preferred_experiment_path(self.selected_experiment_path)
+        interface.frame_obj.experiment_selection_changed.connect(
+            self._remember_selected_experiment
+        )
         return interface
+
+    def _remember_selected_experiment(self, path: str):
+        self.selected_experiment_path = path

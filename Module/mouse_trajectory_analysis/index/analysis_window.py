@@ -58,6 +58,7 @@ MAX_CACHE_ITEMS = 3
 MAX_LINE_POINTS = 12_000
 MAX_TRAJECTORY_POINTS = 20_000
 _ACTIVE_LOAD_THREADS: set[QThread] = set()
+_ANALYSIS_CACHE: OrderedDict[tuple[str, int, int], ExperimentAnalysis] = OrderedDict()
 
 rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
 rcParams["axes.unicode_minus"] = False
@@ -96,6 +97,7 @@ class TrajectoryLoadThread(QThread):
 class TrajectoryAnalysisWindow(ThemedWindow):
     BEHAVIOR_MODE = "behavior"
     COMPARISON_MODE = "comparison"
+    experiment_selection_changed = pyqtSignal(str)
 
     TAB_DEFINITIONS = (
         ("累计路程", "cumulative"),
@@ -112,7 +114,8 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         self.trajectory_root = self._resolve_trajectory_root()
         self.analysis: ExperimentAnalysis | None = None
         self.experiment_records: list[ExperimentFile] = []
-        self._cache: OrderedDict[tuple[str, int, int], ExperimentAnalysis] = OrderedDict()
+        # Keep the cache while the host rebuilds this page when the user changes menus.
+        self._cache = _ANALYSIS_CACHE
         self._load_thread: TrajectoryLoadThread | None = None
         self._pending_record: ExperimentFile | None = None
         self._load_token = 0
@@ -122,6 +125,8 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         self._experiment_list_initialized = False
         self.chart_tabs: QTabWidget | None = None
         self.dashboard: AnalysisDashboard | None = None
+        self._closing = False
+        self._preferred_experiment_path: str | None = None
 
         self._init_ui()
         self.status_label.setText("进入页面后自动读取实验列表")
@@ -259,7 +264,10 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         self._update_threshold_visibility()
 
     def refresh_experiment_list(self):
-        selected_path = self.experiment_combo.currentData()
+        selected_path = (
+            self.experiment_combo.currentData()
+            or self._preferred_experiment_path
+        )
         self.experiment_records = scan_trajectory_experiments(self.trajectory_root)
         self.experiment_combo.blockSignals(True)
         self.experiment_combo.clear()
@@ -295,7 +303,17 @@ class TrajectoryAnalysisWindow(ThemedWindow):
     def _experiment_changed(self, index: int):
         if index < 0 or index >= len(self.experiment_records):
             return
-        self._queue_load(self.experiment_records[index])
+        record = self.experiment_records[index]
+        self._preferred_experiment_path = str(record.path)
+        self.experiment_selection_changed.emit(self._preferred_experiment_path)
+        self._queue_load(record)
+
+    def set_preferred_experiment_path(self, path: str | Path | None):
+        """Restore the last selected experiment after the host rebuilds this page."""
+        if not path:
+            self._preferred_experiment_path = None
+            return
+        self._preferred_experiment_path = str(Path(path).expanduser().resolve())
 
     @staticmethod
     def _path_signature(path: Path) -> tuple[str, int, int]:
@@ -350,13 +368,13 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         _ACTIVE_LOAD_THREADS.add(worker)
         worker.loaded.connect(self._trajectory_loaded)
         worker.failed.connect(self._trajectory_failed)
-        worker.finished.connect(lambda current=worker: self._worker_finished(current))
+        worker.finished.connect(self._worker_finished)
         worker.finished.connect(lambda current=worker: _ACTIVE_LOAD_THREADS.discard(current))
         worker.finished.connect(worker.deleteLater)
         worker.start()
 
     def _trajectory_loaded(self, token: int, analysis: ExperimentAnalysis):
-        if token != self._load_token:
+        if self._closing or token != self._load_token:
             return
         try:
             cache_key = self._path_signature(analysis.source_path)
@@ -369,11 +387,16 @@ class TrajectoryAnalysisWindow(ThemedWindow):
         self._apply_analysis(analysis)
 
     def _trajectory_failed(self, token: int, message: str):
-        if token != self._load_token:
+        if self._closing or token != self._load_token:
             return
         self._show_load_error(message)
 
-    def _worker_finished(self, worker: TrajectoryLoadThread):
+    def _worker_finished(self):
+        if self._closing:
+            return
+        worker = self.sender()
+        if not isinstance(worker, TrajectoryLoadThread):
+            return
         if self._load_thread is worker:
             self._load_thread = None
         self.progress_bar.hide()
@@ -834,6 +857,9 @@ class TrajectoryAnalysisWindow(ThemedWindow):
             QMessageBox.warning(self, "保存失败", str(error))
 
     def closeEvent(self, event):
+        self._closing = True
+        self._load_token += 1
+        self._pending_record = None
         if self._load_thread is not None and self._load_thread.isRunning():
             self._load_thread.requestInterruption()
         super().closeEvent(event)
