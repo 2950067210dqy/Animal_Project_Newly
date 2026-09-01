@@ -1,4 +1,5 @@
 import json
+import configparser
 import logging as diagnostic_logging
 import multiprocessing
 import atexit
@@ -43,6 +44,22 @@ MAIN_PROGRAM_DIR = get_main_program_dir()
 
 def resolve_main_program_path(*parts):
     return os.path.join(MAIN_PROGRAM_DIR, *parts)
+
+
+def environment_module_only_enabled():
+    config = configparser.ConfigParser()
+    try:
+        config.read(
+            resolve_main_program_path("config", "monitor_datas_config.ini"),
+            encoding="utf-8-sig",
+        )
+        return config.getboolean(
+            "MODULE_TEST",
+            "environment_module_only",
+            fallback=False,
+        )
+    except (OSError, ValueError, configparser.Error):
+        return False
 
 
 def get_writable_log_root():
@@ -391,6 +408,7 @@ def test_integrated_monitor():
     freeze_support()
     setup_crash_logging()
     multiprocessing.set_start_method('spawn', force=True)
+    environment_only = environment_module_only_enabled()
     if not acquire_single_instance_lock():
         print("Animal Project is already running; duplicate startup was blocked.")
         return False
@@ -467,22 +485,25 @@ def test_integrated_monitor():
     monitor.register_callback('on_shutdown_triggered', on_shutdown_triggered)
     monitor.register_exception_callback(on_any_exception)
 
-    # 创建工作进程的日志配置 调试专用 记得注释
-    # p_response_comm_config = monitor.create_process_log_config(
-    #     "p_response_comm",
-    #     log_dir=resolve_log_path("processes", "p_response_comm"),
-    #     log_level="DEBUG",
-    #     custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_response_comm | {module}:{function}:{line} | {message} </level>",
-    #     enable_console=True
-    # )
-    # monitor.start_worker(
-    #     target_func=main_response_Modbus.main,
-    #     args=(),
-    #     name="p_response_comm",
-    #     auto_restart=False,
-    #     log_config=p_response_comm_config
-    # )
+    p_response_comm_config = monitor.create_process_log_config(
+        "p_response_comm",
+        log_dir=resolve_log_path("processes", "p_response_comm"),
+        log_level="DEBUG",
+        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_response_comm | {module}:{function}:{line} | {message} </level>",
+        enable_console=True
+    )
+    if not environment_only:
+        monitor.start_worker(
+            target_func=main_response_Modbus.main,
+            args=(),
+            name="p_response_comm",
+            auto_restart=False,
+            log_config=p_response_comm_config
+        )
+    else:
+        logger.warning("Environment-only mode: p_response_comm is disabled")
 
+    # 创建工作进程的日志配置 调试专用 记得注释
     p_monitor_data_config = monitor.create_process_log_config(
         "p_monitor_data",
         log_dir=resolve_log_path("processes", "p_monitor_data"),
@@ -506,14 +527,17 @@ def test_integrated_monitor():
         enable_console=True
     )
 
-    monitor.start_worker(
-        target_func=main_deep_camera.main,
-        restart_target_func=main_deep_camera.restart,
-        args=(q, runtime_diagnostics_queue),
-        name="p_deep_camera",
-        auto_restart=True,
-        log_config=p_deep_camera_config
-    )
+    if not environment_only:
+        monitor.start_worker(
+            target_func=main_deep_camera.main,
+            restart_target_func=main_deep_camera.restart,
+            args=(q, runtime_diagnostics_queue),
+            name="p_deep_camera",
+            auto_restart=True,
+            log_config=p_deep_camera_config
+        )
+    else:
+        logger.warning("Environment-only mode: p_deep_camera is disabled")
 
     p_infrared_camera_config = monitor.create_process_log_config(
         "p_infrared_camera",
@@ -522,14 +546,17 @@ def test_integrated_monitor():
         custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_infrared_camera | {process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message} </level> ",
         enable_console=True
     )
-    monitor.start_worker(
-        target_func=main_infrared_camera.main,
-        restart_target_func=main_infrared_camera.restart,
-        args=(q,),
-        name="p_infrared_camera",
-        auto_restart=True,
-        log_config=p_infrared_camera_config
-    )
+    if not environment_only:
+        monitor.start_worker(
+            target_func=main_infrared_camera.main,
+            restart_target_func=main_infrared_camera.restart,
+            args=(q,),
+            name="p_infrared_camera",
+            auto_restart=True,
+            log_config=p_infrared_camera_config
+        )
+    else:
+        logger.warning("Environment-only mode: p_infrared_camera is disabled")
     p_main_gui_config = monitor.create_process_log_config(
         "p_main_gui",
         log_dir=resolve_log_path("processes", "p_main_gui"),
