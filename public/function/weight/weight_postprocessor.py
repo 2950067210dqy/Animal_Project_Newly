@@ -39,8 +39,11 @@ class WeightPostprocessConfig:
     initial_weight_match_min_g: float = 2.0
     event_outlier_ratio: float = 0.05
     event_outlier_min_g: float = 1.0
-    event_reference_ratio: float = 0.05
-    event_reference_min_g: float = 1.0
+    first_event_match_ratio: float = 0.05
+    first_event_match_min_g: float = 1.0
+    weight_change_period_hours: float = 24.0
+    weight_change_ratio_per_period: float = 0.05
+    weight_change_min_g: float = 1.0
     decimal_places: int = 3
     output_suffix: str = "_称重拟合"
 
@@ -72,6 +75,7 @@ class WeightPostprocessResult:
 class _WeightEvent:
     position: int
     weight: float
+    timestamp: Optional[float]
 
 
 @dataclass(frozen=True)
@@ -108,8 +112,19 @@ def load_weight_postprocess_config(
         ),
         event_outlier_ratio=max(0.0, get_float("event_outlier_ratio", 0.05)),
         event_outlier_min_g=max(0.0, get_float("event_outlier_min_g", 1.0)),
-        event_reference_ratio=max(0.0, get_float("event_reference_ratio", 0.05)),
-        event_reference_min_g=max(0.0, get_float("event_reference_min_g", 1.0)),
+        first_event_match_ratio=max(
+            0.0, get_float("first_event_match_ratio", 0.05)
+        ),
+        first_event_match_min_g=max(
+            0.0, get_float("first_event_match_min_g", 1.0)
+        ),
+        weight_change_period_hours=max(
+            0.1, get_float("weight_change_period_hours", 24.0)
+        ),
+        weight_change_ratio_per_period=max(
+            0.0, get_float("weight_change_ratio_per_period", 0.05)
+        ),
+        weight_change_min_g=max(0.0, get_float("weight_change_min_g", 1.0)),
         decimal_places=max(0, get_int("decimal_places", 3)),
         output_suffix=get("output_suffix", "_称重拟合").strip() or "_称重拟合",
     )
@@ -157,6 +172,24 @@ def _to_timestamp(value) -> Optional[float]:
 
 def _tolerance(reference: float, ratio: float, minimum_g: float) -> float:
     return max(minimum_g, abs(reference) * ratio)
+
+
+def _time_adjusted_tolerance(
+        reference_weight: float,
+        previous_timestamp: Optional[float],
+        current_timestamp: Optional[float],
+        config: WeightPostprocessConfig,
+) -> float:
+    """Allow gradual biological change only when elapsed time supports it."""
+    if previous_timestamp is None or current_timestamp is None:
+        return config.weight_change_min_g
+    elapsed_seconds = max(0.0, current_timestamp - previous_timestamp)
+    elapsed_periods = elapsed_seconds / (config.weight_change_period_hours * 3600.0)
+    return _tolerance(
+        reference_weight,
+        config.weight_change_ratio_per_period * elapsed_periods,
+        config.weight_change_min_g,
+    )
 
 
 def _robust_group_level(
@@ -280,9 +313,11 @@ def _confirm_weight_events(
         initial_weight: float,
         baseline_match: _BaselineMatch,
         config: WeightPostprocessConfig,
+        timestamps: Optional[Sequence[float]] = None,
 ) -> list[_WeightEvent]:
     events: list[_WeightEvent] = []
     last_weight = initial_weight
+    last_event_timestamp: Optional[float] = None
     index = baseline_match.first_high_index
     waiting_for_empty_return = False
 
@@ -309,22 +344,29 @@ def _confirm_weight_events(
         window, cursor = _event_window(values, index, baseline_match.baseline, config)
         event_weight = _event_weight(window, config)
         if event_weight is not None:
-            manual_tolerance = _tolerance(
-                initial_weight,
-                config.event_reference_ratio,
-                config.event_reference_min_g,
+            event_position = window[-1][0]
+            event_timestamp = (
+                timestamps[event_position]
+                if timestamps is not None and event_position < len(timestamps)
+                else None
             )
-            history_tolerance = _tolerance(
-                last_weight,
-                config.event_reference_ratio,
-                config.event_reference_min_g,
-            )
-            if (
-                    abs(event_weight - initial_weight) <= manual_tolerance
-                    and abs(event_weight - last_weight) <= history_tolerance
-            ):
-                events.append(_WeightEvent(window[-1][0], event_weight))
+            if not events:
+                accepted = abs(event_weight - initial_weight) <= _tolerance(
+                    initial_weight,
+                    config.first_event_match_ratio,
+                    config.first_event_match_min_g,
+                )
+            else:
+                accepted = abs(event_weight - last_weight) <= _time_adjusted_tolerance(
+                    last_weight,
+                    last_event_timestamp,
+                    event_timestamp,
+                    config,
+                )
+            if accepted:
+                events.append(_WeightEvent(event_position, event_weight, event_timestamp))
                 last_weight = event_weight
+                last_event_timestamp = event_timestamp
 
         # One high segment may create only one fitted event. A return to the
         # empty-scale range is required before another segment can be accepted.
@@ -342,9 +384,15 @@ def fit_weight_series(
         initial_weight: Optional[float] = None,
 ) -> tuple[list[Optional[float]], int]:
     """Fit one cage with a fixed empty-scale baseline and event-level updates."""
-    del timestamps  # The confirmed design is point-count based, not time-window based.
     config = config or WeightPostprocessConfig()
     numeric_values = [_to_finite_float(value) for value in values]
+    numeric_timestamps: Optional[list[float]] = None
+    if timestamps is not None:
+        timestamp_values = [_to_timestamp(value) for value in timestamps]
+        if len(timestamp_values) == len(numeric_values) and all(
+                value is not None for value in timestamp_values
+        ):
+            numeric_timestamps = [float(value) for value in timestamp_values]
     initial_weight_value = _to_finite_float(initial_weight)
     if initial_weight_value is None or not (
             config.minimum_body_weight_g
@@ -363,6 +411,7 @@ def fit_weight_series(
         initial_weight_value,
         baseline_match,
         config,
+        numeric_timestamps,
     )
     fitted: list[Optional[float]] = []
     event_index = 0

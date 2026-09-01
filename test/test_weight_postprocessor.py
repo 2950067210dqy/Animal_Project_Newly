@@ -64,6 +64,34 @@ class WeightPostprocessorTest(unittest.TestCase):
         self.assertEqual(1, event_count)
         self.assertAlmostEqual(47.0, fitted[-1], delta=0.1)
 
+    def test_gradual_change_is_accepted_only_when_elapsed_time_allows_it(self):
+        first_event = _weighing_cycle(0.0, 47.0)
+        second_event = [48.4, 48.5, 48.6] * 4 + [0.0, 0.1, -0.1] * 3
+        values = first_event + [0.0] * 6 + second_event
+        start_time = datetime(2026, 8, 28, 8, 0, 0)
+        timestamps = [
+            start_time + timedelta(seconds=index)
+            for index in range(len(first_event))
+        ] + [
+            start_time + timedelta(hours=24, seconds=index)
+            for index in range(6 + len(second_event))
+        ]
+
+        fitted_without_time, events_without_time = fit_weight_series(
+            values,
+            initial_weight=47.0,
+        )
+        fitted_with_time, events_with_time = fit_weight_series(
+            values,
+            timestamps=timestamps,
+            initial_weight=47.0,
+        )
+
+        self.assertEqual(1, events_without_time)
+        self.assertAlmostEqual(47.0, fitted_without_time[-1], delta=0.1)
+        self.assertEqual(2, events_with_time)
+        self.assertAlmostEqual(48.5, fitted_with_time[-1], delta=0.1)
+
     def test_manual_weight_is_held_when_no_baseline_or_event_is_available(self):
         fitted, event_count = fit_weight_series(
             [None, 0.0, 0.2, None] * 5,
