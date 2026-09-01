@@ -1574,6 +1574,41 @@ def _patched_close_ugc_zero_or_span_valve(self, resolve, reject, port):
     )
 
 
+def _log_ugc_calibration_command_result(
+        self,
+        result,
+        command_name,
+        calibration_name,
+        error=None,
+):
+    response_hex = ""
+    send_state = False
+    if isinstance(result, dict):
+        send_state = result.get("send_state") is True
+        response_hex = "".join(str(result.get("response_hex") or "").split()).lower()
+
+    expected_prefix = "".join(
+        f"{int(value, 16):02x}" if isinstance(value, str) else f"{int(value):02x}"
+        for value in [
+            self.send_message["slave_id"],
+            self.send_message["function_code"],
+            *self.send_message["data"],
+        ]
+    )
+    response_matches = response_hex.startswith(expected_prefix)
+    success = send_state and response_matches
+    status = "成功" if success else "失败"
+    response_text = response_hex or "无响应"
+    error_text = f"，错误={error}" if error is not None else ""
+
+    self.update_status_main_signal_gui_update.send(
+        f"{time_util.get_format_from_time(time.time())} | {self.name} {command_name}响应核对{status}，"
+        f"{calibration_name}{status}，响应报文={response_text}{error_text}",
+        title=self.title,
+    )
+    return success
+
+
 def _patched_zero_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, port):
     if self.is_STOP:
         reject()
@@ -1731,9 +1766,26 @@ def _patched_zero_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, po
     self.update_status_main_signal_gui_update.send(
         f"{time_util.get_format_from_time(time.time())} | 零点标定 发送UGC零点设置指令",
         title=self.title)
-    AsyPromise(self.send_thread.Send).then(
-        lambda _: resolve()
-    ).catch(lambda e: reject(e))
+    def handle_result(result):
+        _log_ugc_calibration_command_result(
+            self,
+            result,
+            command_name="UGC零点设置指令",
+            calibration_name="校0",
+        )
+        resolve()
+
+    def handle_error(error):
+        _log_ugc_calibration_command_result(
+            self,
+            None,
+            command_name="UGC零点设置指令",
+            calibration_name="校0",
+            error=error,
+        )
+        reject(error)
+
+    AsyPromise(self.send_thread.Send).then(handle_result).catch(handle_error)
 
 
 def _patched_range_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, port):
@@ -1906,9 +1958,26 @@ def _patched_range_cyclic_sampling_of_ugc_carbon_sensor(self, resolve, reject, p
     self.update_status_main_signal_gui_update.send(
         f"{time_util.get_format_from_time(time.time())} | SPan量程标定 发送UGC span标定指令",
         title=self.title)
-    AsyPromise(self.send_thread.Send).then(
-        lambda _: resolve()
-    ).catch(lambda e: reject(e))
+    def handle_result(result):
+        _log_ugc_calibration_command_result(
+            self,
+            result,
+            command_name="UGC span标定指令",
+            calibration_name="校span",
+        )
+        resolve()
+
+    def handle_error(error):
+        _log_ugc_calibration_command_result(
+            self,
+            None,
+            command_name="UGC span标定指令",
+            calibration_name="校span",
+            error=error,
+        )
+        reject(error)
+
+    AsyPromise(self.send_thread.Send).then(handle_result).catch(handle_error)
 
 
 def _patched_force_close_zos_zero_or_span_valve_v2(self, resolve, reject, port):

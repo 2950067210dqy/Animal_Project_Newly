@@ -78,6 +78,8 @@ class Send_Message:
         with serial_lock:
             return_data = None
             parser_message = None
+            response_hex = None
+            send_state = False
 
             try:
                 # 使用带重试的发送方法
@@ -125,7 +127,12 @@ class Send_Message:
                 reject(e)
                 return
             finally:
-                resolve({"data": return_data, "message": parser_message})
+                resolve({
+                    "data": return_data,
+                    "message": parser_message,
+                    "send_state": send_state,
+                    "response_hex": response_hex,
+                })
 
     def Send_no_promise(self):
         serial_lock = global_setting.get_setting('serial_lock', threading.Lock())
