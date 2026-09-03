@@ -1083,9 +1083,9 @@ class Modbus_Response_DWM(Modbus_Response_Parents):
                 case 2:
                     state_value = int(self.response_struct['data'][i])
                     if state_value == 0xFF:
-                        state_desc = "开门"
-                    elif state_value == 0x00:
                         state_desc = "关门"
+                    elif state_value == 0x00:
+                        state_desc = "开门"
                     else:
                         state_desc = f"未知门控状态(0x{state_value:02X})"
                     return_datas.append({
@@ -1344,9 +1344,9 @@ class Modbus_Response_EM(Modbus_Response_Parents):
 
                     state_value = int(self.response_struct['data'][i])
                     if state_value == 0xFF:
-                        state_desc = "开食槽"
-                    elif state_value == 0x00:
                         state_desc = "关食槽"
+                    elif state_value == 0x00:
+                        state_desc = "开食槽"
                     else:
                         state_desc = f"未知食槽状态(0x{state_value:02X})"
                     return_datas.append({
