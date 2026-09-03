@@ -1070,6 +1070,10 @@ class Send_thread(MyQThread):
                                             break
                                 if send_message.get("command_name") == "food_trough_current_off":
                                     _notify_food_trough_current_off_success(response_hex)
+                                if _is_food_trough_door_command(send_message):
+                                    self._send_food_trough_current_off_after_door_command(
+                                        send_message
+                                    )
                             elif send_state and is_write_only:
                                 parser_message = send_message.get(
                                     'command_name', '无需响应报文发送成功'
