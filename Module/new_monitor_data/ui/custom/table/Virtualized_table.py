@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 
 from Module.new_monitor_data.ui.custom.table.TableCellDetailDialog import CellDetailDialog
 from public.config_class.global_setting import global_setting
-from public.function.running_wheel import (
+from public.function.weight.running_wheel import (
     RUNNING_WHEEL_COLUMN_KEYS,
     format_running_wheel_distance,
 )
