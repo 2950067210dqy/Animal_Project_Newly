@@ -1068,7 +1068,14 @@ class Modbus_Response_DWM(Modbus_Response_Parents):
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
         return_datas = []
-        port_types = ['门控控制起始地址值', '门控控制']
+        data = self.response_struct['data']
+        address = (data[0] << 8 | data[1]) if len(data) >= 2 else None
+        is_current_control = address == 0x0071
+        port_types = (
+            ['驱动电流控制起始地址值', '驱动电流控制']
+            if is_current_control else
+            ['门控控制起始地址值', '门控控制']
+        )
 
         j = 0
         for i in range(len(self.response_struct['data'])):
@@ -1082,7 +1089,14 @@ class Modbus_Response_DWM(Modbus_Response_Parents):
                     j += 1
                 case 2:
                     state_value = int(self.response_struct['data'][i])
-                    if state_value == 0xFF:
+                    if is_current_control:
+                        if state_value == 0xFF:
+                            state_desc = "开启驱动电流"
+                        elif state_value == 0x00:
+                            state_desc = "关闭驱动电流"
+                        else:
+                            state_desc = f"未知驱动电流状态(0x{state_value:02X})"
+                    elif state_value == 0xFF:
                         state_desc = "关门"
                     elif state_value == 0x00:
                         state_desc = "开门"

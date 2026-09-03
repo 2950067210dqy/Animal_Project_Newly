@@ -58,10 +58,10 @@ COLLECTION_BARRIER_TIMEOUT_SECONDS = 45.0
 COLLECTION_SENSOR_MAX_ATTEMPTS = 3
 COLLECTION_SENSOR_RETRY_DELAY_SECONDS = 0.1
 FOOD_TROUGH_CURRENT_OFF_COMMAND = {
-    "slave_id": "FF",
+    "slave_id": "72",
     "function_code": "05",
     "data": ["00", "71", "00", "00"],
-    "write_only": True,
+    "write_only": False,
     "no_response": True,
     "command_name": "food_trough_current_off",
 }
@@ -102,8 +102,8 @@ def _send_main_window_status(title, data):
 
 
 def _notify_food_trough_current_off_success(response_hex=None):
-    """Show the concise success notice for the no-response current-off command."""
-    frame_hex = (response_hex or "FF0500710000880F").replace(" ", "").upper()
+    """Show the success notice after the current-off command is acknowledged."""
+    frame_hex = (response_hex or "72050071000096D2").replace(" ", "").upper()
     _send_main_window_status(
         "mouse_cage_inner_module_running_state",
         f"食槽门驱动电流关闭指令\n发送报文：{frame_hex}",
@@ -140,7 +140,7 @@ def _queue_food_trough_current_off_command():
     _last_food_trough_current_off_start_time = experiment_start_time
     logger.warning(
         "实验启动：食槽门保持打开，已排队关闭驱动电流命令 "
-        "FF 05 00 71 00 00 88 0F"
+        "72 05 00 71 00 00 96 D2"
     )
     return True
 
@@ -945,10 +945,11 @@ class Send_thread(MyQThread):
         command["port"] = door_command.get(
             "port", global_setting.get_setting("port", port_use)
         )
-        response, response_hex, send_state, _ = self.modbus.send_command_without_response(
+        response, response_hex, send_state, _ = self.modbus.send_command(
             slave_id=command["slave_id"],
             function_code=command["function_code"],
             data_hex_list=command["data"],
+            is_parse_response=False,
         )
         if send_state:
             logger.warning(
@@ -1067,6 +1068,8 @@ class Send_thread(MyQThread):
                                         if desc and desc == "大气压测量值(KPa)":
                                             global_setting.set_setting("air_pressure_1104", float(data.get("value")))
                                             break
+                                if send_message.get("command_name") == "food_trough_current_off":
+                                    _notify_food_trough_current_off_success(response_hex)
                             elif send_state and is_write_only:
                                 parser_message = send_message.get(
                                     'command_name', '无需响应报文发送成功'
