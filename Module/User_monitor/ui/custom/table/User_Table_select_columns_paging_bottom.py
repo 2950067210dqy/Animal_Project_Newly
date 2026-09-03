@@ -22,6 +22,10 @@ from Module.new_monitor_data.ui.custom.table.Virtualized_table import (
 )
 from public.config.Data_Column import Data_column_list
 from public.config_class.global_setting import global_setting
+from public.function.running_wheel import (
+    RUNNING_WHEEL_COLUMN_KEYS,
+    format_running_wheel_distance,
+)
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -273,7 +277,9 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                     final_val = str(col_val) if col_val is not None else ""
                 else:
                     title = self.all_columns[col_idx]
-                    if col_key == "UGC_flow_num_1":
+                    if col_key in RUNNING_WHEEL_COLUMN_KEYS:
+                        final_val = format_running_wheel_distance(col_val)
+                    elif col_key == "UGC_flow_num_1":
                         final_val = _format_sensor_status_code(col_val)
                     elif col_key in {"UGC_CO2_num", "UGC_air_pressure"}:
                         final_val = _format_co2_display_value(col_val)

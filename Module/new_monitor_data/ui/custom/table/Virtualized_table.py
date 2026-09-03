@@ -17,6 +17,10 @@ from PyQt6.QtWidgets import (
 
 from Module.new_monitor_data.ui.custom.table.TableCellDetailDialog import CellDetailDialog
 from public.config_class.global_setting import global_setting
+from public.function.running_wheel import (
+    RUNNING_WHEEL_COLUMN_KEYS,
+    format_running_wheel_distance,
+)
 
 
 # CO2 对外展示顺序只作用于监控界面，数据库中的原始列顺序不变。
@@ -29,6 +33,10 @@ CO2_DISPLAY_COLUMN_TITLES = {
     "UGC_flow_num_1": "传感器状态码",
     "UGC_CO2_num": "气压补偿后CO2",
     "UGC_air_pressure": "对齐后CO2",
+}
+RUNNING_WHEEL_DISPLAY_COLUMN_TITLES = {
+    "running_wheel_num": "当前计量周期内跑轮距离测量值(m)",
+    "ENM_running_wheel_num": "当前计量周期内跑轮距离测量值(m)",
 }
 CO2_HIDDEN_COLUMN_KEYS = {"UGC_CO2_origin_num"}
 
@@ -71,9 +79,12 @@ def prepare_co2_display_result(columns, titles, rows):
     target_columns = [
         column for column in CO2_DISPLAY_COLUMN_ORDER if column in current_columns
     ]
+    has_running_wheel = any(
+        column in RUNNING_WHEEL_COLUMN_KEYS for column in current_columns
+    )
     if not target_columns and not any(
         column in current_columns for column in CO2_HIDDEN_COLUMN_KEYS
-    ):
+    ) and not has_running_wheel:
         return current_columns, current_titles or current_columns, list(rows or [])
 
     title_by_column = {
@@ -105,7 +116,10 @@ def prepare_co2_display_result(columns, titles, rows):
         + visible_other_columns[insert_at:]
     )
     ordered_titles = [
-        CO2_DISPLAY_COLUMN_TITLES.get(column, title_by_column.get(column, column))
+        RUNNING_WHEEL_DISPLAY_COLUMN_TITLES.get(
+            column,
+            CO2_DISPLAY_COLUMN_TITLES.get(column, title_by_column.get(column, column)),
+        )
         for column in ordered_columns
     ]
 
@@ -157,6 +171,8 @@ class EpochTableModel(QAbstractTableModel):
     def _display_value(self, row, column):
         key = self._columns[column]
         value = self._rows[row].get(key)
+        if key in RUNNING_WHEEL_COLUMN_KEYS:
+            return format_running_wheel_distance(value)
         if key == "mouse_cage_number" and value is not None:
             configer = global_setting.get_setting("configer", {}) or {}
             reference_cage = int(configer.get("mouse_cage", {}).get("reference", -1))
