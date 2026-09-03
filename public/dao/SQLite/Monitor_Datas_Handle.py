@@ -91,6 +91,7 @@ class Monitor_Datas_Handle():
         self.sqlite_manager: SQLiteManager = None
         self.zero_fill_cache = {}
         self.last_valid_value_cache = {}
+        self.running_wheel_baseline_cache = {}
         self._meta_cache = {}
         self.init_construct(db_name)
 
@@ -612,6 +613,10 @@ class Monitor_Datas_Handle():
             if column_name not in data_store:
                 continue
 
+            if column_name == "running_wheel_num":
+                self._normalize_running_wheel_value(table_name, data_store)
+                continue
+
             current_value = data_store.get(column_name)
             numeric_value = self._coerce_numeric_value(current_value)
             cache_key = (table_name, column_name)
@@ -628,6 +633,42 @@ class Monitor_Datas_Handle():
                     data_store[column_name] = previous_value
             else:
                 self.last_valid_value_cache[cache_key] = current_value
+
+    def _normalize_running_wheel_value(self, table_name, data_store):
+        """将设备累计圈数转换为本次实验的增量圈数。"""
+        column_name = "running_wheel_num"
+        current_value = data_store.get(column_name)
+        numeric_value = self._coerce_numeric_value(current_value)
+        cache_key = (table_name, column_name)
+
+        # 实验开始阶段没有有效读数时保持 None，避免拿旧数据当作本次起点。
+        if numeric_value is None:
+            previous_value = self.last_valid_value_cache.get(cache_key)
+            if previous_value is not None:
+                data_store[column_name] = previous_value
+            return
+
+        baseline = self.running_wheel_baseline_cache.get(cache_key)
+        if baseline is None:
+            baseline = numeric_value
+            self.running_wheel_baseline_cache[cache_key] = baseline
+            normalized_value = 0.0
+            logger.info(
+                f"{table_name} | 跑轮建立实验起始基线: {baseline} 圈"
+            )
+        else:
+            normalized_value = numeric_value - baseline
+            if normalized_value < 0:
+                # 设备重启或计数器清零后重新建立基线，禁止产生负距离。
+                self.running_wheel_baseline_cache[cache_key] = numeric_value
+                normalized_value = 0.0
+                logger.warning(
+                    f"{table_name} | 跑轮计数回退，重新建立起始基线: {numeric_value} 圈"
+                )
+
+        normalized_value = round(max(normalized_value, 0.0), 5)
+        data_store[column_name] = normalized_value
+        self.last_valid_value_cache[cache_key] = normalized_value
 
     def insert_data(self, data):
         """
