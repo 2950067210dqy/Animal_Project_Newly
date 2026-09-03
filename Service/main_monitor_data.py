@@ -58,14 +58,13 @@ COLLECTION_BARRIER_TIMEOUT_SECONDS = 45.0
 COLLECTION_SENSOR_MAX_ATTEMPTS = 3
 COLLECTION_SENSOR_RETRY_DELAY_SECONDS = 0.1
 FOOD_TROUGH_CURRENT_OFF_COMMAND = {
-    "slave_id": "72",
     "function_code": "05",
     "data": ["00", "71", "00", "00"],
-    "write_only": False,
     "no_response": True,
     "command_name": "food_trough_current_off",
 }
-_last_food_trough_current_off_start_time = None
+FOOD_TROUGH_CURRENT_OFF_BASE_SLAVE_ID = 0x02
+_shutdown_food_trough_current_off_done = False
 send_thread = None
 
 
@@ -101,48 +100,105 @@ def _send_main_window_status(title, data):
         )
 
 
-def _notify_food_trough_current_off_success(response_hex=None):
+def _notify_food_trough_current_off_success(response_hex=None, cage_number=None):
     """Show the success notice after the current-off command is acknowledged."""
-    frame_hex = (response_hex or "72050071000096D2").replace(" ", "").upper()
+    frame_hex = str(response_hex or "未返回报文").replace(" ", "").upper()
+    cage_text = f"笼子{cage_number}" if cage_number is not None else "食槽门"
     _send_main_window_status(
         "mouse_cage_inner_module_running_state",
-        f"食槽门驱动电流关闭指令\n发送报文：{frame_hex}",
+        f"{cage_text}驱动电流关闭指令发送成功\n发送报文：{frame_hex}",
     )
 
 
-def _queue_food_trough_current_off_command():
-    """Queue the global current-off command once for the current experiment."""
-    global _last_food_trough_current_off_start_time, send_thread
+def _build_food_trough_current_off_command(cage_number, port=None):
+    """Build the per-cage 0x0071 current-off command.
+
+    Cage 1..8 map to Modbus slave IDs 0x12, 0x22, ..., 0x82.
+    """
+    cage_number = int(cage_number)
+    if not 1 <= cage_number <= 8:
+        raise ValueError(f"食槽门驱动电流关闭命令的笼号无效: {cage_number}")
+
+    command = copy.deepcopy(FOOD_TROUGH_CURRENT_OFF_COMMAND)
+    command["slave_id"] = format(
+        FOOD_TROUGH_CURRENT_OFF_BASE_SLAVE_ID + 0x10 * cage_number,
+        "02X",
+    )
+    command["mouse_cage_number"] = cage_number
+    if port is not None:
+        command["port"] = port
+    return command
+
+
+def _get_food_trough_cage_number(command):
+    """Resolve the cage number from an explicit field or its slave ID."""
+    if not isinstance(command, dict):
+        return None
+
+    explicit_cage = command.get("mouse_cage_number")
+    try:
+        explicit_cage = int(explicit_cage)
+    except (TypeError, ValueError):
+        explicit_cage = None
+    if explicit_cage is not None and 1 <= explicit_cage <= 8:
+        return explicit_cage
+
+    try:
+        slave_id = int(str(command.get("slave_id", "")), 16)
+    except (TypeError, ValueError):
+        return None
+    cage_number = slave_id // 0x10
+    return cage_number if 1 <= cage_number <= 8 else None
+
+
+def _queue_food_trough_current_off_commands(cages=None, wait_seconds=None, reason=""):
+    """Queue one current-off command for every enabled mouse cage."""
+    global send_thread
 
     if _environment_module_only_enabled():
         logger.info("仅环境模块模式：跳过食槽驱动电流关闭命令")
-        return False
+        return []
 
-    experiment_start_time = global_setting.get_setting("start_experiment_time", None)
-    if (
-            experiment_start_time is not None
-            and experiment_start_time == _last_food_trough_current_off_start_time
-    ):
-        logger.warning("本次实验已发送食槽驱动电流关闭命令，跳过重复发送")
-        return False
+    if cages is None:
+        cages = _get_opened_mouse_cages_for_light_off()
+    else:
+        cages = _parse_mouse_cage_numbers(cages)
+    cages = sorted(set(cages))
+    if not cages:
+        logger.warning("食槽驱动电流关闭命令跳过：没有已开启的笼子")
+        return []
 
     if send_thread is None or not send_thread.isRunning():
         logger.critical("食槽驱动电流关闭命令未发送：串口发送线程未运行")
-        return False
+        return []
 
-    command = copy.deepcopy(FOOD_TROUGH_CURRENT_OFF_COMMAND)
-    command["port"] = global_setting.get_setting("port", port_use)
-    send_thread.add_message(
-        message={"message": command},
-        urgent=True,
-        origin="main_monitor_data",
-    )
-    _last_food_trough_current_off_start_time = experiment_start_time
-    logger.warning(
-        "实验启动：食槽门保持打开，已排队关闭驱动电流命令 "
-        "72 05 00 71 00 00 96 D2"
-    )
-    return True
+    port = global_setting.get_setting("port", port_use)
+    queued_cages = []
+    for cage_number in cages:
+        try:
+            command = _build_food_trough_current_off_command(
+                cage_number,
+                port=port,
+            )
+        except (TypeError, ValueError) as error:
+            logger.error(f"构造笼子{cage_number}驱动电流关闭命令失败: {error}")
+            continue
+        send_thread.add_message(
+            message={"message": command},
+            urgent=True,
+            origin="main_monitor_data",
+        )
+        queued_cages.append(cage_number)
+        logger.warning(
+            f"{reason or '食槽门操作'}：已排队关闭笼子{cage_number}驱动电流命令 "
+            f"{command['slave_id']} 05 00 71 00 00"
+        )
+
+    if wait_seconds is None:
+        wait_seconds = min(3.0, 0.25 * len(queued_cages) + 0.5)
+    if queued_cages and wait_seconds > 0:
+        time.sleep(wait_seconds)
+    return queued_cages
 
 
 def _is_food_trough_door_command(send_message):
@@ -941,9 +997,17 @@ class Send_thread(MyQThread):
             logger.critical("食槽门控制后未发送关电流命令：Modbus未初始化")
             return False
 
-        command = copy.deepcopy(FOOD_TROUGH_CURRENT_OFF_COMMAND)
-        command["port"] = door_command.get(
-            "port", global_setting.get_setting("port", port_use)
+        cage_number = _get_food_trough_cage_number(door_command)
+        if cage_number is None:
+            logger.critical(
+                "食槽门控制后未发送关电流命令：无法从门控报文识别笼号，"
+                f"door_command={door_command}"
+            )
+            return False
+
+        command = _build_food_trough_current_off_command(
+            cage_number,
+            port=door_command.get("port", global_setting.get_setting("port", port_use)),
         )
         response, response_hex, send_state, _ = self.modbus.send_command(
             slave_id=command["slave_id"],
@@ -956,7 +1020,7 @@ class Send_thread(MyQThread):
                 "食槽门控制成功后已关闭驱动电流："
                 f"{response_hex} | {command['command_name']}"
             )
-            _notify_food_trough_current_off_success(response_hex)
+            _notify_food_trough_current_off_success(response_hex, cage_number)
         else:
             logger.critical(
                 "食槽门控制已发送，但关闭驱动电流命令发送失败："
@@ -1069,7 +1133,10 @@ class Send_thread(MyQThread):
                                             global_setting.set_setting("air_pressure_1104", float(data.get("value")))
                                             break
                                 if send_message.get("command_name") == "food_trough_current_off":
-                                    _notify_food_trough_current_off_success(response_hex)
+                                    _notify_food_trough_current_off_success(
+                                        response_hex,
+                                        _get_food_trough_cage_number(send_message),
+                                    )
                                 if _is_food_trough_door_command(send_message):
                                     self._send_food_trough_current_off_after_door_command(
                                         send_message
@@ -1082,7 +1149,10 @@ class Send_thread(MyQThread):
                                     f"安全控制命令发送成功: {response_hex} | {parser_message}"
                                 )
                                 if send_message.get("command_name") == "food_trough_current_off":
-                                    _notify_food_trough_current_off_success(response_hex)
+                                    _notify_food_trough_current_off_success(
+                                        response_hex,
+                                        _get_food_trough_cage_number(send_message),
+                                    )
                                 if _is_food_trough_door_command(send_message):
                                     self._send_food_trough_current_off_after_door_command(
                                         send_message
@@ -2034,12 +2104,19 @@ def start():
     experiment_settings = global_setting.get_setting("experiment_setting", None)
     gids = [group.id for group in experiment_settings.groups if
             group.is_selected == 1] if experiment_settings is not None else []
-    _queue_food_trough_current_off_command()
     # UFC_UGC_ZOS
-    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread, lighting_schedule_thread, _shutdown_lights_off_done
+    global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread, lighting_schedule_thread, _shutdown_lights_off_done, _shutdown_food_trough_current_off_done
     _shutdown_lights_off_done = False
+    _shutdown_food_trough_current_off_done = False
     ufc_ugc_zos_thread = None
     ufc_ugc_zos = None
+
+    # 实验开始时，按实际启用的笼子逐个关闭食槽门驱动电流。
+    _queue_food_trough_current_off_commands(
+        cages=gids,
+        reason="实验启动",
+    )
+
     try:
         # ufc_ugc_zos = UFC_UGC_ZOS_index()
         # ufc_ugc_zos.auto_btn_handle()
@@ -2274,6 +2351,34 @@ def _force_shutdown_lights_off_and_sync_state():
     except Exception as e:
         logger.error(f"shutdown light state sync failed: {e}")
 
+
+def _force_shutdown_food_trough_current_off():
+    """Send one current-off command per enabled cage before stopping the sender."""
+    global _shutdown_food_trough_current_off_done
+
+    cages = _get_opened_mouse_cages_for_light_off()
+    if not cages:
+        logger.warning("shutdown food trough current-off skipped: no enabled cages found")
+        return
+    if _shutdown_food_trough_current_off_done:
+        logger.info(
+            "shutdown food trough current-off skipped: already completed, "
+            f"cages={cages}"
+        )
+        return
+
+    queued_cages = _queue_food_trough_current_off_commands(
+        cages=cages,
+        reason="实验结束",
+    )
+    if queued_cages:
+        _shutdown_food_trough_current_off_done = True
+        logger.info(
+            "shutdown food trough current-off queued: "
+            f"cages={queued_cages}"
+        )
+
+
 def stop():
     logger.info(f"{'-' * 30}monitor_data_stop{'-' * 30}")
     global lighting_schedule_thread
@@ -2300,6 +2405,13 @@ def stop():
                                 data=f"{calibration_type}进行中，已跳过自动停止气路，避免误关闭UFC",
                                 time=time_util.get_format_from_time(time.time())))
         return
+
+    # 发送线程关闭前，按实际启用的笼子逐个关闭食槽门驱动电流。
+    try:
+        _force_shutdown_food_trough_current_off()
+    except Exception as e:
+        logger.error(f"shutdown food trough current-off failed: {e}")
+
     # 重置barrier回1，下次实验从1开始
     barrier = global_setting.get_setting("barrier")
     _release_collection_sync_waiters()
