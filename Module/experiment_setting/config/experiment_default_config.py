@@ -183,11 +183,11 @@ def get_default_config():
                             "refer_value":{{
                                 "0":{{
                                     "desc":"开",
-                                    "value":["0x00","0x70","0xff","0x00"]
+                                    "value":["0x00","0x70","0x00","0x00"]
                                     }},
                                 "1":{{
                                     "desc":"关",
-                                    "value":["0x00","0x70","0x00","0x00"]
+                                    "value":["0x00","0x70","0xff","0x00"]
                                     }}
                             }}
                             
