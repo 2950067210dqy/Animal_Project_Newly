@@ -30,5 +30,5 @@ def format_running_wheel_distance(value, precision: int = 4) -> str:
     """将跑轮圈数格式化为距离文本，单位为 m。"""
     distance = running_wheel_count_to_distance(value)
     if distance is None:
-        return "" if value is None else str(value)
+        return "None" if value is None else str(value)
     return f"{distance:.{precision}f}"

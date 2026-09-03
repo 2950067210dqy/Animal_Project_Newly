@@ -274,7 +274,7 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
             for col_idx, col_key in enumerate(column_keys):
                 col_val = record.get(col_key)
                 if col_idx == 0:
-                    final_val = str(col_val) if col_val is not None else ""
+                    final_val = str(col_val) if col_val is not None else "None"
                 else:
                     title = self.all_columns[col_idx]
                     if col_key in RUNNING_WHEEL_COLUMN_KEYS:
@@ -284,7 +284,7 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                     elif col_key in {"UGC_CO2_num", "UGC_air_pressure"}:
                         final_val = _format_co2_display_value(col_val)
                     elif col_val is None:
-                        final_val = ""
+                        final_val = "None"
                     elif "鼠笼号" in title:
                         try:
                             numeric_value = float(col_val)
