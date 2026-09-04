@@ -363,6 +363,10 @@ class Monitor_Datas_Handle():
                 gids=gids,
                 reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
             )
+            self._migrate_food_water_epoch_descriptions(
+                gids=gids,
+                reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+            )
         pass
 
     def _migrate_mouse_infrared_tables(self, gids):
@@ -518,6 +522,27 @@ class Monitor_Datas_Handle():
                 column_name="WM_weight_num",
                 column_struct=" TEXT ",
                 description="称重重量测量值(g)"
+            )
+
+    def _migrate_food_water_epoch_descriptions(self, gids, reference_cage_number):
+        """Correct the public labels for the two swapped weighing modules."""
+        for cage_number in [-1, reference_cage_number] + list(gids):
+            table_name = (
+                "Epoch_data_all"
+                if cage_number == -1
+                else f"Epoch_data_cage_{cage_number}"
+            )
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name="DWM_weight_num",
+                column_struct=" REAL ",
+                description="食物重量测量值(g)"
+            )
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name="EM_weight_num",
+                column_struct=" REAL ",
+                description="饮水重量测量值(g)"
             )
 
     def _map_data_compact_with_none(self,data_list, columns_mapping):
