@@ -68,6 +68,24 @@ _shutdown_food_trough_current_off_done = False
 send_thread = None
 
 
+def _get_selected_cage_ids(experiment_setting):
+    """Return the selected cage IDs used for both polling and address mapping."""
+    if experiment_setting is None:
+        return []
+
+    cage_ids = set()
+    for group in getattr(experiment_setting, "groups", []) or []:
+        if not bool(getattr(group, "is_selected", False)):
+            continue
+        try:
+            cage_number = int(getattr(group, "id"))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= cage_number <= 8:
+            cage_ids.add(cage_number)
+    return sorted(cage_ids)
+
+
 def _environment_module_only_enabled():
     value = global_setting.get_setting("environment_module_only", None)
     if value is None:
@@ -242,7 +260,7 @@ wait_UFC_UGC_ZOS_start_event = threading.Event()
 global_setting.set_setting("wait_UFC_UGC_ZOS_start_event",wait_UFC_UGC_ZOS_start_event)
 # 通道
 experiment_settings = global_setting.get_setting("experiment_setting",None)
-gids = [group.id for group in experiment_settings.groups if group.is_selected == 1] if experiment_settings is not None else []
+gids = _get_selected_cage_ids(experiment_settings)
 #气路之间也需要顺序run ufc run->ugc run->zos run
 wait_UFC_run_finish_event = threading.Semaphore(0)
 wait_UGC_run_finish_event = threading.Semaphore(0)
@@ -551,7 +569,7 @@ class read_queue_data_Thread(MyQThread):
                                 group for group in getattr(received_setting, "groups", [])
                                 if bool(getattr(group, "is_selected", False))
                             ]
-                            gids = [int(group.id) for group in enabled_groups]
+                            gids = _get_selected_cage_ids(received_setting)
                             if enabled_setting is not None:
                                 enabled_setting.groups = [
                                     group for group in enabled_setting.groups
@@ -658,8 +676,7 @@ def  all_modules_check_online_state():
     port = global_setting.get_setting("port")
     global gids,send_thread
     experiment_settings = global_setting.get_setting("experiment_setting", None)
-    gids = [group.id for group in experiment_settings.groups if
-            group.is_selected == 1] if experiment_settings is not None else []
+    gids = _get_selected_cage_ids(experiment_settings)
     mouse_cage_index =None
     for i in range(len(gids)+1):
         # 鼠笼内的模块 参考气路则不运行：
@@ -1370,6 +1387,19 @@ class Add_message_thread(MyQThread):
 
 
             send_messages = []
+            mouse_cage = None
+            if current_mouse_cage_index is not None:
+                if not gids or not (
+                    0 <= current_mouse_cage_index < len(gids)
+                ):
+                    logger.error(
+                        f"称重采集跳过无效笼子索引: index={current_mouse_cage_index}, gids={gids}"
+                    )
+                    self.mouse_cage_index = None
+                    global_setting.set_setting("cage_number_list_index", None)
+                    continue
+                # current_mouse_cage_index 是选中笼子列表下标，gids 才是实际笼号。
+                mouse_cage = int(gids[current_mouse_cage_index])
             # # 公共传感器数据的send_messages  现在只发传感器数值查询报文DEBUGGER
             # for data_type in Modbus_Slave_Type.Not_Each_Mouse_Cage_Message_Senior_Data.value:
             #     """debugger专用 需要哪个模块的数据监控就放进去"""
@@ -1405,9 +1435,13 @@ class Add_message_thread(MyQThread):
 
                         # logger.critical(f"add_message_thread_mouse_cage_index:{self.mouse_cage_index}")
                         if current_mouse_cage_index is not None:
-
-                            mouse_cage = gids[current_mouse_cage_index] if gids else 1
-                            message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
+                            message_temp['slave_id'] = copy.copy(
+                                format(
+                                    int(message_temp['slave_id'], 16) + 16 * mouse_cage,
+                                    '02X'
+                                )
+                            )
+                            message_temp['mouse_cage_number'] = mouse_cage
                             send_messages.append({'message': message_temp})
                         else:
                             # Reference branch only sends ENM to avoid misrouting other cage modules.
@@ -1421,10 +1455,6 @@ class Add_message_thread(MyQThread):
                 pass
             for msg in send_messages:
                 self.send_thread.add_message(message=msg, urgent=False)
-            if current_mouse_cage_index is not None:
-                mouse_cage = gids[current_mouse_cage_index] if gids else 1
-            else:
-                mouse_cage = None
             #     # 等待从线程处理完当前批次
             logo_text = f"{time_util.get_format_from_time(time.time())} | 鼠笼{mouse_cage if mouse_cage is not None else '参考气'}发送鼠笼内模块数据请求报文：一共{len(send_messages)}条报文！"
             logger.info(logo_text)
@@ -1452,17 +1482,17 @@ class Add_message_thread(MyQThread):
             #         pass
 
             global_setting.set_setting("cage_number_list_index", current_mouse_cage_index)
-            if self.mouse_cage_index is not None:
+            if not gids:
+                self.mouse_cage_index = None
+            elif self.mouse_cage_index is not None:
                 if self.mouse_cage_index == len(gids) - 1:
-                # 最后一个鼠笼 则下一个为参考气路
+                    # 最后一个鼠笼，则下一个为参考气路。
                     self.mouse_cage_index = None
                 else:
                     self.mouse_cage_index = self.mouse_cage_index + 1
-                pass
             else:
-            # 当前为参考气 则下一个为第一个鼠笼
+                # 当前为参考气，则下一个为第一个已选笼子。
                 self.mouse_cage_index = 0
-                pass
             batch_completed = batch_complete_event.acquire(
                 timeout=COLLECTION_BATCH_TIMEOUT_SECONDS
             )
@@ -2102,8 +2132,7 @@ def start():
     global_setting.set_setting("cage_number_list_index", None)
     # 通道
     experiment_settings = global_setting.get_setting("experiment_setting", None)
-    gids = [group.id for group in experiment_settings.groups if
-            group.is_selected == 1] if experiment_settings is not None else []
+    gids = _get_selected_cage_ids(experiment_settings)
     # UFC_UGC_ZOS
     global ufc_ugc_zos_thread, ufc_ugc_zos,store_thread,send_thread,add_message_thread, periodic_xlsx_export_thread, lighting_schedule_thread, _shutdown_lights_off_done, _shutdown_food_trough_current_off_done
     _shutdown_lights_off_done = False

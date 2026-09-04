@@ -114,7 +114,7 @@ class Others_Tables(Enum):
                 ("ENM_running_wheel_num", "当前计量周期内跑轮圈数测量值", " REAL "),
                 ("DWM_weight_num", "饮水重量测量值(g)", " REAL "),
                 ("EM_weight_num", "食物重量测量值(g)", " REAL "),
-                ("WM_weight_num", "称重重量测量值(g)", " REAL "),
+                ("WM_weight_num", "称重重量测量值(g)", " TEXT "),
                 ("epoch_start_time", "轮次开始时间", " TIMESTAMP "),
                 ("epoch_end_time", "轮次结束时间", " TIMESTAMP "),
                 ("remarks", "备注", " TEXT "),
@@ -531,7 +531,7 @@ class Modbus_Slave_Tables(Enum):
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-                ("weight_num", "重量测量值(g)", " REAL "),
+                ("weight_num", "重量测量值(g)", " TEXT "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
@@ -1177,9 +1177,11 @@ class  Modbus_Slave_Send_Messages_Senior_Data(Enum):
                              slave_desc=Modbus_Slave_Ids.WM.value['description'], function_code=4,
                              function_desc="读传感器测量值", message={
                         'port': None,
-                        'data': number_util.set_int_to_4_bytes_list('04010002'),
+                        # 长称重读取：0401003C -> 返回0x78字节，即30个4字节重量值。
+                        'data': number_util.set_int_to_4_bytes_list('0401003C'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.WM.value['address']) ,
+                            # 长称重报文使用设备实际响应的0x12系列地址。
+                            int(Modbus_Slave_Ids.DWM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{4}", 16), '02X'),
                     }),
