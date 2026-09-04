@@ -521,21 +521,21 @@ def test_integrated_monitor():
         logger.warning("Environment-only mode: p_response_comm is disabled")
 
     # 创建工作进程的日志配置 调试专用 记得注释
-    p_monitor_data_config = monitor.create_process_log_config(
-        "p_monitor_data",
-        log_dir=resolve_log_path("processes", "p_monitor_data"),
-        log_level="DEBUG",
-        custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_monitor_data |{process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message} </level> ",
-        enable_console=worker_console_logging
-    )
-    monitor.start_worker(
-        target_func=main_monitor_data.main,
-        restart_target_func=main_monitor_data.restart,
-        args=(q,send_message_q),
-        name="p_monitor_data",
-        auto_restart=True,
-        log_config=p_monitor_data_config
-    )
+    # p_monitor_data_config = monitor.create_process_log_config(
+    #     "p_monitor_data",
+    #     log_dir=resolve_log_path("processes", "p_monitor_data"),
+    #     log_level="DEBUG",
+    #     custom_format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level} | p_monitor_data |{process.name} | {thread.name} |  {name} :  {module}:{function}:{line} | {message} </level> ",
+    #     enable_console=worker_console_logging
+    # )
+    # monitor.start_worker(
+    #     target_func=main_monitor_data.main,
+    #     restart_target_func=main_monitor_data.restart,
+    #     args=(q,send_message_q),
+    #     name="p_monitor_data",
+    #     auto_restart=True,
+    #     log_config=p_monitor_data_config
+    # )
     p_deep_camera_config = monitor.create_process_log_config(
         "p_deep_camera",
         log_dir=resolve_log_path("processes", "p_deep_camera"),
