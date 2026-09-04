@@ -521,6 +521,18 @@ class Tab_7(ThemedWindow):
             data_list=[hex_str[2:] for hex_str in data_lists["0"]['value']]
         elif "off" in btn_object_name.lower():
             data_list = [hex_str[2:] for hex_str in data_lists["1"]['value']]
+
+        # 二号笼子的食槽门开关电平与其他笼子相反，只交换食槽门控制字节。
+        if (
+            mouse_cage_number == 2
+            and function_code == 5
+            and len(data_list) >= 3
+            and [byte.upper() for byte in data_list[:2]] == ['00', '70']
+        ):
+            if data_list[2].upper() == '00':
+                data_list[2] = 'FF'
+            elif data_list[2].upper() == 'FF':
+                data_list[2] = '00'
         self.send_message['data'] = data_list
         if mouse_cage_number ==0:
             self.send_message['slave_id'] = format(address, '02X')

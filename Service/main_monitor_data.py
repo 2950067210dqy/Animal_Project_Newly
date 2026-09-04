@@ -344,8 +344,8 @@ _epoch_carry_forward_desc_to_column = {
     "噪声测量值(dB)": "ENM_noise_num",
     "大气压测量值(KPa)": "ENM_barometer_num",
     "当前计量周期内跑轮圈数测量值": "ENM_running_wheel_num",
-    "饮水重量测量值(g)": "DWM_weight_num",
-    "食物重量测量值(g)": "EM_weight_num",
+    "食物重量测量值(g)": "DWM_weight_num",
+    "饮水重量测量值(g)": "EM_weight_num",
     "称重重量测量值(g)": "WM_weight_num",
 }
 
@@ -1922,10 +1922,10 @@ def barrier_action():
                         'value': results.get(f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num')  if results.get(
                         f'ENM_monitor_data_cage_{mouse_cage_number}__running_wheel_num') is not None else None})
     store_Datas.append(
-        {'desc': '饮水重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
+        {'desc': '食物重量测量值(g)', 'value': results.get(f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
                         f'DWM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None})
     store_Datas.append(
-        {'desc': '食物重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') if results.get(
+        {'desc': '饮水重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') if results.get(
                         f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
     store_Datas.append(
         {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
