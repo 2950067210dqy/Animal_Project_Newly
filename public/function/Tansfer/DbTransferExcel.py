@@ -11,7 +11,6 @@ from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Ids, Modbus_Slave_Type
-from public.function.weight.weight_series_formatter import format_weight_series_for_storage
 from public.util.time_util import time_util
 
 
@@ -165,10 +164,6 @@ class DbTransferExcel():
 
         df = df.copy()
         export_col_mapping = dict(col_mapping)
-        if "WM_weight_num" in df.columns:
-            df["WM_weight_num"] = df["WM_weight_num"].map(
-                format_weight_series_for_storage
-            )
         if "UGC_flow_num_1" in df.columns:
             df["UGC_flow_num_1"] = df["UGC_flow_num_1"].map(
                 self._normalize_sensor_status_code

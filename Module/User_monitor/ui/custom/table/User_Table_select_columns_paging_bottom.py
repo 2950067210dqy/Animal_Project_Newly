@@ -26,7 +26,6 @@ from public.function.weight.running_wheel import (
     RUNNING_WHEEL_COLUMN_KEYS,
     format_running_wheel_distance,
 )
-from public.function.weight.weight_series_formatter import format_weight_series
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -280,8 +279,6 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                     title = self.all_columns[col_idx]
                     if col_key in RUNNING_WHEEL_COLUMN_KEYS:
                         final_val = format_running_wheel_distance(col_val)
-                    elif col_key == "WM_weight_num":
-                        final_val = format_weight_series(col_val)
                     elif col_key == "UGC_flow_num_1":
                         final_val = _format_sensor_status_code(col_val)
                     elif col_key in {"UGC_CO2_num", "UGC_air_pressure"}:
