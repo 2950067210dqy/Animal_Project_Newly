@@ -1550,12 +1550,15 @@ class Modbus_Response_WM(Modbus_Response_Parents):
         try:
             self.parser_variable_byte_response()
             data = self.response_struct['data']
-            if len(data) == 0 or len(data) % 4 != 0:
-                raise ValueError(f"重量数据长度必须是4的整数倍，当前为{len(data)}")
+            expected_byte_count = 0x78
+            if len(data) != expected_byte_count:
+                raise ValueError(
+                    f"称重响应必须包含{expected_byte_count}字节（30个数据），当前为{len(data)}"
+                )
 
             values = [
                 self.parse_signed_32bit_value(data[index:index + 4], scale=100)
-                for index in range(0, len(data), 4)
+                for index in range(0, expected_byte_count, 4)
             ]
             return_datas.append({
                 "desc": "重量测量值(g)",

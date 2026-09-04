@@ -724,7 +724,7 @@ class Modbus_Slave_Ids(Enum):
         'table':Modbus_Slave_Tables.WM_monitor_data.value
         # 每个鼠笼都有该模块，
         # 地址还要加上当前鼠笼号*16
-        # 例如鼠笼1的鼠笼环境监控模块地址就是0x11
+        # 例如鼠笼1的称重模块地址就是0x14
     }
 
 class Modbus_Slave_Send_Messages_Module_Info(Enum):
