@@ -81,6 +81,8 @@ class Modbus_Response_Parser():
         """
         response_parser = None
         slave_id_int = int(self.slave_id, 16)
+        function_code_int = int(self.function_code, 16) if isinstance(self.function_code, str) else int(self.function_code)
+        response_byte_count = self.response[2] if len(self.response) > 2 else None
         # print(f"slave_id_int:{slave_id_int}")
         if slave_id_int == Modbus_Slave_Ids.ENM.value['int']:
             response_parser = Modbus_Response_Diffent_Type_Each_Mouse_Cage(
@@ -88,6 +90,18 @@ class Modbus_Response_Parser():
                 origin_slave_id=self.slave_id,
                 mouse_cage_number=0,
                 slave_id=f"{slave_id_int:02X}",
+                response=self.response,
+                response_hex=self.response_hex,
+                function_code=self.function_code,
+            )
+        elif slave_id_int > 16 and function_code_int == 4 and response_byte_count == 0x78:
+            # 0x12 系列地址同时可能对应短数据模块；0x78 字节响应明确表示30点称重数据。
+            mouse_cage_number = slave_id_int // 16
+            response_parser = Modbus_Response_Diffent_Type_Each_Mouse_Cage(
+                name=Modbus_Slave_Ids.WM.value['name'],
+                origin_slave_id=self.slave_id,
+                mouse_cage_number=mouse_cage_number,
+                slave_id=f"{(slave_id_int % 16):02X}",
                 response=self.response,
                 response_hex=self.response_hex,
                 function_code=self.function_code,

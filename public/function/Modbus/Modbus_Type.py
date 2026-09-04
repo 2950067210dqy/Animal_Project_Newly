@@ -1178,8 +1178,9 @@ class  Modbus_Slave_Send_Messages_Senior_Data(Enum):
                              function_desc="读传感器测量值", message={
                         'port': None,
                         'data': number_util.set_int_to_4_bytes_list('0401003C'),
+                        # 长数据称重读取实际使用每个笼子的 0x12 系列地址。
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.WM.value['address']) ,
+                            int(Modbus_Slave_Ids.DWM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{4}", 16), '02X'),
                     }),
