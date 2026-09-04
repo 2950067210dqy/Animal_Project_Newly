@@ -16,8 +16,15 @@ from Module.new_monitor_data.ui.custom.table.Virtualized_table import (
     prepare_co2_display_result,
 )
 from public.config.Data_Column import Data_column_list
+from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
 from public.entity.MyQThread import MyQThread
+from public.function.weight.weight_postprocessor import (
+    EPOCH_WEIGHT_COLUMN_KEY,
+    fit_epoch_weight_rows,
+    load_weight_postprocess_config,
+    weight_row_key,
+)
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -39,6 +46,47 @@ class DataFetcher(MyQThread):
 
         # 数据库操作类
         self.handle: Monitor_Datas_Handle = None
+        self.weight_config = load_weight_postprocess_config()
+
+    @staticmethod
+    def _get_initial_weights():
+        """读取实验设置中按笼号保存的人工初始体重。"""
+        experiment_setting = global_setting.get_setting("experiment_setting", None)
+        configured = dict(
+            getattr(experiment_setting, "pre_experiment_weights", {}) or {}
+        )
+        for group in getattr(experiment_setting, "groups", []) or []:
+            group_id = getattr(group, "id", None)
+            group_name = str(getattr(group, "name", "") or "").strip()
+            weight = configured.get(str(group_id), configured.get(group_id))
+            if weight is not None and group_name:
+                configured[group_name] = weight
+        return configured
+
+    def _apply_weight_display(self, datas):
+        """用全历史拟合结果替换当前页称重列，数据库原始值不变。"""
+        if not self.weight_config.display_fitted_weight:
+            return
+        if EPOCH_WEIGHT_COLUMN_KEY not in datas.get("columns", []):
+            return
+
+        history_rows = self.handle.query_epoch_weight_rows(self.gid)
+        if not history_rows:
+            return
+
+        fitted_by_key = fit_epoch_weight_rows(
+            history_rows,
+            initial_weights=self._get_initial_weights(),
+            config=self.weight_config,
+            fallback_cage=self.gid if self.gid != -1 else None,
+        )
+        for row in datas.get("rows", []):
+            key = weight_row_key(
+                row,
+                fallback_cage=self.gid if self.gid != -1 else None,
+            )
+            if key in fitted_by_key:
+                row[EPOCH_WEIGHT_COLUMN_KEY] = fitted_by_key[key]
 
     @property
     def request_id(self):
@@ -99,6 +147,8 @@ class DataFetcher(MyQThread):
             return
         if datas is None:
             datas = {}
+
+        self._apply_weight_display(datas)
 
         rows = datas.get("rows", [])
         signature = (

@@ -142,6 +142,9 @@ class Monitor_Datas_Handle():
                 column_name = value.get("column_name")
                 if column_name in available:
                     requested.append(column_name)
+                elif column_name == "body_weight" and "WM_weight_num" in available:
+                    # 体重是由 Epoch 中的 WM 字段展示的计算项。
+                    requested.append("WM_weight_num")
 
         # 旧界面的部分选择项是计算项，无法直接映射到 Epoch 字段。
         # 此时保持原有的全列行为，避免改变业务显示结果。
@@ -1007,6 +1010,43 @@ class Monitor_Datas_Handle():
         return result
 
         pass
+    def query_epoch_weight_rows(self, gid: int = 0) -> list[dict]:
+        """读取称重拟合所需的当前实验全部历史记录。"""
+        table_name = "Epoch_data_all" if gid == -1 else f"Epoch_data_cage_{gid}"
+        if not self.sqlite_manager.is_exist_table(table_name):
+            return []
+
+        available = [
+            row[1] for row in self.sqlite_manager.get_table_info(table_name)
+        ]
+        if "WM_weight_num" not in available:
+            return []
+
+        projection = [
+            column
+            for column in ("id", "mouse_cage_number", "WM_weight_num", "time")
+            if column in available
+        ]
+        first_page = self.sqlite_manager.query_Epoch_datas(
+            table_name,
+            page=1,
+            page_size=1,
+            order_asc=True,
+            columns=projection,
+        )
+        total_items = int(first_page.get("total_items", 0) or 0)
+        if total_items <= 1:
+            return list(first_page.get("rows", []))
+
+        all_rows = self.sqlite_manager.query_Epoch_datas(
+            table_name,
+            page=1,
+            page_size=total_items,
+            order_asc=True,
+            columns=projection,
+        )
+        return list(all_rows.get("rows", []))
+
     def query_epoch_data_all_tables_expect_text_column(self,gid:int=0,
             page_size: int = 100)-> dict:
         """

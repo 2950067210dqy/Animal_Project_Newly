@@ -342,6 +342,8 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                 prev_record = processed_records[row_idx - 1]
                 col_keys = list(record.keys())[1:]  # 排除第一列（时间列）
                 for col_key in col_keys:
+                    if col_key == "WM_weight_num":
+                        continue
                     record[col_key] = prev_record[col_key]
 
             # 如果不是空行，处理单个None值
@@ -350,6 +352,12 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                 for col_key, col_val in record.items():
                     # 跳过时间列
                     if col_idx == 0:
+                        col_idx += 1
+                        continue
+
+                    # 称重拟合在后台基于全历史数据完成；不能再用本页的
+                    # None 补偿规则覆盖“基线尚未建立”的 None。
+                    if col_key == "WM_weight_num":
                         col_idx += 1
                         continue
 
