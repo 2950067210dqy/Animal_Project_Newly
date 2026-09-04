@@ -254,6 +254,10 @@ class Monitor_Datas_Handle():
                 gids=gids,
                 reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
             )
+            self._migrate_food_water_epoch_descriptions(
+                gids=gids,
+                reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+            )
             # 实例化每轮次数据表
             for data_type in Modbus_Slave_Type.Epochs.value:
                 # 添加cage_0 给参考气存储数据 这里的-1代表总轮次表，表名为Epoch_data_all 不带后面的cage_-1
@@ -456,6 +460,27 @@ class Monitor_Datas_Handle():
                     column_struct=column_struct,
                     description=description
                 )
+
+    def _migrate_food_water_epoch_descriptions(self, gids, reference_cage_number):
+        """更新已有轮次表的饮食、饮水字段说明。"""
+        for cage_number in [-1, reference_cage_number] + list(gids):
+            table_name = (
+                "Epoch_data_all"
+                if cage_number == -1
+                else f"Epoch_data_cage_{cage_number}"
+            )
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name="DWM_weight_num",
+                column_struct=" REAL ",
+                description="食物重量测量值(g)"
+            )
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name="EM_weight_num",
+                column_struct=" REAL ",
+                description="饮水重量测量值(g)"
+            )
 
     def _ensure_column_and_meta(self, table_name, column_name, column_struct, description):
         if not self.sqlite_manager.is_exist_table(table_name):
