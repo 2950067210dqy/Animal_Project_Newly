@@ -549,29 +549,22 @@ class communication(threading.Thread):
                                             """
                                             12 04 X
                                             读传感器测量值
-                                            普通短数据参数长度：5；长数据称重参数长度：0x78
+                                            参数长度：5
                                             """
-                                            if send_struct['data'] == [0x04, 0x01, 0x00, 0x3C]:
-                                                return_bytes = self.build_frame(
-                                                    slave_id=f"{slave_id_int:X}",
-                                                    function_code=f"{function_code_int:X}",
-                                                    return_bytes_nums='78',
-                                                    data_hex_list=["0x00", "0x00", "0x12", "0x34"] * 30,
-                                                    struct_type="B"
-                                                )
-                                            else:
-                                                return_bytes = self.build_frame(
-                                                    slave_id=f"{slave_id_int:X}",
-                                                    function_code=f"{function_code_int:X}",
-                                                    return_bytes_nums='4',
-                                                    data_hex_list=[
-                                                        "0x00",
-                                                        "0x00",
-                                                        "0x00",
-                                                        "0xAC",
-                                                    ],
-                                                    struct_type="B"
-                                                )
+                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
+                                                                            function_code=f"{function_code_int:X}",
+                                                                            return_bytes_nums='4',
+
+                                                                            data_hex_list=[
+
+                                                                                "0x00",
+                                                                                "0x00",
+                                                                                "0x00",
+                                                                                "0xAC",
+
+                                                                            ],
+                                                                            struct_type="B"
+                                                                            )
                                             pass
 
                                         case 17:
@@ -739,13 +732,20 @@ class communication(threading.Thread):
                                             """
                                             14 04 X
                                             读传感器测量值
-                                            参数长度：0x78（30个4字节重量值）
+                                            参数长度：13
                                             """
                                             return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
                                                                             function_code=f"{function_code_int:X}",
-                                                                            return_bytes_nums='78',
+                                                                            return_bytes_nums='4',
 
-                                                                            data_hex_list=["0x00", "0x00", "0x12", "0x34"] * 30,
+                                                                            data_hex_list=[
+
+                                                                                "0x00",
+                                                                                "0x00",
+                                                                                "0x00",
+                                                                                "0xCE",
+
+                                                                            ],
                                                                             struct_type="B"
                                                                             )
                                             pass

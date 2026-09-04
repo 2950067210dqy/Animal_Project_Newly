@@ -76,7 +76,7 @@ class Data_Column(Enum):
         "desc": "从开始实验到当前累积进食质量",
         "data_format": "origin_data",
         "note": "显示到0.001",
-        "module":Modbus_Slave_Ids.DWM,
+        "module":Modbus_Slave_Ids.EM,
         "table":"monitor_data",
         "columns": "weight_num"
     }
@@ -89,7 +89,7 @@ class Data_Column(Enum):
         "desc": "任意指定时间段的累计进食量",
         "data_format": "calculated_data",
         "note": "",
-        "module":Modbus_Slave_Ids.DWM
+        "module":Modbus_Slave_Ids.EM
     }
 
     Single_feed_duration = {
@@ -100,7 +100,7 @@ class Data_Column(Enum):
         "desc": "从进食开始到进食结束的时间（质量传感器从一个稳定状态到另一个稳定状态的时间）",
         "data_format": "origin_data",
         "note": "",
-        "module":Modbus_Slave_Ids.DWM
+        "module":Modbus_Slave_Ids.EM
     }
 
     Cumulative_feeding_time = {
@@ -111,7 +111,7 @@ class Data_Column(Enum):
         "desc": "进食时间的总累加",
         "data_format": "calculated_data",
         "note": "",
-        "module":Modbus_Slave_Ids.DWM
+        "module":Modbus_Slave_Ids.EM
     }
 
     Cumulative_drinking_amount = {
@@ -122,7 +122,7 @@ class Data_Column(Enum):
         "desc": "从开始实验到当前累积进水量",
         "data_format": "origin_data",
         "note": "显示到0.001",
-        "module":Modbus_Slave_Ids.EM
+        "module":Modbus_Slave_Ids.DWM
     }
 
     Segment_drinking_amount = {
@@ -133,7 +133,7 @@ class Data_Column(Enum):
         "desc": "分段时间内的饮水质量",
         "data_format": "calculated_data",
         "note": "",
-        "module":Modbus_Slave_Ids.EM
+        "module":Modbus_Slave_Ids.DWM
     }
 
     Single_drink_duration = {
@@ -144,7 +144,7 @@ class Data_Column(Enum):
         "desc": "从饮水开始到饮水结束的时间（质量传感器从一个稳定状态到另一个稳定状态的时间）",
         "data_format": "origin_data",
         "note": "",
-        "module":Modbus_Slave_Ids.EM
+        "module":Modbus_Slave_Ids.DWM
     }
 
     Cumulative_drinking_time = {
@@ -155,7 +155,7 @@ class Data_Column(Enum):
         "desc": "饮水时间的总累加",
         "data_format": "calculated_data",
         "note": "",
-        "module":Modbus_Slave_Ids.EM
+        "module":Modbus_Slave_Ids.DWM
     }
 
     Body_weight = {
@@ -604,7 +604,7 @@ class Data_Column(Enum):
         "desc": "小鼠处于进食器口位置，进食传感器不稳定后发生质量减少（判定为实际进食）",
         "data_format": "origin_data",
         "note": "",
-        "module":Modbus_Slave_Ids.DWM,
+        "module":Modbus_Slave_Ids.EM,
         "table":"monitor_data",
         "columns": "weight_num"
     }
@@ -617,7 +617,7 @@ class Data_Column(Enum):
         "desc": "小鼠处于进食器口位置，进食传感器不稳定但未发生质量减少（仅触碰无进食）",
         "data_format": "origin_data",
         "note": "",
-        "module":Modbus_Slave_Ids.DWM,
+        "module":Modbus_Slave_Ids.EM,
         "table":"monitor_data",
         "columns": "weight_num"
     }
@@ -630,7 +630,7 @@ class Data_Column(Enum):
         "desc": "小鼠处于饮水瓶口位置，饮水传感器不稳定后发生质量减少（判定为实际饮水）",
         "data_format": "origin_data",
         "note": "",
-        "module":Modbus_Slave_Ids.EM,
+        "module":Modbus_Slave_Ids.DWM,
         "table":"monitor_data",
         "columns": "weight_num"
     }
@@ -643,7 +643,7 @@ class Data_Column(Enum):
         "desc": "小鼠处于饮水瓶口位置，传感器不稳定但未发生质量减少（仅触碰未饮水）",
         "data_format": "origin_data",
         "note": "",
-        "module":Modbus_Slave_Ids.EM,
+        "module":Modbus_Slave_Ids.DWM,
         "table":"monitor_data",
         "columns": "weight_num"
     }
@@ -742,7 +742,7 @@ class Data_Column(Enum):
         "desc": "实验周期内或指定时间长度内进食的次数",
         "data_format": "calculated_data",
         "note": "",
-        "module":Modbus_Slave_Ids.DWM
+        "module":Modbus_Slave_Ids.EM
     }
 
 class Data_column_list(Enum):

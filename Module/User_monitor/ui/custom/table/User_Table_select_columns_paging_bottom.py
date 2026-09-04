@@ -1,6 +1,6 @@
 """
 用户监控数据分页视图。
-保留数据库原始值，使用虚拟化模型绘制表格。
+保留用户端的数据补偿规则，使用虚拟化模型绘制表格。
 """
 import sys
 
@@ -26,7 +26,6 @@ from public.function.weight.running_wheel import (
     RUNNING_WHEEL_COLUMN_KEYS,
     format_running_wheel_distance,
 )
-from public.function.weight.weight_series_formatter import format_weight_series
 from theme.ThemeQt6 import ThemedWindow
 
 
@@ -210,7 +209,7 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                 self.data_fetcher_thread.start()
 
     def update_page(self, result: dict):
-        """接收线程数据，保留原始空值并过滤掉不需要的旧列。"""
+        """接收线程数据，更新表格内容（修改：预处理None值，使其参与后续计算，并过滤掉指定列）"""
         if not result or result.get("_request_id", -1) < self._latest_request_id:
             return
         # 1. 提取结果中的列名与数据（兼容数据库返回格式）
@@ -240,7 +239,7 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
 
         self.all_columns = filtered_columns
 
-        # 2. 只复制并过滤列，不对原始数据做填充或平均。
+        # 2. 预处理数据：处理None值和空行，并过滤掉指定列
         processed_records = self._preprocess_data(page_records, safe_columns_to_remove)
 
         # 仅调整用户界面的展示列，不改变查询结果和原始记录。
@@ -280,8 +279,6 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
                     title = self.all_columns[col_idx]
                     if col_key in RUNNING_WHEEL_COLUMN_KEYS:
                         final_val = format_running_wheel_distance(col_val)
-                    elif col_key == "WM_weight_num":
-                        final_val = format_weight_series(col_val)
                     elif col_key == "UGC_flow_num_1":
                         final_val = _format_sensor_status_code(col_val)
                     elif col_key in {"UGC_CO2_num", "UGC_air_pressure"}:
@@ -318,19 +315,110 @@ class User_table_select_columns_paging_bottom(ThemedWindow):
         self.info_label.setText(f"数据加载失败：{error_message}")
 
     def _preprocess_data(self, page_records: list, columns_to_remove: list = None) -> list:
-        """复制记录并过滤列；不填充、不平均、不修改原始空值。"""
+        """预处理数据：处理None值和空行，并过滤掉指定列，返回处理后的数据列表"""
         if not page_records:
             return []
 
-        columns_to_remove = set(columns_to_remove or [])
-        return [
-            {
-                key: value
-                for index, (key, value) in enumerate(record.items())
-                if index not in columns_to_remove
-            }
-            for record in page_records
-        ]
+        if columns_to_remove is None:
+            columns_to_remove = []
+
+        # 创建处理后的数据副本，并过滤掉指定列
+        processed_records = []
+        for record in page_records:
+            # 过滤掉指定列
+            filtered_record = {}
+            for i, (key, value) in enumerate(record.items()):
+                if i not in columns_to_remove:
+                    filtered_record[key] = value
+            processed_records.append(filtered_record)
+
+        # 逐行处理
+        for row_idx, record in enumerate(processed_records):
+            # 检查当前行是否为空行（除时间列外的所有数据都为None或空）
+            is_empty_row = self._is_empty_row_in_data(record)
+
+            # 如果是空行，继承上一行的所有数据列值
+            if is_empty_row and row_idx > 0:
+                prev_record = processed_records[row_idx - 1]
+                col_keys = list(record.keys())[1:]  # 排除第一列（时间列）
+                for col_key in col_keys:
+                    record[col_key] = prev_record[col_key]
+
+            # 如果不是空行，处理单个None值
+            elif not is_empty_row:
+                col_idx = 0
+                for col_key, col_val in record.items():
+                    # 跳过时间列
+                    if col_idx == 0:
+                        col_idx += 1
+                        continue
+
+                    # 处理None值
+                    if col_val is None:
+                        # 安全检查：确保col_idx不超出范围
+                        if col_idx < len(self.all_columns):
+                            current_col_title = self.all_columns[col_idx]
+                        is_cage_column = "鼠笼号" in current_col_title
+
+                        # 检查该列是否已经出现过有效数据
+                        if self._has_valid_data_before(processed_records, row_idx, col_key):
+                            # 如果前面已经有有效数据，计算前三项的平均值
+                            avg_val = self._get_average_from_processed_data(
+                                processed_records, row_idx, col_key, is_cage_column
+                            )
+
+                            # 更新当前记录的值
+                            if avg_val is not None:
+                                record[col_key] = avg_val
+                        # 如果前面全是None，保持当前的None值不变
+
+                    col_idx += 1
+
+        return processed_records
+
+    def _has_valid_data_before(self, processed_records: list, current_row_idx: int, col_key: str) -> bool:
+        """检查指定列在当前行之前是否已经出现过有效数据"""
+        for i in range(current_row_idx):
+            val = processed_records[i].get(col_key)
+            if val is not None:
+                try:
+                    float(val)  # 尝试转换为数字
+                    return True  # 找到了有效数据
+                except (ValueError, TypeError):
+                    continue
+        return False  # 前面全是None或无效数据
+
+    def _is_empty_row_in_data(self, record: dict) -> bool:
+        """判断数据记录中当前行是否为空行（除时间列外的所有数据都为None或空）"""
+        data_values = list(record.values())[1:]  # 排除第一列（时间列）
+        for val in data_values:
+            if val is not None and str(val).strip() != "":
+                return False
+        return True
+
+    def _get_average_from_processed_data(self, processed_records: list, current_row_idx: int,
+                                         col_key: str, is_cage_column: bool = False):
+        """从已处理的数据中获取指定列前三项的平均值"""
+        # 收集前面行的有效数值（最多前三行）
+        valid_values = []
+        for i in range(max(0, current_row_idx - 3), current_row_idx):
+            val = processed_records[i].get(col_key)
+            if val is not None:
+                try:
+                    num_val = float(val)
+                    valid_values.append(num_val)
+                except (ValueError, TypeError):
+                    continue  # 跳过无法转换的值
+
+        # 如果没有有效值，返回None
+        if not valid_values:
+            return None
+
+        # 计算平均值
+        avg = sum(valid_values) / len(valid_values)
+
+        # 如果是鼠笼号列，返回整数；否则返回浮点数
+        return int(round(avg)) if is_cage_column else avg
 
     def _update_nav_buttons(self):
         """根据当前页更新按钮启用状态（核心联动逻辑）"""

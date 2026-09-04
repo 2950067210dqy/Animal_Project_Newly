@@ -112,9 +112,9 @@ class Others_Tables(Enum):
                 ("ENM_noise_num", "噪声测量值(dB)", " REAL "),
                 ("ENM_barometer_num", "大气压测量值(KPa)", " REAL "),
                 ("ENM_running_wheel_num", "当前计量周期内跑轮圈数测量值", " REAL "),
-                ("DWM_weight_num", "食物重量测量值(g)", " REAL "),
-                ("EM_weight_num", "饮水重量测量值(g)", " REAL "),
-                ("WM_weight_num", "称重重量测量值(g)", " TEXT "),
+                ("DWM_weight_num", "饮水重量测量值(g)", " REAL "),
+                ("EM_weight_num", "食物重量测量值(g)", " REAL "),
+                ("WM_weight_num", "称重重量测量值(g)", " REAL "),
                 ("epoch_start_time", "轮次开始时间", " TIMESTAMP "),
                 ("epoch_end_time", "轮次结束时间", " TIMESTAMP "),
                 ("remarks", "备注", " TEXT "),
@@ -531,7 +531,7 @@ class Modbus_Slave_Tables(Enum):
             'function_code': 4,
             'column': [
                 ("id", "序号", " INTEGER PRIMARY KEY AUTOINCREMENT "),
-                ("weight_num", "重量测量值(g)", " TEXT "),
+                ("weight_num", "重量测量值(g)", " REAL "),
                 ("remarks", "备注", " TEXT "),
                 ("time", "获取时间", " TIMESTAMP ")
             ]
@@ -724,7 +724,7 @@ class Modbus_Slave_Ids(Enum):
         'table':Modbus_Slave_Tables.WM_monitor_data.value
         # 每个鼠笼都有该模块，
         # 地址还要加上当前鼠笼号*16
-        # 例如鼠笼1的称重模块地址就是0x14
+        # 例如鼠笼1的鼠笼环境监控模块地址就是0x11
     }
 
 class Modbus_Slave_Send_Messages_Module_Info(Enum):
@@ -1177,10 +1177,9 @@ class  Modbus_Slave_Send_Messages_Senior_Data(Enum):
                              slave_desc=Modbus_Slave_Ids.WM.value['description'], function_code=4,
                              function_desc="读传感器测量值", message={
                         'port': None,
-                        'data': number_util.set_int_to_4_bytes_list('0401003C'),
-                        # 长数据称重读取实际使用每个笼子的 0x12 系列地址。
+                        'data': number_util.set_int_to_4_bytes_list('04010002'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.DWM.value['address']) ,
+                            int(Modbus_Slave_Ids.WM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{4}", 16), '02X'),
                     }),
