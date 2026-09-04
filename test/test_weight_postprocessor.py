@@ -24,114 +24,88 @@ def _weighing_cycle(baseline, weight, *, high_values=None):
 
 
 class WeightPostprocessorTest(unittest.TestCase):
-    def test_manual_weight_establishes_baseline_and_smooths_continuously(self):
+    def test_manual_weight_establishes_baseline_and_event_updates_after_window(self):
         values = _weighing_cycle(-10.0, 46.2)
 
-        fitted, confirmed_changes = fit_weight_series(values, initial_weight=47.0)
+        fitted, event_count = fit_weight_series(values, initial_weight=47.0)
 
-        self.assertEqual(0, confirmed_changes)
-        self.assertTrue(all(value is None for value in fitted[:14]))
-        self.assertLess(fitted[14], 47.0)
+        self.assertEqual(1, event_count)
+        self.assertEqual(47.0, fitted[0])
+        self.assertEqual(47.0, fitted[21])
+        self.assertAlmostEqual(46.2, fitted[22], delta=0.1)
         self.assertAlmostEqual(46.2, fitted[-1], delta=0.1)
 
     def test_negative_raw_readings_can_use_a_negative_empty_scale_baseline(self):
         values = _weighing_cycle(-20.0, 26.1)
 
-        fitted, confirmed_changes = fit_weight_series(values, initial_weight=26.0)
+        fitted, event_count = fit_weight_series(values, initial_weight=26.0)
 
-        self.assertEqual(0, confirmed_changes)
-        self.assertTrue(all(value is None for value in fitted[:14]))
-        self.assertAlmostEqual(26.1, fitted[-1], delta=0.1)
+        self.assertEqual(1, event_count)
+        self.assertAlmostEqual(26.1, fitted[-1], places=2)
 
     def test_event_filter_discards_a_single_high_outlier(self):
         high_values = [47.0, 46.9, 47.1, 47.0, 75.0, 46.9, 47.1, 47.0, 47.0, 46.9]
         values = _weighing_cycle(0.0, 47.0, high_values=high_values)
 
-        fitted, confirmed_changes = fit_weight_series(values, initial_weight=47.0)
+        fitted, event_count = fit_weight_series(values, initial_weight=47.0)
 
-        self.assertEqual(0, confirmed_changes)
+        self.assertEqual(1, event_count)
+        self.assertEqual(fitted[22], fitted[-1])
         self.assertAlmostEqual(47.0, fitted[-1], delta=0.1)
         self.assertNotIn(75.0, fitted)
 
-    def test_large_change_is_accepted_after_three_close_points(self):
+    def test_rejected_event_does_not_replace_last_confirmed_weight(self):
         first_event = _weighing_cycle(0.0, 47.0)
         second_event = [30.0, 29.9, 30.1] * 4 + [0.0, 0.1, -0.1] * 3
         values = first_event + [0.0] * 6 + second_event
 
-        fitted, confirmed_changes = fit_weight_series(values, initial_weight=47.0)
+        fitted, event_count = fit_weight_series(values, initial_weight=47.0)
 
-        self.assertEqual(1, confirmed_changes)
-        self.assertGreater(fitted[-1], 29.0)
-        self.assertLess(fitted[-1], 31.0)
+        self.assertEqual(1, event_count)
+        self.assertAlmostEqual(47.0, fitted[-1], delta=0.1)
 
-    def test_large_change_is_not_confirmed_when_points_are_outside_short_window(self):
+    def test_gradual_change_is_accepted_only_when_elapsed_time_allows_it(self):
         first_event = _weighing_cycle(0.0, 47.0)
-        second_event = [30.0, 29.9, 30.1]
+        second_event = [48.4, 48.5, 48.6] * 4 + [0.0, 0.1, -0.1] * 3
         values = first_event + [0.0] * 6 + second_event
         start_time = datetime(2026, 8, 28, 8, 0, 0)
-        tail_start = start_time + timedelta(seconds=len(first_event))
         timestamps = [
             start_time + timedelta(seconds=index)
             for index in range(len(first_event))
         ] + [
-            *[
-                tail_start + timedelta(seconds=index)
-                for index in range(6)
-            ],
-            tail_start,
-            tail_start + timedelta(minutes=11),
-            tail_start + timedelta(minutes=22),
+            start_time + timedelta(hours=24, seconds=index)
+            for index in range(6 + len(second_event))
         ]
 
-        fitted, confirmed_changes = fit_weight_series(
+        fitted_without_time, events_without_time = fit_weight_series(
+            values,
+            initial_weight=47.0,
+        )
+        fitted_with_time, events_with_time = fit_weight_series(
             values,
             timestamps=timestamps,
             initial_weight=47.0,
         )
 
-        self.assertEqual(0, confirmed_changes)
-        self.assertAlmostEqual(47.0, fitted[-1], delta=0.1)
+        self.assertEqual(1, events_without_time)
+        self.assertAlmostEqual(47.0, fitted_without_time[-1], delta=0.1)
+        self.assertEqual(2, events_with_time)
+        self.assertAlmostEqual(48.5, fitted_with_time[-1], delta=0.1)
 
-    def test_missing_sample_breaks_large_change_confirmation(self):
-        first_event = _weighing_cycle(0.0, 47.0)
-        values = first_event + [0.0] * 6 + [30.0, 29.9, None, 30.1]
-
-        fitted, confirmed_changes = fit_weight_series(
-            values,
-            initial_weight=47.0,
-        )
-
-        self.assertEqual(0, confirmed_changes)
-        self.assertAlmostEqual(47.0, fitted[-1], delta=0.1)
-
-    def test_manual_weight_is_none_when_baseline_is_not_available(self):
+    def test_manual_weight_is_held_when_no_baseline_or_event_is_available(self):
         fitted, event_count = fit_weight_series(
             [None, 0.0, 0.2, None] * 5,
             initial_weight=23.5,
         )
 
         self.assertEqual(0, event_count)
-        self.assertEqual([None] * 20, fitted)
+        self.assertEqual([23.5] * 20, fitted)
 
-    def test_missing_manual_weight_automatically_finds_baseline(self):
-        fitted, event_count = fit_weight_series(_weighing_cycle(-12.0, 25.0))
-
-        self.assertEqual(0, event_count)
-        self.assertTrue(all(value is None for value in fitted[:14]))
-        self.assertAlmostEqual(25.0, fitted[14], delta=0.1)
-        self.assertAlmostEqual(25.0, fitted[-1], delta=0.1)
-
-    def test_automatic_baseline_does_not_require_empty_scale_before_mouse(self):
-        values = [
-            20.0, 20.1, 19.9, 20.0, 20.1, 19.9, 20.0,
-            -10.0, -10.1, -9.9, -10.0, -10.1, -9.9, -10.0, -10.1,
-        ]
-
-        fitted, event_count = fit_weight_series(values)
+    def test_missing_manual_weight_has_no_fitted_value(self):
+        fitted, event_count = fit_weight_series(_weighing_cycle(0.0, 25.0))
 
         self.assertEqual(0, event_count)
-        self.assertTrue(all(value is None for value in fitted[:14]))
-        self.assertAlmostEqual(30.0, fitted[14], delta=0.1)
+        self.assertTrue(all(value is None for value in fitted))
 
     def test_workbook_keeps_raw_file_and_uses_initial_weight_for_every_cage(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -180,11 +154,8 @@ class WeightPostprocessorTest(unittest.TestCase):
 
             self.assertIn(75.0, raw_values)
             self.assertNotIn(75.0, fitted_values)
-            self.assertTrue(all(
-                value is None or 45.0 <= value <= 48.0
-                for value in fitted_values[:cage_one_count]
-            ))
-            self.assertEqual([None] * 4, fitted_values[cage_one_count:])
+            self.assertTrue(all(45.0 <= value <= 48.0 for value in fitted_values[:cage_one_count]))
+            self.assertEqual([33.0] * 4, fitted_values[cage_one_count:])
             self.assertEqual("原备注1", fitted_sheet.cell(2, 4).value)
             self.assertEqual(75.0, fitted_workbook["称重模块监控数据_通道1"].cell(2, 2).value)
 
@@ -215,7 +186,7 @@ class WeightPostprocessorTest(unittest.TestCase):
                 fitted_sheet.cell(row, 3).value: fitted_sheet.cell(row, 2).value
                 for row in range(2, fitted_sheet.max_row + 1)
             }
-            self.assertIsNone(fitted_by_time[base_time])
+            self.assertEqual(18.0, fitted_by_time[base_time])
             self.assertAlmostEqual(
                 18.0,
                 fitted_by_time[base_time + timedelta(seconds=len(chronological) - 1)],

@@ -4,7 +4,6 @@ import configparser
 import math
 import os
 import tempfile
-from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -22,7 +21,6 @@ except ImportError:  # Allows the postprocessor to run in lightweight export too
 CAGE_HEADER = "鼠笼号"
 WEIGHT_HEADER = "称重重量测量值(g)"
 TIME_HEADER = "获取时间"
-EPOCH_WEIGHT_COLUMN_KEY = "WM_weight_num"
 DEFAULT_CONFIG_PATH = (
     Path(__file__).resolve().parents[3]
     / "config"
@@ -32,8 +30,7 @@ DEFAULT_CONFIG_PATH = (
 
 @dataclass(frozen=True)
 class WeightPostprocessConfig:
-    # 监控数据界面是否用拟合值替换称重列；原始数据库数据不会被修改。
-    display_fitted_weight: bool = True
+    enabled: bool = True
     event_window_points: int = 15
     minimum_group_points: int = 5
     minimum_body_weight_g: float = 5.0
@@ -42,12 +39,11 @@ class WeightPostprocessConfig:
     initial_weight_match_min_g: float = 2.0
     event_outlier_ratio: float = 0.05
     event_outlier_min_g: float = 1.0
-    smoothing_points: int = 5
-    ema_alpha: float = 0.35
-    large_change_ratio: float = 0.20
-    large_change_min_g: float = 5.0
-    large_change_confirm_points: int = 3
-    large_change_window_minutes: float = 10.0
+    first_event_match_ratio: float = 0.05
+    first_event_match_min_g: float = 1.0
+    weight_change_period_hours: float = 24.0
+    weight_change_ratio_per_period: float = 0.05
+    weight_change_min_g: float = 1.0
     decimal_places: int = 3
     output_suffix: str = "_称重拟合"
 
@@ -71,19 +67,21 @@ class WeightPostprocessResult:
         return (
             f"称重拟合完成：{self.processed_sheets} 个工作表，"
             f"{self.processed_cages} 个笼子"
-            + (
-                f"，{self.skipped_cages} 个笼子尚未建立空秤基线"
-                if self.skipped_cages
-                else ""
-            )
+            + (f"，{self.skipped_cages} 个笼子保留原值" if self.skipped_cages else "")
         )
+
+
+@dataclass(frozen=True)
+class _WeightEvent:
+    position: int
+    weight: float
+    timestamp: Optional[float]
 
 
 @dataclass(frozen=True)
 class _BaselineMatch:
     baseline: float
-    baseline_ready_index: int
-    initial_weight: float
+    first_high_index: int
 
 
 def load_weight_postprocess_config(
@@ -101,7 +99,7 @@ def load_weight_postprocess_config(
     get_bool = lambda key, fallback: parser.getboolean(section, key, fallback=fallback)
 
     config = WeightPostprocessConfig(
-        display_fitted_weight=get_bool("display_fitted_weight", True),
+        enabled=get_bool("enabled", True),
         event_window_points=max(2, get_int("event_window_points", 15)),
         minimum_group_points=max(1, get_int("minimum_group_points", 5)),
         minimum_body_weight_g=max(0.0, get_float("minimum_body_weight_g", 5.0)),
@@ -114,16 +112,19 @@ def load_weight_postprocess_config(
         ),
         event_outlier_ratio=max(0.0, get_float("event_outlier_ratio", 0.05)),
         event_outlier_min_g=max(0.0, get_float("event_outlier_min_g", 1.0)),
-        smoothing_points=max(1, get_int("smoothing_points", 5)),
-        ema_alpha=min(1.0, max(0.0, get_float("ema_alpha", 0.35))),
-        large_change_ratio=max(0.0, get_float("large_change_ratio", 0.20)),
-        large_change_min_g=max(0.0, get_float("large_change_min_g", 5.0)),
-        large_change_confirm_points=max(
-            2, get_int("large_change_confirm_points", 3)
+        first_event_match_ratio=max(
+            0.0, get_float("first_event_match_ratio", 0.05)
         ),
-        large_change_window_minutes=max(
-            0.1, get_float("large_change_window_minutes", 10.0)
+        first_event_match_min_g=max(
+            0.0, get_float("first_event_match_min_g", 1.0)
         ),
+        weight_change_period_hours=max(
+            0.1, get_float("weight_change_period_hours", 24.0)
+        ),
+        weight_change_ratio_per_period=max(
+            0.0, get_float("weight_change_ratio_per_period", 0.05)
+        ),
+        weight_change_min_g=max(0.0, get_float("weight_change_min_g", 1.0)),
         decimal_places=max(0, get_int("decimal_places", 3)),
         output_suffix=get("output_suffix", "_称重拟合").strip() or "_称重拟合",
     )
@@ -173,6 +174,24 @@ def _tolerance(reference: float, ratio: float, minimum_g: float) -> float:
     return max(minimum_g, abs(reference) * ratio)
 
 
+def _time_adjusted_tolerance(
+        reference_weight: float,
+        previous_timestamp: Optional[float],
+        current_timestamp: Optional[float],
+        config: WeightPostprocessConfig,
+) -> float:
+    """Allow gradual biological change only when elapsed time supports it."""
+    if previous_timestamp is None or current_timestamp is None:
+        return config.weight_change_min_g
+    elapsed_seconds = max(0.0, current_timestamp - previous_timestamp)
+    elapsed_periods = elapsed_seconds / (config.weight_change_period_hours * 3600.0)
+    return _tolerance(
+        reference_weight,
+        config.weight_change_ratio_per_period * elapsed_periods,
+        config.weight_change_min_g,
+    )
+
+
 def _robust_group_level(
         group: Sequence[tuple[int, float]],
         config: WeightPostprocessConfig,
@@ -192,23 +211,15 @@ def _robust_group_level(
 
 def _find_initial_baseline(
         values: Sequence[Optional[float]],
-        initial_weight: Optional[float],
+        initial_weight: float,
         config: WeightPostprocessConfig,
 ) -> Optional[_BaselineMatch]:
-    """Find a fixed baseline from a rolling valid-point window.
-
-    With a manual weight, the candidate must agree with that reference. Without
-    one, the most stable chronological low/high split is selected automatically.
-    """
+    """Use the first valid 15-point low/high split that agrees with manual weight."""
     valid_buffer: list[tuple[int, float]] = []
-    initial_tolerance = (
-        _tolerance(
-            initial_weight,
-            config.initial_weight_match_ratio,
-            config.initial_weight_match_min_g,
-        )
-        if initial_weight is not None
-        else None
+    initial_tolerance = _tolerance(
+        initial_weight,
+        config.initial_weight_match_ratio,
+        config.initial_weight_match_min_g,
     )
     for index, value in enumerate(values):
         if value is None:
@@ -220,8 +231,7 @@ def _find_initial_baseline(
             continue
 
         ranked = sorted(valid_buffer, key=lambda item: item[1])
-        # score, baseline, candidate body weight
-        candidates: list[tuple[float, float, float]] = []
+        candidates: list[tuple[float, float, int]] = []
         minimum_split = config.minimum_group_points
         maximum_split = config.event_window_points - config.minimum_group_points
         for split in range(minimum_split, maximum_split + 1):
@@ -238,34 +248,133 @@ def _find_initial_baseline(
                     <= config.maximum_body_weight_g
             ):
                 continue
-            low_spread = median(abs(value - low_level) for _, value in low_group)
-            high_spread = median(abs(value - high_level) for _, value in high_group)
-            stability_score = float(low_spread + high_spread)
-            selection_score = (
-                abs(candidate_weight - initial_weight)
-                if initial_weight is not None
-                else stability_score
-            )
+            low_position = float(median(position for position, _ in low_group))
+            high_position = float(median(position for position, _ in high_group))
+            if high_position <= low_position:
+                continue
             candidates.append(
                 (
-                    selection_score,
+                    abs(candidate_weight - initial_weight),
                     low_level,
-                    candidate_weight,
+                    min(position for position, _ in high_group),
                 )
             )
 
         if candidates:
-            difference, baseline, candidate_weight = min(
-                candidates,
-                key=lambda item: item[0],
-            )
-            if initial_tolerance is None or difference <= initial_tolerance:
-                return _BaselineMatch(
-                    baseline=baseline,
-                    baseline_ready_index=index,
-                    initial_weight=candidate_weight,
-                )
+            difference, baseline, first_high_index = min(candidates, key=lambda item: item[0])
+            if difference <= initial_tolerance:
+                return _BaselineMatch(baseline, first_high_index)
     return None
+
+
+def _event_window(
+        values: Sequence[Optional[float]],
+        start: int,
+        baseline: float,
+        config: WeightPostprocessConfig,
+) -> tuple[list[tuple[int, float]], int]:
+    """Read one event from valid samples; gaps do not count as data points."""
+    window: list[tuple[int, float]] = []
+    cursor = start
+    while cursor < len(values) and len(window) < config.event_window_points:
+        value = values[cursor]
+        if value is not None:
+            window.append((cursor, value - baseline))
+        cursor += 1
+    return window, cursor
+
+
+def _event_weight(
+        window: Sequence[tuple[int, float]],
+        config: WeightPostprocessConfig,
+) -> Optional[float]:
+    high_values = [
+        value
+        for _, value in window
+        if config.minimum_body_weight_g <= value <= config.maximum_body_weight_g
+    ]
+    if len(high_values) < config.minimum_group_points:
+        return None
+
+    center = float(median(high_values))
+    point_tolerance = _tolerance(
+        center,
+        config.event_outlier_ratio,
+        config.event_outlier_min_g,
+    )
+    inliers = [value for value in high_values if abs(value - center) <= point_tolerance]
+    if len(inliers) < config.minimum_group_points:
+        return None
+    return float(median(inliers))
+
+
+def _confirm_weight_events(
+        values: Sequence[Optional[float]],
+        initial_weight: float,
+        baseline_match: _BaselineMatch,
+        config: WeightPostprocessConfig,
+        timestamps: Optional[Sequence[float]] = None,
+) -> list[_WeightEvent]:
+    events: list[_WeightEvent] = []
+    last_weight = initial_weight
+    last_event_timestamp: Optional[float] = None
+    index = baseline_match.first_high_index
+    waiting_for_empty_return = False
+
+    while index < len(values):
+        value = values[index]
+        if value is None:
+            index += 1
+            continue
+        candidate_weight = value - baseline_match.baseline
+
+        if waiting_for_empty_return:
+            if candidate_weight < config.minimum_body_weight_g:
+                waiting_for_empty_return = False
+            index += 1
+            continue
+        if not (
+                config.minimum_body_weight_g
+                <= candidate_weight
+                <= config.maximum_body_weight_g
+        ):
+            index += 1
+            continue
+
+        window, cursor = _event_window(values, index, baseline_match.baseline, config)
+        event_weight = _event_weight(window, config)
+        if event_weight is not None:
+            event_position = window[-1][0]
+            event_timestamp = (
+                timestamps[event_position]
+                if timestamps is not None and event_position < len(timestamps)
+                else None
+            )
+            if not events:
+                accepted = abs(event_weight - initial_weight) <= _tolerance(
+                    initial_weight,
+                    config.first_event_match_ratio,
+                    config.first_event_match_min_g,
+                )
+            else:
+                accepted = abs(event_weight - last_weight) <= _time_adjusted_tolerance(
+                    last_weight,
+                    last_event_timestamp,
+                    event_timestamp,
+                    config,
+                )
+            if accepted:
+                events.append(_WeightEvent(event_position, event_weight, event_timestamp))
+                last_weight = event_weight
+                last_event_timestamp = event_timestamp
+
+        # One high segment may create only one fitted event. A return to the
+        # empty-scale range is required before another segment can be accepted.
+        waiting_for_empty_return = not any(
+            candidate < config.minimum_body_weight_g for _, candidate in window
+        )
+        index = max(cursor, index + 1)
+    return events
 
 
 def fit_weight_series(
@@ -274,11 +383,7 @@ def fit_weight_series(
         timestamps: Optional[Iterable] = None,
         initial_weight: Optional[float] = None,
 ) -> tuple[list[Optional[float]], int]:
-    """Fit one cage with a fixed baseline and continuous robust smoothing.
-
-    The returned count is the number of confirmed large changes. It is not a
-    requirement for using the continuously smoothed values.
-    """
+    """Fit one cage with a fixed empty-scale baseline and event-level updates."""
     config = config or WeightPostprocessConfig()
     numeric_values = [_to_finite_float(value) for value in values]
     numeric_timestamps: Optional[list[float]] = None
@@ -289,108 +394,50 @@ def fit_weight_series(
         ):
             numeric_timestamps = [float(value) for value in timestamp_values]
     initial_weight_value = _to_finite_float(initial_weight)
-    if initial_weight_value is not None and not (
+    if initial_weight_value is None or not (
             config.minimum_body_weight_g
             <= initial_weight_value
             <= config.maximum_body_weight_g
     ):
-        initial_weight_value = None
-    baseline_match = _find_initial_baseline(numeric_values, initial_weight_value, config)
-    if baseline_match is None:
-        # 基线未建立前不输出人工体重或原始值，避免把尚未校正的数据伪装成体重。
         return [None] * len(numeric_values), 0
 
-    fitted: list[Optional[float]] = [None for _ in numeric_values]
-    smoothed_weight = baseline_match.initial_weight
-    reference_weight = baseline_match.initial_weight
-    recent_candidates = deque(maxlen=max(1, config.smoothing_points))
-    pending: list[tuple[int, float]] = []
-    confirmed_changes = 0
-    confirm_window_seconds = config.large_change_window_minutes * 60.0
+    baseline_match = _find_initial_baseline(numeric_values, initial_weight_value, config)
+    if baseline_match is None:
+        fitted_initial = round(initial_weight_value, config.decimal_places)
+        return [fitted_initial] * len(numeric_values), 0
 
-    for index, raw_value in enumerate(numeric_values):
-        if index < baseline_match.baseline_ready_index:
-            fitted[index] = None
-            continue
+    events = _confirm_weight_events(
+        numeric_values,
+        initial_weight_value,
+        baseline_match,
+        config,
+        numeric_timestamps,
+    )
+    fitted: list[Optional[float]] = []
+    event_index = 0
+    active_weight = initial_weight_value
+    for index in range(len(numeric_values)):
+        while event_index < len(events) and events[event_index].position <= index:
+            active_weight = events[event_index].weight
+            event_index += 1
+        fitted.append(round(active_weight, config.decimal_places))
+    return fitted, len(events)
 
-        # A missing sample is an interruption, not a zero-weight measurement.
-        # Do not allow samples on the two sides of a gap to confirm a change.
-        if raw_value is None:
-            pending.clear()
-            fitted[index] = round(smoothed_weight, config.decimal_places)
-            continue
 
-        candidate_weight = raw_value - baseline_match.baseline
-        if not (
-                config.minimum_body_weight_g
-                <= candidate_weight
-                <= config.maximum_body_weight_g
-        ):
-            pending.clear()
-            fitted[index] = round(smoothed_weight, config.decimal_places)
-            continue
+def _fill_existing_numeric(values: Sequence) -> list[Optional[float]]:
+    numeric = [_to_finite_float(value) for value in values]
+    valid_indexes = [index for index, value in enumerate(numeric) if value is not None]
+    if not valid_indexes:
+        return numeric
 
-        large_change_limit = _tolerance(
-            reference_weight,
-            config.large_change_ratio,
-            config.large_change_min_g,
-        )
-        if abs(candidate_weight - reference_weight) <= large_change_limit:
-            pending.clear()
-            recent_candidates.append(candidate_weight)
-            smooth_target = float(median(recent_candidates))
-            smoothed_weight = (
-                config.ema_alpha * smooth_target
-                + (1.0 - config.ema_alpha) * smoothed_weight
-            )
-            reference_weight = smooth_target
-            fitted[index] = round(smoothed_weight, config.decimal_places)
-            continue
-
-        current_timestamp = (
-            numeric_timestamps[index]
-            if numeric_timestamps is not None
-            else None
-        )
-        if pending and current_timestamp is not None:
-            first_timestamp = numeric_timestamps[pending[0][0]]
-            if current_timestamp - first_timestamp > confirm_window_seconds:
-                pending.clear()
-
-        if pending:
-            pending_center = float(median(value for _, value in pending))
-            pending_limit = _tolerance(
-                pending_center,
-                config.event_outlier_ratio,
-                config.event_outlier_min_g,
-            )
-            if abs(candidate_weight - pending_center) <= pending_limit:
-                pending.append((index, candidate_weight))
-            else:
-                pending[:] = [(index, candidate_weight)]
-        else:
-            pending.append((index, candidate_weight))
-
-        if len(pending) >= config.large_change_confirm_points:
-            confirmed_weight = float(
-                median(
-                    value
-                    for _, value in pending[-config.large_change_confirm_points:]
-                )
-            )
-            reference_weight = confirmed_weight
-            recent_candidates.clear()
-            recent_candidates.append(confirmed_weight)
-            smoothed_weight = (
-                config.ema_alpha * confirmed_weight
-                + (1.0 - config.ema_alpha) * smoothed_weight
-            )
-            pending.clear()
-            confirmed_changes += 1
-
-        fitted[index] = round(smoothed_weight, config.decimal_places)
-
-    return fitted, confirmed_changes
+    first_value = numeric[valid_indexes[0]]
+    active_value = first_value
+    result: list[Optional[float]] = []
+    for value in numeric:
+        if value is not None:
+            active_value = value
+        result.append(active_value)
+    return result
 
 
 def _default_output_path(raw_excel_path: Path, suffix: str) -> Path:
@@ -419,69 +466,6 @@ def _initial_weight_for_cage(
     return None
 
 
-def weight_row_key(row: Mapping, fallback_cage=None) -> tuple[str, str | None]:
-    """Return a stable key for matching a fitted history row to a page row."""
-    cage = row.get("mouse_cage_number", fallback_cage)
-    row_id = row.get("id")
-    if row_id is None:
-        row_id = row.get("time")
-    return (
-        "" if cage is None else str(cage).strip(),
-        None if row_id is None else str(row_id).strip(),
-    )
-
-
-def fit_epoch_weight_rows(
-        rows: Sequence[Mapping],
-        initial_weights: Optional[Mapping] = None,
-        config: Optional[WeightPostprocessConfig] = None,
-        fallback_cage=None,
-) -> dict[tuple[str, str | None], Optional[float]]:
-    """Fit all cage groups in Epoch rows and return values keyed by row identity."""
-    config = config or WeightPostprocessConfig()
-    grouped: dict[str, list[tuple[int, Mapping]]] = {}
-    for index, row in enumerate(rows or []):
-        if EPOCH_WEIGHT_COLUMN_KEY not in row:
-            continue
-        cage = row.get("mouse_cage_number", fallback_cage)
-        cage_key = "" if cage is None else str(cage).strip()
-        grouped.setdefault(cage_key, []).append((index, row))
-
-    fitted_by_key: dict[tuple[str, str | None], Optional[float]] = {}
-    for cage_key, cage_rows in grouped.items():
-        timestamped_rows = [
-            (index, row, _to_timestamp(row.get("time")))
-            for index, row in cage_rows
-        ]
-        has_complete_timestamps = bool(timestamped_rows) and all(
-            timestamp is not None for _, _, timestamp in timestamped_rows
-        )
-        ordered_rows = (
-            sorted(timestamped_rows, key=lambda item: float(item[2]))
-            if has_complete_timestamps
-            else timestamped_rows
-        )
-        values = [row.get(EPOCH_WEIGHT_COLUMN_KEY) for _, row, _ in ordered_rows]
-        timestamps = (
-            [timestamp for _, _, timestamp in ordered_rows]
-            if has_complete_timestamps
-            else None
-        )
-        fitted_values, _ = fit_weight_series(
-            values,
-            config=config,
-            timestamps=timestamps,
-            initial_weight=_initial_weight_for_cage(
-                initial_weights,
-                cage_key,
-                config,
-            ),
-        )
-        for (_, row, _), fitted_value in zip(ordered_rows, fitted_values):
-            fitted_by_key[weight_row_key(row, fallback_cage=fallback_cage)] = fitted_value
-    return fitted_by_key
-
-
 def create_fitted_workbook(
         raw_excel_path: os.PathLike | str,
         output_path: Optional[os.PathLike | str] = None,
@@ -492,6 +476,8 @@ def create_fitted_workbook(
     temp_path: Optional[Path] = None
     try:
         config = load_weight_postprocess_config(config_path)
+        if not config.enabled:
+            return WeightPostprocessResult(success=True)
         if not raw_path.is_file():
             raise FileNotFoundError(f"原始 Excel 不存在: {raw_path}")
 
@@ -566,25 +552,40 @@ def create_fitted_workbook(
                 )
                 if numeric_count == 0:
                     for row_number in ordered_rows:
-                        worksheet.cell(row_number, weight_column).value = None
+                        cell = worksheet.cell(row_number, weight_column)
+                        cell.value = (
+                            None
+                            if initial_weight is None
+                            else round(initial_weight, config.decimal_places)
+                        )
+                    if initial_weight is not None:
+                        processed_cage_names.add(cage_name)
+                        sheet_processed = True
+                        warnings.append(
+                            f"{worksheet.title}/{cage_name}: 无有效称重事件，使用实验前体重"
+                        )
                     continue
 
-                # A cage can have a valid continuously smoothed series even
-                # when no large-change event was confirmed. Without a manual
-                # weight, the fitter searches for the baseline automatically.
-                fitted_values, _ = fit_weight_series(
+                fitted_values, event_count = fit_weight_series(
                     raw_values,
                     config,
                     timestamps=timestamps,
                     initial_weight=initial_weight,
                 )
-                if any(value is not None for value in fitted_values):
-                    processed_cage_names.add(cage_name)
+                if event_count == 0:
+                    if initial_weight is not None:
+                        processed_cage_names.add(cage_name)
+                        warnings.append(
+                            f"{worksheet.title}/{cage_name}: 未找到有效称重事件，使用实验前体重"
+                        )
+                    else:
+                        fitted_values = _fill_existing_numeric(raw_values)
+                        skipped_cage_names.add(cage_name)
+                        warnings.append(
+                            f"{worksheet.title}/{cage_name}: 未提供实验前体重或未建立空秤基线，保留并补齐原始数值"
+                        )
                 else:
-                    skipped_cage_names.add(cage_name)
-                    warnings.append(
-                        f"{worksheet.title}/{cage_name}: 尚未建立空秤基线，拟合列保留为 None"
-                    )
+                    processed_cage_names.add(cage_name)
 
                 for row_number, fitted_value in zip(ordered_rows, fitted_values):
                     worksheet.cell(row_number, weight_column).value = (

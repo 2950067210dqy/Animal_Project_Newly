@@ -32,6 +32,7 @@ from public.entity.enum.Public_Enum import BaseInterfaceType, AppState, Tutorial
 from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.promise.AsyPromise import AsyPromise
+from public.function.weight.weight_postprocessor import create_fitted_workbook
 from public.util.custom_data_file_util import custom_data_file_util
 from public.util.time_util import time_util
 from theme.ThemeQt6 import ThemedWindow
@@ -59,9 +60,13 @@ class StopExperimentExportThread(QThread):
     export_finished = pyqtSignal(bool, str)
     export_status = pyqtSignal(str)
 
-    def __init__(self, folder_path, parent=None):
+    def __init__(self, folder_path, initial_weights=None, parent=None):
         super().__init__(parent)
         self.folder_path = folder_path
+        self.initial_weights = dict(initial_weights or {})
+        self.fitted_export_path = None
+        self.fitted_export_summary = ""
+        self.fitted_export_error = ""
 
     def run(self):
         try:
@@ -70,7 +75,16 @@ class StopExperimentExportThread(QThread):
                 show_success_message=False,
             )
             if export_path:
-                self.export_status.emit("原始数据导出成功")
+                self.export_status.emit("原始数据导出成功，正在生成称重拟合 Excel...")
+                fitted_result = create_fitted_workbook(
+                    export_path,
+                    initial_weights=self.initial_weights,
+                )
+                self.fitted_export_summary = fitted_result.summary
+                if fitted_result.success:
+                    self.fitted_export_path = fitted_result.output_path
+                else:
+                    self.fitted_export_error = fitted_result.error
                 self.export_finished.emit(True, str(export_path))
             else:
                 detail = custom_data_file_util.get_last_export_error()
@@ -598,6 +612,7 @@ class MainWindow_Index(ThemedWindow):
         self.stop_export_finished = True
         self.stop_dialog_close_pending = False
         self.pending_stop_export_success_path = None
+        self.pending_stop_fitted_export_path = None
         self.periodic_export_timer = QTimer(self)
         self.periodic_export_timer.setSingleShot(False)
         self.periodic_export_timer.setInterval(self._get_periodic_export_interval_ms())
@@ -1863,6 +1878,7 @@ class MainWindow_Index(ThemedWindow):
         self.stop_export_finished = False
         self.stop_dialog_close_pending = False
         self.pending_stop_export_success_path = None
+        self.pending_stop_fitted_export_path = None
         if self._gas_path_timeout_timer is not None:
             self._gas_path_timeout_timer.stop()
             self._gas_path_timeout_timer = None
@@ -2003,8 +2019,22 @@ class MainWindow_Index(ThemedWindow):
     def _start_stop_export_thread(self, folder_path):
         if self.stop_export_thread is not None:
             return
+        experiment_setting = global_setting.get_setting("experiment_setting", None)
+        configured_weights = dict(
+            getattr(experiment_setting, "pre_experiment_weights", {}) or {}
+        )
+        initial_weights = dict(configured_weights)
+        for group in getattr(experiment_setting, "groups", []) or []:
+            weight = configured_weights.get(
+                str(getattr(group, "id", "")),
+                configured_weights.get(getattr(group, "id", None)),
+            )
+            group_name = str(getattr(group, "name", "") or "").strip()
+            if weight is not None and group_name:
+                initial_weights[group_name] = weight
         self.stop_export_thread = StopExperimentExportThread(
             folder_path,
+            initial_weights=initial_weights,
             parent=self,
         )
         self.stop_export_thread.export_status.connect(self._on_stop_export_status)
@@ -2024,6 +2054,30 @@ class MainWindow_Index(ThemedWindow):
             self.pending_stop_export_success_path = message
             if self.stop_dialog is not None:
                 self.stop_dialog.insert_data_signal.emit(f"数据导出成功: {message}")
+            export_thread = self.stop_export_thread
+            if export_thread is not None:
+                fitted_path = export_thread.fitted_export_path
+                fitted_summary = export_thread.fitted_export_summary
+                fitted_error = export_thread.fitted_export_error
+                if fitted_path:
+                    self.pending_stop_fitted_export_path = fitted_path
+                    logger.info(f"{fitted_summary}: {fitted_path}")
+                    if self.stop_dialog is not None:
+                        self.stop_dialog.insert_data_signal.emit(
+                            f"{fitted_summary}: {fitted_path}"
+                        )
+                elif fitted_error:
+                    logger.error(
+                        f"weight postprocess failed; raw export remains available: {fitted_error}"
+                    )
+                    if self.stop_dialog is not None:
+                        self.stop_dialog.insert_data_signal.emit(
+                            f"称重拟合失败，原始数据已保留: {fitted_error}"
+                        )
+                elif fitted_summary and fitted_summary != "称重后处理未启用":
+                    logger.info(fitted_summary)
+                    if self.stop_dialog is not None:
+                        self.stop_dialog.insert_data_signal.emit(fitted_summary)
         else:
             logger.error(f"stop experiment data export failed: {message}")
             if self.stop_dialog is not None:
@@ -2040,10 +2094,14 @@ class MainWindow_Index(ThemedWindow):
 
     def _show_pending_stop_export_success_message(self):
         export_path = self.pending_stop_export_success_path
+        fitted_path = self.pending_stop_fitted_export_path
         self.pending_stop_export_success_path = None
+        self.pending_stop_fitted_export_path = None
         if export_path:
+            additional_paths = [fitted_path] if fitted_path else None
             custom_data_file_util.show_export_success_message(
                 export_path,
+                additional_file_paths=additional_paths,
             )
 
     def _finalize_mouse_trajectory_views(self) -> bool:
