@@ -14,6 +14,7 @@ from public.entity.experiment_setting_entity import Experiment_setting_entity
 from public.function.DataCaculation import Data_Caculation
 from public.function.DataCaculation.Data_Caculation import DataCaculation
 from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_Ids, Others_Tables
+from public.function.weight.weight_series_formatter import format_weight_series_for_storage
 # 监控数据操作类
 from public.util.time_util import time_util
 #logger = logger.bind(category="deep_camera_logger")
@@ -358,6 +359,10 @@ class Monitor_Datas_Handle():
                             for item in data_type.value['table'][table_name_short]['column']:
                                 self.sqlite_manager.insert(table_meta_name, item_name=item[0], item_struct=item[2],
                                                            description=item[1])
+            self._migrate_weight_series_tables(
+                gids=gids,
+                reference_cage_number=int(global_setting.get_setting('configer')['mouse_cage']['reference'])
+            )
         pass
 
     def _migrate_mouse_infrared_tables(self, gids):
@@ -492,6 +497,28 @@ class Monitor_Datas_Handle():
                     f"UPDATE {quoted_meta_table_name} SET description = ?, item_struct = ? WHERE item_name = ?",
                     (description, column_struct, column_name)
                 )
+
+    def _migrate_weight_series_tables(self, gids, reference_cage_number):
+        for cage_number in [reference_cage_number] + list(gids):
+            self._ensure_column_and_meta(
+                table_name=f"WM_monitor_data_cage_{cage_number}",
+                column_name="weight_num",
+                column_struct=" TEXT ",
+                description="重量测量值(g)"
+            )
+
+        for cage_number in [-1, reference_cage_number] + list(gids):
+            table_name = (
+                "Epoch_data_all"
+                if cage_number == -1
+                else f"Epoch_data_cage_{cage_number}"
+            )
+            self._ensure_column_and_meta(
+                table_name=table_name,
+                column_name="WM_weight_num",
+                column_struct=" TEXT ",
+                description="称重重量测量值(g)"
+            )
 
     def _map_data_compact_with_none(self,data_list, columns_mapping):
         """
@@ -685,6 +712,13 @@ class Monitor_Datas_Handle():
             for data_item in data['data']:
                 if isinstance(data_item['value'],list) and len(data_item['value']) ==0:
                     data_item['value'] =None
+                if (
+                    data.get('module_name') == 'WM'
+                    and data_item.get('desc') == '重量测量值(g)'
+                ):
+                    data_item['value'] = format_weight_series_for_storage(
+                        data_item.get('value')
+                    )
             # 公共传感器：
             if data['mouse_cage_number'] == -1:
                 # 获取该表名称
