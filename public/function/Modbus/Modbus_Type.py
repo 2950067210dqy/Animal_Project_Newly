@@ -1177,14 +1177,15 @@ class  Modbus_Slave_Send_Messages_Senior_Data(Enum):
                              slave_desc=Modbus_Slave_Ids.WM.value['description'], function_code=4,
                              function_desc="读传感器测量值", message={
                         'port': None,
-                        # 默认使用旧版单值称重；多点称重由监控线程按笼号配置切换。
-                        'data': number_util.set_int_to_4_bytes_list('04010002'),
+                        # 长称重读取：0401003C -> 返回0x78字节，即30个4字节重量值。
+                        'data': number_util.set_int_to_4_bytes_list('0401003C'),
                         'slave_id': format(
-                            int(Modbus_Slave_Ids.WM.value['address']),
+                            # 长称重报文使用设备实际响应的0x12系列地址。
+                            int(Modbus_Slave_Ids.DWM.value['address']) ,
                             '02X'),
                         'function_code': format(int(f"{4}", 16), '02X'),
                         'module_name': 'WM',
-                        'weight_protocol': 'legacy',
+                        'weight_protocol': 'new',
                     }),
         ]
     }
