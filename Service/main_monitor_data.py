@@ -118,16 +118,54 @@ def _get_weight_cage_number(message):
 
 
 def _get_weight_protocol(cage_number):
-    with _weight_protocol_lock:
-        return _weight_protocol_by_cage.get(cage_number)
+    """Return the fixed protocol configured for this cage.
+
+    Protocol probing during normal collection can send an unsupported long
+    request to older modules and delay the whole round.  Keep the choice
+    explicit and stable for the duration of an experiment.
+    """
+    try:
+        cage_number = int(cage_number)
+    except (TypeError, ValueError):
+        return WEIGHT_PROTOCOL_LEGACY
+
+    monitor_config = global_setting.get_setting("monitor_data", {}) or {}
+    protocol_config = monitor_config.get("WEIGHT_PROTOCOL", {}) or {}
+    raw_cages = protocol_config.get("new_protocol_cages", "1")
+    if isinstance(raw_cages, (list, tuple, set)):
+        cage_values = raw_cages
+    else:
+        cage_values = re.split(r"[,，\s]+", str(raw_cages))
+
+    new_protocol_cages = set()
+    for value in cage_values:
+        value = str(value).strip()
+        if not value:
+            continue
+        try:
+            parsed_cage = int(value)
+        except ValueError:
+            logger.warning(f"称重协议配置包含无效笼号：{value}")
+            continue
+        if 1 <= parsed_cage <= 8:
+            new_protocol_cages.add(parsed_cage)
+
+    return (
+        WEIGHT_PROTOCOL_NEW
+        if cage_number in new_protocol_cages
+        else WEIGHT_PROTOCOL_LEGACY
+    )
 
 
 def _remember_weight_protocol(cage_number, protocol):
     if cage_number is None:
         return
-    with _weight_protocol_lock:
-        _weight_protocol_by_cage[cage_number] = protocol
-    logger.info(f"称重协议已确定：笼子{cage_number}使用{protocol}协议")
+    configured_protocol = _get_weight_protocol(cage_number)
+    if configured_protocol != protocol:
+        logger.warning(
+            f"称重响应协议与配置不一致：笼子{cage_number}，"
+            f"配置={configured_protocol}，响应={protocol}"
+        )
 
 
 def _reset_weight_protocol_cache():
@@ -1135,11 +1173,11 @@ class Send_thread(MyQThread):
     def _send_sensor_read_with_retry(self, send_message):
         is_weight = _is_weight_read_message(send_message)
         cage_number = _get_weight_cage_number(send_message) if is_weight else None
-        cached_protocol = _get_weight_protocol(cage_number) if is_weight else None
+        configured_protocol = _get_weight_protocol(cage_number) if is_weight else None
 
-        if is_weight and cached_protocol == WEIGHT_PROTOCOL_LEGACY:
+        if is_weight and configured_protocol == WEIGHT_PROTOCOL_LEGACY:
             _set_legacy_weight_request(send_message)
-        elif is_weight and cached_protocol == WEIGHT_PROTOCOL_NEW:
+        elif is_weight and configured_protocol == WEIGHT_PROTOCOL_NEW:
             _set_new_weight_request(send_message)
 
         requested_protocol = (
@@ -1147,8 +1185,9 @@ class Send_thread(MyQThread):
             if is_weight
             else None
         )
-        # 未知设备先用新版探测一次，失败后马上尝试旧版，避免每轮重复超时。
-        max_attempts = 1 if is_weight and cached_protocol is None else COLLECTION_SENSOR_MAX_ATTEMPTS
+        # 称重协议已经按笼号固定，失败时只重试同一报文，避免在正常采集
+        # 过程中向旧模块发送不支持的另一种报文。
+        max_attempts = COLLECTION_SENSOR_MAX_ATTEMPTS
         result = (None, None, False, None)
         for attempt in range(1, max_attempts + 1):
             result = self.modbus.send_command(
@@ -1187,39 +1226,6 @@ class Send_thread(MyQThread):
             if attempt < max_attempts:
                 time.sleep(COLLECTION_SENSOR_RETRY_DELAY_SECONDS)
 
-        if is_weight and requested_protocol == WEIGHT_PROTOCOL_NEW:
-            if _set_legacy_weight_request(send_message):
-                logger.warning(
-                    f"称重新版协议未得到有效0x78响应，笼子{cage_number}切换旧版协议重试"
-                )
-                legacy_result = self.modbus.send_command(
-                    slave_id=send_message['slave_id'],
-                    function_code=send_message['function_code'],
-                    data_hex_list=send_message['data'],
-                    is_parse_response=False,
-                )
-                if legacy_result[2] and _is_expected_weight_response(
-                    legacy_result[0], WEIGHT_PROTOCOL_LEGACY
-                ):
-                    _remember_weight_protocol(cage_number, WEIGHT_PROTOCOL_LEGACY)
-                return legacy_result
-
-        if is_weight and requested_protocol == WEIGHT_PROTOCOL_LEGACY:
-            if _set_new_weight_request(send_message):
-                logger.warning(
-                    f"称重旧版协议未得到有效0x04响应，笼子{cage_number}切换新版协议重试"
-                )
-                new_result = self.modbus.send_command(
-                    slave_id=send_message['slave_id'],
-                    function_code=send_message['function_code'],
-                    data_hex_list=send_message['data'],
-                    is_parse_response=False,
-                )
-                if new_result[2] and _is_expected_weight_response(
-                    new_result[0], WEIGHT_PROTOCOL_NEW
-                ):
-                    _remember_weight_protocol(cage_number, WEIGHT_PROTOCOL_NEW)
-                return new_result
         return result
 
     def run(self):
@@ -1574,10 +1580,19 @@ class Add_message_thread(MyQThread):
                             mouse_cage = gids[current_mouse_cage_index] if gids else 1
                             message_temp['mouse_cage_number'] = mouse_cage
                             if data_type == Modbus_Slave_Send_Messages_Senior_Data.WM:
-                                cached_protocol = _get_weight_protocol(mouse_cage)
-                                if cached_protocol == WEIGHT_PROTOCOL_LEGACY:
+                                configured_protocol = _get_weight_protocol(mouse_cage)
+                                if configured_protocol == WEIGHT_PROTOCOL_LEGACY:
                                     message_temp['data'] = list(WEIGHT_LEGACY_DATA)
+                                    message_temp['slave_id'] = format(
+                                        WEIGHT_LEGACY_BASE_SLAVE_ID, '02X'
+                                    )
                                     message_temp['weight_protocol'] = WEIGHT_PROTOCOL_LEGACY
+                                else:
+                                    message_temp['data'] = list(WEIGHT_NEW_DATA)
+                                    message_temp['slave_id'] = format(
+                                        WEIGHT_NEW_BASE_SLAVE_ID, '02X'
+                                    )
+                                    message_temp['weight_protocol'] = WEIGHT_PROTOCOL_NEW
                             message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
                             send_messages.append({'message': message_temp})
                         else:
