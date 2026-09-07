@@ -21,7 +21,6 @@ from public.function.weight.running_wheel import (
     RUNNING_WHEEL_COLUMN_KEYS,
     format_running_wheel_distance,
 )
-from public.function.weight.weight_series_formatter import format_weight_series
 
 
 # CO2 对外展示顺序只作用于监控界面，数据库中的原始列顺序不变。
@@ -174,8 +173,6 @@ class EpochTableModel(QAbstractTableModel):
         value = self._rows[row].get(key)
         if key in RUNNING_WHEEL_COLUMN_KEYS:
             return format_running_wheel_distance(value)
-        if key == "WM_weight_num":
-            return format_weight_series(value)
         if key == "mouse_cage_number" and value is not None:
             configer = global_setting.get_setting("configer", {}) or {}
             reference_cage = int(configer.get("mouse_cage", {}).get("reference", -1))
