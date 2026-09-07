@@ -57,14 +57,6 @@ COLLECTION_BATCH_TIMEOUT_SECONDS = 20.0
 COLLECTION_BARRIER_TIMEOUT_SECONDS = 45.0
 COLLECTION_SENSOR_MAX_ATTEMPTS = 3
 COLLECTION_SENSOR_RETRY_DELAY_SECONDS = 0.1
-WEIGHT_PROTOCOL_NEW = "new"
-WEIGHT_PROTOCOL_LEGACY = "legacy"
-WEIGHT_NEW_DATA = ["04", "01", "00", "3C"]
-WEIGHT_LEGACY_DATA = ["04", "01", "00", "02"]
-WEIGHT_NEW_BASE_SLAVE_ID = 0x02
-WEIGHT_LEGACY_BASE_SLAVE_ID = 0x04
-_weight_protocol_by_cage = {}
-_weight_protocol_lock = threading.RLock()
 FOOD_TROUGH_CURRENT_OFF_COMMAND = {
     "function_code": "05",
     "data": ["00", "71", "00", "00"],
@@ -86,100 +78,6 @@ def _environment_module_only_enabled():
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _is_weight_read_message(message):
-    return isinstance(message, dict) and (
-        message.get("module_name") == "WM"
-        or message.get("weight_protocol") in {
-            WEIGHT_PROTOCOL_NEW,
-            WEIGHT_PROTOCOL_LEGACY,
-        }
-    )
-
-
-def _get_weight_cage_number(message):
-    if not isinstance(message, dict):
-        return None
-
-    try:
-        cage_number = int(message.get("mouse_cage_number"))
-    except (TypeError, ValueError):
-        cage_number = None
-    if cage_number is not None and 1 <= cage_number <= 8:
-        return cage_number
-
-    try:
-        slave_id = int(str(message.get("slave_id", "")), 16)
-    except (TypeError, ValueError):
-        return None
-    cage_number = slave_id // 0x10
-    return cage_number if 1 <= cage_number <= 8 else None
-
-
-def _get_weight_protocol(cage_number):
-    with _weight_protocol_lock:
-        return _weight_protocol_by_cage.get(cage_number)
-
-
-def _remember_weight_protocol(cage_number, protocol):
-    if cage_number is None:
-        return
-    with _weight_protocol_lock:
-        _weight_protocol_by_cage[cage_number] = protocol
-    logger.info(f"称重协议已确定：笼子{cage_number}使用{protocol}协议")
-
-
-def _reset_weight_protocol_cache():
-    with _weight_protocol_lock:
-        _weight_protocol_by_cage.clear()
-
-
-def _set_legacy_weight_request(message):
-    cage_number = _get_weight_cage_number(message)
-    if cage_number is None:
-        return False
-    message["slave_id"] = format(
-        WEIGHT_LEGACY_BASE_SLAVE_ID + 0x10 * cage_number,
-        "02X",
-    )
-    message["data"] = list(WEIGHT_LEGACY_DATA)
-    message["module_name"] = "WM"
-    message["weight_protocol"] = WEIGHT_PROTOCOL_LEGACY
-    message["mouse_cage_number"] = cage_number
-    return True
-
-
-def _set_new_weight_request(message):
-    cage_number = _get_weight_cage_number(message)
-    if cage_number is None:
-        return False
-    message["slave_id"] = format(
-        WEIGHT_NEW_BASE_SLAVE_ID + 0x10 * cage_number,
-        "02X",
-    )
-    message["data"] = list(WEIGHT_NEW_DATA)
-    message["module_name"] = "WM"
-    message["weight_protocol"] = WEIGHT_PROTOCOL_NEW
-    message["mouse_cage_number"] = cage_number
-    return True
-
-
-def _get_weight_response_byte_count(response):
-    if not isinstance(response, (bytes, bytearray)) or len(response) < 3:
-        return None
-    return response[2]
-
-
-def _is_expected_weight_response(response, protocol):
-    if not isinstance(response, (bytes, bytearray)) or len(response) < 5:
-        return False
-    if response[1] != 0x04:
-        return False
-    expected_byte_count = (
-        0x78 if protocol == WEIGHT_PROTOCOL_NEW else 0x04
-    )
-    return _get_weight_response_byte_count(response) == expected_byte_count
 
 
 def _cage_data_type_enabled(data_type):
@@ -580,7 +478,6 @@ class read_queue_data_Thread(MyQThread):
                     case 'set_port':
                         global port_use,send_thread
                         port_use=message.data
-                        _reset_weight_protocol_cache()
                         global_setting.set_setting("port", port_use)
                         modbus: ModbusRTUMasterNew = global_setting.get_setting("modbus", None)
                         if modbus is None:
@@ -610,7 +507,6 @@ class read_queue_data_Thread(MyQThread):
                             lighting_schedule_thread.set_schedule(schedule, apply_now=True)
                     case 'start':
                         data = message.data
-                        _reset_weight_protocol_cache()
                         if data is not None:
                             global_setting.set_setting("start_experiment_time", data.get("start_experiment_time",time.time()))
                             global_setting.set_setting("pause_experiment_time", data.get("pause_experiment_time",[]))
@@ -1133,24 +1029,8 @@ class Send_thread(MyQThread):
         return bool(send_state)
 
     def _send_sensor_read_with_retry(self, send_message):
-        is_weight = _is_weight_read_message(send_message)
-        cage_number = _get_weight_cage_number(send_message) if is_weight else None
-        cached_protocol = _get_weight_protocol(cage_number) if is_weight else None
-
-        if is_weight and cached_protocol == WEIGHT_PROTOCOL_LEGACY:
-            _set_legacy_weight_request(send_message)
-        elif is_weight and cached_protocol == WEIGHT_PROTOCOL_NEW:
-            _set_new_weight_request(send_message)
-
-        requested_protocol = (
-            send_message.get("weight_protocol", WEIGHT_PROTOCOL_NEW)
-            if is_weight
-            else None
-        )
-        # 未知设备先用新版探测一次，失败后马上尝试旧版，避免每轮重复超时。
-        max_attempts = 1 if is_weight and cached_protocol is None else COLLECTION_SENSOR_MAX_ATTEMPTS
         result = (None, None, False, None)
-        for attempt in range(1, max_attempts + 1):
+        for attempt in range(1, COLLECTION_SENSOR_MAX_ATTEMPTS + 1):
             result = self.modbus.send_command(
                 slave_id=send_message['slave_id'],
                 function_code=send_message['function_code'],
@@ -1158,17 +1038,6 @@ class Send_thread(MyQThread):
                 is_parse_response=False,
             )
             if result[2]:
-                if is_weight and not _is_expected_weight_response(
-                    result[0], requested_protocol
-                ):
-                    logger.warning(
-                        "称重响应长度与当前协议不匹配："
-                        f"笼子{cage_number}，协议={requested_protocol}，"
-                        f"字节数={_get_weight_response_byte_count(result[0])}"
-                    )
-                    break
-                if is_weight:
-                    _remember_weight_protocol(cage_number, requested_protocol)
                 if attempt > 1:
                     logger.warning(
                         "sensor read recovered after retry: "
@@ -1182,44 +1051,10 @@ class Send_thread(MyQThread):
                 "sensor read failed; retrying current request: "
                 f"slave_id={send_message['slave_id']}, "
                 f"function_code={send_message['function_code']}, "
-                f"attempt={attempt}/{max_attempts}"
+                f"attempt={attempt}/{COLLECTION_SENSOR_MAX_ATTEMPTS}"
             )
-            if attempt < max_attempts:
+            if attempt < COLLECTION_SENSOR_MAX_ATTEMPTS:
                 time.sleep(COLLECTION_SENSOR_RETRY_DELAY_SECONDS)
-
-        if is_weight and requested_protocol == WEIGHT_PROTOCOL_NEW:
-            if _set_legacy_weight_request(send_message):
-                logger.warning(
-                    f"称重新版协议未得到有效0x78响应，笼子{cage_number}切换旧版协议重试"
-                )
-                legacy_result = self.modbus.send_command(
-                    slave_id=send_message['slave_id'],
-                    function_code=send_message['function_code'],
-                    data_hex_list=send_message['data'],
-                    is_parse_response=False,
-                )
-                if legacy_result[2] and _is_expected_weight_response(
-                    legacy_result[0], WEIGHT_PROTOCOL_LEGACY
-                ):
-                    _remember_weight_protocol(cage_number, WEIGHT_PROTOCOL_LEGACY)
-                return legacy_result
-
-        if is_weight and requested_protocol == WEIGHT_PROTOCOL_LEGACY:
-            if _set_new_weight_request(send_message):
-                logger.warning(
-                    f"称重旧版协议未得到有效0x04响应，笼子{cage_number}切换新版协议重试"
-                )
-                new_result = self.modbus.send_command(
-                    slave_id=send_message['slave_id'],
-                    function_code=send_message['function_code'],
-                    data_hex_list=send_message['data'],
-                    is_parse_response=False,
-                )
-                if new_result[2] and _is_expected_weight_response(
-                    new_result[0], WEIGHT_PROTOCOL_NEW
-                ):
-                    _remember_weight_protocol(cage_number, WEIGHT_PROTOCOL_NEW)
-                return new_result
         return result
 
     def run(self):
@@ -1572,12 +1407,6 @@ class Add_message_thread(MyQThread):
                         if current_mouse_cage_index is not None:
 
                             mouse_cage = gids[current_mouse_cage_index] if gids else 1
-                            message_temp['mouse_cage_number'] = mouse_cage
-                            if data_type == Modbus_Slave_Send_Messages_Senior_Data.WM:
-                                cached_protocol = _get_weight_protocol(mouse_cage)
-                                if cached_protocol == WEIGHT_PROTOCOL_LEGACY:
-                                    message_temp['data'] = list(WEIGHT_LEGACY_DATA)
-                                    message_temp['weight_protocol'] = WEIGHT_PROTOCOL_LEGACY
                             message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
                             send_messages.append({'message': message_temp})
                         else:
