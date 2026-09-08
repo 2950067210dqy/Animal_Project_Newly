@@ -155,6 +155,8 @@ class UFC_gas_path_system_start_thread(MyQThread):
         self.parent_class = parent_class
         #停止
         self.is_stop=False
+        # None 表示旧启动流程；步骤0执行后保存 0/1 状态。
+        self.startup_status = None
         # 更新主线程状态栏消息信号
         self.update_status_main_signal_gui_update: _PNamespaceSignal = update_status_main_signal_gui_update
         # 发送的数据结构
@@ -170,30 +172,75 @@ class UFC_gas_path_system_start_thread(MyQThread):
             update_status_main_signal_gui_update=self.update_status_main_signal_gui_update,
             send_message=self.send_message)
         super().__init__(name=name)
+
+    def set_startup_status(self, startup_status):
+        self.startup_status = (
+            dict(startup_status) if isinstance(startup_status, dict) else None
+        )
+
+    def _get_startup_state(self, name):
+        if not isinstance(self.startup_status, dict):
+            return None
+        value = self.startup_status.get(name)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            return None
+        return value if value in (0, 1) else None
+
+    @staticmethod
+    def _require_send_success(result, step_name):
+        if not isinstance(result, dict) or not result.get("send_state", False):
+            raise RuntimeError(f"{step_name}指令发送失败，气路启动已中止")
+        return result
     def before_Runing_work(self):
         pass
     def dosomething(self):
         port = global_setting.get_setting("port", None)
         if port is None:
-            self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
+            self._finish_with_error("启动失败，未选择串口！")
             return
-        AsyPromise(self.ufc_start).then(
-
-        ).catch(lambda e: logger.error(f"{e}"))
+        AsyPromise(self.ufc_start).catch(self._finish_with_error)
         self.stop()
+
+    def _finish_with_error(self, error):
+        """Record a startup failure and release the caller waiting on the thread."""
+        error_message = str(error)
+        self.parent_class.ufc_start_error = error_message
+        logger.error(f"UFC启动失败: {error_message}")
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | UFC启动失败: {error_message}"
+        )
+        global wait_UFC_start_finish_event
+        wait_UFC_start_finish_event.set()
+        return None
 
     def ufc_start(self, resolve, reject):
         self.is_stop=False
         time.sleep(0.01)
+        ufc_status = self._get_startup_state('ufc_status')
+        if ufc_status == 1:
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | "
+                "UFC 启动-步骤3.UFC已运行，跳过启动指令"
+            )
+            logger.info("气路启动步骤3跳过：步骤0检测到UFC已运行")
+            AsyPromise(self.gas_and_flow_rate_start).then(
+                lambda result: resolve(result)
+            ).catch(lambda error: reject(error))
+            return
+
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC 启动-1.UFC启动")
+            f"{time_util.get_format_from_time(time.time())} | "
+            "UFC 启动-步骤3.发送UFC启动指令"
+        )
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
-            reject()
-        # 1 UFC 启动
+            reject("步骤3失败：未选择串口")
+            return
+        # 步骤3：仅当步骤0读到 ufc_status=0 时启动；未提供状态时兼容旧流程。
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list("000b00ff"),
@@ -203,23 +250,41 @@ class UFC_gas_path_system_start_thread(MyQThread):
         }
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            # 2气泵和流量控制器开启（新流程：UFC启动后直接开气泵，无需设定鼠笼和打开ZOS采样阀）
-            lambda r: AsyPromise(self.gas_and_flow_rate_start)
+            lambda result: self._require_send_success(result, "步骤3 UFC启动")
+        ).then(
+            lambda _: AsyPromise(self.gas_and_flow_rate_start)
+        ).then(
+            lambda result: resolve(result)
         ).catch(lambda e: reject(e))
-        pass
 
     def gas_and_flow_rate_start(self, resolve, reject):
         if self.is_stop:
             reject("Stop")
+            return
         time.sleep(0.01)
-        # 2气泵和流量控制器开启
+        air_pump_status = self._get_startup_state('air_pump')
+        if air_pump_status == 1:
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | "
+                "UFC 启动-步骤4.气泵已打开，跳过开启指令"
+            )
+            logger.info("气路启动步骤4跳过：步骤0检测到气泵已打开")
+            AsyPromise(self.wait_flow_config_auto_config).then(
+                lambda result: resolve(result)
+            ).catch(lambda error: reject(error))
+            return
+
+        # 步骤4：仅当步骤0读到 air_pump=0 时开启；未提供状态时兼容旧流程。
         self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} | UFC 启动-2.气泵和流量控制器开启")
+            f"{time_util.get_format_from_time(time.time())} | "
+            "UFC 启动-步骤4.发送气泵和流量控制器开启指令"
+        )
         port = global_setting.get_setting("port", None)
         if port is None:
             self.update_status_main_signal_gui_update.send(
                 f"{time_util.get_format_from_time(time.time())} | 启动失败，未选择串口！")
-            reject()
+            reject("步骤4失败：未选择串口")
+            return
         self.send_message = {
             'port': port,
             'data': number_util.set_int_to_4_bytes_list("000a00ff"),
@@ -229,14 +294,12 @@ class UFC_gas_path_system_start_thread(MyQThread):
         }
         self.send_thread.send_message = self.send_message
         AsyPromise(self.send_thread.Send).then(
-            lambda r:AsyPromise(self.wait_flow_config_auto_config).then(
-                lambda r:resolve(r)
-            ).catch(lambda e: reject(e))
+            lambda result: self._require_send_success(result, "步骤4 气泵启动")
+        ).then(
+            lambda _: AsyPromise(self.wait_flow_config_auto_config)
+        ).then(
+            lambda result: resolve(result)
         ).catch(lambda e: reject(e))
-
-
-        pass
-        pass
     def wait_flow_config_auto_config(self,resolve, reject):
         """
         UFC-启动 2.1 等待气泵和流量控制器开启  一般60秒
@@ -246,13 +309,15 @@ class UFC_gas_path_system_start_thread(MyQThread):
         """
         if self.is_stop:
             reject("Stop")
+            return
         # 等待时间
         time_index = 0
         while time_index < float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']):
             if self.is_stop:
                 reject("Stop")
+                return
             self.update_status_main_signal_gui_update.send(
-                f"{time_util.get_format_from_time(time.time())} | UFC-启动 2.1 等待气泵和流量控制器开启，此过程需{time_index}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])}秒，等待流量控制器自动配置及运行")
+                f"{time_util.get_format_from_time(time.time())} | UFC-启动 步骤5.等待气泵和流量控制器稳定，此过程需{time_index}/{float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time'])}秒")
             time_index += 1
             time.sleep(float(global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time_delay']))
         AsyPromise(self.finsh_start).then(
@@ -262,13 +327,13 @@ class UFC_gas_path_system_start_thread(MyQThread):
     def finsh_start(self,resolve, reject):
         if self.is_stop:
             reject("Stop")
+            return
         self.parent_class.ufc_start_time_state = True
         global_setting.set_setting("ufc_start_time_state", True)
         # logger.critical(f"ufc_finish_start:{self.parent_class.ufc_start_time_state}")
         # 释放 正在等待ufc启动的地方
         global wait_UFC_start_finish_event
         wait_UFC_start_finish_event.set()
-        wait_UFC_start_finish_event.clear()
 
         resolve()
 class UFC_gas_path_system_close_thread(MyQThread):
@@ -501,6 +566,8 @@ class UFC_gas_path_system(Gas_path_system):
     def __init__(self):
         super().__init__()
         self.ufc_start_time_state = False
+        self.ufc_start_error = None
+        self.startup_status = None
 
 
         #开启线程
@@ -523,6 +590,21 @@ class UFC_gas_path_system(Gas_path_system):
 
         )
         pass
+
+    def set_startup_status(self, startup_status):
+        """保存步骤0结果，供步骤3和步骤4使用。"""
+        if not isinstance(startup_status, dict):
+            raise ValueError("UFC启动状态必须是字典")
+        ufc_status = int(startup_status.get('ufc_status'))
+        air_pump = int(startup_status.get('air_pump'))
+        if ufc_status not in (0, 1) or air_pump not in (0, 1):
+            raise ValueError(
+                f"UFC启动状态无效: ufc_status={ufc_status}, air_pump={air_pump}"
+            )
+        self.startup_status = {
+            'ufc_status': ufc_status,
+            'air_pump': air_pump,
+        }
     def update(self):
         super().update()
         # 开启线程
@@ -566,11 +648,20 @@ class UFC_gas_path_system(Gas_path_system):
         # global_setting.set_setting("mouse_cages_2byte_str",data)
         global_setting.set_setting("mouse_cages_2byte_str", String_util.array_to_binary_string(gids))
 
+        global wait_UFC_start_finish_event
+        wait_UFC_start_finish_event.clear()
+        self.ufc_start_error = None
+        startup_status = self.startup_status
+        # 步骤0结果只用于本次启动，避免后续其他启动模式误用旧状态。
+        self.startup_status = None
         self.ufc_gas_path_system_start_thread.update_status_main_signal_gui_update = self.update_status_main_signal_gui_update
+        self.ufc_gas_path_system_start_thread.set_startup_status(startup_status)
         self.ufc_gas_path_system_start_thread.start()
         # 等待开始线程 把ufc启动完成
-        global wait_UFC_start_finish_event
         wait_UFC_start_finish_event.wait()
+        if self.ufc_start_error is not None:
+            reject(self.ufc_start_error)
+            return
         resolve()
 
     """start end"""

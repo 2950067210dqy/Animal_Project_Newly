@@ -340,23 +340,35 @@ class UFC_UGC_ZOS_index(MyQThread):
         global stop_flag
         stop_flag = False
 
-        p = AsyPromise(self.ZOS_gas_path_system_obj.start).then(
-            lambda _: AsyPromise(self.UGC_gas_path_system_obj.start).then(
-                lambda _: AsyPromise(self.Startup_air_calibration_obj.start).then(
-                    lambda _: AsyPromise(self.UFC_gas_path_system_obj.start).then(
-                        lambda _: AsyPromise(self.Startup_air_calibration_obj.wait_air_calibration_prepare).then(
-                            lambda _: AsyPromise(self.Startup_air_calibration_obj.run).then(
-                                lambda _: AsyPromise(self.Startup_air_calibration_obj.stop).then(
-                                    lambda _: AsyPromise(self.finish_start)
-                                ).catch(lambda e: logger.error(f"{e}"))
-                            ).catch(lambda e: logger.error(f"{e}"))
-                        ).catch(lambda e: logger.error(f"{e}"))
-                    ).catch(lambda e: logger.error(f"{e}"))
-                ).catch(lambda e: logger.error(f"{e}"))
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+        return (
+            # 步骤0必须位于所有气路启动命令之前。
+            AsyPromise(self.UFC_gas_state_check_obj.read_start_status)
+            .then(self._remember_ufc_start_status)
+            # 步骤1：打开 UGC Air 电磁阀。
+            .then(lambda _: AsyPromise(self.UGC_gas_path_system_obj.start))
+            # 步骤2：初始化 ZOS，并发送 Air 校准开始指令。
+            .then(lambda _: AsyPromise(self.ZOS_gas_path_system_obj.start))
+            .then(lambda _: AsyPromise(self.Startup_air_calibration_obj.start))
+            # 步骤3、4：根据步骤0结果决定执行或跳过。
+            .then(lambda _: AsyPromise(self.UFC_gas_path_system_obj.start))
+            .then(lambda _: AsyPromise(
+                self.Startup_air_calibration_obj.wait_air_calibration_prepare
+            ))
+            .then(lambda _: AsyPromise(self.Startup_air_calibration_obj.run))
+            .then(lambda _: AsyPromise(self.Startup_air_calibration_obj.stop))
+            .then(lambda _: AsyPromise(self.finish_start))
+            .catch(
+                lambda error: AsyPromise.log_and_reject(
+                    error,
+                    logger=logger,
+                    message_prefix="Air气路启动流程失败",
+                )
+            )
+        )
 
-        return p
+    def _remember_ufc_start_status(self, startup_status):
+        self.UFC_gas_path_system_obj.set_startup_status(startup_status)
+        return startup_status
 
     def start_btn_handle_with_co2_air_calibration(self):
         """启动气路，并在进入正常实验前执行 CO2 Air 空气校准。"""

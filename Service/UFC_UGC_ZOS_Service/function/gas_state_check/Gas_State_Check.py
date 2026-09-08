@@ -49,6 +49,73 @@ class UFC_Gas_State_Check(Gas_State_Check):
         super().__init__()
         pass
 
+    def read_start_status(self, resolve, reject):
+        """步骤0：读取 UFC 启动状态，供后续步骤3、4决定是否发送控制指令。"""
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            reject("步骤0失败：未选择串口，无法读取 UFC 状态")
+            return
+
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | "
+            "气路启动-步骤0.读取UFC和气泵状态"
+        )
+        self.send_message = {
+            'port': port,
+            # 02 01 00 00 00 0C CRC-16
+            'data': number_util.set_int_to_4_bytes_list("C"),
+            'slave_id': '2',
+            'function_code': '1',
+            'timeout': 1
+        }
+        self.send_thread.send_message = self.send_message
+        result_data, _ = self.send_thread.Send_no_promise()
+
+        if not isinstance(result_data, dict):
+            reject("步骤0失败：UFC状态查询未返回有效数据")
+            return
+
+        parsed_states = {}
+        for item in result_data.get('data') or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get('desc') == '机器状态':
+                parsed_states['ufc_status'] = item.get('value')
+            elif item.get('desc') == '气泵':
+                parsed_states['air_pump'] = item.get('value')
+
+        try:
+            ufc_status = int(parsed_states['ufc_status'])
+            air_pump = int(parsed_states['air_pump'])
+        except (KeyError, TypeError, ValueError):
+            reject(
+                "步骤0失败：UFC响应中缺少机器状态或气泵状态，"
+                f"解析结果={parsed_states}"
+            )
+            return
+
+        if ufc_status not in (0, 1) or air_pump not in (0, 1):
+            reject(
+                "步骤0失败：UFC状态值无效，"
+                f"ufc_status={ufc_status}, air_pump={air_pump}"
+            )
+            return
+
+        startup_status = {
+            'ufc_status': ufc_status,
+            'air_pump': air_pump,
+        }
+        status_text = (
+            f"UFC={'运行' if ufc_status == 1 else '停止'}，"
+            f"气泵={'打开' if air_pump == 1 else '关闭'}"
+        )
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} | "
+            f"气路启动-步骤0完成：{status_text}"
+        )
+        logger.info(f"气路启动步骤0完成：{status_text}")
+        resolve(startup_status)
+
     def state_check(self, resolve, reject):
         """
         UFC 状态检测
