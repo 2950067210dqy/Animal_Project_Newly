@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -63,6 +64,13 @@ class ModuleSpec:
     description: str
 
 
+@dataclass(frozen=True)
+class RequestConfig:
+    cage_one_address: int
+    function_code: int
+    data: tuple[int, int, int, int]
+
+
 # 地址和读取数据与正式程序 Modbus_Type.py 中的监控数据报文保持一致。
 MODULES = (
     ModuleSpec("environment", "环境 ENM", "ENM", 0x01, (0x00, 0x00, 0x00, 0x07), "功能码04，13字节环境数据"),
@@ -73,7 +81,22 @@ MODULES = (
 MODULE_BY_KEY = {module.key: module for module in MODULES}
 DEFAULT_ORDER = [module.key for module in MODULES]
 WEIGHT_30_DATA = (0x04, 0x01, 0x00, 0x3C)
-WEIGHT_30_BASE_ADDRESS = 0x02
+
+DEFAULT_REQUEST_CONFIGS = {
+    "environment": RequestConfig(0x11, 0x04, MODULE_BY_KEY["environment"].read_data),
+    "weight_single": RequestConfig(0x14, 0x04, MODULE_BY_KEY["weight"].read_data),
+    "weight_30": RequestConfig(0x12, 0x04, WEIGHT_30_DATA),
+    "food": RequestConfig(0x13, 0x04, MODULE_BY_KEY["food"].read_data),
+    "water": RequestConfig(0x12, 0x04, MODULE_BY_KEY["water"].read_data),
+}
+
+REQUEST_CONFIG_ROWS = (
+    ("environment", "环境 ENM"),
+    ("weight_single", "称重 WM（单值）"),
+    ("weight_30", "称重 WM（30点）"),
+    ("food", "饮食 EM"),
+    ("water", "饮水 DWM"),
+)
 
 
 def calculate_crc(data: bytes) -> bytes:
@@ -97,10 +120,36 @@ def build_frame(slave_id: int, function_code: int, data: Iterable[int]) -> bytes
     return body + calculate_crc(body)
 
 
-def cage_slave_id(cage_number: int, base_address: int) -> int:
+def cage_slave_id(cage_number: int, cage_one_address: int) -> int:
     if not 1 <= cage_number <= 8:
         raise ValueError("笼号必须在1到8之间")
-    return cage_number * 0x10 + base_address
+    if not 0x10 <= cage_one_address <= 0x1F:
+        raise ValueError("笼1地址必须在0x10到0x1F之间")
+    return cage_one_address + (cage_number - 1) * 0x10
+
+
+def parse_hex_byte(text: str, field_name: str) -> int:
+    value = text.strip()
+    if value.lower().startswith("0x"):
+        value = value[2:]
+    if not value or len(value) > 2:
+        raise ValueError(f"{field_name}必须是1字节十六进制数，例如04")
+    try:
+        return int(value, 16)
+    except ValueError as exc:
+        raise ValueError(f"{field_name}不是有效的十六进制数") from exc
+
+
+def parse_hex_data(text: str, field_name: str) -> tuple[int, int, int, int]:
+    value = text.replace("0x", "").replace("0X", "")
+    for separator in (" ", ",", "，", "-", "_"):
+        value = value.replace(separator, "")
+    if len(value) != 8:
+        raise ValueError(f"{field_name}必须正好是4字节，例如04 01 00 02")
+    try:
+        return tuple(bytes.fromhex(value))
+    except ValueError as exc:
+        raise ValueError(f"{field_name}不是有效的十六进制数据") from exc
 
 
 def parse_cages(text: str) -> list[int]:
@@ -194,18 +243,11 @@ def exchange_once(
     ser: serial.Serial,
     module: ModuleSpec,
     cage_number: int,
-    weight_30_enabled: bool,
+    request_config: RequestConfig,
     timeout: float,
 ) -> dict:
-    data = WEIGHT_30_DATA if module.key == "weight" and weight_30_enabled else module.read_data
-    # 新版30点称重协议使用0x02作为称重模块基址，单值协议仍使用0x04。
-    base_address = (
-        WEIGHT_30_BASE_ADDRESS
-        if module.key == "weight" and weight_30_enabled
-        else module.base_address
-    )
-    slave_id = cage_slave_id(cage_number, base_address)
-    request = build_frame(slave_id, 0x04, data)
+    slave_id = cage_slave_id(cage_number, request_config.cage_one_address)
+    request = build_frame(slave_id, request_config.function_code, request_config.data)
     started = time.monotonic()
     result = {
         "timestamp": datetime.now().strftime("%H:%M:%S.%f")[:-3],
@@ -237,12 +279,13 @@ class MonitorWorker(QThread):
     event = pyqtSignal(dict)
     state = pyqtSignal(str)
 
-    def __init__(self, port: str, cages: list[int], order: list[str], weight_30: bool, timeout: float, request_interval: float, interval: float, continuous: bool):
+    def __init__(self, port: str, cages: list[int], order: list[str], weight_30: bool, request_configs: dict[str, RequestConfig], timeout: float, request_interval: float, interval: float, continuous: bool):
         super().__init__()
         self.port = port
         self.cages = cages
         self.order = order
         self.weight_30 = weight_30
+        self.request_configs = request_configs
         self.timeout = timeout
         self.request_interval = request_interval
         self.interval = interval
@@ -264,7 +307,20 @@ class MonitorWorker(QThread):
                             if self._stop_event.is_set():
                                 break
                             module = MODULE_BY_KEY[key]
-                            record = exchange_once(ser, module, cage, self.weight_30, self.timeout)
+                            request_key = (
+                                "weight_30"
+                                if key == "weight" and self.weight_30
+                                else "weight_single"
+                                if key == "weight"
+                                else key
+                            )
+                            record = exchange_once(
+                                ser,
+                                module,
+                                cage,
+                                self.request_configs[request_key],
+                                self.timeout,
+                            )
                             record["round"] = round_number
                             record["order"] = order_index
                             self.event.emit(record)
@@ -294,6 +350,7 @@ class ModuleDebugWindow(QMainWindow):
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
+        settings_row = QHBoxLayout()
 
         connection_box = QGroupBox("连接与采集参数")
         connection_layout = QFormLayout(connection_box)
@@ -326,7 +383,55 @@ class ModuleDebugWindow(QMainWindow):
         connection_layout.addRow("模块报文间隔", self.request_interval_spin)
         self.weight_30_check = QCheckBox("称重读取30个数据（0401003C）；不勾选为单值（04010002）")
         connection_layout.addRow("称重模式", self.weight_30_check)
-        layout.addWidget(connection_box)
+        settings_row.addWidget(connection_box, 3)
+
+        request_box = QGroupBox("模块请求参数（十六进制，可修改，CRC自动计算）")
+        request_layout = QGridLayout(request_box)
+        request_layout.addWidget(QLabel("模块"), 0, 0)
+        request_layout.addWidget(QLabel("笼1地址"), 0, 1)
+        request_layout.addWidget(QLabel("功能码"), 0, 2)
+        request_layout.addWidget(QLabel("数据区（4字节）"), 0, 3)
+        request_layout.addWidget(QLabel("说明"), 0, 4)
+        self.request_edits: dict[str, dict[str, QLineEdit]] = {}
+        for row, (request_key, label) in enumerate(REQUEST_CONFIG_ROWS, start=1):
+            address_edit = QLineEdit()
+            address_edit.setMaximumWidth(90)
+            function_edit = QLineEdit()
+            function_edit.setMaximumWidth(90)
+            data_edit = QLineEdit()
+            data_edit.setMaximumWidth(220)
+            self.request_edits[request_key] = {
+                "address": address_edit,
+                "function": function_edit,
+                "data": data_edit,
+            }
+            request_layout.addWidget(QLabel(label), row, 0)
+            request_layout.addWidget(address_edit, row, 1)
+            request_layout.addWidget(function_edit, row, 2)
+            request_layout.addWidget(data_edit, row, 3)
+            request_layout.addWidget(
+                QLabel("其他笼地址按笼号自动增加0x10"),
+                row,
+                4,
+            )
+
+        request_button_row = QHBoxLayout()
+        reset_requests_button = QPushButton("恢复默认报文")
+        reset_requests_button.clicked.connect(self._reset_request_configs)
+        request_button_row.addWidget(reset_requests_button)
+        request_button_row.addWidget(
+            QLabel("示例：笼1地址11、功能码04、数据区00 00 00 07")
+        )
+        request_button_row.addStretch(1)
+        request_layout.addLayout(
+            request_button_row,
+            len(REQUEST_CONFIG_ROWS) + 1,
+            0,
+            1,
+            5,
+        )
+        self._reset_request_configs()
+        settings_row.addWidget(request_box, 5)
 
         module_box = QGroupBox("模块启用与发送顺序（可拖拽调整）")
         module_layout = QHBoxLayout(module_box)
@@ -334,8 +439,7 @@ class ModuleDebugWindow(QMainWindow):
         check_layout = QVBoxLayout()
         check_layout.addWidget(QLabel("启用模块"))
         for module in MODULES:
-            address_text = "0x02（30点）/ 0x04（单值）" if module.key == "weight" else f"0x{module.base_address:02X}"
-            check = QCheckBox(f"{module.label}  地址基址 {address_text}")
+            check = QCheckBox(module.label)
             check.setChecked(True)
             self.module_checks[module.key] = check
             check_layout.addWidget(check)
@@ -351,7 +455,8 @@ class ModuleDebugWindow(QMainWindow):
         reset_order_button.clicked.connect(self._reset_order)
         order_layout.addWidget(reset_order_button)
         module_layout.addLayout(order_layout, 1)
-        layout.addWidget(module_box)
+        settings_row.addWidget(module_box, 4)
+        layout.addLayout(settings_row)
 
         button_row = QHBoxLayout()
         self.once_button = QPushButton("发送单轮")
@@ -372,12 +477,13 @@ class ModuleDebugWindow(QMainWindow):
         ])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
+        self.table.setMinimumHeight(320)
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table, 1)
 
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMaximumHeight(120)
+        self.detail.setMaximumHeight(90)
         layout.addWidget(self.detail)
 
         self.refresh_button.clicked.connect(self.refresh_ports)
@@ -390,6 +496,40 @@ class ModuleDebugWindow(QMainWindow):
         for key in DEFAULT_ORDER:
             self.order_list.addItem(QListWidgetItem(MODULE_BY_KEY[key].label, self.order_list))
             self.order_list.item(self.order_list.count() - 1).setData(Qt.ItemDataRole.UserRole, key)
+
+    def _reset_request_configs(self) -> None:
+        for request_key, config in DEFAULT_REQUEST_CONFIGS.items():
+            edits = self.request_edits[request_key]
+            edits["address"].setText(f"{config.cage_one_address:02X}")
+            edits["function"].setText(f"{config.function_code:02X}")
+            edits["data"].setText(" ".join(f"{value:02X}" for value in config.data))
+
+    def _request_configs(self) -> dict[str, RequestConfig]:
+        configs: dict[str, RequestConfig] = {}
+        labels = dict(REQUEST_CONFIG_ROWS)
+        for request_key, edits in self.request_edits.items():
+            label = labels[request_key]
+            cage_one_address = parse_hex_byte(
+                edits["address"].text(),
+                f"{label}笼1地址",
+            )
+            if not 0x10 <= cage_one_address <= 0x1F:
+                raise ValueError(f"{label}笼1地址必须在10到1F之间")
+            function_code = parse_hex_byte(
+                edits["function"].text(),
+                f"{label}功能码",
+            )
+            if function_code == 0 or function_code >= 0x80:
+                raise ValueError(f"{label}功能码必须在01到7F之间")
+            configs[request_key] = RequestConfig(
+                cage_one_address=cage_one_address,
+                function_code=function_code,
+                data=parse_hex_data(
+                    edits["data"].text(),
+                    f"{label}数据区",
+                ),
+            )
+        return configs
 
     def refresh_ports(self) -> None:
         current = self.port_combo.currentData()
@@ -424,6 +564,7 @@ class ModuleDebugWindow(QMainWindow):
         try:
             cages = parse_cages(self.cages_edit.text())
             order = self._selected_order()
+            request_configs = self._request_configs()
         except ValueError as exc:
             QMessageBox.warning(self, "参数错误", str(exc))
             return
@@ -434,6 +575,7 @@ class ModuleDebugWindow(QMainWindow):
             cages=cages,
             order=order,
             weight_30=self.weight_30_check.isChecked(),
+            request_configs=request_configs,
             timeout=self.timeout_spin.value(),
             request_interval=self.request_interval_spin.value(),
             interval=self.interval_spin.value(),
