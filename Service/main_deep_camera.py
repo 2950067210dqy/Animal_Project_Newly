@@ -25,6 +25,12 @@ from public.util.ffmpeg_video_recorder import (
 from public.util.json_util import json_util
 from public.util.shared_video_frames import shared_video_frame_store
 from public.util.time_util import time_util
+from public.util.uvc_camera_util import (
+    camera_config_identity,
+    camera_logical_index,
+    enumerate_uvc_cameras,
+    resolve_camera_config,
+)
 from public.util.video_program_instance_lock import VideoProgramInstanceLock
 
 
@@ -410,11 +416,42 @@ def parse_uvc_device_index(device_identifier):
 
 
 class UVCCameraProcessor(MyQThread):
-    def __init__(self, path="", id=1, serial_number="", device_index=None):
+    def __init__(
+        self,
+        path="",
+        id=1,
+        serial_number="",
+        device_index=None,
+        logical_index=None,
+        stable_id="",
+        device_path="",
+        backend=None,
+    ):
         super().__init__(name=f"deep_camera_{id}")
         self.cage_number = int(id)
         self.serial_number = serial_number
         self.device_index = device_index if device_index is not None else parse_uvc_device_index(serial_number)
+        parsed_logical_index = parse_uvc_device_index(serial_number)
+        self.logical_index = (
+            int(logical_index)
+            if logical_index is not None
+            else parsed_logical_index
+        )
+        try:
+            self.capture_backend = int(backend) if backend is not None else None
+        except (TypeError, ValueError):
+            self.capture_backend = None
+        self.binding_config = {
+            "mouse_cage_number": self.cage_number,
+            "serial": serial_number,
+            "logical_index": self.logical_index,
+            "stable_id": stable_id,
+            "device_path": device_path,
+            "instance_id": device_path,
+            "device_index": self.device_index,
+            "backend": self.capture_backend,
+        }
+        self.stable_identity = camera_config_identity(self.binding_config)
         self.id = id
         self.path = path
         self.capture = None
@@ -433,25 +470,100 @@ class UVCCameraProcessor(MyQThread):
         self.reconnect_delay_seconds = 1.0
         self.next_reconnect_time = 0.0
 
+    def _resolve_current_device(self):
+        if not self.stable_identity:
+            return self.device_index is not None
+
+        try:
+            resolved = resolve_camera_config(
+                self.binding_config,
+                enumerate_uvc_cameras(probe=False),
+            )
+        except Exception as error:
+            error_message = f"UVC camera enumeration failed: {error}"
+            if error_message not in logged_errors:
+                logger.error(error_message)
+                logged_errors.add(error_message)
+            return False
+
+        if resolved is None:
+            error_message = (
+                f"UVC camera not connected: cage={self.cage_number}, "
+                f"logical_index={self.logical_index}"
+            )
+            if error_message not in logged_errors:
+                logger.error(error_message)
+                _emit_runtime_diagnostic(
+                    "camera_binding_not_found",
+                    f"cage={self.cage_number}, logical_index={self.logical_index}, "
+                    f"stable_id={self.stable_identity}",
+                )
+                logged_errors.add(error_message)
+            return False
+
+        self.binding_config.update(resolved)
+        self.device_index = int(resolved["device_index"])
+        backend = resolved.get("backend")
+        self.capture_backend = int(backend) if backend is not None else None
+        logged_errors.discard(
+            f"UVC camera not connected: cage={self.cage_number}, "
+            f"logical_index={self.logical_index}"
+        )
+        return True
+
+    def _configure_capture(self, capture):
+        if hasattr(cv2, "CAP_PROP_FOURCC"):
+            capture.set(
+                cv2.CAP_PROP_FOURCC,
+                cv2.VideoWriter_fourcc(*"MJPG"),
+            )
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
+        capture.set(cv2.CAP_PROP_FPS, self.fps)
+        if hasattr(cv2, "CAP_PROP_BUFFERSIZE"):
+            capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
+            capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000)
+
     def _open_capture(self, index):
-        # Try common Windows backends first, then fall back to OpenCV default.
-        backends = []
-        if hasattr(cv2, "CAP_DSHOW"):
-            backends.append(cv2.CAP_DSHOW)
-        if hasattr(cv2, "CAP_MSMF"):
-            backends.append(cv2.CAP_MSMF)
-        backends.append(None)
+        if self.capture_backend is not None:
+            backends = [self.capture_backend]
+        else:
+            # Old configurations have no backend; retain the original fallback order.
+            backends = []
+            if hasattr(cv2, "CAP_DSHOW"):
+                backends.append(cv2.CAP_DSHOW)
+            if hasattr(cv2, "CAP_MSMF"):
+                backends.append(cv2.CAP_MSMF)
+            backends.append(None)
 
         for backend in backends:
-            capture = cv2.VideoCapture(index, backend) if backend is not None else cv2.VideoCapture(index)
+            try:
+                capture = (
+                    cv2.VideoCapture(index, backend)
+                    if backend is not None
+                    else cv2.VideoCapture(index)
+                )
+            except cv2.error as error:
+                logger.warning(
+                    f"deep_camera_{self.id} open failed: index={index}, "
+                    f"backend={backend}, reason={error}"
+                )
+                continue
             if capture is None or not capture.isOpened():
                 if capture is not None:
                     capture.release()
                 continue
 
+            self._configure_capture(capture)
             frame_ok = False
             for _ in range(5):
-                frame_ok, _ = capture.read()
+                try:
+                    frame_ok, _ = capture.read()
+                except cv2.error as error:
+                    logger.warning(f"deep_camera_{self.id} warmup failed: {error}")
+                    frame_ok = False
+                    break
                 if frame_ok:
                     break
             if frame_ok:
@@ -462,6 +574,14 @@ class UVCCameraProcessor(MyQThread):
 
     def init_camera(self):
         self._release_capture()
+
+        with camera_connect_lock:
+            device_resolved = self._resolve_current_device()
+            if device_resolved:
+                self.capture = self._open_capture(self.device_index)
+
+        if not device_resolved:
+            return False
 
         if self.device_index is None:
             error_message = f"UVC camera config is invalid, serial={self.serial_number}"
@@ -475,8 +595,6 @@ class UVCCameraProcessor(MyQThread):
                 logged_errors.add(error_message)
             return False
 
-        with camera_connect_lock:
-            self.capture = self._open_capture(self.device_index)
         if self.capture is None:
             error_message = f"UVC camera open failed, index={self.device_index}"
             if error_message not in logged_errors:
@@ -489,13 +607,6 @@ class UVCCameraProcessor(MyQThread):
                 logged_errors.add(error_message)
             return False
 
-        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
-        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
-        self.capture.set(cv2.CAP_PROP_FPS, self.fps)
-        if hasattr(cv2, "CAP_PROP_BUFFERSIZE"):
-            self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
-            self.capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000)
         self.camera_session_id = secrets.randbits(63)
         self.frame_id = 0
         self.reconnect_delay_seconds = 1.0
@@ -503,7 +614,8 @@ class UVCCameraProcessor(MyQThread):
         logged_errors.discard(f"UVC camera open failed, index={self.device_index}")
         shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
         logger.info(
-            f"deep_camera_{self.id} connected to UVC device {self.device_index}, "
+            f"deep_camera_{self.id} connected: logical_index={self.logical_index}, "
+            f"current_index={self.device_index}, "
             f"camera_session_id={self.camera_session_id}"
         )
         _emit_runtime_diagnostic(
@@ -526,6 +638,27 @@ class UVCCameraProcessor(MyQThread):
     def _schedule_reconnect(self):
         self.next_reconnect_time = time.monotonic() + self.reconnect_delay_seconds
         self.reconnect_delay_seconds = min(self.reconnect_delay_seconds * 2.0, 10.0)
+
+    def _handle_capture_read_failure(self, reason):
+        failure_time = time.time()
+        self.consecutive_read_failures += 1
+        if failure_time - self.last_failure_log_time >= 2.0:
+            logger.error(
+                f"deep_camera_{self.id} read failed: "
+                f"logical_index={self.logical_index}, current_index={self.device_index}, "
+                f"consecutive_failures={self.consecutive_read_failures}, reason={reason}"
+            )
+            _emit_runtime_diagnostic(
+                "camera_read_failed",
+                f"cage={self.cage_number}, logical_index={self.logical_index}, "
+                f"current_index={self.device_index}, "
+                f"consecutive_failures={self.consecutive_read_failures}, reason={reason}",
+            )
+            self.last_failure_log_time = failure_time
+        shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
+        self._release_capture()
+        self.init_state = False
+        self._schedule_reconnect()
 
     def _ensure_dir(self, path):
         if not os.path.exists(path):
@@ -574,6 +707,7 @@ class UVCCameraProcessor(MyQThread):
                     self.dosomething()
                 except Exception as e:
                     logger.error(f"deep_camera_{self.id} run failed: {e} | {traceback.format_exc()}")
+                    self.msleep(100)
         finally:
             self._release_capture()
             self.init_state = False
@@ -597,30 +731,20 @@ class UVCCameraProcessor(MyQThread):
 
         if self.capture is None:
             self.init_state = False
+            self._schedule_reconnect()
             return
 
         start_time = time.time()
-        ret, color_image = self.capture.read()
+        try:
+            ret, color_image = self.capture.read()
+        except cv2.error as error:
+            self._handle_capture_read_failure(f"OpenCV error: {error}")
+            return
+        except Exception as error:
+            self._handle_capture_read_failure(error)
+            return
         if not ret or color_image is None:
-            failure_time = time.time()
-            self.consecutive_read_failures += 1
-            if failure_time - self.last_failure_log_time >= 2.0:
-                logger.error(
-                    f"deep_camera_{self.id} read frame failed from UVC device "
-                    f"{self.device_index}, consecutive_failures={self.consecutive_read_failures}"
-                )
-                _emit_runtime_diagnostic(
-                    "camera_read_failed",
-                    f"cage={self.cage_number}, camera_id={self.id}, "
-                    f"device={self.device_index}, "
-                    f"consecutive_failures={self.consecutive_read_failures}",
-                )
-                self.last_failure_log_time = failure_time
-            shared_video_frame_store.clear_frame("deep_camera", self.cage_number)
-            self._release_capture()
-            self.init_state = False
-            self.reconnect_delay_seconds = 1.0
-            self._schedule_reconnect()
+            self._handle_capture_read_failure("empty frame")
             return
 
         timestamp = time.time()
@@ -814,24 +938,46 @@ def init_camera_and_image_handle_thread(serials):
         return
 
     camera_list = []
+    configured_identities = set()
+    configured_logical_indices = set()
 
     for num in range(camera_nums):
         camera_struct = {}
         serial_config = serials[num]
+        stable_identity = camera_config_identity(serial_config)
+        logical_index = camera_logical_index(serial_config)
+        if stable_identity and stable_identity in configured_identities:
+            logger.error(f"skip duplicate deep camera identity: {serial_config}")
+            continue
+        if logical_index is not None and logical_index in configured_logical_indices:
+            logger.error(f"skip duplicate deep camera logical index: {serial_config}")
+            continue
+        if stable_identity:
+            configured_identities.add(stable_identity)
+        if logical_index is not None:
+            configured_logical_indices.add(logical_index)
+
         device_index = serial_config.get("device_index")
         if device_index is None:
             device_index = parse_uvc_device_index(serial_config.get("serial"))
-        if device_index is None:
+        if device_index is None and not stable_identity:
             logger.error(f"skip invalid deep camera config: {serial_config}")
             continue
 
         try:
-            # Each mouse cage maps to one UVC device index from the saved config file.
+            # The logical index remains fixed; the current OpenCV index is resolved at runtime.
             camera = UVCCameraProcessor(
                 path=_camera_base_path(serial_config["mouse_cage_number"]),
                 id=serial_config["mouse_cage_number"],
                 serial_number=serial_config.get("serial"),
                 device_index=device_index,
+                logical_index=logical_index,
+                stable_id=serial_config.get("stable_id", ""),
+                device_path=serial_config.get(
+                    "device_path",
+                    serial_config.get("instance_id", ""),
+                ),
+                backend=serial_config.get("backend"),
             )
         except Exception as e:
             logger.error(

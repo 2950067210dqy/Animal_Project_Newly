@@ -1,7 +1,6 @@
 import time
 import typing
 
-import cv2
 from PyQt6 import QtGui
 from PyQt6.QtCore import QRect, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QLabel, QPushButton
@@ -13,6 +12,14 @@ from public.entity.queue.ObjectQueueItem import ObjectQueueItem
 from public.util.folder_util import folder_util
 from public.util.json_util import json_util
 from public.util.time_util import time_util
+from public.util.uvc_camera_util import (
+    assign_logical_camera_indices,
+    camera_config_identity,
+    camera_logical_index,
+    enumerate_uvc_cameras,
+    resolve_camera_config,
+    set_camera_logical_index,
+)
 
 
 class UVCCameraScanThread(QThread):
@@ -33,61 +40,16 @@ class UVCCameraScanThread(QThread):
 
     @staticmethod
     def _scan_once():
-        cameras = []
-        for index in range(10):
-            capture = None
-            for backend in UVCCameraScanThread._backends():
-                candidate = cv2.VideoCapture(index, backend) if backend is not None else cv2.VideoCapture(index)
-                if candidate is None or not candidate.isOpened():
-                    if candidate is not None:
-                        candidate.release()
-                    continue
-
-                frame_ok = False
-                for _ in range(5):
-                    frame_ok, _ = candidate.read()
-                    if frame_ok:
-                        break
-                if frame_ok:
-                    capture = candidate
-                    break
-                else:
-                    candidate.release()
-
-            if capture is None:
-                continue
-
-            try:
-                width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-                height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-                cameras.append(
-                    {
-                        "id": len(cameras) + 1,
-                        "serial": f"uvc_index_{index}",
-                        "instance_id": f"uvc_index_{index}",
-                        "display_name": (
-                            f"UVC Camera {index} ({width}x{height})"
-                            if width and height
-                            else f"UVC Camera {index}"
-                        ),
-                        "device_index": index,
-                    }
-                )
-                logger.info(f"Found UVC camera: index={index}, size={width}x{height}")
-            finally:
-                capture.release()
+        cameras = enumerate_uvc_cameras(probe=True)
+        for camera in cameras:
+            logger.info(
+                "Found UVC camera: "
+                f"current_index={camera.get('device_index')}, "
+                f"stable_id={camera.get('stable_id')}, "
+                f"size={camera.get('width')}x{camera.get('height')}"
+            )
         logger.info(f"UVC camera scan completed: count={len(cameras)}")
         return cameras
-
-    @staticmethod
-    def _backends():
-        backends = []
-        if hasattr(cv2, "CAP_DSHOW"):
-            backends.append(cv2.CAP_DSHOW)
-        if hasattr(cv2, "CAP_MSMF"):
-            backends.append(cv2.CAP_MSMF)
-        backends.append(None)
-        return backends
 
 
 class deep_camera_config_dialog(QDialog):
@@ -97,6 +59,7 @@ class deep_camera_config_dialog(QDialog):
         self.camera_series_list = []
         self.camera_series_list_select_need = []
         self.camera_series_choose_list = [None for _ in range(8)]
+        self.rebind_logical_indices: dict[int, int] = {}
 
         self.combo_boxes: dict[int, QComboBox] = {}
         self.checked_labels: dict[int, QLabel] = {}
@@ -204,18 +167,30 @@ class deep_camera_config_dialog(QDialog):
                 combo.addItem(f"-相机: {camera_obj.get('display_name', camera_obj.get('serial', ''))}")
             combo.blockSignals(False)
 
+    def _return_camera_to_available(self, camera):
+        if camera is None:
+            return
+        current = resolve_camera_config(camera, self.camera_series_list)
+        if current is None:
+            return
+        current.pop("mouse_cage_number", None)
+        current_identity = camera_config_identity(current)
+        current_logical_index = camera_logical_index(current)
+        already_available = any(
+            camera_config_identity(item) == current_identity
+            if current_identity
+            else camera_logical_index(item) == current_logical_index
+            for item in self.camera_series_list_select_need
+        )
+        if not already_available:
+            self.camera_series_list_select_need.append(current)
+
     def label_btn_func(self, cage_num):
         old_value = self.camera_series_choose_list[cage_num - 1]
-        if old_value is not None:
-            self.camera_series_list_select_need.append(
-                {
-                    "id": len(self.camera_series_list_select_need) + 1,
-                    "serial": old_value.get("serial"),
-                    "instance_id": old_value.get("instance_id", old_value.get("serial")),
-                    "display_name": old_value.get("display_name", old_value.get("serial")),
-                    "device_index": old_value.get("device_index"),
-                }
-            )
+        old_logical_index = camera_logical_index(old_value)
+        if old_logical_index is not None:
+            self.rebind_logical_indices[cage_num] = old_logical_index
+        self._return_camera_to_available(old_value)
 
         self.camera_series_choose_list[cage_num - 1] = None
         if cage_num in self.checked_labels:
@@ -228,24 +203,42 @@ class deep_camera_config_dialog(QDialog):
 
         selected_camera = self.camera_series_list_select_need[data_index]
         old_value = self.camera_series_choose_list[cage_num - 1]
-        if old_value is not None:
-            self.camera_series_list_select_need.append(
-                {
-                    "id": len(self.camera_series_list_select_need) + 1,
-                    "serial": old_value.get("serial"),
-                    "instance_id": old_value.get("instance_id", old_value.get("serial")),
-                    "display_name": old_value.get("display_name", old_value.get("serial")),
-                    "device_index": old_value.get("device_index"),
-                }
+        old_logical_index = camera_logical_index(old_value)
+        if old_logical_index is None:
+            old_logical_index = self.rebind_logical_indices.pop(cage_num, None)
+        else:
+            self.rebind_logical_indices.pop(cage_num, None)
+        selected_logical_index = camera_logical_index(selected_camera)
+        if old_logical_index is not None:
+            if (
+                old_value is None
+                and selected_logical_index is not None
+                and selected_logical_index != old_logical_index
+            ):
+                for index, available_camera in enumerate(self.camera_series_list_select_need):
+                    if index == data_index:
+                        continue
+                    if camera_logical_index(available_camera) == old_logical_index:
+                        self.camera_series_list_select_need[index] = set_camera_logical_index(
+                            available_camera,
+                            selected_logical_index,
+                        )
+                        break
+            if selected_logical_index is not None:
+                if old_value is not None:
+                    old_value = set_camera_logical_index(
+                        old_value,
+                        selected_logical_index,
+                    )
+            selected_camera = set_camera_logical_index(
+                selected_camera,
+                old_logical_index,
             )
+        self._return_camera_to_available(old_value)
 
-        self.camera_series_choose_list[cage_num - 1] = {
-            "mouse_cage_number": cage_num,
-            "serial": selected_camera.get("serial"),
-            "instance_id": selected_camera.get("instance_id", selected_camera.get("serial")),
-            "display_name": selected_camera.get("display_name", selected_camera.get("serial")),
-            "device_index": selected_camera.get("device_index"),
-        }
+        selected_value = dict(selected_camera)
+        selected_value["mouse_cage_number"] = cage_num
+        self.camera_series_choose_list[cage_num - 1] = selected_value
 
         self.camera_series_list_select_need = [
             item for idx, item in enumerate(self.camera_series_list_select_need) if idx != data_index
@@ -273,15 +266,41 @@ class deep_camera_config_dialog(QDialog):
         self.scan_thread.start()
 
     def _apply_scan_result(self, cameras, error):
-        self.camera_series_list = [item for item in cameras if isinstance(item, dict)]
-        self.camera_series_list_select_need = list(self.camera_series_list)
-        selected_serials = {
-            item.get("serial")
+        raw_cameras = [item for item in cameras if isinstance(item, dict)]
+        self.camera_series_list = assign_logical_camera_indices(
+            raw_cameras,
+            self.camera_series_choose_list,
+        )
+
+        for cage_index, selected in enumerate(self.camera_series_choose_list):
+            if selected is None:
+                continue
+            resolved = resolve_camera_config(selected, self.camera_series_list)
+            if resolved is None:
+                continue
+            cage_num = cage_index + 1
+            resolved["mouse_cage_number"] = cage_num
+            self.camera_series_choose_list[cage_index] = resolved
+            if cage_num in self.checked_labels:
+                self.checked_labels[cage_num].setText(
+                    resolved.get("display_name") or resolved.get("serial", "未选中")
+                )
+
+        selected_identities = {
+            camera_config_identity(item)
             for item in self.camera_series_choose_list
-            if item is not None
+            if item is not None and camera_config_identity(item)
+        }
+        selected_logical_indices = {
+            camera_logical_index(item)
+            for item in self.camera_series_choose_list
+            if item is not None and not camera_config_identity(item)
         }
         self.camera_series_list_select_need = [
-            item for item in self.camera_series_list_select_need if item.get("serial") not in selected_serials
+            item
+            for item in self.camera_series_list
+            if camera_config_identity(item) not in selected_identities
+            and camera_logical_index(item) not in selected_logical_indices
         ]
         self.init_combox()
 
