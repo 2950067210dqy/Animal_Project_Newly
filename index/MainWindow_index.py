@@ -209,10 +209,10 @@ class read_queue_data_Thread(MyQThread):
                         """
                         if self.window is not None:
                             self.window.calibration_detail_zero_end_time = message.data
-                            self.window.calibration_detail_status_text = "未标定"
+                            self.window.calibration_detail_status_text = "零点标定完成"
                             if self.window.calibration_details_windows is not None:
                                 self.window.calibration_details_windows.updateZeroEndTime(message.data, event_time=message.data)
-                                self.window.calibration_details_windows.updateStatus("未标定", event_time=message.data)
+                                self.window.calibration_details_windows.updateStatus("零点标定完成", event_time=message.data)
                     case 'set_start_span_calibration_time':
                         """
                         设置开始校准span
@@ -231,24 +231,24 @@ class read_queue_data_Thread(MyQThread):
                         """
                         if self.window is not None:
                             self.window.calibration_detail_span_end_time = message.data
-                            self.window.calibration_detail_status_text = "未标定"
+                            self.window.calibration_detail_status_text = "量程标定完成"
                             if self.window.calibration_details_windows is not None:
                                 self.window.calibration_details_windows.updateSpanEndTime(message.data, event_time=message.data)
-                                self.window.calibration_details_windows.updateStatus("未标定", event_time=message.data)
+                                self.window.calibration_details_windows.updateStatus("量程标定完成", event_time=message.data)
                     case 'set_start_air_calibration_time':
                         if self.window is not None:
                             self.window.calibration_detail_zero_start_time = message.data
                             self.window.calibration_detail_status_text = "Air空气校准"
                             if self.window.calibration_details_windows is not None:
-                                self.window.calibration_details_windows.updateZeroStartTime(message.data, event_time=message.data)
+                                self.window.calibration_details_windows.updateAirStartTime(message.data, event_time=message.data)
                                 self.window.calibration_details_windows.updateStatus("Air空气校准", event_time=message.data)
                     case 'set_stop_air_calibration_time':
                         if self.window is not None:
                             self.window.calibration_detail_zero_end_time = message.data
-                            self.window.calibration_detail_status_text = "未标定"
+                            self.window.calibration_detail_status_text = "Air空气校准完成"
                             if self.window.calibration_details_windows is not None:
-                                self.window.calibration_details_windows.updateZeroEndTime(message.data, event_time=message.data)
-                                self.window.calibration_details_windows.updateStatus("未标定", event_time=message.data)
+                                self.window.calibration_details_windows.updateAirEndTime(message.data, event_time=message.data)
+                                self.window.calibration_details_windows.updateStatus("Air空气校准完成", event_time=message.data)
                     case 'set_calibration_values':
                         """
                         设置校准窗口显示值
@@ -1654,10 +1654,24 @@ class MainWindow_Index(ThemedWindow):
             return
         for message, has_time in self.calibration_detail_log_buffer:
             self.calibration_details_windows.addLog(message, has_time=has_time)
+        is_air_calibration = (
+            self.calibration_detail_status_text is not None
+            and "Air空气校准" in self.calibration_detail_status_text
+        )
         if self.calibration_detail_zero_start_time is not None:
-            self.calibration_details_windows.updateZeroStartTime(self.calibration_detail_zero_start_time, log_event=False)
+            update_start_time = (
+                self.calibration_details_windows.updateAirStartTime
+                if is_air_calibration
+                else self.calibration_details_windows.updateZeroStartTime
+            )
+            update_start_time(self.calibration_detail_zero_start_time, log_event=False)
         if self.calibration_detail_zero_end_time is not None:
-            self.calibration_details_windows.updateZeroEndTime(self.calibration_detail_zero_end_time, log_event=False)
+            update_end_time = (
+                self.calibration_details_windows.updateAirEndTime
+                if is_air_calibration
+                else self.calibration_details_windows.updateZeroEndTime
+            )
+            update_end_time(self.calibration_detail_zero_end_time, log_event=False)
         if self.calibration_detail_span_start_time is not None:
             self.calibration_details_windows.updateSpanStartTime(self.calibration_detail_span_start_time, log_event=False)
         if self.calibration_detail_span_end_time is not None:

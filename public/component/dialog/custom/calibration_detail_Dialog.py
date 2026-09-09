@@ -807,7 +807,29 @@ class CalibrationDialog(QDialog):
         self.addLog(f"状态变更: {old_status} -> {status_text}", "STATUS")
 
         # 根据状态改变颜色
-        if "零点" in status_text:
+        if "完成" in status_text:
+            self.status_label.setStyleSheet("""
+                QLabel {
+                    background-color: #e8f5e9;
+                    border: 2px solid #2e7d32;
+                    border-radius: 5px;
+                    padding: 8px 15px;
+                    color: #1b5e20;
+                    min-width: 100px;
+                }
+            """)
+        elif "失败" in status_text:
+            self.status_label.setStyleSheet("""
+                QLabel {
+                    background-color: #ffebee;
+                    border: 2px solid #c62828;
+                    border-radius: 5px;
+                    padding: 8px 15px;
+                    color: #b71c1c;
+                    min-width: 100px;
+                }
+            """)
+        elif "零点" in status_text:
             self.status_label.setStyleSheet("""
                 QLabel {
                     background-color: #e3f2fd;
@@ -917,6 +939,7 @@ class CalibrationDialog(QDialog):
         """更新零点标定开始时间"""
         if time_str is None:
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.cells[(4, 0)].setText("零点标定开始时间")
         self.cells[self.data_cells['zero_start_time']].setText(time_str)
         self._next_log_event_time = event_time or time_str
         self._suppress_next_log = not log_event
@@ -926,10 +949,31 @@ class CalibrationDialog(QDialog):
         """更新零点标定结束时间"""
         if time_str is None:
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.cells[(5, 0)].setText("零点标定结束时间")
         self.cells[self.data_cells['zero_end_time']].setText(time_str)
         self._next_log_event_time = event_time or time_str
         self._suppress_next_log = not log_event
         self.addLog("零点标定结束", "CALIBRATION")
+
+    def updateAirStartTime(self, time_str=None, event_time=None, log_event=True):
+        """更新 Air 空气校准开始时间。"""
+        if time_str is None:
+            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.cells[(4, 0)].setText("Air校准开始时间")
+        self.cells[self.data_cells['zero_start_time']].setText(time_str)
+        self._next_log_event_time = event_time or time_str
+        self._suppress_next_log = not log_event
+        self.addLog("Air空气校准开始", "CALIBRATION")
+
+    def updateAirEndTime(self, time_str=None, event_time=None, log_event=True):
+        """更新 Air 空气校准完成时间。"""
+        if time_str is None:
+            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.cells[(5, 0)].setText("Air校准完成时间")
+        self.cells[self.data_cells['zero_end_time']].setText(time_str)
+        self._next_log_event_time = event_time or time_str
+        self._suppress_next_log = not log_event
+        self.addLog("Air空气校准完成", "CALIBRATION")
 
     def updateSpanStartTime(self, time_str=None, event_time=None, log_event=True):
         """更新量程标定开始时间"""

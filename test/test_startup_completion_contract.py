@@ -61,6 +61,35 @@ class StartupCompletionContractTests(unittest.TestCase):
         self.assertNotIn("气路初始化失败", source)
         self.assertIn("气路启动等待超时", source)
 
+    def test_calibration_stop_events_report_completed_statuses(self):
+        path = PROJECT_ROOT / "index" / "MainWindow_index.py"
+        method = _class_method(path, "read_queue_data_Thread", "dosomething")
+        source = ast.get_source_segment(path.read_text(encoding="utf-8-sig"), method)
+
+        self.assertIn('calibration_detail_status_text = "零点标定完成"', source)
+        self.assertIn('calibration_detail_status_text = "量程标定完成"', source)
+        self.assertIn('calibration_detail_status_text = "Air空气校准完成"', source)
+        self.assertIn("updateAirEndTime", source)
+
+    def test_air_calibration_uses_its_own_ui_log_methods(self):
+        path = (
+            PROJECT_ROOT
+            / "public"
+            / "component"
+            / "dialog"
+            / "custom"
+            / "calibration_detail_Dialog.py"
+        )
+        start_method = _class_method(path, "CalibrationDialog", "updateAirStartTime")
+        end_method = _class_method(path, "CalibrationDialog", "updateAirEndTime")
+        text = path.read_text(encoding="utf-8-sig")
+        start_source = ast.get_source_segment(text, start_method)
+        end_source = ast.get_source_segment(text, end_method)
+
+        self.assertIn("Air空气校准开始", start_source)
+        self.assertIn("Air空气校准完成", end_source)
+        self.assertNotIn("零点标定", start_source + end_source)
+
 
 if __name__ == "__main__":
     unittest.main()

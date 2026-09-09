@@ -28,7 +28,7 @@ class CO2CalibrationHandler:
         self.failure_reason = None
         self.lock = threading.Lock()
 
-        self.valid_range = (300, 5000)
+        self.valid_range = (0, 5000)
         self.min_valid_ratio = 0.8
         self.k_limit = (0.80, 1.20)
         self.time_sync_tolerance = 2.0
