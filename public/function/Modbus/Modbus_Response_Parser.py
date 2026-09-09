@@ -359,6 +359,26 @@ class Modbus_Response_Parents():
             for i in range(int(self.response_struct['return_bytes_nums']) // 2):
                 self.response_struct['data'].append(response_unpack[data_start_index + i])
 
+    def parser_variable_byte_response(self):
+        """按响应第三字节声明的数据长度解析 Modbus 报文。"""
+        response = bytes(self.response)
+        if len(response) < 5:
+            raise ValueError(f"响应报文长度不足：{len(response)}")
+
+        byte_count = response[2]
+        expected_length = 3 + byte_count + 2
+        if len(response) != expected_length:
+            raise ValueError(
+                f"响应数据长度不匹配：字节数={byte_count}，"
+                f"实际报文长度={len(response)}，应为={expected_length}"
+            )
+
+        self.response_struct['slave_id'] = response[0]
+        self.response_struct['function_code'] = response[1]
+        self.response_struct['return_bytes_nums'] = byte_count
+        self.response_struct['data'] = list(response[3:3 + byte_count])
+        self.response_struct['crc'] = [response[-2], response[-1]]
+
     def get_signed_int(self, bin_str):
         """
         根据8的倍数位二进制数获得有符号的整数
@@ -1522,43 +1542,50 @@ class Modbus_Response_WM(Modbus_Response_Parents):
 
     def parser_function_code_4(self):
         function_desc = """
-                      读传感器测量值
-                      参数长度：5
+                      兼容解析称重测量值
+                      30点参数长度：0x78（30个4字节重量值）
+                      单值参数长度：0x04（1个4字节重量值）
                                                            """
-        pack_struct = "B " * 5
-        self.parser_response_pack(pack_struct, struct_type="B", is_pack_return_bytes_nums=True)
+        return_datas = []
+        parse_error = None
+        try:
+            self.parser_variable_byte_response()
+            data = self.response_struct['data']
+            byte_count = self.response_struct['return_bytes_nums']
+            if byte_count == 0x78:
+                values = [
+                    self.parse_signed_32bit_value(
+                        data[index:index + 4], scale=100
+                    )
+                    for index in range(0, 0x78, 4)
+                ]
+            elif byte_count == 0x04:
+                values = self.parse_signed_32bit_value(data, scale=100)
+            else:
+                raise ValueError(
+                    f"称重响应数据长度不支持：{byte_count}，仅支持0x04或0x78"
+                )
+            return_datas.append({
+                "desc": "重量测量值(g)",
+                "value": values,
+            })
+        except (TypeError, ValueError, struct.error) as error:
+            parse_error = str(error)
+            return_datas.append({
+                "desc": "重量测量值(g)",
+                "value": None,
+            })
+
         logger.info(
             f"响应报文-{self.type.value['name']}-{self.type.value['description']}-开始解析报文：{self.response_hex}|{self.response_struct}")
-        return_datas = []
-        port_types = ['重量测量值(g)']
-        j = 0
-        for i in range(len(self.response_struct['data'])):
-            match i:
-                case 3:
-                    return_datas.append({
-                        "desc": port_types[j],
-                        'value': self.parse_signed_32bit_value(
-                            num_list=[
-                                self.response_struct['data'][i - 3],
-                                self.response_struct['data'][i - 2],
-                                self.response_struct['data'][i - 1],
-                                self.response_struct['data'][i],
-                            ],
-                            scale=100
-                        )
-                    }
-                    )
-                    j += 1
-
-                case _:
-                    pass
         return_data_str = ""
         for return_data in return_datas:
             return_data_str += f"{return_data['desc']}:{return_data['value']} | "
+        if parse_error:
+            return_data_str += f"解析失败:{parse_error} | "
         parser_message = f"{time_util.get_format_from_time(time.time())}-{self.response_hex}-响应报文解析-鼠笼{self.mouse_cage_number}-{self.type.value['name']}-{self.type.value['description']}-{function_desc}-{return_data_str}"
         logger.info(parser_message)
         return return_datas, parser_message
-        pass
 
     """
            14 11 X

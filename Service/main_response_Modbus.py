@@ -732,22 +732,34 @@ class communication(threading.Thread):
                                             """
                                             14 04 X
                                             读传感器测量值
-                                            参数长度：13
+                                            单值参数长度：4；30点参数长度：0x78
                                             """
-                                            return_bytes = self.build_frame(slave_id=f"{slave_id_int:X}",
-                                                                            function_code=f"{function_code_int:X}",
-                                                                            return_bytes_nums='4',
-
-                                                                            data_hex_list=[
-
-                                                                                "0x00",
-                                                                                "0x00",
-                                                                                "0x00",
-                                                                                "0xCE",
-
-                                                                            ],
-                                                                            struct_type="B"
-                                                                            )
+                                            request_data = [
+                                                f"{item:02X}" if isinstance(item, int) else
+                                                str(item).strip().lower().replace("0x", "").upper().zfill(2)
+                                                for item in send_struct.get('data', [])
+                                            ]
+                                            if request_data == ["04", "01", "00", "3C"]:
+                                                return_bytes = self.build_frame(
+                                                    slave_id=f"{slave_id_int:X}",
+                                                    function_code=f"{function_code_int:X}",
+                                                    return_bytes_nums='78',
+                                                    data_hex_list=["0x00", "0x00", "0x12", "0x34"] * 30,
+                                                    struct_type="B"
+                                                )
+                                            else:
+                                                return_bytes = self.build_frame(
+                                                    slave_id=f"{slave_id_int:X}",
+                                                    function_code=f"{function_code_int:X}",
+                                                    return_bytes_nums='4',
+                                                    data_hex_list=[
+                                                        "0x00",
+                                                        "0x00",
+                                                        "0x00",
+                                                        "0xCE",
+                                                    ],
+                                                    struct_type="B"
+                                                )
                                             pass
 
                                         case 17:

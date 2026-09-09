@@ -57,6 +57,10 @@ COLLECTION_BATCH_TIMEOUT_SECONDS = 20.0
 COLLECTION_BARRIER_TIMEOUT_SECONDS = 45.0
 COLLECTION_SENSOR_MAX_ATTEMPTS = 3
 COLLECTION_SENSOR_RETRY_DELAY_SECONDS = 0.1
+WEIGHT_SINGLE_DATA = ["04", "01", "00", "02"]
+WEIGHT_30_POINT_DATA = ["04", "01", "00", "3C"]
+WEIGHT_SINGLE_RESPONSE_BYTES = 0x04
+WEIGHT_30_POINT_RESPONSE_BYTES = 0x78
 FOOD_TROUGH_CURRENT_OFF_COMMAND = {
     "function_code": "05",
     "data": ["00", "71", "00", "00"],
@@ -78,6 +82,56 @@ def _environment_module_only_enabled():
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _weight_read_30_points_enabled():
+    monitor_config = global_setting.get_setting("monitor_data", {}) or {}
+    value = (monitor_config.get("WEIGHT_PROTOCOL", {}) or {}).get(
+        "read_30_points", False
+    )
+    if isinstance(value, bool):
+        return value
+
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized not in {"", "0", "false", "no", "off", "none"}:
+        logger.warning(
+            f"称重30点配置值无效：{value!r}，已按默认单值模式处理"
+        )
+    return False
+
+
+def _is_weight_read_message(message):
+    return isinstance(message, dict) and message.get("module_name") == "WM"
+
+
+def _configure_weight_read_message(message, cage_number, read_30_points):
+    message["mouse_cage_number"] = cage_number
+    message["module_name"] = "WM"
+    message["weight_read_30_points"] = bool(read_30_points)
+    if read_30_points:
+        message["data"] = list(WEIGHT_30_POINT_DATA)
+        message["expected_response_byte_count"] = WEIGHT_30_POINT_RESPONSE_BYTES
+    else:
+        message["data"] = list(WEIGHT_SINGLE_DATA)
+        message["expected_response_byte_count"] = WEIGHT_SINGLE_RESPONSE_BYTES
+
+
+def _get_response_byte_count(response):
+    if not isinstance(response, (bytes, bytearray)) or len(response) < 3:
+        return None
+    return response[2]
+
+
+def _is_expected_weight_response(response, expected_byte_count):
+    if not isinstance(response, (bytes, bytearray)) or len(response) < 5:
+        return False
+    return (
+        response[1] == 0x04
+        and response[2] == expected_byte_count
+        and len(response) == 3 + expected_byte_count + 2
+    )
 
 
 def _cage_data_type_enabled(data_type):
@@ -1029,6 +1083,8 @@ class Send_thread(MyQThread):
         return bool(send_state)
 
     def _send_sensor_read_with_retry(self, send_message):
+        is_weight = _is_weight_read_message(send_message)
+        expected_byte_count = send_message.get("expected_response_byte_count")
         result = (None, None, False, None)
         for attempt in range(1, COLLECTION_SENSOR_MAX_ATTEMPTS + 1):
             result = self.modbus.send_command(
@@ -1038,14 +1094,39 @@ class Send_thread(MyQThread):
                 is_parse_response=False,
             )
             if result[2]:
-                if attempt > 1:
-                    logger.warning(
-                        "sensor read recovered after retry: "
-                        f"slave_id={send_message['slave_id']}, "
-                        f"function_code={send_message['function_code']}, "
-                        f"attempt={attempt}"
+                if (
+                    is_weight
+                    and expected_byte_count in {
+                        WEIGHT_SINGLE_RESPONSE_BYTES,
+                        WEIGHT_30_POINT_RESPONSE_BYTES,
+                    }
+                    and not _is_expected_weight_response(
+                        result[0], expected_byte_count
                     )
-                return result
+                ):
+                    actual_byte_count = _get_response_byte_count(result[0])
+                    logger.warning(
+                        "称重响应长度与配置模式不匹配："
+                        f"笼子{send_message.get('mouse_cage_number')}，"
+                        f"slave_id={send_message.get('slave_id')}，"
+                        f"期望字节数=0x{expected_byte_count:02X}，"
+                        f"实际字节数={actual_byte_count!r}，"
+                        f"attempt={attempt}/{COLLECTION_SENSOR_MAX_ATTEMPTS}"
+                    )
+                    return_data = result[3]
+                    if isinstance(return_data, dict):
+                        return_data["response_state"] = False
+                        return_data["response_msg"] = "称重响应长度与配置模式不匹配"
+                    result = (result[0], result[1], False, return_data)
+                else:
+                    if attempt > 1:
+                        logger.warning(
+                            "sensor read recovered after retry: "
+                            f"slave_id={send_message['slave_id']}, "
+                            f"function_code={send_message['function_code']}, "
+                            f"attempt={attempt}"
+                        )
+                    return result
 
             logger.warning(
                 "sensor read failed; retrying current request: "
@@ -1343,9 +1424,15 @@ class Add_message_thread(MyQThread):
         self.send_thread = send_thread
         self.port=port
         self.mouse_cage_index=None
+        self.weight_read_30_points = _weight_read_30_points_enabled()
         pass
     def run(self):
         logger.warning(f"{self.name} thread has been started！")
+        logger.warning(
+            "称重采集模式："
+            f"{'30点' if self.weight_read_30_points else '单值'}，"
+            "WM地址使用0x14系列"
+        )
         self._running=True
         # 发送消息
         global MESSAGE_BATCH_SIZE,gids
@@ -1407,6 +1494,12 @@ class Add_message_thread(MyQThread):
                         if current_mouse_cage_index is not None:
 
                             mouse_cage = gids[current_mouse_cage_index] if gids else 1
+                            if data_type == Modbus_Slave_Send_Messages_Senior_Data.WM:
+                                _configure_weight_read_message(
+                                    message_temp,
+                                    mouse_cage,
+                                    self.weight_read_30_points,
+                                )
                             message_temp['slave_id'] =copy.copy(format(int(message_temp['slave_id'], 16)+16*mouse_cage, '02X'))
                             send_messages.append({'message': message_temp})
                         else:

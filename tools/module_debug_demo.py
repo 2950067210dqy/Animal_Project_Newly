@@ -85,7 +85,7 @@ WEIGHT_30_DATA = (0x04, 0x01, 0x00, 0x3C)
 DEFAULT_REQUEST_CONFIGS = {
     "environment": RequestConfig(0x11, 0x04, MODULE_BY_KEY["environment"].read_data),
     "weight_single": RequestConfig(0x14, 0x04, MODULE_BY_KEY["weight"].read_data),
-    "weight_30": RequestConfig(0x12, 0x04, WEIGHT_30_DATA),
+    "weight_30": RequestConfig(0x14, 0x04, WEIGHT_30_DATA),
     "food": RequestConfig(0x13, 0x04, MODULE_BY_KEY["food"].read_data),
     "water": RequestConfig(0x12, 0x04, MODULE_BY_KEY["water"].read_data),
 }
