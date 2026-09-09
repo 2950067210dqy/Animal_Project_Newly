@@ -247,9 +247,15 @@ class Startup_Air_Calibration:
             if len(values) != 3
         ]
         if missing:
-            logger.warning(
-                f"{self.name}: 稳定阶段未能为以下通道取得完整3点湿基氧参考：{missing}"
+            missing_details = "，".join(
+                f"{channel}={len(references[channel])}/3" for channel in missing
             )
+            failure_message = (
+                f"{self.name}未进入采集：稳定阶段湿基氧参考数据不足"
+                f"（{missing_details}）；本轮校准失败，请检查对应通道是否返回 0 或读取失败"
+            )
+            logger.warning(failure_message)
+            self._send_text(failure_message)
             return False
 
         logger.info(f"{self.name}: 已保存空气校准前各通道最后3个湿基氧参考值")

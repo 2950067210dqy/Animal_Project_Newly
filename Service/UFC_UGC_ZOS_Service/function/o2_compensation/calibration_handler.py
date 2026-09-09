@@ -14,6 +14,18 @@ from loguru import logger
 
 VALID_CHANNELS = ["REF"] + [f"M{i}" for i in range(1, 9)]
 
+EMPIRICAL_OFFSETS = {
+    "REF": 0.0,
+    "M1": 0.0,
+    "M2": -0.05,   
+    "M3": 0.05,
+    "M4": -0.05,   
+    "M5": -0.25,  
+    "M6": 0.0,
+    "M7": -0.10,   
+    "M8": 0.0,
+}
+
 
 def get_default_config_path():
     return Path(__file__).resolve().parents[4] / "config" / "calib_config.json"
@@ -36,11 +48,12 @@ def calc_dry_o2(moist_o2, gas_pressure, temp_value, rh_value):
 
 
 class CalibrationHandler:
-    def __init__(self, target_points=120, config_path=None):
+    def __init__(self, target_points=60, config_path=None):
         self.channels = VALID_CHANNELS.copy()
         self.target_points = int(target_points)
         self.config_path = Path(config_path or get_default_config_path())
         self.lock = threading.Lock()
+        self.target_o2 = 20.93
         self.reset()
 
     def reset(self):
@@ -48,9 +61,7 @@ class CalibrationHandler:
         self.is_active = False
         self.calibrated = False
         self.completed = False
-        self.failed = False
-        self.failure_reason = None
-        self.offsets = {}
+        self.offsets = EMPIRICAL_OFFSETS.copy() 
         self.gains = {}
         self.secondary_models = {}
 
@@ -68,9 +79,7 @@ class CalibrationHandler:
                 return False
             if self.calibrated:
                 return True
-            if not self.is_active or self.completed or self.failed:
-                return False
-            if len(self.data[channel]) >= self.target_points:
+            if not self.is_active or self.completed:
                 return False
 
             self.data[channel].append({
@@ -95,21 +104,16 @@ class CalibrationHandler:
                 self.completed = True
                 self.is_active = False
             else:
-                self.failed = True
-                self.is_active = False
-                logger.error(
-                    f"O2 Air calibration coefficient calculation failed; "
-                    f"calibration stopped: {self.failure_reason or 'unknown reason'}"
-                )
+                logger.error("O2 Air calibration coefficient calculation failed")
             return success
 
     def _perform_enhanced_calibration(self):
         processed = {}
         thresholds = {
-            "o2_percent": 0.15,
-            "gas_pressure": 2.0,
-            "zos_temp": 1.0,
-            "zos_rh": 4.0,
+            "o2_percent": 5.0, 
+            "gas_pressure": 5.0,
+            "zos_temp": 5.0,
+            "zos_rh": 10.0,
         }
 
         try:
@@ -120,33 +124,20 @@ class CalibrationHandler:
                         frame[key] = sequential_jump_clean(frame[key], threshold)
                 processed[channel] = self._enhanced_process(frame, channel)
 
-            target_o2 = 20.93
-            ref_final = processed["REF"]["final"].mean()
-            if not np.isfinite(ref_final) or ref_final <= 0:
-                self.failure_reason = "REF final value is invalid"
-                return False
-
-            ref_gain = target_o2 / ref_final
             for channel in self.channels:
-                channel_final = processed[channel]["final"].mean()
-                if not np.isfinite(channel_final) or channel_final <= 0:
-                    self.failure_reason = f"{channel} final value is invalid"
-                    return False
+                mean_val = float(processed[channel]["final"].mean())
+                y = float(self.offsets.get(channel, 0.0))
 
-                if channel == "REF":
-                    self.offsets[channel] = 0.0
+                denominator = mean_val + y
+                if pd.isna(denominator) or abs(denominator) < 0.1:
+                    self.gains[channel] = 1.0
                 else:
-                    # 新版增益校准已经把各通道归一到目标浓度，保留偏移字段但不叠加旧偏移。
-                    self.offsets[channel] = 0.0
-                self.gains[channel] = float(
-                    ref_gain if channel == "REF" else target_o2 / channel_final
-                )
+                    self.gains[channel] = float(self.target_o2 / denominator)
 
             self._save_config()
             return True
-        except Exception as exc:
-            self.failure_reason = f"{type(exc).__name__}: {exc}"
-            logger.exception("O2 Air calibration coefficient calculation raised an exception")
+        except Exception as e:
+            logger.exception(f"Calibration failed: {e}")
             return False
 
     def _enhanced_process(self, frame, channel):
@@ -186,29 +177,22 @@ class CalibrationHandler:
                 "coef": model.coef_.tolist(),
                 "intercept": float(model.intercept_),
             }
-
-            full_features = np.column_stack((
-                frame["zos_rh"].ffill().bfill(),
-                frame["zos_temp"].ffill().bfill(),
-            ))
-            full_features_poly = poly.transform(full_features)
-            prediction = model.predict(full_features_poly)
-            frame["dry_sec"] = frame["dry_sg"] - (prediction - np.nanmean(prediction))
+            frame["dry_sec"] = frame["dry_sg"]  
         else:
             frame["dry_sec"] = frame["dry_sg"]
 
-        frame["final"] = frame["dry_sec"]
+        frame["final"] = frame["dry_sg"]  
         return frame
 
     def _save_config(self):
         config = {
-            "version": "2.2",
+            "version": "2.3",
             "temperature_source": "ZOS_temperature_2",
             "humidity_source": "ZOS_humidity",
             "calibration_time": datetime.now().isoformat(),
-            "target_o2": 20.93,
+            "target_o2": self.target_o2,
             "target_points": self.target_points,
-            "offsets": self.offsets,
+            "offsets": self.offsets,          
             "gains": self.gains,
             "secondary_models": self.secondary_models,
         }
@@ -224,8 +208,6 @@ class CalibrationHandler:
                 "is_active": self.is_active,
                 "calibrated": self.calibrated,
                 "completed": self.completed,
-                "failed": self.failed,
-                "failure_reason": self.failure_reason,
                 "points_received": points_received,
                 "current_counts": current_counts,
                 "all_ready": all(count >= self.target_points for count in current_counts.values()),

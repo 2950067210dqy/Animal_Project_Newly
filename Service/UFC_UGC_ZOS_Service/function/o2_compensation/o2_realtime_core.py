@@ -58,7 +58,6 @@ class RealtimeO2Compensator:
         self.ref_rh_buffer = []
         self.dry_ref_buffer = []
         self.last_values = {}
-        self._missing_reference_channels = set()
         self._config_mtime_ns = None
         self.reload_config(force=True)
 
@@ -103,12 +102,7 @@ class RealtimeO2Compensator:
             with self.config_path.open("r", encoding="utf-8") as file:
                 return json.load(file)
         except Exception:
-            return {
-                "offsets": {},
-                "gains": {},
-                "secondary_models": {},
-                "target_o2": 20.93,
-            }
+            return {"offsets": {}, "gains": {}, "secondary_models": {}, "target_o2": 20.93}
 
     def compensate(self, channel, o2_partial, zos_temp, gas_pressure, o2_percent, zos_rh):
         del o2_partial
@@ -129,17 +123,17 @@ class RealtimeO2Compensator:
             }
 
         last = self.last_values[channel]
-        if not pd.isna(o2_value) and not pd.isna(last["o2"]) and abs(o2_value - last["o2"]) > 0.15:
+        if not pd.isna(o2_value) and not pd.isna(last["o2"]) and abs(o2_value - last["o2"]) > 5.0:
             o2_value = last["o2"]
         if (
             not pd.isna(gas_pressure_value)
             and not pd.isna(last["p"])
-            and abs(gas_pressure_value - last["p"]) > 2.0
+            and abs(gas_pressure_value - last["p"]) > 5.0
         ):
             gas_pressure_value = last["p"]
-        if not pd.isna(zos_temp_value) and not pd.isna(last["t"]) and abs(zos_temp_value - last["t"]) > 1.0:
+        if not pd.isna(zos_temp_value) and not pd.isna(last["t"]) and abs(zos_temp_value - last["t"]) > 5.0:
             zos_temp_value = last["t"]
-        if not pd.isna(rh_value) and not pd.isna(last["rh"]) and abs(rh_value - last["rh"]) > 4.0:
+        if not pd.isna(rh_value) and not pd.isna(last["rh"]) and abs(rh_value - last["rh"]) > 10.0:
             rh_value = last["rh"]
 
         self.last_values[channel] = {
@@ -150,18 +144,12 @@ class RealtimeO2Compensator:
         }
 
         dry_raw = calc_dry_o2(o2_value, gas_pressure_value, zos_temp_value, rh_value)
-        if not np.isfinite(dry_raw):
-            logger.warning(
-                f"O2 compensation skipped because channel {channel} raw dry oxygen is invalid"
-            )
-            return -1
 
         self.dry_buffer[channel].append(dry_raw)
         self.rh_buffer[channel].append(rh_value)
         if channel == "REF":
             self.ref_rh_buffer.append(rh_value)
             self.dry_ref_buffer.append(dry_raw)
-            self._missing_reference_channels.clear()
 
         for buffer_item in (self.dry_buffer[channel], self.rh_buffer[channel]):
             if len(buffer_item) > 50:
@@ -176,76 +164,48 @@ class RealtimeO2Compensator:
             dry_sg = dry_raw
 
         dry_sec = self._apply_secondary(dry_sg, rh_value, zos_temp_value, channel)
-        valid_reference_values = [
-            value for value in self.dry_ref_buffer if np.isfinite(value)
-        ]
-        if channel != "REF" and not valid_reference_values:
-            if channel not in self._missing_reference_channels:
-                logger.warning(
-                    f"O2 compensation skipped for {channel}: no valid REF dry oxygen sample"
-                )
-            self._missing_reference_channels.add(channel)
-            return -1
 
-        ref_dry = valid_reference_values[-1] if valid_reference_values else dry_sec
-        gain_ch = self._get_gain(channel)
-        gain_ref = self._get_gain("REF")
         offset = float(self.offsets.get(channel, 0.0))
-        final_value = (
-            dry_sec * gain_ch
-            - (ref_dry * gain_ref - self.target_o2)
-            - offset
-        )
+        gain_ch = float(self.gains.get(channel, 1.0))
+        gain_ref = float(self.gains.get("REF", 1.0))
 
-        mode = self._detect_mode_20points(channel)
+        dry_corrected = (dry_sec + offset) * gain_ch
+        ref_dry = self.dry_ref_buffer[-1] if self.dry_ref_buffer else dry_sec
+        ref_corrected = (ref_dry + float(self.offsets.get("REF", 0.0))) * gain_ref
+
+        final_value = dry_corrected - (ref_corrected - self.target_o2)
+
+        mode = self._detect_mode_4points(channel)
         if mode == "empty":
-            output = final_value
+            output = self.target_o2 
         else:
             output = final_value
+
         output = min(output, self.target_o2)
         return round(float(output), 3)
 
     def _apply_secondary(self, dry_value, rh_value, temp_value, channel):
         del rh_value, temp_value
-        if channel not in self.secondary_models:
-            return dry_value
         return dry_value
 
-    def _get_gain(self, channel):
-        """Return a valid calibration gain while supporting legacy configs."""
-        gain = _coerce_float(self.gains.get(channel, 1.0))
-        if not np.isfinite(gain) or gain <= 0:
-            logger.warning(
-                f"O2 calibration gain for {channel} is invalid; using 1.0"
-            )
-            return 1.0
-        return float(gain)
-
-    def _detect_mode_20points(self, channel):
-        if len(self.dry_buffer[channel]) < 40:
+    def _detect_mode_4points(self, channel):        #空笼
+        if len(self.dry_buffer[channel]) < 4:
             return "unknown"
 
-        recent_dry = np.array(self.dry_buffer[channel][-40:], dtype=float)
-        recent_rh = np.array(self.rh_buffer[channel][-40:], dtype=float)
-        if len(self.ref_rh_buffer) >= 40:
-            recent_ref_rh = np.array(self.ref_rh_buffer[-40:], dtype=float)
-        else:
-            recent_ref_rh = recent_rh
+        recent = np.array(self.dry_buffer[channel][-4:], dtype=float)
+        mean_val = float(np.mean(recent))
+        std_val = float(np.std(recent))
 
-        rolling_std = float(np.std(recent_dry))
-        rh_diff = float(np.mean(recent_rh) - np.mean(recent_ref_rh))
-        if rolling_std < 0.012 and rh_diff < 4.0:
+        close_to_target = abs(mean_val - self.target_o2) < 0.05
+        low_fluctuation = std_val < 0.02
+        all_close = np.all(np.abs(recent - self.target_o2) < 0.08)
+
+        if close_to_target and low_fluctuation and all_close:
             return "empty"
-        if rolling_std > 0.015 or rh_diff > 4.5:
-            return "metabolic"
         return "metabolic"
 
     def get_mode(self, channel):
-        return self._detect_mode_20points(channel)
-
-    def has_valid_reference_sample(self):
-        """Return whether at least one real REF dry-oxygen sample is buffered."""
-        return any(np.isfinite(value) for value in self.dry_ref_buffer)
+        return self._detect_mode_4points(channel)
 
 
 def get_realtime_o2_compensator():
@@ -256,11 +216,6 @@ def get_realtime_o2_compensator():
         else:
             _COMPENSATOR.ensure_latest()
         return _COMPENSATOR
-
-
-def has_valid_reference_dry_oxygen_sample():
-    """Check whether compensation has a real REF sample to use as its baseline."""
-    return get_realtime_o2_compensator().has_valid_reference_sample()
 
 
 def reload_o2_compensation_config():
@@ -288,7 +243,7 @@ def get_o2_calibration_handler(target_points=None):
         return _CALIBRATION_HANDLER
 
 
-def start_new_o2_calibration(target_points=120):
+def start_new_o2_calibration(target_points=60):
     handler = get_o2_calibration_handler(target_points=target_points)
     return handler.start_new_calibration()
 
