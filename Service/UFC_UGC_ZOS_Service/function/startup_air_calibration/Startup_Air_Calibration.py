@@ -169,6 +169,28 @@ class Startup_Air_Calibration:
         return max(target_points, 1)
 
     @staticmethod
+    def _normalize_reference_max_attempts():
+        calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
+        try:
+            max_attempts = int(float(calibration_config.get(
+                "startup_air_calibration_reference_max_attempts", 10
+            )))
+        except Exception:
+            max_attempts = 10
+        return max(max_attempts, 3)
+
+    @staticmethod
+    def _normalize_reference_retry_interval():
+        calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
+        try:
+            retry_interval = float(calibration_config.get(
+                "startup_air_calibration_reference_retry_interval", 5
+            ))
+        except Exception:
+            retry_interval = 5.0
+        return max(retry_interval, 0.5)
+
+    @staticmethod
     def _normalize_run_timeout(target_points, sample_interval, channel_count):
         calibration_config = global_setting.get_setting("UFC_UGC_ZOS_config", {}).get("Calibration", {})
         default_timeout = max(int(target_points * sample_interval * channel_count + 300), 300)
@@ -220,39 +242,103 @@ class Startup_Air_Calibration:
 
     def _capture_pre_calibration_references(self, active_channels):
         """Capture the three stable wet-O2 values used by Air calibration."""
+        required_points = 3
         references = {
             self._channel_to_handler_name(channel): []
             for channel in active_channels
         }
         sample_interval = self._normalize_sample_interval()
+        max_attempts = self._normalize_reference_max_attempts()
+        retry_interval = self._normalize_reference_retry_interval()
+        last_invalid_reasons = {}
+        retry_channels = []
 
-        for sample_index in range(3):
+        for attempt_index in range(max_attempts):
             for channel in active_channels:
+                channel_name = self._channel_to_handler_name(channel)
+                if len(references[channel_name]) >= required_points:
+                    continue
+
                 snapshot = self._read_zos_channel_snapshot(channel)
                 if snapshot is None:
+                    last_invalid_reasons[channel_name] = "读取失败"
+                    logger.warning(
+                        f"{self.name}: {channel_name} 第 {attempt_index + 1}/{max_attempts} 次"
+                        "湿基氧参考读取失败"
+                    )
                     continue
                 try:
                     value = float(snapshot["o2_percent"])
                 except (KeyError, TypeError, ValueError):
+                    last_invalid_reasons[channel_name] = "氧浓度格式无效"
+                    logger.warning(
+                        f"{self.name}: {channel_name} 第 {attempt_index + 1}/{max_attempts} 次"
+                        "湿基氧参考格式无效"
+                    )
                     continue
                 if math.isfinite(value) and 0.0 < value <= 100.0:
-                    references[self._channel_to_handler_name(channel)].append(value)
-            if sample_index < 2:
-                time.sleep(sample_interval)
+                    references[channel_name].append(value)
+                    last_invalid_reasons.pop(channel_name, None)
+                else:
+                    last_invalid_reasons[channel_name] = f"氧浓度={value:g}"
+                    logger.warning(
+                        f"{self.name}: {channel_name} 第 {attempt_index + 1}/{max_attempts} 次"
+                        f"湿基氧参考无效（氧浓度={value:g}）"
+                    )
+
+            missing = [
+                channel
+                for channel, values in references.items()
+                if len(values) < required_points
+            ]
+            if not missing:
+                if retry_channels:
+                    recovered_details = "，".join(
+                        f"{channel}={len(references[channel])}/{required_points}"
+                        for channel in retry_channels
+                    )
+                    self._send_text(
+                        f"{self.name}参考数据补采成功（{recovered_details}），继续 Air 校准"
+                    )
+                break
+
+            if attempt_index + 1 == required_points:
+                retry_channels = list(missing)
+                retry_details = "，".join(
+                    f"{channel}={len(references[channel])}/{required_points}"
+                    for channel in retry_channels
+                )
+                retry_message = (
+                    f"{self.name}检测到无效参考数据（{retry_details}），开始补采，"
+                    f"最多尝试 {max_attempts} 次"
+                )
+                logger.warning(retry_message)
+                self._send_text(retry_message)
+
+            if attempt_index < max_attempts - 1:
+                wait_interval = (
+                    sample_interval
+                    if attempt_index < required_points - 1
+                    else retry_interval
+                )
+                time.sleep(wait_interval)
 
         self.pre_calibration_references = references
         missing = [
             channel
             for channel, values in references.items()
-            if len(values) != 3
+            if len(values) < required_points
         ]
         if missing:
             missing_details = "，".join(
-                f"{channel}={len(references[channel])}/3" for channel in missing
+                f"{channel}={len(references[channel])}/{required_points}"
+                f"（最近一次：{last_invalid_reasons.get(channel, '无有效数据')}）"
+                for channel in missing
             )
             failure_message = (
                 f"{self.name}未进入采集：稳定阶段湿基氧参考数据不足"
-                f"（{missing_details}）；本轮校准失败，请检查对应通道是否返回 0 或读取失败"
+                f"（{missing_details}），累计尝试 {max_attempts} 次；"
+                "本轮校准失败，请检查对应通道"
             )
             logger.warning(failure_message)
             self._send_text(failure_message)
