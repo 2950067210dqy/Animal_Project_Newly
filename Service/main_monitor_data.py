@@ -37,6 +37,12 @@ from public.function.Modbus.Modbus_Type import Modbus_Slave_Type, Modbus_Slave_S
 from public.function.Modbus.New_Mod_Bus import ModbusRTUMasterNew
 from public.function.Monitor_data_storage.DataStorage import StorageResult, store_data_with_result, DataItem
 from public.function.promise.AsyPromise import AsyPromise
+from public.function.weight.weight_series_formatter import format_weight_series_for_storage
+from public.function.weight.weight_window_assembler import (
+    WEIGHT_POINTS_NEWEST_FIRST,
+    WEIGHT_POINTS_OLDEST_FIRST,
+    WeightWindowAssembler,
+)
 from public.util.cage_light_state_util import (
     build_cage_light_commands,
     force_save_cage_lights_off,
@@ -61,6 +67,8 @@ WEIGHT_SINGLE_DATA = ["04", "01", "00", "02"]
 WEIGHT_30_POINT_DATA = ["04", "01", "00", "3C"]
 WEIGHT_SINGLE_RESPONSE_BYTES = 0x04
 WEIGHT_30_POINT_RESPONSE_BYTES = 0x78
+_weight_window_assembler = None
+_weight_window_assembler_lock = threading.RLock()
 FOOD_TROUGH_CURRENT_OFF_COMMAND = {
     "function_code": "05",
     "data": ["00", "71", "00", "00"],
@@ -100,6 +108,99 @@ def _weight_read_30_points_enabled():
             f"称重30点配置值无效：{value!r}，已按默认单值模式处理"
         )
     return False
+
+
+def _weight_points_order():
+    monitor_config = global_setting.get_setting("monitor_data", {}) or {}
+    value = str(
+        (monitor_config.get("WEIGHT_PROTOCOL", {}) or {}).get(
+            "points_order", WEIGHT_POINTS_OLDEST_FIRST
+        )
+    ).strip().lower()
+    if value in {WEIGHT_POINTS_OLDEST_FIRST, WEIGHT_POINTS_NEWEST_FIRST}:
+        return value
+    logger.warning(
+        f"称重30点顺序配置无效：{value!r}，已按旧数据在前处理"
+    )
+    return WEIGHT_POINTS_OLDEST_FIRST
+
+
+def _reset_weight_window_assembler():
+    global _weight_window_assembler
+
+    now_wall = time.time()
+    now_monotonic = time.monotonic()
+    try:
+        origin_time = float(
+            global_setting.get_setting("start_experiment_time", now_wall)
+        )
+    except (TypeError, ValueError):
+        origin_time = now_wall
+    origin_time = min(origin_time, now_wall)
+    origin_monotonic = now_monotonic - max(0.0, now_wall - origin_time)
+
+    points_order = _weight_points_order()
+    with _weight_window_assembler_lock:
+        _weight_window_assembler = WeightWindowAssembler(
+            origin_time=origin_time,
+            origin_monotonic=origin_monotonic,
+            points_order=points_order,
+        )
+    logger.info(
+        "称重30点时间窗已重置："
+        f"起点={datetime.fromtimestamp(origin_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}，"
+        f"数据顺序={points_order}"
+    )
+
+
+def _get_weight_window_assembler():
+    with _weight_window_assembler_lock:
+        assembler = _weight_window_assembler
+    if assembler is None:
+        _reset_weight_window_assembler()
+        with _weight_window_assembler_lock:
+            assembler = _weight_window_assembler
+    return assembler
+
+
+def _ingest_weight_packet(cage_number, values, packet_monotonic):
+    assembler = _get_weight_window_assembler()
+    result = assembler.add_packet(cage_number, values, packet_monotonic)
+    logger.warning(
+        "称重30点时间窗处理："
+        f"笼子{result.cage_number}，实际新增跨度={result.elapsed_points}s，"
+        f"重叠={result.overlap_points}点，"
+        f"重叠不一致={result.overlap_mismatch_points}点，"
+        f"新增={result.appended_points}点，"
+        f"缺失补None={result.missing_points}点，"
+        f"完成窗口={len(result.completed_windows)}个，"
+        f"结转下一窗口={result.carried_points}点"
+    )
+    if result.overlap_mismatch_points:
+        logger.error(
+            "称重30点滚动缓存校验不一致："
+            f"笼子{result.cage_number}，"
+            f"重叠={result.overlap_points}点，"
+            f"不一致={result.overlap_mismatch_points}点；"
+            "请核对points_order配置及设备是否返回最近30个滚动点"
+        )
+    for window in result.completed_windows:
+        logger.info(
+            "称重30秒窗口完成："
+            f"笼子{window.cage_number}，"
+            f"窗口={datetime.fromtimestamp(window.start_time).strftime('%Y-%m-%d %H:%M:%S')}"
+            f"~{datetime.fromtimestamp(window.end_time).strftime('%Y-%m-%d %H:%M:%S')}，"
+            f"真实={len(window.values) - window.missing_points}点，"
+            f"None={window.missing_points}点"
+        )
+    return result
+
+
+def _pop_completed_weight_window(cage_number):
+    assembler = _get_weight_window_assembler()
+    window = assembler.pop_completed_window(cage_number)
+    backlog = assembler.completed_window_count(cage_number)
+    return window, backlog
 
 
 def _is_weight_read_message(message):
@@ -464,6 +565,10 @@ def _apply_epoch_carry_forward(payload):
         desc = str(item.get("desc", "")).strip()
         column_name = _epoch_carry_forward_desc_to_column.get(desc)
         if not column_name:
+            continue
+
+        if column_name == "WM_weight_num" and _weight_read_30_points_enabled():
+            # 30点模式用真实时间窗和None表达缺失，不能复制上一整包数据。
             continue
 
         cache_key = (int(cage_number), column_name)
@@ -1308,6 +1413,7 @@ class Send_thread(MyQThread):
                                     self._send_sensor_read_with_retry(send_message)
                                 )
                                 end_time = time.time()
+                                end_monotonic = time.monotonic()
                                 if response is not None:
                                     logger.critical(f"报文{response.hex()}发收时间：{(end_time - start_time):.3f}秒")
                                 else:
@@ -1329,6 +1435,32 @@ class Send_thread(MyQThread):
                                         self._send_food_trough_current_off_after_door_command(
                                             send_message
                                         )
+
+                                    if (
+                                        _is_weight_read_message(send_message)
+                                        and send_message.get("weight_read_30_points")
+                                    ):
+                                        weight_values = next(
+                                            (
+                                                item.get("value")
+                                                for item in return_data.get("data", [])
+                                                if item.get("desc") == "重量测量值(g)"
+                                            ),
+                                            None,
+                                        )
+                                        if isinstance(weight_values, list) and len(weight_values) == 30:
+                                            _ingest_weight_packet(
+                                                send_message.get("mouse_cage_number"),
+                                                weight_values,
+                                                end_monotonic,
+                                            )
+                                        else:
+                                            logger.error(
+                                                "称重30点报文解析结果无效："
+                                                f"笼子{send_message.get('mouse_cage_number')}，"
+                                                f"数据类型={type(weight_values).__name__}，"
+                                                f"点数={len(weight_values) if isinstance(weight_values, list) else 0}"
+                                            )
 
                                     # end_time = time.time()
                                     # logger.critical(f"报文{response.hex()}解析时间：{(end_time - start_time):.3f}秒")
@@ -1840,6 +1972,38 @@ def barrier_action():
         start_exclusive=True,
         table_columns=epoch_query_plan,
     )
+    weight_window_remark = ""
+    if _weight_read_30_points_enabled():
+        weight_window, weight_window_backlog = _pop_completed_weight_window(mouse_cage_number)
+        if weight_window is not None:
+            epoch_weight_value = format_weight_series_for_storage(weight_window.values)
+            weight_window_start_text = datetime.fromtimestamp(weight_window.start_time).strftime(
+                '%Y-%m-%d %H:%M:%S'
+            )
+            weight_window_end_text = datetime.fromtimestamp(weight_window.end_time).strftime(
+                '%Y-%m-%d %H:%M:%S'
+            )
+            weight_window_remark = (
+                f"称重30秒窗口:{weight_window_start_text}~{weight_window_end_text};"
+                f"None点数:{weight_window.missing_points};"
+            )
+            logger.info(
+                "Epoch使用称重30秒窗口："
+                f"笼子{mouse_cage_number}，窗口={weight_window_start_text}~{weight_window_end_text}，"
+                f"None={weight_window.missing_points}点"
+            )
+            if weight_window_backlog:
+                logger.warning(
+                    "称重30秒窗口存在积压："
+                    f"笼子{mouse_cage_number}，待写入={weight_window_backlog}个窗口"
+                )
+        else:
+            epoch_weight_value = None
+            logger.debug(f"Epoch暂无完整称重30秒窗口：笼子{mouse_cage_number}")
+    else:
+        epoch_weight_value = results.get(
+            f'WM_monitor_data_cage_{mouse_cage_number}__weight_num'
+        )
     # logger.critical(f"{results}")
     store_Datas =[]
     # store_Datas.append({'desc':'序号','value':None})
@@ -1991,8 +2155,7 @@ def barrier_action():
         {'desc': '饮水重量测量值(g)', 'value':results.get(f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') if results.get(
                         f'EM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
     store_Datas.append(
-        {'desc': '称重重量测量值(g)', 'value': results.get(f'WM_monitor_data_cage_{mouse_cage_number}__weight_num')  if results.get(
-                        f'WM_monitor_data_cage_{mouse_cage_number}__weight_num') is not None else None })
+        {'desc': '称重重量测量值(g)', 'value': epoch_weight_value})
 
     store_Datas.append({'desc':'轮次开始时间','value':datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
     store_Datas.append({'desc':'轮次结束时间','value':datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]})
@@ -2000,6 +2163,8 @@ def barrier_action():
     # logger.critical(f"rs:{results}")
     remarks = "".join(f" {key}: {value}; " for key, value in results.items()
                             if "remarks" in key and value is not None and value != [])
+    if weight_window_remark:
+        remarks += f" {weight_window_remark}"
     store_Datas.append({'desc':'备注','value':remarks})
     # logger.critical(f"sd:{store_Datas}")
     # store_Datas.append({'desc':'获取时间','value':datetime.now().fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
@@ -2191,6 +2356,7 @@ def start():
     MESSAGE_BATCH_SIZE = 0
     total_messages_processed = 1
     _reset_collection_sync_signals()
+    _reset_weight_window_assembler()
     # 当前鼠笼号列表的下标 参考气的下标为None 注意区分
     global_setting.set_setting("cage_number_list_index", None)
     # 通道
