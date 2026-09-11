@@ -1936,12 +1936,12 @@ def barrier_action():
                  'value': reference_data.get(f'ZOS_oxygen_num') if reference_data.get(
                      f'ZOS_oxygen_num') is not None else None})
 
-            if co2_num is not None and reference_data.get(f'UGC_CO2_num') is not None:
+            if fitted_co2_num is not None and reference_data.get(f'UGC_CO2_num') is not None:
 
 
                 store_Datas.append(
                     {'desc': 'CO2生产量(%)',
-                     'value': round(co2_num - reference_data.get(f'UGC_CO2_num'), 4)})
+                     'value': round(fitted_co2_num - reference_data.get(f'UGC_CO2_num'), 4)})
             if results.get(f'ZOS_monitor_data_cage_{mouse_cage_number}__oxygen_num') is not None and reference_data.get(f'ZOS_oxygen_num') is not None:
 
 
