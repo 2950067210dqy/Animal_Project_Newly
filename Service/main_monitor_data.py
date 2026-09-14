@@ -1972,7 +1972,6 @@ def barrier_action():
         start_exclusive=True,
         table_columns=epoch_query_plan,
     )
-    weight_window_remark = ""
     if _weight_read_30_points_enabled():
         weight_window, weight_window_backlog = _pop_completed_weight_window(mouse_cage_number)
         if weight_window is not None:
@@ -1982,10 +1981,6 @@ def barrier_action():
             )
             weight_window_end_text = datetime.fromtimestamp(weight_window.end_time).strftime(
                 '%Y-%m-%d %H:%M:%S'
-            )
-            weight_window_remark = (
-                f"称重30秒窗口:{weight_window_start_text}~{weight_window_end_text};"
-                f"None点数:{weight_window.missing_points};"
             )
             logger.info(
                 "Epoch使用称重30秒窗口："
@@ -2163,8 +2158,6 @@ def barrier_action():
     # logger.critical(f"rs:{results}")
     remarks = "".join(f" {key}: {value}; " for key, value in results.items()
                             if "remarks" in key and value is not None and value != [])
-    if weight_window_remark:
-        remarks += f" {weight_window_remark}"
     store_Datas.append({'desc':'备注','value':remarks})
     # logger.critical(f"sd:{store_Datas}")
     # store_Datas.append({'desc':'获取时间','value':datetime.now().fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')})
