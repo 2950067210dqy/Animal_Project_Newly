@@ -1,4 +1,4 @@
-"""Rebuild fixed 30-second weight windows from rolling device packets."""
+"""Build non-overlapping weight segments from rolling device packets."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ class WeightWindow:
     start_time: float
     end_time: float
     values: tuple[Optional[float], ...]
+    padding_points: int = 0
 
     @property
     def missing_points(self) -> int:
@@ -59,11 +60,13 @@ class _CageWindowState:
 
 
 class WeightWindowAssembler:
-    """Turn overlapping rolling packets into non-overlapping fixed windows.
+    """Turn overlapping rolling packets into non-overlapping weight segments.
 
     The device packet is assumed to contain the latest ``window_points``
     samples. Packet timing determines which suffix is new. Missing time beyond
     the device buffer is represented by ``None`` instead of copied values.
+    Pending samples can be emitted early with display padding. Padding does
+    not advance the sampled timeline or consume samples from the next packet.
     """
 
     def __init__(
@@ -196,7 +199,35 @@ class WeightWindowAssembler:
             windows = self._completed.get(int(cage_number))
             return windows.popleft() if windows else None
 
+    def pop_epoch_window(self, cage_number: int) -> Optional[WeightWindow]:
+        """Consume the oldest segment, including pending samples if needed."""
+        cage_number = int(cage_number)
+        with self._lock:
+            windows = self._completed.get(cage_number)
+            if windows:
+                return windows.popleft()
+
+            state = self._states.get(cage_number)
+            if state is None or not state.pending:
+                return None
+
+            observed_points = len(state.pending)
+            padding_points = self.window_points - observed_points
+            start_tick = state.next_window_start_tick
+            end_tick = start_tick + observed_points
+            values = tuple(state.pending)
+            state.pending.clear()
+            # Only received/missing elapsed seconds move the cursor; the
+            # trailing placeholders must not skip future measurements.
+            state.next_window_start_tick = end_tick
+            return WeightWindow(
+                cage_number=cage_number,
+                start_time=self.origin_time + start_tick * self.sample_interval_seconds,
+                end_time=self.origin_time + end_tick * self.sample_interval_seconds,
+                values=values + (None,) * padding_points,
+                padding_points=padding_points,
+            )
+
     def completed_window_count(self, cage_number: int) -> int:
         with self._lock:
             return len(self._completed.get(int(cage_number), ()))
-

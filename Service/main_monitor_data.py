@@ -196,9 +196,9 @@ def _ingest_weight_packet(cage_number, values, packet_monotonic):
     return result
 
 
-def _pop_completed_weight_window(cage_number):
+def _pop_epoch_weight_window(cage_number):
     assembler = _get_weight_window_assembler()
-    window = assembler.pop_completed_window(cage_number)
+    window = assembler.pop_epoch_window(cage_number)
     backlog = assembler.completed_window_count(cage_number)
     return window, backlog
 
@@ -1973,7 +1973,7 @@ def barrier_action():
         table_columns=epoch_query_plan,
     )
     if _weight_read_30_points_enabled():
-        weight_window, weight_window_backlog = _pop_completed_weight_window(mouse_cage_number)
+        weight_window, weight_window_backlog = _pop_epoch_weight_window(mouse_cage_number)
         if weight_window is not None:
             epoch_weight_value = format_weight_series_for_storage(weight_window.values)
             weight_window_start_text = datetime.fromtimestamp(weight_window.start_time).strftime(
@@ -1983,9 +1983,11 @@ def barrier_action():
                 '%Y-%m-%d %H:%M:%S'
             )
             logger.info(
-                "Epoch使用称重30秒窗口："
+                "Epoch写入称重数据段："
                 f"笼子{mouse_cage_number}，窗口={weight_window_start_text}~{weight_window_end_text}，"
-                f"None={weight_window.missing_points}点"
+                f"真实={len(weight_window.values) - weight_window.missing_points}点，"
+                f"缺失={weight_window.missing_points - weight_window.padding_points}点，"
+                f"末尾补位None={weight_window.padding_points}点"
             )
             if weight_window_backlog:
                 logger.warning(
@@ -1994,7 +1996,7 @@ def barrier_action():
                 )
         else:
             epoch_weight_value = None
-            logger.debug(f"Epoch暂无完整称重30秒窗口：笼子{mouse_cage_number}")
+            logger.debug(f"Epoch暂无新增称重数据：笼子{mouse_cage_number}")
     else:
         epoch_weight_value = results.get(
             f'WM_monitor_data_cage_{mouse_cage_number}__weight_num'
