@@ -184,6 +184,15 @@ def _ingest_weight_packet(cage_number, values, packet_monotonic):
             f"不一致={result.overlap_mismatch_points}点；"
             "请核对points_order配置及设备是否返回最近30个滚动点"
         )
+    if result.elapsed_points > 0:
+        store_data_with_result({
+            "module_name": "WeightBackfill",
+            "cage_number": int(cage_number),
+            "origin_time": assembler.origin_time,
+            "sample_interval_seconds": assembler.sample_interval_seconds,
+            "packet_tick": assembler._packet_tick(packet_monotonic),
+            "values": assembler._normalize_packet(values),
+        }, need_result=False)
     for window in result.completed_windows:
         logger.info(
             "称重30秒窗口完成："
@@ -1972,6 +1981,7 @@ def barrier_action():
         start_exclusive=True,
         table_columns=epoch_query_plan,
     )
+    weight_window = None
     if _weight_read_30_points_enabled():
         weight_window, weight_window_backlog = _pop_epoch_weight_window(mouse_cage_number)
         if weight_window is not None:
@@ -1983,11 +1993,11 @@ def barrier_action():
                 '%Y-%m-%d %H:%M:%S'
             )
             logger.info(
-                "Epoch写入称重数据段："
+                "Epoch写入称重30秒窗口："
                 f"笼子{mouse_cage_number}，窗口={weight_window_start_text}~{weight_window_end_text}，"
                 f"真实={len(weight_window.values) - weight_window.missing_points}点，"
                 f"缺失={weight_window.missing_points - weight_window.padding_points}点，"
-                f"末尾补位None={weight_window.padding_points}点"
+                f"尾部待下一轮回填={weight_window.padding_points}点"
             )
             if weight_window_backlog:
                 logger.warning(
@@ -2175,6 +2185,15 @@ def barrier_action():
     return_data_struct['slave_id'] = 0
     return_data_struct['time']=datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     return_data_struct['function_code'] = 0
+    if weight_window is not None:
+        assembler = _get_weight_window_assembler()
+        return_data_struct['_weight_window_state'] = {
+            'cage_number': int(mouse_cage_number),
+            'origin_time': assembler.origin_time,
+            'start_time': weight_window.start_time,
+            'end_time': weight_window.end_time,
+            'resolved_points': len(weight_window.values) - weight_window.padding_points,
+        }
     # 存到分表
     result = store_data_with_result(return_data_struct, need_result=True, timeout=5)
     if result and result.success:

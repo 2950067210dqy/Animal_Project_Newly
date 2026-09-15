@@ -1,4 +1,4 @@
-"""Build non-overlapping weight segments from rolling device packets."""
+"""Build weight windows with tails that can be backfilled by later packets."""
 
 from __future__ import annotations
 
@@ -57,16 +57,17 @@ class _CageWindowState:
     last_packet: tuple[Optional[float], ...] = ()
     next_window_start_tick: int = 0
     pending: Deque[Optional[float]] = field(default_factory=deque)
+    last_epoch_packet_tick: Optional[int] = None
 
 
 class WeightWindowAssembler:
-    """Turn overlapping rolling packets into non-overlapping weight segments.
+    """Merge rolling packets while allowing early Epoch tails to overlap.
 
     The device packet is assumed to contain the latest ``window_points``
     samples. Packet timing determines which suffix is new. Missing time beyond
     the device buffer is represented by ``None`` instead of copied values.
-    Pending samples can be emitted early with display padding. Padding does
-    not advance the sampled timeline or consume samples from the next packet.
+    An early Epoch window retains a 30-second target range. Later packets
+    fill its tail without removing those samples from their source round.
     """
 
     def __init__(
@@ -200,15 +201,18 @@ class WeightWindowAssembler:
             return windows.popleft() if windows else None
 
     def pop_epoch_window(self, cage_number: int) -> Optional[WeightWindow]:
-        """Consume the oldest segment, including pending samples if needed."""
+        """Emit once per successful packet; early tails remain backfillable."""
         cage_number = int(cage_number)
         with self._lock:
+            state = self._states.get(cage_number)
+            if state is None or state.last_epoch_packet_tick == state.last_packet_tick:
+                return None
             windows = self._completed.get(cage_number)
             if windows:
+                state.last_epoch_packet_tick = state.last_packet_tick
                 return windows.popleft()
 
-            state = self._states.get(cage_number)
-            if state is None or not state.pending:
+            if not state.pending:
                 return None
 
             observed_points = len(state.pending)
@@ -217,13 +221,14 @@ class WeightWindowAssembler:
             end_tick = start_tick + observed_points
             values = tuple(state.pending)
             state.pending.clear()
-            # Only received/missing elapsed seconds move the cursor; the
-            # trailing placeholders must not skip future measurements.
+            # The source round starts at the read tick, not after the future
+            # tail. Backfilled points therefore also stay in the next round.
             state.next_window_start_tick = end_tick
+            state.last_epoch_packet_tick = state.last_packet_tick
             return WeightWindow(
                 cage_number=cage_number,
                 start_time=self.origin_time + start_tick * self.sample_interval_seconds,
-                end_time=self.origin_time + end_tick * self.sample_interval_seconds,
+                end_time=self.origin_time + (start_tick + self.window_points) * self.sample_interval_seconds,
                 values=values + (None,) * padding_points,
                 padding_points=padding_points,
             )

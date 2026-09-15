@@ -20,6 +20,7 @@ from public.util.time_util import time_util
 #logger = logger.bind(category="deep_camera_logger")
 
 class Monitor_Datas_Handle():
+    WEIGHT_STATE_TABLE = 'Weight_window_state_meta'
     ZERO_FILL_MONITOR_DESCS = {
         "CO2(%)",
         "氧浓度(%)",
@@ -726,6 +727,148 @@ class Monitor_Datas_Handle():
         data_store[column_name] = normalized_value
         self.last_valid_value_cache[cache_key] = normalized_value
 
+    def _record_weight_window_state(self, data, table_name):
+        state = data.get('_weight_window_state')
+        if data.get('module_name') != 'Epoch' or not state:
+            return
+        if not self.sqlite_manager.is_exist_table(self.WEIGHT_STATE_TABLE):
+            self.sqlite_manager.create_table(self.WEIGHT_STATE_TABLE, {
+                'epoch_table': 'TEXT NOT NULL',
+                'row_id': 'INTEGER NOT NULL',
+                'cage_number': 'INTEGER NOT NULL',
+                'origin_time': 'REAL NOT NULL',
+                'start_time': 'REAL NOT NULL',
+                'end_time': 'REAL NOT NULL',
+                'resolved_points': 'INTEGER NOT NULL',
+                'PRIMARY KEY': '(epoch_table, row_id)',
+            })
+            with self.sqlite_manager.execute_transaction() as cursor:
+                cursor.execute(
+                    f'CREATE INDEX IF NOT EXISTS weight_pending_rows '
+                    f'ON {self.WEIGHT_STATE_TABLE} (origin_time, cage_number) '
+                    'WHERE resolved_points < 30'
+                )
+        quoted_table = self.sqlite_manager.quote_ident(table_name)
+        with self.sqlite_manager.get_connection() as conn:
+            row = conn.execute(
+                f'SELECT id FROM {quoted_table} WHERE time = ? AND mouse_cage_number = ? '
+                'ORDER BY id DESC LIMIT 1',
+                (data['time'], int(state['cage_number'])),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError('Cannot locate the Epoch row for weight backfill')
+        self.sqlite_manager.insert(self.WEIGHT_STATE_TABLE,
+            epoch_table=table_name, row_id=row[0],
+            cage_number=int(state['cage_number']),
+            origin_time=float(state['origin_time']),
+            start_time=float(state['start_time']),
+            end_time=float(state['end_time']),
+            resolved_points=int(state['resolved_points']),
+        )
+
+    def backfill_epoch_weight_rows(self, data):
+        if not self.sqlite_manager.is_exist_table(self.WEIGHT_STATE_TABLE):
+            return True, None
+        origin = float(data['origin_time'])
+        cage = int(data['cage_number'])
+        interval = float(data['sample_interval_seconds'])
+        packet_tick = int(data['packet_tick'])
+        packet = data['values']
+        if interval <= 0 or len(packet) != 30:
+            raise ValueError('Invalid weight backfill packet')
+        packet_start = packet_tick - len(packet)
+        quoted_meta = self.sqlite_manager.quote_ident(self.WEIGHT_STATE_TABLE)
+        with self.sqlite_manager.batch_transaction():
+            with self.sqlite_manager.execute_transaction() as cursor:
+                # Store_Thread catches per-item errors inside its batch. A
+                # savepoint keeps paired Epoch updates atomic in that case.
+                cursor.execute('SAVEPOINT weight_backfill')
+                logs = []
+                try:
+                    states = cursor.execute(
+                        f'SELECT epoch_table, row_id, start_time, resolved_points FROM {quoted_meta} '
+                        'WHERE origin_time = ? AND cage_number = ? AND resolved_points < 30',
+                        (origin, cage),
+                    ).fetchall()
+                    for table_name, row_id, start_time, resolved in states:
+                        start_tick = int(round((start_time - origin) / interval))
+                        stop = min(30, max(0, packet_tick - start_tick))
+                        if stop <= resolved:
+                            continue
+                        quoted_table = self.sqlite_manager.quote_ident(table_name)
+                        row = cursor.execute(
+                            f'SELECT WM_weight_num FROM {quoted_table} '
+                            'WHERE id = ? AND mouse_cage_number = ?',
+                            (row_id, cage),
+                        ).fetchone()
+                        if row is None:
+                            continue
+                        values = str(row[0]).split(',')
+                        if len(values) != 30:
+                            raise ValueError('Stored weight window must have 30 positions')
+                        missing = 0
+                        # Only the unresolved tail can change. Earlier gaps
+                        # and timestamps outside the rolling buffer stay None.
+                        for index in range(resolved, stop):
+                            tick = start_tick + index
+                            if tick < packet_start:
+                                values[index] = None
+                                missing += 1
+                            else:
+                                values[index] = packet[tick - packet_start]
+                        cursor.execute(
+                            f'UPDATE {quoted_table} SET WM_weight_num = ? '
+                            'WHERE id = ? AND mouse_cage_number = ?',
+                            (format_weight_series_for_storage(values), row_id, cage),
+                        )
+                        if cursor.rowcount != 1:
+                            raise RuntimeError('Weight backfill did not update exactly one Epoch row')
+                        cursor.execute(
+                            f'UPDATE {quoted_meta} SET resolved_points = ? '
+                            'WHERE epoch_table = ? AND row_id = ?',
+                            (stop, table_name, row_id),
+                        )
+                        logs.append(
+                            f'称重尾部回填：笼子{cage}，表={table_name}，行ID={row_id}，'
+                            f'本次确认={stop - resolved}点，无法追回={missing}点，已确认={stop}/30点'
+                        )
+                    cursor.execute('RELEASE SAVEPOINT weight_backfill')
+                except Exception:
+                    cursor.execute('ROLLBACK TO SAVEPOINT weight_backfill')
+                    cursor.execute('RELEASE SAVEPOINT weight_backfill')
+                    raise
+        for message in logs:
+            logger.info(message)
+        return True, None
+
+    def _attach_weight_window_state(self, result, table_name):
+        rows = result.get('rows', [])
+        if not rows or 'WM_weight_num' not in result.get('columns', []):
+            return
+        if not self.sqlite_manager.is_exist_table(self.WEIGHT_STATE_TABLE):
+            return
+        row_ids = [row['id'] for row in rows if row.get('id') is not None]
+        if not row_ids:
+            return
+        placeholders = ','.join('?' for _ in row_ids)
+        quoted_meta = self.sqlite_manager.quote_ident(self.WEIGHT_STATE_TABLE)
+        quoted_table = self.sqlite_manager.quote_ident(table_name)
+        with self.sqlite_manager.get_connection() as conn:
+            states = conn.execute(
+                f'SELECT m.row_id, m.resolved_points, m.start_time, m.end_time, e.WM_weight_num '
+                f'FROM {quoted_meta} AS m JOIN {quoted_table} AS e ON e.id = m.row_id '
+                f'WHERE m.epoch_table = ? AND m.row_id IN ({placeholders})',
+                (table_name, *row_ids),
+            ).fetchall()
+        by_id = {state[0]: state[1:] for state in states}
+        for row in rows:
+            state = by_id.get(row.get('id'))
+            if state is not None:
+                # Read values and confirmation count together, even if the
+                # storage worker updated the row after the paged query.
+                (row['_weight_resolved_points'], row['_weight_start_time'],
+                 row['_weight_end_time'], row['WM_weight_num']) = state
+
     def insert_data(self, data):
         """
 
@@ -733,6 +876,9 @@ class Monitor_Datas_Handle():
         :return: success ：是否成功, error 错误信息
         """
 
+
+        if data is not None and data.get('module_name') == 'WeightBackfill':
+            return self.backfill_epoch_weight_rows(data)
 
         # 添加数据到表里
         if data is not None:
@@ -765,6 +911,7 @@ class Monitor_Datas_Handle():
                 # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
                 result = self.sqlite_manager.insert(table_name, **data_store)
                 if result == 1:
+                    self._record_weight_window_state(data, table_name)
                     logger.info(f"数据插入表{table_name}成功！")
                     return True, None
                 else:
@@ -787,6 +934,7 @@ class Monitor_Datas_Handle():
                 # logger.critical(f"{data}|||{columns_all_except_id}|||{data_store}")
                 result = self.sqlite_manager.insert(table_name, **data_store)
                 if result == 1:
+                    self._record_weight_window_state(data, table_name)
                     logger.info(f"数据插入表{table_name}成功！")
                     return True, None
                 else:
@@ -1049,6 +1197,7 @@ class Monitor_Datas_Handle():
             columns=projection
         )
         result = self._reorder_epoch_query_result(result)
+        self._attach_weight_window_state(result, table_name)
         descriptions = self._get_table_meta(table_name)["description_by_name"]
         result["columns_title"] = [
             descriptions.get(column, column) for column in result["columns"]

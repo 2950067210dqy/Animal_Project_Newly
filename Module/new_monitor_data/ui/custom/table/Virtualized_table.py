@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from PyQt6.QtCore import (
     QAbstractTableModel,
     QEvent,
@@ -175,7 +177,8 @@ class EpochTableModel(QAbstractTableModel):
         if key in RUNNING_WHEEL_COLUMN_KEYS:
             return format_running_wheel_distance(value)
         if key == "WM_weight_num":
-            return format_weight_series(value)
+            resolved = self._rows[row].get('_weight_resolved_points', 30)
+            return format_weight_series(value, length=resolved)
         if key == "mouse_cage_number" and value is not None:
             configer = global_setting.get_setting("configer", {}) or {}
             reference_cage = int(configer.get("mouse_cage", {}).get("reference", -1))
@@ -202,6 +205,14 @@ class EpochTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.DisplayRole:
             return self._display_value(index.row(), index.column())
         if role == Qt.ItemDataRole.ToolTipRole:
+            row = self._rows[index.row()]
+            if self._columns[index.column()] == 'WM_weight_num' and '_weight_start_time' in row:
+                start = datetime.fromtimestamp(row['_weight_start_time']).strftime('%H:%M:%S')
+                end = datetime.fromtimestamp(row['_weight_end_time']).strftime('%H:%M:%S')
+                return (
+                    f"称重窗口：{start}~{end}，已确认{row['_weight_resolved_points']}/30点\n"
+                    f"{self._display_value(index.row(), index.column())}"
+                )
             text = self._display_value(index.row(), index.column())
             return text if len(text) > 10 else None
         if role == Qt.ItemDataRole.ForegroundRole and index.row() in self._highlighted_rows:

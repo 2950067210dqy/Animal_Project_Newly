@@ -155,7 +155,10 @@ class DataFetcher(MyQThread):
             page,
             page_size,
             datas.get("total_items", 0),
-            tuple(row.get("id") for row in rows),
+            tuple(
+                (row.get('id'), row.get('WM_weight_num'), row.get('_weight_resolved_points'))
+                for row in rows
+            ),
             tuple(datas.get("columns", [])),
         )
         with self._state_lock:
