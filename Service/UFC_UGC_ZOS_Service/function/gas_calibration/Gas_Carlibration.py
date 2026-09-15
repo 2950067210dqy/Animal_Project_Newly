@@ -546,13 +546,13 @@ class Zero_Carlibration(Gas_Carlibration, MyQThread):
         """零点标定"""
         time.sleep(0.01)
         self.set_calibration_running_state(True)
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  零点标定 开始{'.' * 100}", title=self.title)
         # 发送开始标定消息
         self.update_status_main_signal_gui_update.send(
             {'type': 'set_start_zero_calibration_time', 'value': f'{time_util.get_format_from_time(time.time())}'},
             title=self.title
         )
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} |  零点标定 开始{'.' * 100}", title=self.title)
         self.is_STOP = False
         self.current_calibration_values = {
             'oxygen_value': None,
@@ -1013,13 +1013,13 @@ class Range_Carlibration(Gas_Carlibration, MyQThread):
     def calibrate(self, resolve, reject):
         """量程标定"""
         self.set_calibration_running_state(True)
-        self.update_status_main_signal_gui_update.send(
-            f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 开始{'.' * 100}", title=self.title)
         # 发送开始标定消息
         self.update_status_main_signal_gui_update.send(
             {'type': 'set_start_span_calibration_time', 'value': f'{time_util.get_format_from_time(time.time())}'},
             title=self.title
         )
+        self.update_status_main_signal_gui_update.send(
+            f"{time_util.get_format_from_time(time.time())} |  SPan量程标定 开始{'.' * 100}", title=self.title)
 
         self.is_STOP = False
         self.current_calibration_values = {

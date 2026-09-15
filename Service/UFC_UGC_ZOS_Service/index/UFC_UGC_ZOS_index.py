@@ -9,6 +9,7 @@ from blinker.base import _PNamespaceSignal
 from loguru import logger
 from blinker import signal, Signal
 
+from Service.UFC_UGC_ZOS_Service.function.calibration_log import CalibrationLogRecorder
 from Service.UFC_UGC_ZOS_Service.function.co2_compensation import Startup_CO2_Air_Calibration
 from Service.UFC_UGC_ZOS_Service.function.o2_compensation import initialize_reference_dry_oxygen_percent
 from Service.UFC_UGC_ZOS_Service.function.gas_calibration.Gas_Carlibration import Zero_Carlibration, Range_Carlibration
@@ -125,6 +126,10 @@ class UFC_UGC_ZOS_index(MyQThread):
         self.monitor_start_state_Thread: MyQThread = None
 
         self.update_status_main_signal_gui_update: Signal=None
+        self.calibration_log_recorder = CalibrationLogRecorder(
+            on_error=lambda error: logger.error(f"校准日志自动保存失败: {error}"),
+            on_created=lambda path: logger.info(f"校准日志自动保存文件: {path}"),
+        )
         self._init_data()
         self._init_function()
 
@@ -143,11 +148,12 @@ class UFC_UGC_ZOS_index(MyQThread):
 
     def logger_info(self, text,**kwargs):
 
+        title = kwargs.get("title", GapSystem_Running_Type.DEFAULT)
+        self.calibration_log_recorder.record(getattr(title, "name", ""), text)
+
         if text and "\n" not in text:
 
             # 除了日志需求，需要将响应信息放映出来
-
-            title = kwargs.get("title",GapSystem_Running_Type.DEFAULT)
 
             match title:
                 case GapSystem_Running_Type.ZERO_CALIBRATION | GapSystem_Running_Type.RANGE_CALIBRATION | GapSystem_Running_Type.STARTUP_AIR_CALIBRATION | GapSystem_Running_Type.STARTUP_CO2_AIR_CALIBRATION:
@@ -357,13 +363,16 @@ class UFC_UGC_ZOS_index(MyQThread):
             .then(lambda _: AsyPromise(self.Startup_air_calibration_obj.run))
             .then(lambda _: AsyPromise(self.Startup_air_calibration_obj.stop))
             .then(lambda _: AsyPromise(self.finish_start))
-            .catch(
-                lambda error: AsyPromise.log_and_reject(
-                    error,
-                    logger=logger,
-                    message_prefix="Air气路启动流程失败",
-                )
-            )
+            .catch(self._reject_air_start)
+        )
+
+    def _reject_air_start(self, error):
+        self.calibration_log_recorder.record(
+            "STARTUP_AIR_CALIBRATION",
+            {"type": "calibration_failed", "value": f"Air气路启动流程失败: {error}"},
+        )
+        return AsyPromise.log_and_reject(
+            error, logger=logger, message_prefix="Air气路启动流程失败"
         )
 
     def _remember_ufc_start_status(self, startup_status):
@@ -383,15 +392,22 @@ class UFC_UGC_ZOS_index(MyQThread):
                             lambda _: AsyPromise(self.Startup_co2_air_calibration_obj.run).then(
                                 lambda _: AsyPromise(self.Startup_co2_air_calibration_obj.stop).then(
                                     lambda _: AsyPromise(self.finish_start)
-                                ).catch(lambda e: logger.error(f"{e}"))
-                            ).catch(lambda e: logger.error(f"{e}"))
-                        ).catch(lambda e: logger.error(f"{e}"))
-                    ).catch(lambda e: logger.error(f"{e}"))
-                ).catch(lambda e: logger.error(f"{e}"))
-            ).catch(lambda e: logger.error(f"{e}"))
-        ).catch(lambda e: logger.error(f"{e}"))
+                                ).catch(self._log_co2_air_failure)
+                            ).catch(self._log_co2_air_failure)
+                        ).catch(self._log_co2_air_failure)
+                    ).catch(self._log_co2_air_failure)
+                ).catch(self._log_co2_air_failure)
+            ).catch(self._log_co2_air_failure)
+        ).catch(self._log_co2_air_failure)
 
         return p
+
+    def _log_co2_air_failure(self, error):
+        self.calibration_log_recorder.record(
+            "STARTUP_CO2_AIR_CALIBRATION",
+            {"type": "calibration_failed", "value": f"CO2 Air气路启动流程失败: {error}"},
+        )
+        logger.error(f"{error}")
 
     def calibration_start(self, resolve, reject):
         AsyPromise(self.zero_carlibration_obj_calibrate_wrapped).then(
