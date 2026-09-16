@@ -1,5 +1,6 @@
 import importlib
 import json
+import math
 import os
 import sqlite3
 import threading
@@ -17,7 +18,7 @@ from loguru import logger
 from PyQt6.QtCore import Qt
 from Service import main_monitor_data, main_deep_camera, main_infrared_camera
 from Service.UFC_UGC_ZOS_Service.function.gas_path_system.Gas_path_system import ZOS_gas_path_system, \
-    UFC_gas_path_system, UGC_gas_path_system
+    UFC_gas_path_system, UGC_gas_path_system, UFC_FLOW_SETPOINT_DEFAULTS
 from Service.UFC_UGC_ZOS_Service.index.UFC_UGC_ZOS_index import UFC_UGC_ZOS_index
 from my_abc.BaseModule import BaseModule
 from public.component.Guide_tutorial_interface.Tutorial_Manager import TutorialManager
@@ -1539,6 +1540,16 @@ class MainWindow_Index(ThemedWindow):
             global_setting.get_setting('UFC_UGC_ZOS_config')['UFC']['wait_time']) + float(
             global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_all_time']) / float(
             global_setting.get_setting('UFC_UGC_ZOS_config')['ZOS']['start_read_pressure_delay']) * 2 * 8 + 20
+        if not environment_only:
+            try:
+                flow_delay = float(
+                    global_setting.get_setting('UFC_UGC_ZOS_config')['UFC'].get('flow_setpoint_delay', 2)
+                )
+                if not math.isfinite(flow_delay) or flow_delay < 0:
+                    raise ValueError("invalid flow setpoint delay")
+            except (KeyError, TypeError, ValueError):
+                flow_delay = 2
+            start_wait_times += len(UFC_FLOW_SETPOINT_DEFAULTS) * (flow_delay + 1)
         start_message = "正在启动环境模块..." if environment_only else "正在启动气路..."
 
         if self.start_dialog is None:

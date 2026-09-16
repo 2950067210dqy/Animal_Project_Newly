@@ -1,4 +1,5 @@
 import abc
+import math
 
 import re
 import threading
@@ -41,6 +42,7 @@ logger = logger.bind(category="monitor_data_logger")
 
 COLLECTION_STAGE_TIMEOUT_SECONDS = 15.0
 COLLECTION_BARRIER_TIMEOUT_SECONDS = 45.0
+UFC_FLOW_SETPOINT_DEFAULTS = (870, 870, 990, 800, 940, 870, 810, 920, 920)
 
 
 def _notify_collection_stage(signal_name, participant):
@@ -193,6 +195,45 @@ class UFC_gas_path_system_start_thread(MyQThread):
         if not isinstance(result, dict) or not result.get("send_state", False):
             raise RuntimeError(f"{step_name}指令发送失败，气路启动已中止")
         return result
+
+    @staticmethod
+    def _flow_setpoint_config():
+        ufc_config = (global_setting.get_setting("UFC_UGC_ZOS_config", {}) or {}).get("UFC", {})
+        setpoints = []
+        for channel, default in enumerate(UFC_FLOW_SETPOINT_DEFAULTS, start=1):
+            raw_value = ufc_config.get(f"flow_setpoint_channel_{channel}", default)
+            try:
+                value = int(raw_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"通道{channel}流量设定值无效: {raw_value!r}") from exc
+            if isinstance(raw_value, bool) or not 0 <= value <= 0xFFFF:
+                raise ValueError(f"通道{channel}流量设定值无效: {raw_value!r}")
+            setpoints.append(value)
+        raw_delay = ufc_config.get("flow_setpoint_delay", 2)
+        try:
+            delay = float(raw_delay)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"流量设定间隔无效: {raw_delay!r}") from exc
+        if not math.isfinite(delay) or delay < 0:
+            raise ValueError(f"流量设定间隔无效: {raw_delay!r}")
+        return setpoints, delay
+
+    @staticmethod
+    def _require_flow_setpoint_response(result, channel, value):
+        UFC_gas_path_system_start_thread._require_send_success(
+            result, f"步骤3.1 通道{channel}流量设定"
+        )
+        expected = bytes((2, 6, 0, 0x0F + channel, value >> 8, value & 0xFF))
+        try:
+            response = bytes.fromhex(result.get("response_hex") or "")
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(f"步骤3.1 通道{channel}流量设定回包无效") from exc
+        if len(response) != 8 or response[:6] != expected:
+            raise RuntimeError(
+                f"步骤3.1 通道{channel}流量设定回包不匹配: "
+                f"期望{expected.hex()}, 收到{response.hex()}"
+            )
+        return result
     def before_Runing_work(self):
         pass
     def dosomething(self):
@@ -225,9 +266,7 @@ class UFC_gas_path_system_start_thread(MyQThread):
                 "UFC 启动-步骤3.UFC已运行，跳过启动指令"
             )
             logger.info("气路启动步骤3跳过：步骤0检测到UFC已运行")
-            AsyPromise(self.gas_and_flow_rate_start).then(
-                lambda result: resolve(result)
-            ).catch(lambda error: reject(error))
+            self._configure_flow_then_start_pump(resolve, reject)
             return
 
         self.update_status_main_signal_gui_update.send(
@@ -252,10 +291,67 @@ class UFC_gas_path_system_start_thread(MyQThread):
         AsyPromise(self.send_thread.Send).then(
             lambda result: self._require_send_success(result, "步骤3 UFC启动")
         ).then(
-            lambda _: AsyPromise(self.gas_and_flow_rate_start)
-        ).then(
-            lambda result: resolve(result)
-        ).catch(lambda e: reject(e))
+            lambda _: self._configure_flow_then_start_pump(resolve, reject)
+        ).catch(reject)
+
+    def _configure_flow_then_start_pump(self, resolve, reject):
+        def start_pump(_):
+            AsyPromise(self.gas_and_flow_rate_start).then(resolve).catch(reject)
+
+        AsyPromise(self.configure_flow_controllers).then(start_pump).catch(reject)
+
+    def configure_flow_controllers(self, resolve, reject):
+        """Set all eight cage channels and the reference channel before the pump starts."""
+        if self.is_stop:
+            reject("Stop")
+            return
+        port = global_setting.get_setting("port", None)
+        if port is None:
+            reject("步骤3.1失败：未选择串口")
+            return
+        try:
+            setpoints, delay = self._flow_setpoint_config()
+        except ValueError as exc:
+            reject(exc)
+            return
+
+        def set_channel(index):
+            if self.is_stop:
+                reject("Stop")
+                return
+            if index == len(setpoints):
+                resolve()
+                return
+
+            channel = index + 1
+            value = setpoints[index]
+            payload = f"{0x0F + channel:04x}{value:04x}"
+            self.send_thread.send_message = {
+                "port": port,
+                "data": number_util.set_int_to_4_bytes_list(payload),
+                "slave_id": "2",
+                "function_code": "6",
+                "timeout": 1,
+            }
+            self.update_status_main_signal_gui_update.send(
+                f"{time_util.get_format_from_time(time.time())} | "
+                f"UFC 启动-步骤3.1.正在设定通道{channel}流量为{value}，寄存器0x{0x0F + channel:04X}"
+            )
+
+            def after_send(result):
+                self._require_flow_setpoint_response(result, channel, value)
+                self.update_status_main_signal_gui_update.send(
+                    f"{time_util.get_format_from_time(time.time())} | "
+                    f"UFC 启动-步骤3.1.通道{channel}流量设定成功：{value}"
+                )
+                if self.is_stop:
+                    raise RuntimeError("Stop")
+                time.sleep(delay)
+                set_channel(index + 1)
+
+            AsyPromise(self.send_thread.Send).then(after_send).catch(reject)
+
+        set_channel(0)
 
     def gas_and_flow_rate_start(self, resolve, reject):
         if self.is_stop:
