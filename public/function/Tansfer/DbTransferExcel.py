@@ -25,6 +25,7 @@ class DbTransferExcel():
         "UGC_air_pressure",
     ]
     EPOCH_DISPLAY_DESCRIPTIONS = {
+        "ENM_running_wheel_num": "当前计量周期内跑轮距离测量值(m)",
         "UGC_flow_num_1": "传感器状态码",
         "UGC_CO2_num": "气压补偿后CO2",
         "UGC_air_pressure": "对齐后CO2",
@@ -165,6 +166,7 @@ class DbTransferExcel():
 
         df = df.copy()
         export_col_mapping = dict(col_mapping)
+        export_col_mapping.update(self.EPOCH_DISPLAY_DESCRIPTIONS)
         if "WM_weight_num" in df.columns:
             df["WM_weight_num"] = df["WM_weight_num"].map(
                 format_weight_series_for_storage
@@ -203,7 +205,6 @@ class DbTransferExcel():
             + visible_columns[insert_at:]
         )
         df = df.loc[:, ordered_columns]
-        export_col_mapping.update(self.EPOCH_DISPLAY_DESCRIPTIONS)
         return df, export_col_mapping
 
     @staticmethod
