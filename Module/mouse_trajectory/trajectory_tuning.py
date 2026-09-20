@@ -49,7 +49,7 @@ except ModuleNotFoundError:  # Pure algorithm tests do not require the GUI runti
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TUNING_PATH = PROJECT_ROOT / "config" / "mouse_trajectory_tuning.json"
 
-RECOMMENDED_SETTINGS: dict[str, float | int] = {
+RECOMMENDED_SETTINGS: dict[str, float | int | bool] = {
     "detection_confidence": 0.50,
     "bbox_weight": 0.60,
     "volume_weight": 0.25,
@@ -59,8 +59,9 @@ RECOMMENDED_SETTINGS: dict[str, float | int] = {
     "bottom_reject_delta_mm": 80.0,
     "bbox_near_px": 560.0,
     "bbox_far_px": 125.0,
+    "stabilization_enabled": True,
     "median_window": 5,
-    "stationary_speed_mm_s": 80.0,
+    "stationary_speed_mm_s": 120.0,
     "stationary_ema": 0.20,
     "moving_ema": 0.50,
     "max_xy_speed_mm_s": 700.0,
@@ -71,6 +72,7 @@ RECOMMENDED_SETTINGS: dict[str, float | int] = {
 }
 
 INTEGER_FIELDS = {"median_window", "jump_confirmation_frames"}
+BOOL_FIELDS = {"stabilization_enabled"}
 FIELD_LIMITS: dict[str, tuple[float, float]] = {
     "detection_confidence": (0.01, 1.0),
     "bbox_weight": (0.0, 5.0),
@@ -93,10 +95,24 @@ FIELD_LIMITS: dict[str, tuple[float, float]] = {
 }
 
 
-def normalize_settings(values: dict[str, Any] | None) -> dict[str, float | int]:
+def normalize_settings(values: dict[str, Any] | None) -> dict[str, float | int | bool]:
     values = values or {}
-    normalized: dict[str, float | int] = {}
+    normalized: dict[str, float | int | bool] = {}
     for key, default in RECOMMENDED_SETTINGS.items():
+        if key in BOOL_FIELDS:
+            raw_value = values.get(key, default)
+            if isinstance(raw_value, bool):
+                normalized[key] = raw_value
+            else:
+                normalized[key] = str(raw_value).strip().lower() in {
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                    "enabled",
+                    "启用",
+                }
+            continue
         try:
             value = float(values.get(key, default))
         except (TypeError, ValueError):
@@ -282,6 +298,12 @@ class TrajectoryStabilizer:
     ) -> dict[str, Any]:
         cfg = normalize_settings(settings)
         raw = (float(x), float(y), float(z))
+
+        if not bool(cfg["stabilization_enabled"]):
+            self.reset()
+            version = str((settings or {}).get("parameter_version", "recommended"))
+            return self._result(raw, raw, 0.0, 0.0, False, "disabled", 1.0, version)
+
         self._history.append(raw)
         window = int(cfg["median_window"])
         if len(self._history) > window:
@@ -399,7 +421,7 @@ class TrajectoryTuningDialog(QDialog):
             raise RuntimeError("PyQt6 is required to open trajectory tuning dialog")
         super().__init__(parent)
         self.store = store
-        self.controls: dict[str, QDoubleSpinBox | QSpinBox] = {}
+        self.controls: dict[str, QCheckBox | QDoubleSpinBox | QSpinBox] = {}
         self.diagnostic_labels: dict[str, QLabel] = {}
         self._loading = False
         self.setWindowTitle("轨迹实时调参")
@@ -433,17 +455,29 @@ class TrajectoryTuningDialog(QDialog):
             ("近端框尺度", "bbox_near_px", " px"),
             ("远端框尺度", "bbox_far_px", " px"),
         ]), "融合")
-        tabs.addTab(self._build_form_tab([
-            ("中值窗口", "median_window", " 帧"),
-            ("静止速度阈值", "stationary_speed_mm_s", " mm/s"),
-            ("静止 EMA", "stationary_ema", ""),
-            ("运动 EMA", "moving_ema", ""),
+        timing_tab = QWidget(self)
+        timing_layout = QVBoxLayout(timing_tab)
+        enable_layout = QHBoxLayout()
+        enable_layout.addWidget(QLabel("时序稳定", timing_tab))
+        self.stabilization_enabled = QCheckBox("启用", timing_tab)
+        self.stabilization_enabled.stateChanged.connect(self._schedule_live_apply)
+        self.controls["stabilization_enabled"] = self.stabilization_enabled
+        enable_layout.addWidget(self.stabilization_enabled)
+        enable_layout.addStretch(1)
+        timing_layout.addLayout(enable_layout)
+        timing_layout.addWidget(self._build_form_tab([
+            ("中值窗口", "median_window", ""),
+            ("运动判定速度", "stationary_speed_mm_s", " mm/s"),
+            ("静止 EMA 系数", "stationary_ema", ""),
+            ("运动 EMA 系数", "moving_ema", ""),
             ("平面最大速度", "max_xy_speed_mm_s", " mm/s"),
-            ("突跳连续确认", "jump_confirmation_frames", " 帧"),
-            ("高度 EMA", "height_ema", ""),
+            ("突跳确认帧数", "jump_confirmation_frames", ""),
+            ("高度 EMA 系数", "height_ema", ""),
             ("高度最大速度", "max_z_speed_mm_s", " mm/s"),
-            ("选中笼预览刷新", "plot_refresh_seconds", " s"),
-        ]), "时序与显示")
+            ("轨迹刷新间隔", "plot_refresh_seconds", " s"),
+        ]))
+        timing_layout.addStretch(1)
+        tabs.addTab(timing_tab, "时序与显示")
         tabs.addTab(self._build_diagnostics_tab(), "实时诊断")
 
         self.live_apply = QCheckBox("参数变化后立即应用", self)
@@ -519,7 +553,10 @@ class TrajectoryTuningDialog(QDialog):
         self._loading = True
         try:
             for key, control in self.controls.items():
-                control.setValue(settings.get(key, RECOMMENDED_SETTINGS[key]))
+                if isinstance(control, QCheckBox):
+                    control.setChecked(bool(settings.get(key, RECOMMENDED_SETTINGS[key])))
+                else:
+                    control.setValue(settings.get(key, RECOMMENDED_SETTINGS[key]))
         finally:
             self._loading = False
 
