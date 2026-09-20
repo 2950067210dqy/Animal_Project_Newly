@@ -547,7 +547,10 @@ class TrajectoryTuningDialog(QDialog):
         return widget
 
     def _collect_values(self) -> dict[str, Any]:
-        return {key: control.value() for key, control in self.controls.items()}
+        return {
+            key: control.isChecked() if isinstance(control, QCheckBox) else control.value()
+            for key, control in self.controls.items()
+        }
 
     def _load_values(self, settings: dict[str, Any]) -> None:
         self._loading = True
