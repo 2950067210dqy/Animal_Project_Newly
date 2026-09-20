@@ -29,6 +29,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from Module.mouse_trajectory.trajectory_tuning import fuse_y_sources
+
 try:
     from PIL import Image, ImageTk
 except Exception:  # pragma: no cover - 运行环境没有 Pillow 时给出友好提示
@@ -50,12 +52,12 @@ MAX_LABEL5_3D_POINTS = 900
 MAX_LABEL5_3D_LINES = 1800
 VOLUME_KNN = 8
 BOTTOM_CONTACT_MAX_PIXEL_ERROR = 25.0
-Y_BOTTOM_FUSION_WEIGHT = 0.10
+Y_BOTTOM_FUSION_WEIGHT = 0.15
 Y_BOTTOM_FUSION_MAX_DELTA = 120.0
-Y_BOTTOM_FUSION_FAR_WEIGHT = 0.03
+Y_BOTTOM_FUSION_FAR_WEIGHT = 0.05
 BBOX_SCALE_NEAR_PX = 560.0
 BBOX_SCALE_FAR_PX = 125.0
-Y_SIZE_FUSION_WEIGHT = 4.0
+Y_SIZE_FUSION_WEIGHT = 0.60
 Y_CENTER_FUSION_WEIGHT = 0.25
 
 LABEL_COLORS = {
@@ -92,14 +94,19 @@ def clamp(value: float, min_value: float, max_value: float) -> float:
     return max(min_value, min(max_value, value))
 
 
-def estimate_y_from_bbox_scale(width: float, height: float) -> Optional[float]:
+def estimate_y_from_bbox_scale(
+    width: float,
+    height: float,
+    near_px: float = BBOX_SCALE_NEAR_PX,
+    far_px: float = BBOX_SCALE_FAR_PX,
+) -> Optional[float]:
     if width <= 0.0 or height <= 0.0:
         return None
     area_scale = math.sqrt(width * height)
     width_scale = width * 1.15
     scale = max(width_scale, area_scale * 0.85)
-    near = max(BBOX_SCALE_NEAR_PX, BBOX_SCALE_FAR_PX + 1.0)
-    far = max(1.0, BBOX_SCALE_FAR_PX)
+    near = max(float(near_px), float(far_px) + 1.0)
+    far = max(1.0, float(far_px))
     scale = clamp(scale, far, near)
     # Apparent size changes roughly multiplicatively with depth, so interpolate in log-space.
     denom = math.log(near) - math.log(far)
@@ -2051,7 +2058,13 @@ class AnimalBoxCalibrationApp:
                 mapped_bbox_area = mapped_bbox_width * mapped_bbox_height
                 bbox_width_for_scale = mapped_bbox_width
                 bbox_height_for_scale = mapped_bbox_height
-            bbox_scale_y = estimate_y_from_bbox_scale(bbox_width_for_scale, bbox_height_for_scale)
+            trajectory_tuning = dict(getattr(self, "trajectory_tuning", {}) or {})
+            bbox_scale_y = estimate_y_from_bbox_scale(
+                bbox_width_for_scale,
+                bbox_height_for_scale,
+                float(trajectory_tuning.get("bbox_near_px", BBOX_SCALE_NEAR_PX)),
+                float(trajectory_tuning.get("bbox_far_px", BBOX_SCALE_FAR_PX)),
+            )
             center3d = self.knn_locate_3d(volume_candidates, u, v_center, VOLUME_KNN, "label5_volume_knn")
             support3d = self.knn_locate_3d(
                 ground_candidates,
@@ -2083,69 +2096,24 @@ class AnimalBoxCalibrationApp:
                 "method": "ground_dlt" if ground else "fallback",
             }
 
+            raw_volume_y = float(center3d["Y"]) if center3d else None
+            bottom_grid_y = Y_base if front_back_source != "volume_center" else None
+            fused_y, y_fusion_parts = fuse_y_sources(
+                bbox_scale_y,
+                raw_volume_y,
+                bottom_grid_y,
+                trajectory_tuning,
+                cage_length_mm=BOTTOM_L,
+            )
+            if fused_y is not None:
+                Y_final = clamp(float(fused_y), 0.0, BOTTOM_L)
+
             if center3d:
                 X_final = clamp(float(center3d["X"]), -BOTTOM_W / 2.0, BOTTOM_W / 2.0)
-                raw_volume_y = float(center3d["Y"])
-                if False:
-                    # 底边有约束时，融合中心值（主）和底边值（辅）
-                    # 而不是强制用底边值覆盖中心值
-                    delta_y = abs(raw_volume_y - Y_base)
-                    if delta_y <= Y_BOTTOM_FUSION_MAX_DELTA:
-                        # 变化在合理范围内，进行加权融合
-                        # 底端（Y < 180）使用较高底边权重，远端使用较低权重以避免靠后
-                        fusion_weight = Y_BOTTOM_FUSION_WEIGHT if raw_volume_y <= 180 else Y_BOTTOM_FUSION_FAR_WEIGHT
-                        Y_final = clamp(
-                            raw_volume_y * (1 - fusion_weight) + Y_base * fusion_weight,
-                            0.0,
-                            BOTTOM_L
-                        )
-                    else:
-                        # 变化过大（可能是异常跳变），只用中心值，拒绝底边值
-                        Y_final = clamp(raw_volume_y, 0.0, BOTTOM_L)
-                else:
-                    # KNN成功但无底部接触：直接使用KNN的Y值
-                    Y_final = clamp(raw_volume_y, 0.0, BOTTOM_L)
-                y_values: List[Tuple[float, float]] = []
-                y_fusion_parts: Dict[str, Any] = {"center": raw_volume_y}
-                if bbox_scale_y is not None:
-                    y_values.append((bbox_scale_y, Y_SIZE_FUSION_WEIGHT))
-                    y_fusion_parts["bboxSizePrimary"] = bbox_scale_y
-                    center_delta = abs(raw_volume_y - bbox_scale_y)
-                    center_weight = Y_CENTER_FUSION_WEIGHT
-                    if center_delta > Y_BOTTOM_FUSION_MAX_DELTA:
-                        center_weight *= 0.35
-                    y_values.append((raw_volume_y, center_weight))
-                    y_fusion_parts["centerWeight"] = center_weight
-                else:
-                    y_values.append((raw_volume_y, 1.0))
-                if front_back_source != "volume_center":
-                    reference_y = bbox_scale_y if bbox_scale_y is not None else raw_volume_y
-                    delta_y = abs(reference_y - Y_base)
-                    bottom_limit = 60.0 if bbox_scale_y is not None else Y_BOTTOM_FUSION_MAX_DELTA
-                    if delta_y <= bottom_limit:
-                        bottom_weight = Y_BOTTOM_FUSION_WEIGHT
-                        if reference_y > BOTTOM_L / 2.0:
-                            bottom_weight = Y_BOTTOM_FUSION_FAR_WEIGHT
-                        if bbox_scale_y is not None:
-                            bottom_weight *= max(0.15, 1.0 - delta_y / max(bottom_limit, 1.0))
-                        bottom_weight = clamp(bottom_weight, 0.0, Y_BOTTOM_FUSION_WEIGHT)
-                        if bottom_weight > 0.0:
-                            y_values.append((Y_base, bottom_weight))
-                            y_fusion_parts["bottom"] = Y_base
-                            y_fusion_parts["bottomWeight"] = bottom_weight
-                    else:
-                        y_fusion_parts["bottomRejected"] = Y_base
-                total_y_weight = sum(weight for _value, weight in y_values) or 1.0
-                Y_final = clamp(
-                    sum(value * weight for value, weight in y_values) / total_y_weight,
-                    0.0,
-                    BOTTOM_L,
-                )
                 Z_total = clamp(float(center3d["Z"]), 0.0, HEIGHT_EST)
                 Z_base = clamp(Z_base, 0.0, HEIGHT_EST)
                 mouse_height = max(0.0, Z_total - Z_base)
                 X_base = X_final
-                Y_base = Y_final
                 center3d = dict(center3d)
                 center3d.update(
                     {
@@ -2154,9 +2122,10 @@ class AnimalBoxCalibrationApp:
                         "sizeDepthY": bbox_scale_y,
                         "yFusion": y_fusion_parts,
                         "frontBackSource": front_back_source,
-                        "method": "bbox_size_depth_primary",
+                        "method": "dynamic_three_source_fusion",
                     }
                 )
+            Y_base = Y_final
             new_box = dict(box)
             new_box.update(
                 {
@@ -2174,6 +2143,9 @@ class AnimalBoxCalibrationApp:
                     "mappedBBoxHeight": mapped_bbox_height,
                     "mappedBBoxArea": mapped_bbox_area,
                     "bboxScaleY": bbox_scale_y,
+                    "volumeKnnY": raw_volume_y,
+                    "bottomGridY": bottom_grid_y,
+                    "yFusion": y_fusion_parts,
                     "bboxBottomX": u_bottom,
                     "bboxBottomY": v_bottom,
                     "sourceImage": source_image,
@@ -2192,7 +2164,7 @@ class AnimalBoxCalibrationApp:
                     "support3D": support3d,
                     "legacy3D": legacy3d,
                     "frontBackSource": front_back_source,
-                    "locatorMethod": str(center3d.get("method")) if center3d else "ground_dlt",
+                    "locatorMethod": "dynamic_three_source_fusion",
                     "centerMatchError": float(center3d.get("pixelError", 0.0)) if center3d else None,
                     "registrationMeanError": self.registration.get("meanError") if registration_applied else None,
                     "registrationMaxError": self.registration.get("maxError") if registration_applied else None,

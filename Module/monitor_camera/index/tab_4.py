@@ -46,6 +46,10 @@ from PyQt6.QtWidgets import (
 from loguru import logger
 
 from Module.monitor_camera.ui.tab4_window import Ui_tab4_window
+from Module.mouse_trajectory.trajectory_tuning import (
+    TrajectoryTuningDialog,
+    trajectory_tuning_store,
+)
 from public.component.dialog.index.infrared_camera_read_SN_dialog_index import infrared_camera_read_SN_dialog
 from public.config_class.global_setting import global_setting
 from public.dao.SQLite.Monitor_Datas_Handle import Monitor_Datas_Handle
@@ -1647,6 +1651,7 @@ class Tab_4(ThemedWindow):
         self.latest_trajectory_status: dict[int, str] = {}
         self.latest_trajectory_titles: dict[int, str] = {}
         self.latest_trajectory_progress_text: dict[int, str] = {}
+        self.latest_trajectory_diagnostics: dict[int, dict[str, typing.Any]] = {}
         self.displayed_trajectory_plot_signatures: dict[tuple[int, str], tuple[str, float]] = {}
         self.current_right_plot_signature: tuple[str, float] | None = None
         self.last_good_corners: dict[int, list[dict[str, typing.Any]]] = {}
@@ -1655,6 +1660,7 @@ class Tab_4(ThemedWindow):
         self.last_valid_mouse_overlay_times: dict[int, float] = {}
         self.mouse_overlay_hold_seconds = 1.5
         self.current_trajectory_plot_key = "xy_trajectory"
+        self.trajectory_tuning_dialog: TrajectoryTuningDialog | None = None
         self.temperature_widget: TemperatureTrendWidget | None = None
         self.last_enabled_cages: list[int] = []
         self.last_selector_refresh_time = 0.0
@@ -1737,6 +1743,7 @@ class Tab_4(ThemedWindow):
             is_video_mode = self.current_mode == self.MODE_VIDEO
             self.trajectory_plot_selector_label.setVisible(is_video_mode)
             self.trajectory_plot_selector.setVisible(is_video_mode)
+            self.trajectory_tuning_button.setVisible(is_video_mode)
 
     def init_header_selectors(self):
         self.cage_selector_label = QLabel("已开启笼子:", self.ui.verticalLayoutWidget)
@@ -1755,13 +1762,19 @@ class Tab_4(ThemedWindow):
         self.trajectory_plot_selector.setObjectName("trajectory_plot_selector")
         self.trajectory_plot_selector.setMinimumWidth(150)
         self.trajectory_plot_selector.addItem("X-Y轨迹", "xy_trajectory")
-        self.trajectory_plot_selector.addItem("高度轨迹", "height_trajectory")
+        self.trajectory_plot_selector.addItem("X-Y-Z三维轨迹", "xyz_trajectory")
+        self.trajectory_plot_selector.addItem("高度-时间", "height_trajectory")
         self.trajectory_plot_selector.addItem("停留热力图", "occupancy_heatmap")
         self.trajectory_plot_selector.currentIndexChanged.connect(self.on_trajectory_plot_changed)
+        self.trajectory_tuning_button = QPushButton("轨迹参数", self.ui.verticalLayoutWidget)
+        self.trajectory_tuning_button.setObjectName("trajectory_tuning_button")
+        self.trajectory_tuning_button.setMinimumWidth(110)
+        self.trajectory_tuning_button.clicked.connect(self.open_trajectory_tuning_dialog)
 
         self.ui.horizontalLayout.insertWidget(insert_index + 2, self.current_cage_label)
         self.ui.horizontalLayout.insertWidget(insert_index + 3, self.trajectory_plot_selector_label)
         self.ui.horizontalLayout.insertWidget(insert_index + 4, self.trajectory_plot_selector)
+        self.ui.horizontalLayout.insertWidget(insert_index + 5, self.trajectory_tuning_button)
         self.update_mode_specific_controls()
 
     def init_display_area(self):
@@ -1948,6 +1961,8 @@ class Tab_4(ThemedWindow):
 
             trajectory_service_consumers.add(self)
             self.trajectory_thread = trajectory_thread
+            self.trajectory_thread.apply_trajectory_tuning(trajectory_tuning_store.snapshot())
+            self.trajectory_thread.set_preview_cage_number(self.current_cage_number)
             self._connect_trajectory_signal(trajectory_thread)
 
             submitter = shared_trajectory_submitter_thread
@@ -2210,6 +2225,11 @@ class Tab_4(ThemedWindow):
         cage_number = int(result_dict.get("cage_number", 0) or 0)
         if cage_number <= 0:
             return
+        diagnostics = result_dict.get("trajectory_diagnostics")
+        if diagnostics:
+            self.latest_trajectory_diagnostics[cage_number] = dict(diagnostics)
+            if self.current_cage_number == cage_number:
+                self._refresh_trajectory_tuning_diagnostics()
 
         try:
             plot_revision = int(result_dict.get("plot_revision", -1))
@@ -2392,6 +2412,9 @@ class Tab_4(ThemedWindow):
         self.current_cage_number = self.cage_selector.itemData(index)
         if self.loader_thread is not None:
             self.loader_thread.set_target_cage_number(self.current_cage_number)
+        if self.trajectory_thread is not None:
+            self.trajectory_thread.set_preview_cage_number(self.current_cage_number)
+        self._refresh_trajectory_tuning_diagnostics()
         self.render_selected_content()
 
     def on_trajectory_plot_changed(self, index):
@@ -2400,6 +2423,28 @@ class Tab_4(ThemedWindow):
 
         self.current_trajectory_plot_key = self.trajectory_plot_selector.itemData(index) or "xy_trajectory"
         self.render_selected_content()
+
+    def open_trajectory_tuning_dialog(self):
+        if self.trajectory_tuning_dialog is None:
+            self.trajectory_tuning_dialog = TrajectoryTuningDialog(self)
+            self.trajectory_tuning_dialog.settings_applied.connect(
+                self.on_trajectory_tuning_applied
+            )
+        self._refresh_trajectory_tuning_diagnostics()
+        self.trajectory_tuning_dialog.show()
+        self.trajectory_tuning_dialog.raise_()
+        self.trajectory_tuning_dialog.activateWindow()
+
+    def on_trajectory_tuning_applied(self, settings: dict[str, typing.Any]):
+        if self.trajectory_thread is not None:
+            self.trajectory_thread.apply_trajectory_tuning(settings)
+
+    def _refresh_trajectory_tuning_diagnostics(self):
+        if self.trajectory_tuning_dialog is None:
+            return
+        cage_number = int(self.current_cage_number) if self.current_cage_number else None
+        diagnostics = self.latest_trajectory_diagnostics.get(cage_number or 0, {})
+        self.trajectory_tuning_dialog.set_diagnostics(cage_number, diagnostics)
 
     def set_display_mode(self, mode: str):
         if mode not in {self.MODE_INFRARED, self.MODE_VIDEO}:
